@@ -153,15 +153,12 @@ export function Profile() {
   const totalYears = profile.experience.reduce((s, e) => s + (e.years || 0), 0);
 
   return (
-    <div className="max-w-2xl space-y-6 p-8">
+    <div className="max-w-4xl space-y-6 p-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-white">Your Profile</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Used for job qualification analysis and resume tailoring
-            {totalYears > 0 && <> · <span className="text-slate-400">{totalYears} yrs experience</span></>}
-          </p>
+          {totalYears > 0 && <p className="text-xs text-slate-500 mt-0.5">{totalYears} yrs total experience</p>}
         </div>
         <div className="flex items-center gap-2">
           <input ref={fileRef} type="file" accept=".pdf,.docx,.txt" className="hidden" onChange={uploadResume} />
@@ -184,12 +181,12 @@ export function Profile() {
           <User size={14} className="text-blue-400" />
           <span className="text-sm font-semibold text-white">Personal Info</span>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-4 gap-3">
           {(["name","email","phone","location"] as const).map(k => (
             <div key={k}>
               <label className={LABEL}>{k}</label>
               <input value={(profile as any)[k]} onChange={e => set(k, e.target.value)}
-                className={INPUT} placeholder={k === "location" ? "San Francisco, CA" : ""} />
+                className={INPUT} placeholder={k === "location" ? "New York, NY" : ""} />
             </div>
           ))}
         </div>
@@ -211,20 +208,21 @@ export function Profile() {
         )}
         {profile.experience.map((exp, i) => (
           <div key={i} className="border border-slate-700 rounded-lg p-4 space-y-3">
-            <div className="grid grid-cols-2 gap-2">
-              <div>
+            <div className="grid grid-cols-5 gap-2">
+              <div className="col-span-2">
                 <label className={LABEL}>Role / Title</label>
                 <input value={exp.role} onChange={e => setExp(i, { role: e.target.value })}
                   className={INPUT} placeholder="Senior Data Engineer" />
               </div>
-              <div>
+              <div className="col-span-2">
                 <label className={LABEL}>Company</label>
                 <input value={exp.company} onChange={e => setExp(i, { company: e.target.value })}
                   className={INPUT} placeholder="Cargill" />
               </div>
+              <div className="col-span-1" />
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div>
+            <div className="grid grid-cols-5 gap-2">
+              <div className="col-span-2">
                 <label className={LABEL}>Start Date</label>
                 <input value={exp.start_date}
                   onChange={e => {
@@ -234,7 +232,7 @@ export function Profile() {
                   }}
                   className={INPUT} placeholder="Sep 2023" />
               </div>
-              <div>
+              <div className="col-span-2">
                 <label className={LABEL}>End Date</label>
                 <input value={exp.end_date}
                   onChange={e => {

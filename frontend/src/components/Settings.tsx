@@ -109,7 +109,7 @@ export function Settings() {
   const activeP = PROVIDERS.find(p => p.value === form.ai_provider) ?? PROVIDERS[0];
 
   return (
-    <div className="max-w-2xl space-y-8 p-8">
+    <div className="max-w-4xl space-y-8 p-8">
       {/* Header + Save */}
       <div className="flex items-center justify-between">
         <div>

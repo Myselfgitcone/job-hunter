@@ -201,43 +201,6 @@ export function Settings() {
         </div>
       </section>
 
-      {/* Active Sources */}
-      <section className="space-y-3">
-        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Active Job Sources</h3>
-        <div className="grid grid-cols-2 gap-2">
-          {[
-            { name: "Greenhouse",   count: "2,550 boards",  color: "text-green-400" },
-            { name: "Lever",        count: "189 companies", color: "text-emerald-400" },
-            { name: "Ashby",        count: "911 companies", color: "text-cyan-400" },
-            { name: "HiringCafe",   count: "985+ jobs",     color: "text-yellow-400" },
-            { name: "Google Jobs",  count: "direct API",    color: "text-blue-400" },
-            { name: "Apple Jobs",   count: "direct API",    color: "text-slate-400" },
-            { name: "Meta Jobs",    count: "direct API",    color: "text-indigo-400" },
-            { name: "Netflix Jobs", count: "direct API",    color: "text-red-400" },
-          ].map(s => (
-            <div key={s.name} className="flex items-center justify-between bg-slate-800/60 border border-slate-700/60 rounded-lg px-3 py-2">
-              <span className={`text-xs font-medium ${s.color}`}>{s.name}</span>
-              <span className="text-[10px] text-slate-500">{s.count}</span>
-            </div>
-          ))}
-        </div>
-        <p className="text-[11px] text-slate-600">No API keys needed. Auto-deduplicated across sources.</p>
-      </section>
-
-      {/* Resume */}
-      <section className="space-y-2">
-        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Resume</h3>
-        <div className="flex items-center justify-between bg-slate-800/50 border border-slate-700/60 rounded-lg px-4 py-3">
-          <div>
-            <p className="text-sm text-slate-300 font-medium">Managed in My Profile</p>
-            <p className="text-xs text-slate-500 mt-0.5">Upload resume in Profile — AI uses it for tailoring automatically.</p>
-          </div>
-          <a href="#" onClick={e => { e.preventDefault(); (window as any).__navToProfile?.(); }}
-            className="text-xs text-blue-400 hover:text-blue-300 whitespace-nowrap ml-4">
-            Go to Profile →
-          </a>
-        </div>
-      </section>
 
       {/* Schedule */}
       <section className="space-y-3">

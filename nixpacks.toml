@@ -3,8 +3,8 @@ nixPkgs = ["python311", "curl"]
 
 [phases.install]
 cmds = [
-  "curl -sSL https://bootstrap.pypa.io/get-pip.py | python3",
-  "python3 -m pip install -r backend/requirements.txt"
+  "curl -sSL https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages",
+  "python3 -m pip install --break-system-packages -r backend/requirements.txt"
 ]
 
 [start]

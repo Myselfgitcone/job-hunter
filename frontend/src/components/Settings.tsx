@@ -20,19 +20,6 @@ const PROVIDERS = [
     ],
   },
   {
-    value: "groq",
-    label: "Groq",
-    url: "https://console.groq.com/keys",
-    placeholder: "gsk_...",
-    hint: "Fast inference, free tier. Best for quick tailoring.",
-    models: [
-      "llama-3.3-70b-versatile",
-      "llama-3.1-8b-instant",
-      "mixtral-8x7b-32768",
-      "gemma2-9b-it",
-    ],
-  },
-  {
     value: "nvidia",
     label: "Nvidia NIM",
     url: "https://integrate.api.nvidia.com",

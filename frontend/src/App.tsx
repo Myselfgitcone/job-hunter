@@ -400,7 +400,7 @@ export default function App() {
             {/* Steps */}
             <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 28 }}>
               {[
-                { step: "1", icon: IC.settings, color: "#60a5fa", title: "Add your AI API key", desc: "Settings → pick OpenRouter or Groq (free) → paste your key. Required for all AI features." },
+                { step: "1", icon: IC.settings, color: "#60a5fa", title: "Add your AI API key", desc: "Settings → pick OpenRouter, Nvidia NIM, or Anthropic → paste your key. Required for all AI features." },
                 { step: "2", icon: IC.user, color: "#818cf8", title: "Set up your Profile", desc: "Upload your resume — AI extracts experience, skills, education automatically into your profile." },
                 { step: "3", icon: IC.refresh, color: "#4ade80", title: "Scrape & apply", desc: "Click 'Scrape Now' to fetch fresh jobs. AI qualifies each one. Tailor resume per job in one click." },
               ].map(s => (

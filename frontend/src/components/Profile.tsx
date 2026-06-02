@@ -185,18 +185,25 @@ export function Profile() {
           <User size={14} className="text-blue-400" />
           <span className="text-sm font-semibold text-white">Personal Info</span>
         </div>
-        <div className="grid grid-cols-5 gap-3">
-          {(["name","email","phone","location"] as const).map(k => (
+        <div className="grid grid-cols-3 gap-3">
+          {(["name","email","phone"] as const).map(k => (
             <div key={k}>
               <label className={LABEL}>{k}</label>
               <input value={(profile as any)[k]} onChange={e => set(k, e.target.value)}
-                className={INPUT} placeholder={k === "location" ? "New York, NY" : ""} />
+                className={INPUT} />
             </div>
           ))}
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className={LABEL}>Location</label>
+            <input value={profile.location} onChange={e => set("location", e.target.value)}
+              className={INPUT} placeholder="New York, NY" />
+          </div>
           <div>
             <label className={LABEL}>Visa / Work Status</label>
             <input value={profile.visa_status} onChange={e => set("visa_status", e.target.value)}
-              className={INPUT} placeholder="F1 / OPT, H1B…" />
+              className={INPUT} placeholder="F1 / OPT, H1B, US Citizen…" />
           </div>
         </div>
       </div>

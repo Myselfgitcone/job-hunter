@@ -15,6 +15,7 @@ export interface ProfileData {
   email: string;
   phone: string;
   location: string;
+  visa_status: string;
   experience: ProfileExperience[];
   education: ProfileEducation[];
   projects: ProfileProject[];

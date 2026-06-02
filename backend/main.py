@@ -1065,6 +1065,7 @@ class ProfileData(BaseModel):
     email: str = ""
     phone: str = ""
     location: str = ""
+    visa_status: str = ""
     experience: List[ProfileExperience] = []
     education: List[ProfileEducation] = []
     projects: List[ProfileProject] = []

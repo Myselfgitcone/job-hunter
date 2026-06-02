@@ -31,7 +31,7 @@ function calcYears(start: string, end: string): number | null {
 }
 
 const EMPTY_PROFILE: ProfileData = {
-  name: "", email: "", phone: "", location: "",
+  name: "", email: "", phone: "", location: "", visa_status: "",
   experience: [], education: [], projects: [],
   skills: [], certifications: [],
 };
@@ -91,6 +91,7 @@ export function Profile() {
         email:          parsed.email          || p.email,
         phone:          parsed.phone          || p.phone,
         location:       parsed.location       || p.location,
+        visa_status:    p.visa_status,
         experience:     experience.length          ? experience        : p.experience,
         education:      parsed.education?.length   ? parsed.education  : p.education,
         projects:       parsed.projects?.length    ? parsed.projects   : p.projects,
@@ -192,6 +193,13 @@ export function Profile() {
                 className={INPUT} placeholder={k === "location" ? "New York, NY" : ""} />
             </div>
           ))}
+        </div>
+        <div className="grid grid-cols-4 gap-3 mt-3">
+          <div>
+            <label className={LABEL}>Visa / Work Status</label>
+            <input value={profile.visa_status} onChange={e => set("visa_status", e.target.value)}
+              className={INPUT} placeholder="F1 / OPT, US Citizen, H1B…" />
+          </div>
         </div>
       </div>
 

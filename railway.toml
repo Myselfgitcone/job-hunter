@@ -7,7 +7,7 @@ NIXPACKS_BUILD_CMD = ""
 NIXPACKS_START_CMD = "cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT"
 
 [deploy]
-startCommand = "cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT"
+startCommand = "cd backend && python3 -m uvicorn main:app --host 0.0.0.0 --port $PORT"
 healthcheckPath = "/api/settings"
 healthcheckTimeout = 300
 restartPolicyType = "on_failure"

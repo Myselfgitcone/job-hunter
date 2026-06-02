@@ -84,6 +84,7 @@ export default function App() {
   }, [lastScrapedTs]);
   const [tailorOpen, setTailorOpen] = useState(false);
   const [busy, setBusy]             = useState<string | null>(null);
+  const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem("jh_welcomed"));
   const { toasts, toast }           = useToasts();
   const searchRef                   = useRef<HTMLInputElement>(null);
   const [filters, setFilters]       = useState<Filters>({
@@ -380,6 +381,64 @@ export default function App() {
 
       <QuickTailor open={tailorOpen} onClose={() => setTailorOpen(false)} onToast={toast} />
       <Toasts toasts={toasts} />
+
+      {/* Welcome modal — first time only */}
+      {showWelcome && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 24 }}>
+          <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 16, padding: "36px 40px", maxWidth: 520, width: "100%", boxShadow: "0 24px 80px rgba(0,0,0,0.5)" }}>
+            {/* Logo + title */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 10, background: "linear-gradient(135deg,var(--accent),#1d4ed8)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 20px rgba(59,130,246,0.4)" }}>
+                <Ic d={IC.target} size={20} color="#fff" />
+              </div>
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>Welcome to Job Hunter</div>
+                <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>Your AI-powered job search assistant</div>
+              </div>
+            </div>
+
+            {/* Steps */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 28 }}>
+              {[
+                { step: "1", icon: IC.user, color: "#818cf8", title: "Set up your Profile", desc: "Upload your resume — AI extracts your experience, skills, education automatically." },
+                { step: "2", icon: IC.settings, color: "#60a5fa", title: "Add your AI API key", desc: "Go to Settings → pick OpenRouter or Groq (free) → paste your key. Used for tailoring resumes." },
+                { step: "3", icon: IC.refresh, color: "#4ade80", title: "Scrape & apply", desc: "Click 'Scrape Now' to fetch fresh jobs. AI qualifies each one. Tailor resume per job in one click." },
+              ].map(s => (
+                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: `${s.color}22`, border: `1px solid ${s.color}44`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <Ic d={s.icon} size={15} color={s.color} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", marginBottom: 3 }}>{s.title}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>{s.desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Auto-scrape note */}
+            <div style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: 8, padding: "10px 14px", marginBottom: 24, fontSize: 12, color: "#4ade80" }}>
+              ⚡ Jobs auto-fetch every hour 24/7 — even when your laptop is off (Railway cloud).
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => { localStorage.setItem("jh_welcomed", "1"); setShowWelcome(false); setView("profile"); }}
+                style={{ flex: 1, height: 40, borderRadius: 10, background: "var(--accent)", color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", border: "none" }}
+              >
+                Set Up Profile →
+              </button>
+              <button
+                onClick={() => { localStorage.setItem("jh_welcomed", "1"); setShowWelcome(false); }}
+                style={{ height: 40, padding: "0 18px", borderRadius: 10, background: "transparent", color: "var(--text-muted)", fontSize: 13, cursor: "pointer", border: "1px solid var(--border-subtle)" }}
+              >
+                Skip
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

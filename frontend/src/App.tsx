@@ -400,8 +400,8 @@ export default function App() {
             {/* Steps */}
             <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 28 }}>
               {[
-                { step: "1", icon: IC.user, color: "#818cf8", title: "Set up your Profile", desc: "Upload your resume — AI extracts your experience, skills, education automatically." },
-                { step: "2", icon: IC.settings, color: "#60a5fa", title: "Add your AI API key", desc: "Go to Settings → pick OpenRouter or Groq (free) → paste your key. Used for tailoring resumes." },
+                { step: "1", icon: IC.settings, color: "#60a5fa", title: "Add your AI API key", desc: "Settings → pick OpenRouter or Groq (free) → paste your key. Required for all AI features." },
+                { step: "2", icon: IC.user, color: "#818cf8", title: "Set up your Profile", desc: "Upload your resume — AI extracts experience, skills, education automatically into your profile." },
                 { step: "3", icon: IC.refresh, color: "#4ade80", title: "Scrape & apply", desc: "Click 'Scrape Now' to fetch fresh jobs. AI qualifies each one. Tailor resume per job in one click." },
               ].map(s => (
                 <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
@@ -424,10 +424,10 @@ export default function App() {
             {/* Actions */}
             <div style={{ display: "flex", gap: 10 }}>
               <button
-                onClick={() => { localStorage.setItem("jh_welcomed", "1"); setShowWelcome(false); setView("profile"); }}
+                onClick={() => { localStorage.setItem("jh_welcomed", "1"); setShowWelcome(false); setView("settings"); }}
                 style={{ flex: 1, height: 40, borderRadius: 10, background: "var(--accent)", color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", border: "none" }}
               >
-                Set Up Profile →
+                Add API Key →
               </button>
               <button
                 onClick={() => { localStorage.setItem("jh_welcomed", "1"); setShowWelcome(false); }}

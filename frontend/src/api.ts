@@ -60,8 +60,7 @@ export const api = {
   quickTailorPdfUrl: () => `${BASE}/quick-tailor/pdf`,
   quickTailorDocxUrl: () => `${BASE}/quick-tailor/docx`,
 
-  savePackage: (job_id: string) =>
-    req<{ folder: string; company: string }>(`/jobs/${job_id}/save-package`, { method: "POST" }),
+  savePackageUrl: (job_id: string) => `${BASE}/jobs/${job_id}/save-package`,
 
   quickSavePackage: (company: string, jd: string, tailored_resume: string) =>
     req<{ folder: string; company: string }>("/quick-tailor/save-package", {

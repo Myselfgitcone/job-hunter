@@ -289,9 +289,9 @@ function ResumeTab({ job, tailoring, onTailor, onToast }: {
           <a href={api.pdfUrl(job.id)} target="_blank" rel="noreferrer" className="btn btn-ghost"><Ic d={I.download} size={14} /> PDF</a>
           <a href={api.docxUrl(job.id)} target="_blank" rel="noreferrer" className="btn btn-ghost"><Ic d={I.download} size={14} /> DOCX</a>
           <button className="btn btn-ghost" onClick={() => { navigator.clipboard.writeText(job.tailored_resume || ""); onToast("Copied!", "success"); }}><Ic d={I.copy} size={14} /> Copy</button>
-          <button className="btn btn-subtle" onClick={async () => { try { const r = await api.savePackage(job.id); onToast("Saved to " + r.folder, "success"); } catch (e: any) { onToast(e.message, "error"); } }}>
+          <a href={api.savePackageUrl(job.id)} download className="btn btn-subtle" style={{ textDecoration: "none" }}>
             <Ic d={I.folder} size={14} /> Save Package
-          </button>
+          </a>
         </div>
 
         {/* ATS keywords */}

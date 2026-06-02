@@ -696,37 +696,23 @@ async def quick_tailor_docx(body: QuickTailorRequest):
 
 # ── Save Package (create folder + write all files to disk) ───────────────────
 
-SELF_APPLY_DIR = Path(_os.getenv("SAVE_DIR", str(Path.home() / "job-hunter-packages")))
-
-def _save_package(company: str, jd: str, tailored_resume: str, cover_letter: str = "") -> str:
-    """Create company folder, write JD.docx + PDF + DOCX + CoverLetter.txt. Return folder path."""
+def _build_package_zip(company: str, jd: str, tailored_resume: str, cover_letter: str = "") -> bytes:
+    """Build all package files into a ZIP in memory. Returns raw ZIP bytes."""
+    import zipfile, io as _io
     company_clean = re.sub(r"[^\w\s\-]", "", company).strip()
-    folder = SELF_APPLY_DIR / company_clean
-    folder.mkdir(parents=True, exist_ok=True)
-
-    # JD as formatted Word document
-    jd_docx = generate_jd_docx(jd, company_clean)
-    (folder / f"{company_clean}_JD.docx").write_bytes(jd_docx)
-
-    # Resume PDF
-    pdf_bytes = generate_pdf(tailored_resume, "", company)
-    (folder / "Jagadish_Reddy_Butukuri_Senior_Data_Engineer.pdf").write_bytes(pdf_bytes)
-
-    # Resume DOCX
-    docx_bytes = generate_docx(tailored_resume, "", company)
-    (folder / "Jagadish_Reddy_Butukuri_Senior_Data_Engineer.docx").write_bytes(docx_bytes)
-
-    # Cover letter (if available)
-    if cover_letter and cover_letter.strip():
-        slug = re.sub(r"[^\w]+", "_", company).strip("_")
-        (folder / f"Jagadish_Reddy_Butukuri_{slug}_CoverLetter.txt").write_text(
-            cover_letter, encoding="utf-8"
-        )
-
-    return str(folder)
+    slug = re.sub(r"[^\w]+", "_", company).strip("_")
+    buf = _io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(f"{company_clean}_JD.docx",         generate_jd_docx(jd, company_clean))
+        zf.writestr("Jagadish_Reddy_Butukuri_Senior_Data_Engineer.pdf",  generate_pdf(tailored_resume, "", company))
+        zf.writestr("Jagadish_Reddy_Butukuri_Senior_Data_Engineer.docx", generate_docx(tailored_resume, "", company))
+        if cover_letter and cover_letter.strip():
+            zf.writestr(f"Jagadish_Reddy_Butukuri_{slug}_CoverLetter.txt",
+                        cover_letter.encode("utf-8"))
+    return buf.getvalue()
 
 
-@app.post("/api/jobs/{job_id}/save-package")
+@app.get("/api/jobs/{job_id}/save-package")
 async def save_package(job_id: str):
     async with SessionLocal() as db:
         job = await db.get(Job, job_id)
@@ -735,8 +721,13 @@ async def save_package(job_id: str):
         if not job.tailored_resume:
             raise HTTPException(400, "No tailored resume yet. Tailor first.")
 
-    folder = _save_package(job.company, job.description or "", job.tailored_resume, job.cover_letter or "")
-    return {"folder": folder, "company": job.company}
+    zip_bytes = _build_package_zip(job.company, job.description or "", job.tailored_resume, job.cover_letter or "")
+    slug = re.sub(r"[^\w]+", "_", job.company).strip("_")
+    return StreamingResponse(
+        iter([zip_bytes]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="Package_{slug}.zip"'},
+    )
 
 
 class QuickSaveRequest(BaseModel):
@@ -747,8 +738,13 @@ class QuickSaveRequest(BaseModel):
 
 @app.post("/api/quick-tailor/save-package")
 async def quick_save_package(body: QuickSaveRequest):
-    folder = _save_package(body.company, body.jd, body.tailored_resume, body.cover_letter)
-    return {"folder": folder, "company": body.company}
+    zip_bytes = _build_package_zip(body.company, body.jd, body.tailored_resume, body.cover_letter)
+    slug = re.sub(r"[^\w]+", "_", body.company).strip("_")
+    return StreamingResponse(
+        iter([zip_bytes]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="Package_{slug}.zip"'},
+    )
 
 
 # ── Analytics ────────────────────────────────────────────────────────────────

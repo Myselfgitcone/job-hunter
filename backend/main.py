@@ -1239,12 +1239,13 @@ Rules:
 - bullets: extract ALL bullet points for each role exactly as written — do not truncate, summarize, or skip any.
 - skills: technical only (languages, frameworks, tools, platforms, databases, cloud). No soft skills.
 - certifications: only actual certs/licenses. Empty array if none.
+- education: ALWAYS extract even if at the bottom. Look for degree, university/school name, graduation year.
 - Use "" for missing text fields. Use [] for missing arrays.
 - Do NOT invent or paraphrase data not present in the resume."""
 
     response = await chat(
         system=PARSE_SYSTEM,
-        user=f"Resume:\n\n{text[:6000]}",
+        user=f"Resume:\n\n{text[:10000]}",
         api_key=api_key,
         provider=provider,
         model=model,

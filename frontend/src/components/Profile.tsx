@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { api } from "../api";
 import type { ProfileData, ProfileExperience, ProfileEducation, ProfileProject } from "../types";
-import { Plus, Trash2, Save, Loader2, CheckCircle2, User, Briefcase, GraduationCap, FolderOpen, Zap, Award, Upload } from "lucide-react";
+import { Plus, Trash2, Save, Loader2, CheckCircle2, User, Briefcase, GraduationCap, FolderOpen, Zap, Award, Upload, ChevronDown, ChevronRight } from "lucide-react";
 
 const MONTHS: Record<string, number> = {
   jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11,
@@ -53,6 +53,9 @@ export function Profile() {
   const [skillInput, setSkillInput] = useState("");
   const [certInput, setCertInput] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggleCollapse = (key: string) =>
+    setCollapsed(s => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
   useEffect(() => {
     api.getProfile()
@@ -195,18 +198,20 @@ export function Profile() {
       {/* Experience */}
       <div className={SECTION}>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <button onClick={() => toggleCollapse("exp")} className="flex items-center gap-2 text-left">
+            {collapsed.has("exp") ? <ChevronRight size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
             <Briefcase size={14} className="text-violet-400" />
             <span className="text-sm font-semibold text-white">Experience</span>
-          </div>
-          <button onClick={addExp} className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300">
-            <Plus size={12} /> Add Role
+            <span className="text-xs text-slate-500">({profile.experience.length})</span>
           </button>
+          {!collapsed.has("exp") && <button onClick={addExp} className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300">
+            <Plus size={12} /> Add Role
+          </button>}
         </div>
-        {profile.experience.length === 0 && (
+        {!collapsed.has("exp") && profile.experience.length === 0 && (
           <p className="text-xs text-slate-600 text-center py-4">No experience added yet</p>
         )}
-        {profile.experience.map((exp, i) => (
+        {!collapsed.has("exp") && profile.experience.map((exp, i) => (
           <div key={i} className="border border-slate-700 rounded-lg p-4 space-y-3">
             <div className="grid grid-cols-5 gap-2">
               <div className="col-span-2">
@@ -284,15 +289,17 @@ export function Profile() {
       {/* Education */}
       <div className={SECTION}>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <button onClick={() => toggleCollapse("edu")} className="flex items-center gap-2 text-left">
+            {collapsed.has("edu") ? <ChevronRight size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
             <GraduationCap size={14} className="text-green-400" />
             <span className="text-sm font-semibold text-white">Education</span>
-          </div>
-          <button onClick={addEdu} className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300">
-            <Plus size={12} /> Add
+            <span className="text-xs text-slate-500">({profile.education.length})</span>
           </button>
+          {!collapsed.has("edu") && <button onClick={addEdu} className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300">
+            <Plus size={12} /> Add
+          </button>}
         </div>
-        {profile.education.map((edu, i) => (
+        {!collapsed.has("edu") && profile.education.map((edu, i) => (
           <div key={i} className="grid grid-cols-3 gap-2 items-end">
             <div>
               <label className={LABEL}>Degree</label>
@@ -316,21 +323,23 @@ export function Profile() {
             </div>
           </div>
         ))}
-        {profile.education.length === 0 && <p className="text-xs text-slate-600 text-center py-2">No education added</p>}
+        {!collapsed.has("edu") && profile.education.length === 0 && <p className="text-xs text-slate-600 text-center py-2">No education added</p>}
       </div>
 
       {/* Projects */}
       <div className={SECTION}>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <button onClick={() => toggleCollapse("prj")} className="flex items-center gap-2 text-left">
+            {collapsed.has("prj") ? <ChevronRight size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
             <FolderOpen size={14} className="text-amber-400" />
             <span className="text-sm font-semibold text-white">Projects</span>
-          </div>
-          <button onClick={addPrj} className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300">
-            <Plus size={12} /> Add
+            <span className="text-xs text-slate-500">({profile.projects.length})</span>
           </button>
+          {!collapsed.has("prj") && <button onClick={addPrj} className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300">
+            <Plus size={12} /> Add
+          </button>}
         </div>
-        {profile.projects.map((prj, i) => (
+        {!collapsed.has("prj") && profile.projects.map((prj, i) => (
           <div key={i} className="flex gap-2 items-start">
             <div className="grid grid-cols-2 gap-2 flex-1">
               <input value={prj.name} onChange={e => setPrj(i, { name: e.target.value })}
@@ -343,48 +352,56 @@ export function Profile() {
             </button>
           </div>
         ))}
-        {profile.projects.length === 0 && <p className="text-xs text-slate-600 text-center py-2">No projects added</p>}
+        {!collapsed.has("prj") && profile.projects.length === 0 && <p className="text-xs text-slate-600 text-center py-2">No projects added</p>}
       </div>
 
       {/* Skills */}
       <div className={SECTION}>
-        <div className="flex items-center gap-2 mb-1">
+        <button onClick={() => toggleCollapse("skills")} className="flex items-center gap-2 mb-1 w-full text-left">
+          {collapsed.has("skills") ? <ChevronRight size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
           <Zap size={14} className="text-yellow-400" />
           <span className="text-sm font-semibold text-white">Skills</span>
-        </div>
-        <div className="flex flex-wrap gap-1.5 min-h-[32px]">
-          {profile.skills.map(s => (
-            <span key={s} className="flex items-center gap-1 px-2 py-0.5 bg-slate-700 text-slate-200 text-xs rounded-full">
-              {s}
-              <button onClick={() => rmSkill(s)} className="text-slate-500 hover:text-red-400">×</button>
-            </span>
-          ))}
-        </div>
-        <input value={skillInput}
-          onChange={e => setSkillInput(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addSkill(skillInput); } }}
-          className={INPUT} placeholder="Type skill + Enter (Python, Spark, AWS…)" />
-        <p className="text-[10px] text-slate-600">Press Enter or comma to add</p>
+          <span className="text-xs text-slate-500">({profile.skills.length})</span>
+        </button>
+        {!collapsed.has("skills") && <>
+          <div className="flex flex-wrap gap-1.5 min-h-[32px]">
+            {profile.skills.map(s => (
+              <span key={s} className="flex items-center gap-1 px-2 py-0.5 bg-slate-700 text-slate-200 text-xs rounded-full">
+                {s}
+                <button onClick={() => rmSkill(s)} className="text-slate-500 hover:text-red-400">×</button>
+              </span>
+            ))}
+          </div>
+          <input value={skillInput}
+            onChange={e => setSkillInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addSkill(skillInput); } }}
+            className={INPUT} placeholder="Type skill + Enter (Python, Spark, AWS…)" />
+          <p className="text-[10px] text-slate-600">Press Enter or comma to add</p>
+        </>}
       </div>
 
       {/* Certifications */}
       <div className={SECTION}>
-        <div className="flex items-center gap-2 mb-1">
+        <button onClick={() => toggleCollapse("certs")} className="flex items-center gap-2 mb-1 w-full text-left">
+          {collapsed.has("certs") ? <ChevronRight size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
           <Award size={14} className="text-cyan-400" />
           <span className="text-sm font-semibold text-white">Certifications</span>
-        </div>
-        <div className="flex flex-wrap gap-1.5 min-h-[32px]">
-          {profile.certifications.map(c => (
-            <span key={c} className="flex items-center gap-1 px-2 py-0.5 bg-slate-700 text-slate-200 text-xs rounded-full">
-              {c}
-              <button onClick={() => rmCert(c)} className="text-slate-500 hover:text-red-400">×</button>
-            </span>
-          ))}
-        </div>
-        <input value={certInput}
-          onChange={e => setCertInput(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addCert(certInput); } }}
-          className={INPUT} placeholder="AWS Solutions Architect, Databricks DE…" />
+          <span className="text-xs text-slate-500">({profile.certifications.length})</span>
+        </button>
+        {!collapsed.has("certs") && <>
+          <div className="flex flex-wrap gap-1.5 min-h-[32px]">
+            {profile.certifications.map(c => (
+              <span key={c} className="flex items-center gap-1 px-2 py-0.5 bg-slate-700 text-slate-200 text-xs rounded-full">
+                {c}
+                <button onClick={() => rmCert(c)} className="text-slate-500 hover:text-red-400">×</button>
+              </span>
+            ))}
+          </div>
+          <input value={certInput}
+            onChange={e => setCertInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addCert(certInput); } }}
+            className={INPUT} placeholder="AWS Solutions Architect, Databricks DE…" />
+        </>}
       </div>
 
       <button onClick={save} disabled={saving}

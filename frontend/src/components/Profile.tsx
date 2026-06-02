@@ -185,7 +185,7 @@ export function Profile() {
           <User size={14} className="text-blue-400" />
           <span className="text-sm font-semibold text-white">Personal Info</span>
         </div>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-5 gap-3">
           {(["name","email","phone","location"] as const).map(k => (
             <div key={k}>
               <label className={LABEL}>{k}</label>
@@ -193,12 +193,10 @@ export function Profile() {
                 className={INPUT} placeholder={k === "location" ? "New York, NY" : ""} />
             </div>
           ))}
-        </div>
-        <div className="grid grid-cols-4 gap-3 mt-3">
           <div>
             <label className={LABEL}>Visa / Work Status</label>
             <input value={profile.visa_status} onChange={e => set("visa_status", e.target.value)}
-              className={INPUT} placeholder="F1 / OPT, US Citizen, H1B…" />
+              className={INPUT} placeholder="F1 / OPT, H1B…" />
           </div>
         </div>
       </div>

@@ -1083,6 +1083,60 @@ async def get_profile():
             return json.loads(row.value)
     return {}
 
+def _profile_to_resume_text(p: dict) -> str:
+    """Convert structured profile to plain-text resume for AI tailoring."""
+    lines = []
+    name = p.get("name", "")
+    email = p.get("email", "")
+    phone = p.get("phone", "")
+    location = p.get("location", "")
+    contact = " | ".join(filter(None, [phone, email, location]))
+    if name:
+        lines.append(f"{name} — Senior Data Engineer")
+    if contact:
+        lines.append(contact)
+    lines.append("")
+
+    exp = p.get("experience", [])
+    if exp:
+        lines.append("WORK EXPERIENCE:")
+        for e in exp:
+            role = e.get("role", "")
+            company = e.get("company", "")
+            start = e.get("start_date", "")
+            end = e.get("end_date", "")
+            date_range = f"{start} – {end}".strip(" –") if (start or end) else ""
+            header = " | ".join(filter(None, [f"{role} @ {company}" if role and company else (role or company), date_range]))
+            lines.append(header)
+            for b in e.get("bullets", []):
+                if b.strip():
+                    lines.append(f"• {b.strip()}")
+            lines.append("")
+
+    edu = p.get("education", [])
+    if edu:
+        lines.append("EDUCATION:")
+        for e in edu:
+            degree = e.get("degree", "")
+            school = e.get("school", "")
+            year = e.get("year", "")
+            lines.append(" | ".join(filter(None, [f"{degree} @ {school}" if degree and school else (degree or school), year])))
+        lines.append("")
+
+    skills = p.get("skills", [])
+    if skills:
+        lines.append("TECHNICAL SKILLS:")
+        lines.append(", ".join(skills))
+        lines.append("")
+
+    certs = p.get("certifications", [])
+    if certs:
+        lines.append("CERTIFICATIONS:")
+        lines.append(", ".join(certs))
+
+    return "\n".join(lines).strip()
+
+
 @app.put("/api/profile")
 async def save_profile(body: ProfileData):
     async with SessionLocal() as db:
@@ -1092,6 +1146,16 @@ async def save_profile(body: ProfileData):
             row.value = val
         else:
             db.add(Setting(key="profile", value=val))
+
+        # Auto-sync plain-text resume for AI tailoring
+        resume_text = _profile_to_resume_text(body.model_dump())
+        if resume_text:
+            resume_row = await db.get(Setting, "resume")
+            if resume_row:
+                resume_row.value = resume_text
+            else:
+                db.add(Setting(key="resume", value=resume_text))
+
         await db.commit()
     return {"ok": True}
 

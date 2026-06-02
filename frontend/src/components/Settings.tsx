@@ -219,16 +219,19 @@ export function Settings() {
         <p className="text-[11px] text-slate-600">No API keys needed for any of these sources. Auto-deduplicated.</p>
       </section>
 
-      {/* Resume */}
+      {/* Resume sync note */}
       <section className="space-y-2">
-        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Base Resume</h3>
-        <p className="text-xs text-slate-600">Plain text. AI tailors this per job without fabricating anything.</p>
-        <textarea
-          value={form.resume}
-          onChange={e => setForm(f => ({ ...f, resume: e.target.value }))}
-          rows={24}
-          className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-300 font-mono focus:outline-none focus:border-blue-500 resize-y"
-        />
+        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Resume</h3>
+        <div className="flex items-start gap-3 bg-slate-800/50 border border-slate-700/60 rounded-lg px-4 py-3">
+          <div className="flex-1">
+            <p className="text-sm text-slate-300 font-medium">Managed in My Profile</p>
+            <p className="text-xs text-slate-500 mt-0.5">Upload your resume in Profile → AI uses it automatically for tailoring. No need to paste text here.</p>
+          </div>
+          <a href="#" onClick={e => { e.preventDefault(); (window as any).__navToProfile?.(); }}
+            className="text-xs text-blue-400 hover:text-blue-300 whitespace-nowrap mt-0.5">
+            Go to Profile →
+          </a>
+        </div>
       </section>
 
       {/* Auto-scrape scheduler */}

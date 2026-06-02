@@ -235,6 +235,8 @@ export default function App() {
   };
 
   const handleSelect = (id: string) => { setSelectedId(id); setTab("description"); };
+  // Expose nav to Settings component for "Go to Profile" link
+  useEffect(() => { (window as any).__navToProfile = () => setView("profile"); }, []);
   const handleNav = (v: string) => { if (v === "tailor") { setTailorOpen(true); return; } setView(v as View); };
   const filtersActive = filters.posted !== "72h" || filters.country !== "All Countries" || filters.locType !== "Any" || filters.source !== "All Sources" || filters.status !== "all";
   const navItems = [

@@ -329,7 +329,7 @@ export default function App() {
 
       {view === "dashboard" && <div style={{ flex: 1, overflow: "hidden" }}><Dashboard /></div>}
       {view === "profile"   && <div style={{ flex: 1, overflowY: "auto" }}><Profile /></div>}
-      {view === "settings"  && <div style={{ flex: 1, overflow: "hidden" }}><Settings /></div>}
+      {view === "settings"  && <div style={{ flex: 1, overflowY: "auto" }}><Settings /></div>}
 
       {view === "jobs" && viewMode === "kanban" && (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" }}>

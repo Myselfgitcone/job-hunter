@@ -56,7 +56,13 @@
       "Bash(sed -i 's/description=desc\\\\[:10000\\\\]/description=desc/' /c/Users/jagad/Downloads/job-hunter/backend/scrapers/ashby.py)",
       "Bash(sed -i 's/desc_parts if p\\\\\\)\\\\[:10000\\\\]/desc_parts if p\\)/' /c/Users/jagad/Downloads/job-hunter/backend/scrapers/lever.py)",
       "Bash(npx tsc *)",
-      "Bash(venv\\\\Scripts\\\\pip install *)"
+      "Bash(venv\\\\Scripts\\\\pip install *)",
+      "Bash(git push *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "mcp__Claude_in_Chrome__list_connected_browsers",
+      "mcp__Claude_in_Chrome__select_browser",
+      "mcp__Claude_in_Chrome__read_page"
     ]
   }
 }

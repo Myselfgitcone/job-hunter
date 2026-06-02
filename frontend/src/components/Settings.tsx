@@ -103,7 +103,7 @@ export function Settings() {
   const modelList = MODELS[form.ai_provider] ?? [];
 
   return (
-    <div className="max-w-2xl space-y-8">
+    <div className="max-w-2xl space-y-8 p-8">
       <div>
         <h2 className="text-lg font-semibold text-white">Settings</h2>
         <p className="text-sm text-slate-500 mt-0.5">AI provider, API keys, and your base resume</p>
@@ -196,67 +196,27 @@ export function Settings() {
         )}
       </section>
 
-      {/* Adzuna */}
+      {/* Active Sources */}
       <section className="space-y-3">
-        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-          Adzuna API
-          <a
-            href="https://developer.adzuna.com/signup"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="ml-2 text-blue-400 hover:underline normal-case font-normal"
-          >
-            Free signup →
-          </a>
-        </h3>
-        <p className="text-xs text-slate-600">Get App ID + App Key from your Adzuna developer dashboard (not your login password).</p>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">App ID</label>
-            <input
-              type="text"
-              value={form.adzuna_app_id}
-              onChange={e => setForm(f => ({ ...f, adzuna_app_id: e.target.value }))}
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">App Key</label>
-            <input
-              type="password"
-              value={form.adzuna_app_key}
-              onChange={e => setForm(f => ({ ...f, adzuna_app_key: e.target.value }))}
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
-            />
-          </div>
+        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Active Job Sources</h3>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            { name: "Greenhouse",  count: "2,550 boards", color: "text-green-400" },
+            { name: "Lever",       count: "189 companies", color: "text-emerald-400" },
+            { name: "Ashby",       count: "911 companies", color: "text-cyan-400" },
+            { name: "HiringCafe",  count: "985+ jobs",    color: "text-yellow-400" },
+            { name: "Google Jobs", count: "direct API",   color: "text-blue-400" },
+            { name: "Apple Jobs",  count: "direct API",   color: "text-slate-400" },
+            { name: "Meta Jobs",   count: "direct API",   color: "text-indigo-400" },
+            { name: "Netflix Jobs",count: "direct API",   color: "text-red-400" },
+          ].map(s => (
+            <div key={s.name} className="flex items-center justify-between bg-slate-800/60 border border-slate-700/60 rounded-lg px-3 py-2">
+              <span className={`text-xs font-medium ${s.color}`}>{s.name}</span>
+              <span className="text-[10px] text-slate-500">{s.count}</span>
+            </div>
+          ))}
         </div>
-        <p className="text-xs text-slate-600">Remotive, Arbeitnow, TheMuse, Dice, SimplyHired — no key needed.</p>
-      </section>
-
-      {/* Jobo */}
-      <section className="space-y-3">
-        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-          Jobo API
-          <a
-            href="https://jobo.world"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="ml-2 text-blue-400 hover:underline normal-case font-normal"
-          >
-            Get key →
-          </a>
-        </h3>
-        <p className="text-xs text-slate-600">Covers 50+ ATS platforms: Workday, Taleo, iCIMS, SuccessFactors, Greenhouse, Lever and more. Free tier available.</p>
-        <div>
-          <label className="block text-xs text-slate-400 mb-1">API Key</label>
-          <input
-            type="password"
-            value={form.jobo_api_key}
-            onChange={e => setForm(f => ({ ...f, jobo_api_key: e.target.value }))}
-            placeholder="jobo_..."
-            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
-          />
-        </div>
+        <p className="text-[11px] text-slate-600">No API keys needed for any of these sources. Auto-deduplicated.</p>
       </section>
 
       {/* Resume */}

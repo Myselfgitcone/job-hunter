@@ -44,6 +44,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/health")
+async def health_check():
+    """Public health endpoint for Railway/Vercel healthchecks."""
+    return {"status": "ok"}
+
 
 _scheduler = AsyncIOScheduler()
 
@@ -88,26 +93,26 @@ async def startup():
     except Exception as e:
         print(f"[Startup] DB migration error: {e}")
 
-    # ── Init Telegram bot if configured ──────────────────────────────────
-    try:
-        async with SessionLocal() as db:
-            result = await db.execute(text(
-                "SELECT telegram_bot_token, telegram_chat_id FROM user_settings "
-                "WHERE telegram_bot_token IS NOT NULL AND telegram_bot_token != '' LIMIT 1"
-            ))
-            row = result.fetchone()
-            if row and row[0] and row[1]:
-                await telegram_bot.init_bot(row[0], row[1])
-    except Exception as e:
-        print(f"[Startup] Telegram init skipped: {e}")
+    # ── Init Telegram + Seed companies in background (non-blocking) ──────
+    async def _background_init():
+        try:
+            async with SessionLocal() as db:
+                result = await db.execute(text(
+                    "SELECT telegram_bot_token, telegram_chat_id FROM user_settings "
+                    "WHERE telegram_bot_token IS NOT NULL AND telegram_bot_token != '' LIMIT 1"
+                ))
+                row = result.fetchone()
+                if row and row[0] and row[1]:
+                    await telegram_bot.init_bot(row[0], row[1])
+        except Exception as e:
+            print(f"[Startup] Telegram init skipped: {e}")
+        try:
+            from scrapers.company_seeder import seed_companies_if_empty
+            await seed_companies_if_empty()
+        except Exception as e:
+            print(f"[Startup] Company seeder failed: {e}")
 
-
-    # Seed companies from JSeek CSV if empty
-    try:
-        from scrapers.company_seeder import seed_companies_if_empty
-        await seed_companies_if_empty()
-    except Exception as e:
-        print(f"[Startup] Company seeder failed: {e}")
+    asyncio.create_task(_background_init())
     # Start auto-scraper scheduler (every 6 hours by default)
     async with SessionLocal() as db:
         result = await db.execute(select(Setting).where(Setting.key == "auto_scrape_cron"))

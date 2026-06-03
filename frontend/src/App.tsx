@@ -417,12 +417,19 @@ export default function App() {
       {/* ── SIDEBAR ── */}
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>
+          <div className="brand-mark" style={{ background: "transparent", boxShadow: "none" }}>
+            {/* Real Job Hunter bullseye logo */}
+            <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+              <circle cx="14" cy="14" r="12" stroke="#2563eb" strokeWidth="2" fill="none"/>
+              <circle cx="14" cy="14" r="4" fill="#2563eb"/>
             </svg>
           </div>
-          <span className="brand-name">Job<span className="dot">.</span>Hunter</span>
+          <div>
+            <div className="brand-name">
+              Job <span style={{ color: "#2563eb" }}>Hunter</span>
+            </div>
+            <div style={{ fontSize: 8, letterSpacing: "0.12em", color: "var(--tx-3)", textTransform: "uppercase", fontWeight: 600, marginTop: 1 }}>Hunt Smarter</div>
+          </div>
         </div>
 
         <div className="nav-group">

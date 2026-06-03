@@ -126,42 +126,55 @@ export function Settings() {
   };
 
   if (loading) return (
-    <div className="flex items-center justify-center h-40 text-slate-500 text-sm">
-      <Loader2 size={18} className="animate-spin mr-2" /> Loading…
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height: 160, color: "var(--tx-3)", fontSize: 14, gap: 8 }}>
+      <Loader2 size={18} className="animate-spin" /> Loading…
     </div>
   );
 
   const activeP = PROVIDERS.find(p => p.value === form.ai_provider) ?? PROVIDERS[0];
 
   return (
-    <div className="max-w-4xl space-y-8 p-8">
+    <div style={{ overflowY: "auto", padding: "24px", flex: 1 }}>
+      <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", flexDirection: "column", gap: 0 }}>
       {/* Header + Save */}
-      <div className="flex items-center justify-between">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
         <div>
-          <h2 className="text-lg font-semibold" style={{color:'var(--text-primary)'}}>Settings</h2>
-          <p className="text-sm mt-0.5" style={{color:'var(--text-muted)'}}>AI provider · job sources · schedule</p>
+          <h2 style={{ fontFamily: "var(--f-display)", fontSize: 18, fontWeight: 700, color: "var(--tx)", margin: 0, letterSpacing: "-0.02em" }}>Settings</h2>
+          <p style={{ fontSize: 13, color: "var(--tx-3)", marginTop: 4, marginBottom: 0 }}>AI provider · job sources · schedule</p>
         </div>
         <button onClick={handleSave} disabled={saving}
-          className="flex items-center gap-2 px-5 py-2 rounded-full text-sm font-medium transition-all"
-          style={{background:'var(--accent)',color:'#fff',opacity:saving?0.6:1}}>
+          style={{
+            display:"inline-flex", alignItems:"center", gap:7,
+            height:36, padding:"0 20px",
+            borderRadius:"var(--r-sm)",
+            background: saving ? "rgba(124,58,237,0.5)" : "var(--grad)",
+            color:"#fff", fontSize:13, fontWeight:600, border:"none",
+            opacity: saving ? 0.7 : 1, cursor: saving ? "not-allowed" : "pointer",
+            boxShadow: saving ? "none" : "0 4px 14px -4px var(--violet-glow)",
+            transition: "all .14s",
+          }}>
           {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <CheckCircle2 size={14} /> : <Save size={14} />}
           {saved ? "Saved!" : "Save Settings"}
         </button>
       </div>
 
-      {/* AI Providers — all in one */}
-      <section className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider" style={{color:'var(--text-muted)'}}>AI Provider</h3>
-        <p className="text-xs" style={{color:'var(--text-muted)'}}>Select which provider to use. Enter its API key. Only one is active at a time.</p>
-        <div className="space-y-2">
+      {/* AI Providers */}
+      <section style={{
+        background: "var(--bg-surface)", border: "1px solid var(--line)",
+        borderRadius: "var(--r-lg)", padding: 20, marginBottom: 16,
+      }}>
+        <h3 style={{ fontFamily: "var(--f-display)", fontSize: 14, fontWeight: 600, color: "var(--tx)", marginBottom: 6, marginTop: 0 }}>AI Provider</h3>
+        <p style={{ fontSize: 12.5, color: "var(--tx-3)", marginBottom: 14, marginTop: 0 }}>Select which provider to use. Enter its API key. Only one is active at a time.</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {PROVIDERS.map(p => {
             const isActive = form.ai_provider === p.value;
             return (
             <div key={p.value}
-                className="border rounded-xl p-4 transition-all cursor-pointer"
                 style={{
-                  borderColor: isActive ? 'var(--accent)' : 'var(--border-default)',
-                  background: isActive ? 'var(--bg-selected)' : 'var(--bg-elevated)',
+                  border: `1px solid ${isActive ? "var(--violet)" : "var(--line)"}`,
+                  borderRadius: "var(--r-sm)",
+                  padding: 14, transition: "all .13s", cursor: "pointer",
+                  background: isActive ? "rgba(124,58,237,0.08)" : "var(--bg-elevated)",
                 }}
                 onClick={() => setForm(f => ({ ...f, ai_provider: p.value, ai_model: p.models[0] }))}
             >
@@ -192,6 +205,7 @@ export function Settings() {
                         value={form.ai_api_key}
                         onChange={e => setForm(f => ({ ...f, ai_api_key: e.target.value }))}
                         placeholder={p.placeholder}
+                        className="field"
                         style={{width:'100%'}}
                       />
                       <button
@@ -207,6 +221,7 @@ export function Settings() {
                       <select
                         value={form.ai_model}
                         onChange={e => setForm(f => ({ ...f, ai_model: e.target.value }))}
+                        className="field"
                         style={{flex:1}}
                       >
                         {p.models.map(m => <option key={m} value={m}>{m}</option>)}
@@ -216,6 +231,7 @@ export function Settings() {
                         value={form.ai_model}
                         onChange={e => setForm(f => ({ ...f, ai_model: e.target.value }))}
                         placeholder="or type custom model ID"
+                        className="field"
                         style={{flex:1}}
                       />
                     </div>
@@ -229,12 +245,15 @@ export function Settings() {
 
 
       {/* ── Telegram Notifications ───────────────────────────────────── */}
-      <section className="space-y-4">
+      <section style={{
+        background: "var(--bg-surface)", border: "1px solid var(--line)",
+        borderRadius: "var(--r-lg)", padding: 20, marginBottom: 16,
+      }}>
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <BotMessageSquare size={15} style={{color:'#2CA5E0'}} />
-            <h3 className="text-xs font-semibold uppercase tracking-wider" style={{color:'var(--text-muted)'}}>Telegram Notifications</h3>
+            <h3 style={{ fontFamily: "var(--f-display)", fontSize: 14, fontWeight: 600, color: "var(--tx)", margin: 0 }}>Telegram Notifications</h3>
           </div>
           {tgConfigured && (
             <span className="flex items-center gap-1 text-[10px] font-semibold px-2.5 py-1 rounded-full"
@@ -262,27 +281,28 @@ export function Settings() {
         </div>
 
         {/* Inputs */}
-        <div className="grid gap-3" style={{gridTemplateColumns:'1fr 1fr'}}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12, marginTop: 12 }}>
           <div>
-            <label className="block text-[11px] font-medium mb-1.5" style={{color:'var(--text-muted)'}}>Bot Token</label>
-            <div className="relative">
+            <label style={{ display: "block", fontSize: 11.5, fontWeight: 500, color: "var(--tx-2)", marginBottom: 6 }}>Bot Token</label>
+            <div style={{ position: "relative" }}>
               <input
                 type={showTgToken ? "text" : "password"}
                 value={tgToken}
                 onChange={e => setTgToken(e.target.value)}
                 placeholder={tgConfigured ? "••••••• (saved)" : "1234567890:ABCDEFabcdef..."}
+                className="field"
                 style={{width:'100%', paddingRight:36}}
               />
               <button onClick={() => setShowTgToken(s => !s)}
-                className="absolute right-2.5 top-2.5" style={{color:'var(--text-muted)'}}>
+                style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", color: "var(--tx-3)" }}>
                 {showTgToken ? <EyeOff size={14}/> : <Eye size={14}/>}
               </button>
             </div>
           </div>
           <div>
-            <label className="block text-[11px] font-medium mb-1.5" style={{color:'var(--text-muted)'}}>Chat ID</label>
+            <label style={{ display: "block", fontSize: 11.5, fontWeight: 500, color: "var(--tx-2)", marginBottom: 6 }}>Chat ID</label>
             <input type="text" value={tgChatId} onChange={e => setTgChatId(e.target.value)}
-              placeholder="123456789" style={{width:'100%'}} />
+              placeholder="123456789" className="field" style={{width:'100%'}} />
           </div>
         </div>
 
@@ -307,24 +327,16 @@ export function Settings() {
             </span>
           )}
         </div>
-
-        {/* Alert types */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[11px]" style={{color:'var(--text-muted)'}}>Alerts:</span>
-          {['New jobs scraped', 'Job → Interview', 'Daily summary (8am)'].map(a => (
-            <span key={a} className="text-[10px] px-2 py-0.5 rounded-full"
-              style={{background:'var(--bg-elevated)', border:'1px solid var(--border-subtle)', color:'var(--text-secondary)'}}>
-              {a}
-            </span>
-          ))}
-        </div>
       </section>
 
       {/* ── Schedule ─────────────────────────────────────────────────── */}
-      <section className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider" style={{color:'var(--text-muted)'}}>Auto-Scrape Schedule</h3>
+      <section style={{
+        background: "var(--bg-surface)", border: "1px solid var(--line)",
+        borderRadius: "var(--r-lg)", padding: 20, marginBottom: 16,
+      }}>
+        <h3 style={{ fontFamily: "var(--f-display)", fontSize: 14, fontWeight: 600, color: "var(--tx)", marginBottom: 14, marginTop: 0 }}>Auto-Scrape Schedule</h3>
         {schedulerStatus && (
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex items-center gap-2 text-xs mb-3">
             <span className={`w-1.5 h-1.5 rounded-full ${schedulerStatus.running ? "bg-green-400" : "bg-red-400"}`} />
             <span className="text-slate-400">{schedulerStatus.running ? "Running" : "Stopped"}</span>
             {schedulerStatus.jobs?.[0]?.next_run && (
@@ -332,22 +344,33 @@ export function Settings() {
             )}
           </div>
         )}
-        <div className="flex gap-2">
+        <div style={{ display: "flex", gap: 8 }}>
           <input
             type="text"
             value={cronExpr}
             onChange={e => setCronExpr(e.target.value)}
             placeholder="0 * * * *"
-            style={{flex:1, fontFamily:'monospace'}}
+            className="field"
+            style={{flex:1, fontFamily:'var(--f-mono)'}}
           />
           <button onClick={handleCronSave}
-            className="px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
-            style={{background:'var(--bg-elevated)',border:'1px solid var(--border-default)',color:'var(--text-primary)'}}>
+            style={{
+              height: 38, padding: "0 16px",
+              borderRadius: "var(--r-sm)", fontSize: 13, fontWeight: 500,
+              background: "var(--bg-elevated)", border: "1px solid var(--line)",
+              color: "var(--tx-2)", cursor: "pointer", transition: "all .13s", whiteSpace: "nowrap",
+            }}>
             Update
           </button>
           <button onClick={handleRunNow} disabled={scraping}
-            className="px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
-            style={{background:'var(--accent)',color:'#fff',border:'none',opacity:scraping?0.7:1,cursor:scraping?'wait':'pointer'}}>
+            style={{
+              height: 38, padding: "0 16px",
+              borderRadius: "var(--r-sm)", fontSize: 13, fontWeight: 600,
+              background: "var(--grad)", color: "#fff", border: "none",
+              opacity: scraping ? 0.7 : 1, cursor: scraping ? "wait" : "pointer",
+              boxShadow: "0 4px 14px -4px var(--violet-glow)", whiteSpace: "nowrap",
+              transition: "all .13s",
+            }}>
             {scraping ? <><Loader2 size={13} className="animate-spin inline mr-1"/>Running…</> : '▶ Run Now'}
           </button>
         </div>
@@ -357,6 +380,7 @@ export function Settings() {
           <code>0 * * * *</code> = every 1h · <code>0 */6 * * *</code> = every 6h · <code>0 8 * * *</code> = daily 8am
         </p>
       </section>
+      </div>
     </div>
   );
 }

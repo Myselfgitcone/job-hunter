@@ -27,8 +27,8 @@ function timeAgo(iso: string) {
 }
 
 const PALETTE = [
-  "#6366f1","#3b82f6","#10b981","#f59e0b",
-  "#ec4899","#8b5cf6","#06b6d4","#f97316","#84cc16","#ef4444",
+  "#8b5cf6","#22d3ee","#10b981","#f59e0b",
+  "#ec4899","#6366f1","#06b6d4","#f97316","#84cc16","#ef4444",
 ];
 
 const TT = ({ active, payload, label }: any) =>
@@ -172,7 +172,7 @@ export function Dashboard() {
   ].filter(d => d.value > 0);
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div style={{ flex: 1, overflow: "auto", background: "var(--bg-base)" }}>
       <div className="p-6 space-y-6 max-w-6xl">
 
         {/* ── Header ── */}
@@ -246,7 +246,8 @@ export function Dashboard() {
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
 
           {/* Monthly trends — takes 3/5 */}
-          <div className="xl:col-span-3 bg-slate-900/70 border border-slate-800 rounded-2xl p-5">
+          <div className="xl:col-span-3 rounded-2xl p-5" style={{background:"var(--bg-elevated)",border:"1px solid var(--line)"}}>
+
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h3 className="text-sm font-bold text-white">Monthly Trends</h3>
@@ -262,8 +263,8 @@ export function Dashboard() {
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={monthly} barGap={4} margin={{top:4,right:4,left:-20,bottom:0}}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false}/>
-                  <XAxis dataKey="month" tick={{fill:"var(--text-muted)",fontSize:11}} axisLine={false} tickLine={false}/>
-                  <YAxis tick={{fill:"var(--text-muted)",fontSize:10}} axisLine={false} tickLine={false} allowDecimals={false}/>
+                  <XAxis dataKey="month" tick={{fill:"var(--tx-3)",fontSize:11,fontFamily:"var(--f-ui)"}} axisLine={false} tickLine={false}/>
+                  <YAxis tick={{fill:"var(--tx-3)",fontSize:10,fontFamily:"var(--f-ui)"}} axisLine={false} tickLine={false} allowDecimals={false}/>
                   <Tooltip content={<TT/>} cursor={{fill:"rgba(255,255,255,0.03)"}}/>
                   <Bar dataKey="scraped"  name="Scraped"  fill="#6366f1" radius={[4,4,0,0]} maxBarSize={22}/>
                   <Bar dataKey="applied"  name="Applied"  fill="#3b82f6" radius={[4,4,0,0]} maxBarSize={22}/>
@@ -276,7 +277,7 @@ export function Dashboard() {
           </div>
 
           {/* Pie status — takes 2/5 */}
-          <div className="xl:col-span-2 bg-slate-900/70 border border-slate-800 rounded-2xl p-5">
+          <div className="xl:col-span-2 rounded-2xl p-5 bg-bg-elevated border border-line">
             <div className="mb-5">
               <h3 className="text-sm font-bold text-white">Status Breakdown</h3>
               <p className="text-[11px] text-slate-500 mt-0.5">{total} total jobs</p>
@@ -310,7 +311,7 @@ export function Dashboard() {
         </div>
 
         {/* ── 30-day line chart ── */}
-        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-5">
+        <div className="rounded-2xl p-5 bg-bg-elevated border border-line">
           <div className="flex items-center justify-between mb-5">
             <div>
               <h3 className="text-sm font-bold text-white">30-Day Activity</h3>
@@ -328,9 +329,9 @@ export function Dashboard() {
                     </linearGradient>
                   ))}
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false}/>
-                <XAxis dataKey="label" tick={{fill:"var(--text-muted)",fontSize:9}} axisLine={false} tickLine={false} interval={4}/>
-                <YAxis tick={{fill:"var(--text-muted)",fontSize:9}} axisLine={false} tickLine={false} allowDecimals={false}/>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" vertical={false}/>
+                <XAxis dataKey="label" tick={{fill:"var(--tx-3)",fontSize:9,fontFamily:"var(--f-ui)"}} axisLine={false} tickLine={false} interval={4}/>
+                <YAxis tick={{fill:"var(--tx-3)",fontSize:9,fontFamily:"var(--f-ui)"}} axisLine={false} tickLine={false} allowDecimals={false}/>
                 <Tooltip content={<TT/>}/>
                 <Area type="monotone" dataKey="scraped"  name="Scraped"
                       stroke="#6366f1" strokeWidth={2} fill="url(#gS)"
@@ -351,17 +352,17 @@ export function Dashboard() {
         {/* ── Country + Source ── */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
 
-          <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-5">
+          <div className="rounded-2xl p-5 bg-bg-elevated border border-line">
             <h3 className="text-sm font-bold text-white mb-1">🌍 Jobs by Country</h3>
             <p className="text-[11px] text-slate-500 mb-4">Top markets</p>
             {countryData.length > 0 ? (
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={countryData} layout="vertical"
                           margin={{top:0,right:28,left:8,bottom:0}}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" horizontal={false}/>
-                  <XAxis type="number" tick={{fill:"var(--text-muted)",fontSize:10}} axisLine={false} tickLine={false} allowDecimals={false}/>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" horizontal={false}/>
+                  <XAxis type="number" tick={{fill:"var(--tx-3)",fontSize:10,fontFamily:"var(--f-ui)"}} axisLine={false} tickLine={false} allowDecimals={false}/>
                   <YAxis type="category" dataKey="name" width={90}
-                         tick={{fill:"#94a3b8",fontSize:11}} axisLine={false} tickLine={false}/>
+                         tick={{fill:"var(--tx-2)",fontSize:11,fontFamily:"var(--f-ui)"}} axisLine={false} tickLine={false}/>
                   <Tooltip content={<TT/>} cursor={{fill:"rgba(255,255,255,0.03)"}}/>
                   <Bar dataKey="count" name="Jobs" radius={[0,6,6,0]}>
                     {countryData.map((_:any,i:number) => <Cell key={i} fill={PALETTE[i%PALETTE.length]}/>)}
@@ -373,15 +374,15 @@ export function Dashboard() {
             )}
           </div>
 
-          <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-5">
+          <div className="rounded-2xl p-5 bg-bg-elevated border border-line">
             <h3 className="text-sm font-bold text-white mb-1">📡 Jobs by Source</h3>
             <p className="text-[11px] text-slate-500 mb-4">Scraper performance</p>
             {sourceData.length > 0 ? (
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={sourceData} margin={{top:0,right:8,left:-24,bottom:0}}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false}/>
-                  <XAxis dataKey="name" tick={{fill:"var(--text-muted)",fontSize:10}} axisLine={false} tickLine={false}/>
-                  <YAxis tick={{fill:"var(--text-muted)",fontSize:10}} axisLine={false} tickLine={false} allowDecimals={false}/>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" vertical={false}/>
+                  <XAxis dataKey="name" tick={{fill:"var(--tx-3)",fontSize:10,fontFamily:"var(--f-ui)"}} axisLine={false} tickLine={false}/>
+                  <YAxis tick={{fill:"var(--tx-3)",fontSize:10,fontFamily:"var(--f-ui)"}} axisLine={false} tickLine={false} allowDecimals={false}/>
                   <Tooltip content={<TT/>} cursor={{fill:"rgba(255,255,255,0.03)"}}/>
                   <Bar dataKey="count" name="Jobs" radius={[6,6,0,0]}>
                     {sourceData.map((_:any,i:number) => <Cell key={i} fill={PALETTE[i%PALETTE.length]}/>)}
@@ -395,7 +396,7 @@ export function Dashboard() {
         </div>
 
         {/* ── Resume History ── */}
-        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-5">
+        <div className="rounded-2xl p-5" style={{background:"var(--bg-elevated)",border:"1px solid var(--line)"}}>
           <div className="flex items-center gap-2 mb-5">
             <FileText size={15} className="text-blue-400"/>
             <h3 className="text-sm font-bold text-white">Resume History</h3>

@@ -70,18 +70,16 @@ function StatusDropdown({ status, onChange }: { status: string; onChange: (s: st
   const labels: Record<string, string> = { new: "New", applied: "Applied", interview: "Interview", skipped: "Skipped" };
   return (
     <div ref={ref} style={{ position: "relative" }}>
-      <button onClick={() => setOpen(!open)} className="btn btn-subtle" style={{ height: 28, fontSize: 12 }}>
-        <span style={{ width: 7, height: 7, borderRadius: 999, background: STATUS_COLORS[status] || "var(--text-muted)" }} />
+      <button onClick={() => setOpen(!open)} className="act" style={{ height: 30, fontSize: 12 }}>
+        <span style={{ width: 7, height: 7, borderRadius: 999, background: STATUS_COLORS[status] || "var(--tx-3)" }} />
         {labels[status] || status} <Ic d={I.chevDown} size={13} />
       </button>
       {open && (
-        <div style={{ position: "absolute", top: 34, left: 0, zIndex: 20, background: "var(--bg-elevated)", border: "1px solid var(--border-default)", borderRadius: 10, padding: 4, boxShadow: "var(--card-shadow)", minWidth: 140 }}>
+        <div className="menu" style={{ minWidth: 140 }}>
           {Object.entries(labels).map(([s, l]) => (
-            <button key={s} onClick={() => { onChange(s); setOpen(false); }}
-              style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "7px 10px", borderRadius: 7, fontSize: 12.5, color: "var(--text-secondary)", textAlign: "left" }}
-              onMouseEnter={e => (e.currentTarget.style.background = "var(--bg-hover)")}
-              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
-              <span style={{ width: 7, height: 7, borderRadius: 999, background: STATUS_COLORS[s] }} /> {l}
+            <button key={s} onClick={() => { onChange(s); setOpen(false); }} className={`menu-item${status === s ? " sel" : ""}`}>
+              <span style={{ width: 7, height: 7, borderRadius: 999, background: STATUS_COLORS[s], flexShrink: 0 }} />
+              {l}
             </button>
           ))}
         </div>
@@ -486,10 +484,17 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
 }) {
   if (!job) {
     return (
-      <section style={{ flex: 1, background: "var(--bg-base)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14 }}>
-        <Ic d={I.briefcase} size={52} color="var(--text-disabled)" style={{ opacity: 0.4 }} />
-        <div style={{ fontSize: 14, color: "var(--text-muted)" }}>Select a job to view details</div>
-      </section>
+      <div className="detail-pane">
+        <div className="empty">
+          <div className="empty-inner">
+            <div className="empty-ico">
+              <Ic d={I.briefcase} size={28} />
+            </div>
+            <h3>No job selected</h3>
+            <p>Select a job from the list to view details, run AI analysis, and tailor your resume.</p>
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -503,71 +508,100 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
     catch (e: any) { onToast(e.message, "error"); }
   };
 
+  const scoreNum = (job.qualify_result as any)?.score ?? null;
+  const circumference = 2 * Math.PI * 26;
+  const offset = scoreNum != null ? circumference * (1 - scoreNum / 100) : circumference;
+
   return (
-    <section style={{ flex: 1, minWidth: 0, background: "var(--bg-base)", display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-      {/* Header */}
-      <div style={{ flexShrink: 0, padding: "16px 24px 0", borderBottom: "1px solid var(--border-subtle)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
-          <div style={{ minWidth: 0 }}>
-            <h1 style={{ fontSize: 18, fontWeight: 600, letterSpacing: "-0.01em", lineHeight: 1.3 }}>{job.title}</h1>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
-              <CompanyLogo url={job.url} company={job.company} size={22} />
-              <span style={{ fontSize: 14, color: "var(--text-secondary)", fontWeight: 500 }}>{job.company}</span>
-              {job.location && <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 12, color: "var(--text-muted)" }}><Ic d={I.map} size={12} />{job.location}</span>}
-              {job.remote && <span className="pill" style={{ background: "rgba(45,212,191,0.12)", color: "#2dd4bf" }}><Ic d={I.waves} size={11} /> Remote</span>}
-              {job.salary && <span style={{ fontSize: 12.5, fontWeight: 600, color: "#4ade80" }}>{job.salary}</span>}
-              <span style={{ fontSize: 11, fontWeight: 600, color: srcColorFn(job.source) }}>{job.source}</span>
+    <div className="detail-pane">
+      <div className="detail-scroll">
+        {/* Header */}
+        <div className="detail-head">
+          <div className="dh-top">
+            <div className="dh-logo" style={{ background: "linear-gradient(135deg,#7c3aed,#06b6d4)" }}>
+              {job.company.charAt(0).toUpperCase()}
             </div>
+            <div className="dh-info">
+              <h1 className="dh-title">{job.title}</h1>
+              <div className="dh-co">
+                <span className="co-name">{job.company}</span>
+                {job.location && (
+                  <span className="meta-i"><Ic d={I.map} size={13} />{job.location}</span>
+                )}
+                {(job.remote || (job.location || "").toLowerCase().includes("remote")) && (
+                  <span className="badge-remote" style={{ fontSize: 11 }}>Remote</span>
+                )}
+                {job.salary && (
+                  <span style={{ color: "var(--st-applied)", fontWeight: 600, fontSize: 12.5 }}>{job.salary}</span>
+                )}
+                <span className={`src-${job.source.toLowerCase()}`} style={{ fontSize: 11.5, fontWeight: 600 }}>{job.source}</span>
+              </div>
+            </div>
+
+            {/* Score ring */}
+            {scoreNum != null && (
+              <div className="dh-score">
+                <div className="score-ring">
+                  <svg width="64" height="64" viewBox="0 0 64 64">
+                    <defs>
+                      <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#7c3aed" />
+                        <stop offset="100%" stopColor="#06b6d4" />
+                      </linearGradient>
+                    </defs>
+                    <circle className="ring-bg" cx="32" cy="32" r="26" fill="none" strokeWidth="5" />
+                    <circle className="ring-fg" cx="32" cy="32" r="26" fill="none" strokeWidth="5"
+                      strokeDasharray={circumference}
+                      strokeDashoffset={offset}
+                    />
+                  </svg>
+                  <div className="ring-val">{scoreNum}<small>%</small></div>
+                </div>
+                <span className="ring-label">Match</span>
+              </div>
+            )}
           </div>
-          <a href={job.url} target="_blank" rel="noreferrer" className="btn btn-accent" style={{ height: 36, flexShrink: 0, textDecoration: "none" }}>
-            <Ic d={I.link} size={14} /> Apply Now
-          </a>
-        </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{job.posted_at ? "Posted " + new Date(job.posted_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}</span>
-          <div style={{ flex: 1 }} />
-          <button onClick={() => api.verifyJob(job.id).then(r => onToast(r.alive ? "Job is live ✓" : "Job may be closed", r.alive ? "success" : "error"))} className="btn btn-ghost" style={{ height: 28, fontSize: 12, border: "none" }}>
-            <Ic d={I.eye} size={13} /> Verify Live
-          </button>
-        </div>
-
-        <div style={{ display: "flex", gap: 8, marginTop: 12, marginBottom: 12 }}>
-          <span style={{ fontSize: 11.5, color: "var(--text-muted)", alignSelf: "center" }}>Mark as:</span>
-          {[{ s: "applied", l: "Applied" }, { s: "interview", l: "Interview" }, { s: "skipped", l: "Skip" }].map(a => (
-            <button key={a.s} onClick={() => handleStatusChange(a.s)} className="btn btn-ghost"
-              style={{ height: 28, fontSize: 12, background: job.status === a.s ? "var(--bg-hover)" : "transparent" }}>
-              {a.l}
+          {/* Actions */}
+          <div className="actions">
+            <a href={job.url} target="_blank" rel="noreferrer" className="act primary" style={{ textDecoration: "none" }}>
+              <Ic d={I.link} size={14} /> Apply Now
+            </a>
+            <button onClick={() => runAction("qualify")} disabled={!!busy} className={`act ai${busy === "qualify" ? " disabled" : ""}`}>
+              {busy === "qualify" ? <><Spinner size={13} /> Analyzing…</> : <><Ic d={I.target} size={14} /> Qualify</>}
             </button>
-          ))}
+            <button onClick={() => runAction("resume")} disabled={!!busy} className="act ai">
+              {busy === "resume" ? <><Spinner size={13} /> Tailoring…</> : <><Ic d={I.sparkles} size={14} /> Tailor Resume</>}
+            </button>
+            <StatusDropdown status={job.status} onChange={handleStatusChange} />
+            <button onClick={() => api.verifyJob(job.id).then(r => onToast(r.alive ? "Job is live ✓" : "Job may be closed", r.alive ? "success" : "error"))} className="act ghost">
+              <Ic d={I.eye} size={14} /> Verify
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
-        <div style={{ display: "flex", gap: 2 }}>
+        <div className="tabs">
           {TABS.map(t => {
             const active = tab === t.id;
             return (
-              <button key={t.id} onClick={() => setTab(t.id)}
-                style={{ position: "relative", padding: "10px 12px 12px", fontSize: 13, fontWeight: 500, color: active ? "var(--text-primary)" : "var(--text-muted)", transition: "color 120ms ease", display: "flex", alignItems: "center", gap: 6 }}
-                onMouseEnter={e => { if (!active) e.currentTarget.style.color = "var(--text-secondary)"; }}
-                onMouseLeave={e => { if (!active) e.currentTarget.style.color = "var(--text-muted)"; }}>
+              <button key={t.id} onClick={() => setTab(t.id)} className={`tab${active ? " on" : ""}`}>
                 {t.label}
-                {tabHasContent[t.id] && <span style={{ width: 5, height: 5, borderRadius: 999, background: active ? "var(--accent)" : "var(--text-muted)" }} />}
-                {active && <span style={{ position: "absolute", left: 8, right: 8, bottom: 0, height: 2, borderRadius: 999, background: "var(--accent)" }} />}
+                {tabHasContent[t.id] && <span className="tcount">•</span>}
               </button>
             );
           })}
         </div>
-      </div>
 
-      {/* Tab content */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "22px 24px 32px" }}>
-        {tab === "description" && <DescriptionTab job={job} onUpdate={onUpdate} onToast={onToast} />}
-        {tab === "qualify"     && <QualifyTab job={job} running={busy === "qualify"} onRun={() => runAction("qualify")} />}
-        {tab === "resume"      && <ResumeTab job={job} tailoring={busy === "resume"} onTailor={() => runAction("resume")} onToast={onToast} />}
-        {tab === "fit"         && <FitTab job={job} running={busy === "fit"} onRun={() => runAction("fit")} />}
-        {tab === "cover"       && <CoverTab job={job} generating={busy === "cover"} onGenerate={() => runAction("cover")} onChange={v => onUpdate({ cover_letter: v })} onToast={onToast} />}
+        {/* Tab content */}
+        <div className="tab-body">
+          {tab === "description" && <DescriptionTab job={job} onUpdate={onUpdate} onToast={onToast} />}
+          {tab === "qualify"     && <QualifyTab job={job} running={busy === "qualify"} onRun={() => runAction("qualify")} />}
+          {tab === "resume"      && <ResumeTab job={job} tailoring={busy === "resume"} onTailor={() => runAction("resume")} onToast={onToast} />}
+          {tab === "fit"         && <FitTab job={job} running={busy === "fit"} onRun={() => runAction("fit")} />}
+          {tab === "cover"       && <CoverTab job={job} generating={busy === "cover"} onGenerate={() => runAction("cover")} onChange={v => onUpdate({ cover_letter: v })} onToast={onToast} />}
+        </div>
       </div>
-    </section>
+    </div>
   );
 }

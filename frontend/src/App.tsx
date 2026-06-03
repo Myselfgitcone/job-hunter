@@ -413,173 +413,165 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
-      <aside style={{ width: 208, flexShrink: 0, background: "var(--bg-surface)", borderRight: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column", height: "100%" }}>
-        <div style={{ height: 62, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, borderBottom: "1px solid var(--border-subtle)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-              <circle cx="11" cy="11" r="8.5" stroke="#3b82f6" strokeWidth="2.2"/>
-              <circle cx="11" cy="11" r="2.8" fill="#3b82f6"/>
+    <div className="app">
+      {/* ── SIDEBAR ── */}
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="brand-mark">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>
             </svg>
-            <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.01em" }}>
-              <span style={{ color: "var(--text-primary)" }}>Job </span>
-              <span style={{ color: "#3b82f6" }}>Hunter</span>
-            </div>
           </div>
-          <div style={{ fontSize: 9, color: "var(--text-muted)", letterSpacing: "0.08em", textTransform: "uppercase" }}>Hunt Smarter, Not Harder</div>
+          <span className="brand-name">Job<span className="dot">.</span>Hunter</span>
         </div>
-        <nav style={{ display: "flex", flexDirection: "column", gap: 2, padding: "10px 10px 8px" }}>
+
+        <div className="nav-group">
           {navItems.map(n => {
             const active = view === n.id;
             return (
-              <button key={n.id} onClick={() => handleNav(n.id)} className="nav-item"
-                style={{ position: "relative", display: "flex", alignItems: "center", gap: 10, height: 36, padding: "0 12px", borderRadius: 8, fontSize: 13, fontWeight: 500, textAlign: "left", width: "100%", color: active ? "var(--text-primary)" : "var(--text-secondary)", background: active ? "var(--bg-selected)" : "transparent", transition: "all 120ms ease" }}>
-                {active && <span style={{ position: "absolute", left: 0, top: 7, bottom: 7, width: 2, borderRadius: 999, background: "var(--accent)" }} />}
-                <Ic d={n.ic} size={16} color={active ? "var(--accent)" : "var(--text-muted)"} />
+              <button key={n.id} onClick={() => handleNav(n.id)}
+                className={`nav-item${active ? " active" : ""}`}>
+                <Ic d={n.ic} size={16} />
                 {n.label}
               </button>
             );
           })}
-          <button onClick={() => setTailorOpen(true)} className="nav-item"
-            style={{ display: "flex", alignItems: "center", gap: 10, height: 36, padding: "0 12px", borderRadius: 8, fontSize: 13, fontWeight: 500, textAlign: "left", width: "100%", color: "var(--purple)", background: "transparent", transition: "all 120ms ease" }}>
-            <Ic d={IC.sparkles} size={16} color="var(--purple)" /> Quick Tailor
+          <button onClick={() => setTailorOpen(true)}
+            className="nav-item" style={{ color: "var(--violet)" }}>
+            <Ic d={IC.sparkles} size={16} color="var(--violet)" />
+            Quick Tailor
           </button>
-        </nav>
-        <div style={{ flex: 1 }} />
-        <div style={{ flexShrink: 0, padding: "10px 12px", borderTop: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", gap: 9 }}>
-          <div style={{ width: 26, height: 26, borderRadius: 999, background: "linear-gradient(135deg,#8b5cf6,#6366f1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600, color: "#fff", flexShrink: 0 }}>{initials}</div>
-          <div style={{ lineHeight: 1.2, overflow: "hidden", flex: 1 }}>
-            <div style={{ fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{profileName.split(" ")[0] || currentUser?.email?.split("@")[0] || "User"}</div>
-            <div style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{userSettings?.profile_visa || "Job Hunter"}</div>
+        </div>
+
+        <div className="sidebar-spacer" />
+
+        {/* Theme toggle */}
+        <div className="theme-switch">
+          <button className={isDark ? "on" : ""} onClick={() => setIsDark(true)} title="Dark mode">
+            🌙 Dark
+          </button>
+          <button className={!isDark ? "on" : ""} onClick={() => setIsDark(false)} title="Light mode">
+            ☀️ Light
+          </button>
+        </div>
+
+        {/* User card */}
+        <div className="user-card">
+          <div className="user-av">{initials}</div>
+          <div className="user-meta">
+            <div className="user-name">{profileName.split(" ")[0] || currentUser?.email?.split("@")[0] || "User"}</div>
+            <div className="user-mail">{userSettings?.profile_visa || "Job Hunter"}</div>
           </div>
-          <button
-            onClick={() => setIsDark(d => !d)}
-            title={isDark ? "Switch to Light" : "Switch to Dark"}
-            style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", color: "var(--text-muted)", transition: "all 120ms ease", fontSize: 13 }}
-            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "var(--bg-hover)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "var(--bg-elevated)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; }}
-          >
-            {isDark ? "☀️" : "🌙"}
+          <button className="user-logout" onClick={handleLogout} title="Sign out">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
           </button>
-          <button
-            onClick={handleLogout}
-            title="Sign out"
-            style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", color: "var(--text-muted)", transition: "all 120ms ease", fontSize: 13 }}
-            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(239,68,68,0.4)"; (e.currentTarget as HTMLButtonElement).style.color = "#f87171"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border-subtle)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; }}
-          >⏻</button>
         </div>
       </aside>
 
-      {view === "dashboard" && <div style={{ flex: 1, overflow: "hidden" }}><Dashboard /></div>}
-      {view === "profile"   && <div style={{ flex: 1, overflowY: "auto" }}><Profile /></div>}
-      {view === "settings"  && <div style={{ flex: 1, overflowY: "auto" }}><Settings /></div>}
+      {/* ── MAIN CONTENT ── */}
+      <div className="main">
+        {view === "dashboard" && <Dashboard />}
+        {view === "profile"   && <Profile />}
+        {view === "settings"  && <Settings />}
 
-      {view === "jobs" && (
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-          {/* Full-width top bar: scrape + filters */}
-          <Topbar
-            scraping={scraping} scrapeMsg={scrapeMsg} lastScraped={lastScrapedDisplay}
-            onScrape={handleScrape} count={filteredJobs.length}
-            viewMode={viewMode} setViewMode={setViewMode} IC={IC}
-            filters={filters} setF={setF} toggleArr={toggleArr}
-            SOURCES={SOURCES.filter(s => s !== "All Sources")}
-            COUNTRIES={COUNTRIES.filter(c => c !== "All Countries")}
-            setMinScore={(v) => setFilters(f => ({ ...f, minScore: v }))}
-            allJobs={allJobs} sourceCounts={sourceCounts}
-            filtersActive={filtersActive} search={search} setSearch={setSearch}
-            searchRef={searchRef} onClearAll={handleResetFilters}
-            myRolesOnly={myRolesOnly} setMyRolesOnly={setMyRolesOnly}
-            userRoles={Array.isArray(userSettings?.job_roles) ? userSettings.job_roles : JSON.parse(userSettings?.job_roles || '[]')}
-          />
-          {/* Content row */}
-          {viewMode === "kanban" ? (
-            <Kanban jobs={filteredJobs} onStatusChange={(id, s) => handleStatusChange(id, s as JobStatus)} onSelect={id => { setViewMode("list"); handleSelect(id); }} />
-          ) : (
-            <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-              <section style={{ width: 370, flexShrink: 0, background: "var(--bg-base)", borderRight: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column", height: "100%" }}>
-                <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 14px", borderBottom: "1px solid var(--border-subtle)" }}>
-                  <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>{filteredJobs.length} jobs</span>
-                  <button onClick={handleClearAll} className="btn btn-ghost btn-danger" style={{ height: 24, padding: "0 8px", fontSize: 11, border: "none" }}><Ic d={IC.trash} size={12} /> Clear All</button>
+        {view === "jobs" && (
+          <>
+            <Topbar
+              scraping={scraping} scrapeMsg={scrapeMsg} lastScraped={lastScrapedDisplay}
+              onScrape={handleScrape} count={filteredJobs.length}
+              viewMode={viewMode} setViewMode={setViewMode} IC={IC}
+              filters={filters} setF={setF} toggleArr={toggleArr}
+              SOURCES={SOURCES.filter(s => s !== "All Sources")}
+              COUNTRIES={COUNTRIES.filter(c => c !== "All Countries")}
+              setMinScore={(v) => setFilters(f => ({ ...f, minScore: v }))}
+              allJobs={allJobs} sourceCounts={sourceCounts}
+              filtersActive={filtersActive} search={search} setSearch={setSearch}
+              searchRef={searchRef} onClearAll={handleResetFilters}
+              myRolesOnly={myRolesOnly} setMyRolesOnly={setMyRolesOnly}
+              userRoles={Array.isArray(userSettings?.job_roles) ? userSettings.job_roles : JSON.parse(userSettings?.job_roles || '[]')}
+            />
+            {viewMode === "kanban" ? (
+              <Kanban jobs={filteredJobs} onStatusChange={(id, s) => handleStatusChange(id, s as JobStatus)} onSelect={id => { setViewMode("list"); handleSelect(id); }} />
+            ) : (
+              <div className="jobs-body">
+                <div className="list-pane">
+                  <div className="list-head">
+                    <span className="mono" style={{ fontSize: 11, color: "var(--tx-3)" }}>{filteredJobs.length} jobs</span>
+                    <button onClick={handleClearAll} className="btn btn-ghost btn-danger" style={{ height: 24, padding: "0 8px", fontSize: 11, border: "none" }}>
+                      <Ic d={IC.trash} size={12} /> Clear All
+                    </button>
+                  </div>
+                  <div className="list-scroll">
+                    {loading ? (
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "40%", gap: 10, color: "var(--tx-3)" }}><Spinner size={18} /> Loading...</div>
+                    ) : (
+                      <JobList
+                        jobs={filteredJobs}
+                        selectedId={selectedId}
+                        onSelect={handleSelect}
+                        onQualifyUpdated={(id, r) => updateJob(id, { qualify_result: r })}
+                        emptyState={allJobs.length === 0 ? "Click Scrape Now to fetch jobs" : "Try clearing filters"}
+                      />
+                    )}
+                  </div>
                 </div>
-                <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                  {loading ? (
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "40%", gap: 10, color: "var(--text-muted)" }}><Spinner size={18} /> Loading...</div>
-                  ) : (
-                    <JobList
-                      jobs={filteredJobs}
-                      selectedId={selectedId}
-                      onSelect={handleSelect}
-                      onQualifyUpdated={(id, r) => updateJob(id, { qualify_result: r })}
-                      emptyState={allJobs.length === 0 ? "Click Scrape Now to fetch jobs" : "Try clearing filters"}
-                    />
-                  )}
-                </div>
-              </section>
-              <JobDetail job={selectedJob} tab={tab} setTab={setTab} onUpdate={(patch: Partial<Job>) => selectedJob && updateJob(selectedJob.id, patch)} onToast={toast} busy={busy} runAction={runAction} />
-            </div>
-          )}
-        </div>
-      )}
+                <JobDetail job={selectedJob} tab={tab} setTab={setTab} onUpdate={(patch: Partial<Job>) => selectedJob && updateJob(selectedJob.id, patch)} onToast={toast} busy={busy} runAction={runAction} />
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       <QuickTailor open={tailorOpen} onClose={() => setTailorOpen(false)} onToast={toast} />
       <Toasts toasts={toasts} />
 
       {/* Welcome modal — first time only */}
       {showWelcome && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 24 }}>
-          <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 16, padding: "36px 40px", maxWidth: 520, width: "100%", boxShadow: "0 24px 80px rgba(0,0,0,0.5)" }}>
-            {/* Logo + title */}
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
-              <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
-                <circle cx="22" cy="22" r="17" stroke="#3b82f6" strokeWidth="3.5"/>
-                <circle cx="22" cy="22" r="5.5" fill="#3b82f6"/>
-              </svg>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 24 }}>
+          <div style={{ background: "var(--glass-hi)", backdropFilter: "blur(22px)", border: "1px solid var(--glass-border)", borderRadius: 20, padding: "36px 40px", maxWidth: 520, width: "100%", boxShadow: "var(--sh-pop)", animation: "modalIn 220ms var(--ease)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 13, marginBottom: 24 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 13, background: "var(--grad)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 20px -6px var(--violet-glow)" }}>
+                <Ic d={IC.target} size={22} color="#fff" />
+              </div>
               <div>
-                <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em" }}>
-                  <span style={{ color: "var(--text-primary)" }}>Welcome to Job </span>
-                  <span style={{ color: "#3b82f6" }}>Hunter</span>
-                </div>
-                <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>Your AI-powered job search assistant</div>
+                <div style={{ fontFamily: "var(--f-display)", fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em" }}>Welcome to Job<span style={{ color: "var(--cyan)" }}>.</span>Hunter</div>
+                <div style={{ fontSize: 13, color: "var(--tx-3)", marginTop: 2 }}>Your AI-powered job search assistant</div>
               </div>
             </div>
 
-            {/* Steps */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 28 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 24 }}>
               {[
-                { step: "1", icon: IC.settings, color: "#60a5fa", title: "Add your AI API key", desc: "Settings → pick OpenRouter, Nvidia NIM, or Anthropic → paste your key. Required for all AI features." },
-                { step: "2", icon: IC.user, color: "#818cf8", title: "Set up your Profile", desc: "Upload your resume — AI extracts experience, skills, education automatically into your profile." },
-                { step: "3", icon: IC.refresh, color: "#4ade80", title: "Scrape & apply", desc: "Click 'Scrape Now' to fetch fresh jobs. AI qualifies each one. Tailor resume per job in one click." },
+                { step: "1", icon: IC.settings, color: "#8b5cf6", title: "Add your AI API key", desc: "Settings → pick OpenRouter, Nvidia NIM, or Anthropic → paste your key. Required for all AI features." },
+                { step: "2", icon: IC.user, color: "#06b6d4", title: "Set up your Profile", desc: "Upload your resume — AI extracts experience, skills, education automatically into your profile." },
+                { step: "3", icon: IC.refresh, color: "#10b981", title: "Scrape & apply", desc: "Click 'Scrape Now' to fetch fresh jobs. AI qualifies each one. Tailor resume per job in one click." },
               ].map(s => (
-                <div key={s.step} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 8, background: `${s.color}22`, border: `1px solid ${s.color}44`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <div key={s.step} style={{ display: "flex", gap: 13, alignItems: "flex-start" }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 9, background: `${s.color}20`, border: `1px solid ${s.color}40`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                     <Ic d={s.icon} size={15} color={s.color} />
                   </div>
                   <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", marginBottom: 3 }}>{s.title}</div>
-                    <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>{s.desc}</div>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--tx)", marginBottom: 3 }}>{s.title}</div>
+                    <div style={{ fontSize: 12, color: "var(--tx-2)", lineHeight: 1.55 }}>{s.desc}</div>
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Auto-scrape note */}
-            <div style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: 8, padding: "10px 14px", marginBottom: 24, fontSize: 12, color: "#4ade80" }}>
+            <div style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: 9, padding: "10px 14px", marginBottom: 22, fontSize: 12, color: "#34d399" }}>
               ⚡ Jobs auto-fetch every hour 24/7 — even when your laptop is off (Railway cloud).
             </div>
 
-            {/* Actions */}
             <div style={{ display: "flex", gap: 10 }}>
-              <button
-                onClick={() => { localStorage.setItem("jh_welcomed", "1"); setShowWelcome(false); setView("settings"); }}
-                style={{ flex: 1, height: 40, borderRadius: 10, background: "var(--accent)", color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", border: "none" }}
-              >
+              <button onClick={() => { localStorage.setItem("jh_welcomed", "1"); setShowWelcome(false); setView("settings"); }}
+                className="btn btn-accent" style={{ flex: 1, height: 42, fontSize: 13.5, borderRadius: 11 }}>
                 Add API Key →
               </button>
-              <button
-                onClick={() => { localStorage.setItem("jh_welcomed", "1"); setShowWelcome(false); }}
-                style={{ height: 40, padding: "0 18px", borderRadius: 10, background: "transparent", color: "var(--text-muted)", fontSize: 13, cursor: "pointer", border: "1px solid var(--border-subtle)" }}
-              >
+              <button onClick={() => { localStorage.setItem("jh_welcomed", "1"); setShowWelcome(false); }}
+                className="btn btn-subtle" style={{ height: 42, padding: "0 18px", borderRadius: 11 }}>
                 Skip
               </button>
             </div>
@@ -604,7 +596,6 @@ type TopbarProps = {
   setMinScore: (v: number) => void;
 };
 
-// ── FilterDropdown: checkbox multi-select popover ─────────────────────────────
 function FilterDropdown({
   label, options, selected, onToggle, countMap,
 }: {
@@ -632,71 +623,33 @@ function FilterDropdown({
     : label;
 
   return (
-    <div ref={ref} style={{ position: "relative", flex: 1, minWidth: 0 }}>
-      {/* M3 Filter Chip */}
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{
-          width: "100%", height: 30, borderRadius: 8, padding: "0 10px",
-          fontSize: 11.5, fontWeight: isActive ? 600 : 400,
-          border: isActive ? "1px solid var(--accent)" : "1px solid var(--border-default)",
-          background: isActive ? "var(--accent-tonal)" : "var(--bg-elevated)",
-          color: isActive ? "var(--accent)" : "var(--text-secondary)",
-          cursor: "pointer", outline: "none", display: "flex", alignItems: "center",
-          justifyContent: "space-between", gap: 4,
-          transition: "all 150ms cubic-bezier(0.2,0,0,1)",
-          whiteSpace: "nowrap", overflow: "hidden",
-          boxShadow: isActive ? "none" : "var(--shadow-1)",
-        }}
-      >
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", flex: 1, textAlign: "left" }}>
-          {displayLabel}
-        </span>
-        {isActive && (
-          <span style={{
-            background: "var(--accent)", color: "#fff",
-            borderRadius: 999, fontSize: 9, fontWeight: 700,
-            padding: "1px 5px", flexShrink: 0,
-          }}>{selected.length}</span>
-        )}
+    <div ref={ref} style={{ position: "relative" }}>
+      <button className={`chip${isActive ? " on" : ""}`} onClick={() => setOpen(o => !o)}>
+        {displayLabel}
+        {isActive && <span className="fb-count">{selected.length}</span>}
+        <svg className="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+          <path d="M6 9l6 6 6-6"/>
+        </svg>
       </button>
 
-      {/* M3 Menu surface */}
       {open && (
-        <div style={{
-          position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 200,
-          background: "var(--bg-elevated)",
-          border: "1px solid var(--border-default)",
-          borderRadius: 12, padding: "6px 0",
-          boxShadow: "var(--shadow-3)",
-          minWidth: 200, maxHeight: 280, overflowY: "auto",
-        }}>
+        <div className="menu" style={{ minWidth: 190, maxHeight: 280, overflowY: "auto" }}>
           {options.map(opt => {
             const checked = selected.includes(opt);
             return (
-              <label
-                key={opt}
-                style={{
-                  display: "flex", alignItems: "center", gap: 10,
-                  padding: "8px 14px", cursor: "pointer",
-                  fontSize: 13, lineHeight: 1,
-                  color: checked ? "var(--accent)" : "var(--text-primary)",
-                  background: checked ? "var(--accent-tonal)" : "transparent",
-                  transition: "background 80ms ease",
-                }}
-              >
+              <label key={opt} className={`menu-item${checked ? " sel" : ""}`}>
                 <input
                   type="checkbox"
                   checked={checked}
                   onChange={() => onToggle(opt)}
-                  style={{ accentColor: "var(--accent)", width: 14, height: 14, flexShrink: 0, cursor: "pointer" }}
+                  style={{ display: "none" }}
                 />
-                <span style={{ flex: 1, fontWeight: checked ? 500 : 400 }}>{opt}</span>
+                <svg className="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <path d="M20 6 9 17l-5-5"/>
+                </svg>
+                <span style={{ flex: 1 }}>{opt}</span>
                 {countMap?.[opt] != null && (
-                  <span style={{
-                    fontSize: 10.5, color: checked ? "var(--accent)" : "var(--text-muted)",
-                    fontWeight: checked ? 600 : 400, marginLeft: "auto",
-                  }}>{countMap[opt]}</span>
+                  <span style={{ fontSize: 10.5, color: "var(--tx-3)", fontFamily: "var(--f-mono)" }}>{countMap[opt]}</span>
                 )}
               </label>
             );
@@ -719,97 +672,82 @@ function Topbar({ scraping, scrapeMsg, lastScraped, onScrape, count, viewMode, s
   }, [allJobs]);
 
   return (
-    <div style={{ flexShrink: 0, borderBottom: "1px solid var(--border-default)", background: "var(--bg-surface)", boxShadow: "var(--shadow-1)", position: "relative", zIndex: 50, overflow: "visible" }}>
-      {/* Row 1: Scrape + view toggle */}
-      <div style={{ height: 48, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", borderBottom: "1px solid var(--border-subtle)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button className="btn btn-accent" onClick={onScrape} disabled={scraping} style={{ height: 32, fontSize: 13, letterSpacing: "0.02em" }}>
-            {scraping ? <Spinner size={13} color="#fff" /> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.refresh }} />}
-            {scraping ? "Scraping..." : "Scrape Now"}
-          </button>
-          {scrapeMsg && !scraping && <span style={{ fontSize: 12, fontWeight: 600, color: "#34d399" }}>{scrapeMsg}</span>}
-          {lastScraped && <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--text-muted)" }}><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.clock }} />{lastScraped}</span>}
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>{count} jobs</span>
-          <div style={{ display: "flex", gap: 2, background: "var(--bg-elevated)", borderRadius: 10, padding: 3, border: "1px solid var(--border-default)", boxShadow: "var(--shadow-1)" }}>
-            {([["list", IC.list], ["kanban", IC.kanban]] as [string, string][]).map(([m, d]) => (
-              <button key={m} onClick={() => setViewMode(m as ViewMode)} style={{ width: 30, height: 26, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: viewMode === m ? "var(--accent)" : "var(--text-muted)", background: viewMode === m ? "var(--accent-tonal)" : "transparent", transition: "all 150ms cubic-bezier(0.2,0,0,1)" }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: d }} />
+    <>
+      {/* ── TOP BAR: Scrape + meta + view toggle ── */}
+      <div className="topbar">
+        <button className={`scrape-btn${scraping ? " running" : ""}`} onClick={onScrape} disabled={scraping}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.refresh }} />
+          {scraping ? "Scraping…" : "Scrape Now"}
+        </button>
+
+        {scrapeMsg && !scraping && (
+          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--st-applied)" }}>{scrapeMsg}</span>
+        )}
+
+        {lastScraped && (
+          <div className="meta">
+            <div className="live-pip" />
+            <span>Last scraped</span>
+            <b>{lastScraped}</b>
+          </div>
+        )}
+
+        <div className="topbar-right">
+          <div className="job-count"><b>{count}</b> jobs</div>
+          <div className="seg">
+            {([["list", IC.list], ["kanban", IC.kanban]] as [string,string][]).map(([m, d]) => (
+              <button key={m} className={viewMode === m ? "on" : ""} onClick={() => setViewMode(m as ViewMode)} title={m}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: d }} />
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Row 2: M3 Filter chips */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 12px", height: 48, overflow: "visible" }}>
-
+      {/* ── FILTER BAR ── */}
+      <div className="filterbar">
         {/* My Roles chip */}
         {userRoles.length > 0 && (
-          <button onClick={() => setMyRolesOnly(!myRolesOnly)} style={{
-            height: 30, padding: "0 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, flexShrink: 0,
-            border: myRolesOnly ? "1px solid var(--accent)" : "1px solid var(--border-default)",
-            background: myRolesOnly ? "var(--accent-tonal)" : "var(--bg-elevated)",
-            color: myRolesOnly ? "#93c5fd" : "var(--text-muted)",
-            cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
-            transition: "all 150ms ease", whiteSpace: "nowrap",
-          }}>
-            {myRolesOnly ? "🎯" : "🌐"} {myRolesOnly ? userRoles[0] : "All"}
+          <button className={`chip${myRolesOnly ? " on" : ""}`} onClick={() => setMyRolesOnly(!myRolesOnly)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.target }} />
+            {myRolesOnly ? userRoles[0] : "All Roles"}
           </button>
         )}
 
-        <div style={{ width: 1, height: 18, background: "var(--border-subtle)", flexShrink: 0, margin: "0 2px" }} />
+        <div className="fb-divider" />
 
         {/* Search */}
-        <div style={{ position: "relative", flex: 1.5, minWidth: 0 }}>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "var(--text-muted)" }} dangerouslySetInnerHTML={{ __html: IC.search }} />
-          <input ref={searchRef} type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search…"
-            style={{
-              width: "100%", paddingLeft: 24, paddingRight: 8, height: 28, fontSize: 11,
-              borderRadius: 6, boxSizing: "border-box" as any,
-              border: search ? "1px solid rgba(59,130,246,0.5)" : "1px solid var(--border-subtle)",
-              background: search ? "rgba(59,130,246,0.06)" : "var(--bg-elevated)",
-              color: "var(--text-primary)", outline: "none",
-            }} />
+        <div className="search-wrap">
+          <svg className="s-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.search }} />
+          <input ref={searchRef} className="search-input" type="text" value={search}
+            onChange={e => setSearch(e.target.value)} placeholder="Search jobs…" />
+          {!search && <span className="kbd s-kbd">⌘K</span>}
         </div>
 
-        <div style={{ width: 1, height: 18, background: "var(--border-subtle)", flexShrink: 0, margin: "0 2px" }} />
+        <div className="fb-divider" />
 
         {/* Multi-select filter dropdowns */}
-        <FilterDropdown label="Category"  options={["Engineering","Data","Product","Design"]}           selected={filters.categories} onToggle={v => toggleArr("categories", v)} />
-        <FilterDropdown label="Level"     options={["Entry","Mid","Senior","Lead"]}                     selected={filters.exps}       onToggle={v => toggleArr("exps", v)} />
-        <FilterDropdown label="Type"      options={["Remote","Onsite","Hybrid"]}                        selected={filters.locTypes}   onToggle={v => toggleArr("locTypes", v)} />
-        <FilterDropdown label="Country" options={COUNTRIES} selected={filters.countries} onToggle={v => toggleArr("countries", v)} countMap={countryCounts} />
-        <FilterDropdown label="Source"  options={SOURCES}   selected={filters.sources}   onToggle={v => toggleArr("sources", v)}   countMap={sourceCounts} />
+        <FilterDropdown label="Category" options={["Engineering","Data","Product","Design"]} selected={filters.categories} onToggle={v => toggleArr("categories", v)} />
+        <FilterDropdown label="Level"    options={["Entry","Mid","Senior","Lead"]}           selected={filters.exps}       onToggle={v => toggleArr("exps", v)} />
+        <FilterDropdown label="Type"     options={["Remote","Onsite","Hybrid"]}              selected={filters.locTypes}   onToggle={v => toggleArr("locTypes", v)} />
+        <FilterDropdown label="Country"  options={COUNTRIES} selected={filters.countries}    onToggle={v => toggleArr("countries", v)} countMap={countryCounts} />
+        <FilterDropdown label="Source"   options={SOURCES}   selected={filters.sources}      onToggle={v => toggleArr("sources", v)}   countMap={sourceCounts} />
 
-        <div style={{ width: 1, height: 18, background: "var(--border-subtle)", flexShrink: 0, margin: "0 2px" }} />
+        <div className="fb-divider" />
 
-        {/* Match score filter */}
-        <div style={{ display: "flex", gap: 2, background: "var(--bg-elevated)", borderRadius: 6, padding: 2, border: "1px solid var(--border-subtle)", flexShrink: 0, alignItems: "center" }}>
-          <span style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 4px", fontWeight: 600 }}>Match</span>
+        {/* Match score */}
+        <div className="segchips score">
           {([0, 60, 70, 80, 90] as const).map(v => (
-            <button key={v} onClick={() => setMinScore(v)} style={{
-              height: 22, padding: "0 7px", borderRadius: 4, fontSize: 11, fontWeight: 500,
-              border: "none", cursor: "pointer", transition: "all 100ms ease",
-              background: filters.minScore === v ? "var(--accent)" : "transparent",
-              color: filters.minScore === v ? "#fff" : "var(--text-muted)",
-            }}>{v === 0 ? "Any" : `≥${v}%`}</button>
+            <button key={v} className={filters.minScore === v ? "on" : ""} onClick={() => setMinScore(v)}>
+              {v === 0 ? "Any" : `≥${v}%`}
+            </button>
           ))}
         </div>
 
-        <div style={{ width: 1, height: 18, background: "var(--border-subtle)", flexShrink: 0, margin: "0 2px" }} />
-
-        {/* Posted chips */}
-        <div style={{ display: "flex", gap: 2, background: "var(--bg-elevated)", borderRadius: 6, padding: 2, border: "1px solid var(--border-subtle)", flexShrink: 0 }}>
+        {/* Posted time */}
+        <div className="segchips">
           {(["24h","48h","72h","7d"] as const).map(o => (
-            <button key={o} onClick={() => setF("posted", o)} style={{
-              height: 22, padding: "0 8px", borderRadius: 4, fontSize: 11, fontWeight: 500,
-              border: "none", cursor: "pointer", transition: "all 100ms ease",
-              background: filters.posted === o ? "var(--accent)" : "transparent",
-              color: filters.posted === o ? "#fff" : "var(--text-muted)",
-            }}>{o}</button>
+            <button key={o} className={filters.posted === o ? "on" : ""} onClick={() => setF("posted", o)}>{o}</button>
           ))}
         </div>
 
@@ -818,18 +756,12 @@ function Topbar({ scraping, scrapeMsg, lastScraped, onScrape, count, viewMode, s
           const n = [filters.categories.length, filters.exps.length, filters.locTypes.length,
             filters.countries.length, filters.sources.length, search.trim() ? 1 : 0].reduce((a,b) => a+b, 0);
           return (
-            <button onClick={onClearAll} style={{
-              height: 28, padding: "0 9px", borderRadius: 6, fontSize: 11, fontWeight: 600,
-              border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.08)",
-              color: "#f87171", cursor: "pointer", flexShrink: 0,
-              display: "flex", alignItems: "center", gap: 4,
-            }}>
-              <span style={{ background: "rgba(239,68,68,0.2)", borderRadius: 999, width: 15, height: 15, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9 }}>{n}</span>
-              Clear
+            <button className="clear-btn" onClick={onClearAll}>
+              <span className="n">{n}</span> Clear
             </button>
           );
         })()}
       </div>
-    </div>
+    </>
   );
 }

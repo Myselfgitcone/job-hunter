@@ -306,10 +306,6 @@ export default function App() {
             <div style={{ display: "flex", gap: 4 }}>
               {["Any","Remote","Onsite"].map(o => <button key={o} onClick={() => setF("locType", o)} className={"pill-btn" + (filters.locType === o ? " active" : "")}>{o}</button>)}
             </div>
-            <span className="section-label">Source</span>
-            <select value={filters.source} onChange={e => setF("source", e.target.value)} style={{ width: "100%", fontSize: 12, height: 32 }}>
-              {SOURCES.map(s => <option key={s} value={s}>{s === "All Sources" ? "All Sources (" + allJobs.length + ")" : s + " (" + (sourceCounts[s] || 0) + ")"}</option>)}
-            </select>
             {filtersActive && <button onClick={() => setFilters({ posted: "72h", country: "All Countries", locType: "Any", source: "All Sources", status: "all" })} className="clear-btn" style={{ marginTop: 14, fontSize: 11, color: "var(--text-muted)", padding: "4px 6px", borderRadius: 6, transition: "all 120ms ease" }}>Clear filters</button>}
           </div>
         )}

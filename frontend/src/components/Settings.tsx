@@ -213,36 +213,49 @@ export function Settings() {
       </section>
 
 
-      {/* ── Telegram Bot ─────────────────────────────────────────────── */}
+      {/* ── Telegram Notifications ───────────────────────────────────── */}
       <section className="space-y-4">
-        <div className="flex items-center gap-2">
-          <BotMessageSquare size={16} style={{color:'var(--accent)'}} />
-          <h3 className="text-xs font-semibold uppercase tracking-wider" style={{color:'var(--text-muted)'}}>Telegram Notifications</h3>
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BotMessageSquare size={15} style={{color:'#2CA5E0'}} />
+            <h3 className="text-xs font-semibold uppercase tracking-wider" style={{color:'var(--text-muted)'}}>Telegram Notifications</h3>
+          </div>
           {tgConfigured && (
-            <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full"
-              style={{background:'rgba(52,211,153,0.15)',color:'#34d399'}}>
+            <span className="flex items-center gap-1 text-[10px] font-semibold px-2.5 py-1 rounded-full"
+              style={{background:'rgba(52,211,153,0.12)', border:'1px solid rgba(52,211,153,0.3)', color:'#34d399'}}>
               <CheckCircle2 size={10}/> Connected
             </span>
           )}
         </div>
 
-        {/* How to get token + chat ID */}
-        <div className="rounded-xl p-4 text-xs space-y-1" style={{background:'var(--bg-elevated)',border:'1px solid var(--border-default)'}}>
-          <p className="font-semibold" style={{color:'var(--text-primary)'}}>📱 Setup in 2 steps:</p>
-          <p style={{color:'var(--text-muted)'}}>1. Open Telegram → search <code className="px-1 rounded" style={{background:'var(--bg-surface)'}}>@BotFather</code> → send <code className="px-1 rounded" style={{background:'var(--bg-surface)'}}>/newbot</code> → copy the <strong>token</strong></p>
-          <p style={{color:'var(--text-muted)'}}>2. Search <code className="px-1 rounded" style={{background:'var(--bg-surface)'}}>@userinfobot</code> → send any message → copy your <strong>Chat ID</strong> (a number like <code className="px-1 rounded" style={{background:'var(--bg-surface)'}}>123456789</code>)</p>
+        {/* Setup steps */}
+        <div className="rounded-xl p-4 space-y-3" style={{background:'var(--bg-elevated)', border:'1px solid var(--border-default)'}}>
+          <p className="text-[11px] font-semibold uppercase tracking-wider" style={{color:'var(--text-muted)'}}>Setup — 2 steps</p>
+          {[
+            { n:1, text: <>Search <code style={{background:'var(--bg-surface)',padding:'1px 5px',borderRadius:4}}>@BotFather</code> on Telegram → send <code style={{background:'var(--bg-surface)',padding:'1px 5px',borderRadius:4}}>/newbot</code> → copy the <strong>token</strong></> },
+            { n:2, text: <>Search <code style={{background:'var(--bg-surface)',padding:'1px 5px',borderRadius:4}}>@userinfobot</code> → send any message → copy your <strong>Chat ID</strong></> },
+          ].map(s => (
+            <div key={s.n} className="flex items-start gap-3">
+              <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
+                style={{background:'rgba(42,165,224,0.15)', border:'1px solid rgba(42,165,224,0.3)', color:'#2CA5E0'}}>
+                {s.n}
+              </span>
+              <p className="text-xs leading-relaxed" style={{color:'var(--text-secondary)'}}>{s.text}</p>
+            </div>
+          ))}
         </div>
 
-        <div className="space-y-2">
-          {/* Bot Token */}
-          <div className="relative">
-            <label className="block text-[11px] font-medium mb-1" style={{color:'var(--text-muted)'}}>Bot Token</label>
+        {/* Inputs */}
+        <div className="grid gap-3" style={{gridTemplateColumns:'1fr 1fr'}}>
+          <div>
+            <label className="block text-[11px] font-medium mb-1.5" style={{color:'var(--text-muted)'}}>Bot Token</label>
             <div className="relative">
               <input
                 type={showTgToken ? "text" : "password"}
                 value={tgToken}
                 onChange={e => setTgToken(e.target.value)}
-                placeholder={tgConfigured ? "••••••••••••••••• (saved)" : "1234567890:ABCDEFabcdef..."}
+                placeholder={tgConfigured ? "••••••• (saved)" : "1234567890:ABCDEFabcdef..."}
                 style={{width:'100%', paddingRight:36}}
               />
               <button onClick={() => setShowTgToken(s => !s)}
@@ -251,48 +264,44 @@ export function Settings() {
               </button>
             </div>
           </div>
-
-          {/* Chat ID */}
           <div>
-            <label className="block text-[11px] font-medium mb-1" style={{color:'var(--text-muted)'}}>Chat ID</label>
-            <input
-              type="text"
-              value={tgChatId}
-              onChange={e => setTgChatId(e.target.value)}
-              placeholder="123456789"
-              style={{width:'100%'}}
-            />
+            <label className="block text-[11px] font-medium mb-1.5" style={{color:'var(--text-muted)'}}>Chat ID</label>
+            <input type="text" value={tgChatId} onChange={e => setTgChatId(e.target.value)}
+              placeholder="123456789" style={{width:'100%'}} />
           </div>
+        </div>
 
-          {/* Test button */}
-          <button
-            onClick={handleTgTest}
-            disabled={tgTesting}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all w-full justify-center"
+        {/* Test button + status */}
+        <div className="flex items-center gap-3">
+          <button onClick={handleTgTest} disabled={tgTesting}
+            className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all"
             style={{
-              background: tgConfigured ? 'rgba(52,211,153,0.15)' : 'var(--accent-tonal)',
-              border: `1px solid ${tgConfigured ? 'rgba(52,211,153,0.4)' : 'var(--accent)'}`,
-              color: tgConfigured ? '#34d399' : 'var(--accent)',
+              background: tgConfigured ? 'rgba(52,211,153,0.12)' : 'rgba(42,165,224,0.12)',
+              border: `1px solid ${tgConfigured ? 'rgba(52,211,153,0.35)' : 'rgba(42,165,224,0.35)'}`,
+              color: tgConfigured ? '#34d399' : '#2CA5E0',
               opacity: tgTesting ? 0.7 : 1,
-            }}
-          >
+            }}>
             {tgTesting
-              ? <><Loader2 size={14} className="animate-spin"/> Testing…</>
-              : <><Send size={14}/> {tgConfigured ? "Re-test & Send Test Message" : "Test & Connect Bot"}</>
-            }
+              ? <><Loader2 size={13} className="animate-spin"/> Testing…</>
+              : <><Send size={13}/> {tgConfigured ? "Re-test" : "Test & Connect"}</>}
           </button>
-
-          {/* Status */}
           {tgStatus && (
-            <p className="text-xs font-medium flex items-center gap-1.5" style={{color: tgStatus.ok ? '#34d399' : '#f87171'}}>
+            <span className="text-xs font-medium flex items-center gap-1.5"
+              style={{color: tgStatus.ok ? '#34d399' : '#f87171'}}>
               {tgStatus.ok ? <CheckCircle2 size={12}/> : '⚠️'} {tgStatus.msg}
-            </p>
+            </span>
           )}
         </div>
 
-        <div className="text-[11px] space-y-0.5" style={{color:'var(--text-muted)'}}>
-          <p>🔔 You'll receive alerts when:</p>
-          <p>  · New jobs are scraped &nbsp;·&nbsp; A job moves to Interview &nbsp;·&nbsp; Daily summary (8am)</p>
+        {/* Alert types */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[11px]" style={{color:'var(--text-muted)'}}>Alerts:</span>
+          {['New jobs scraped', 'Job → Interview', 'Daily summary (8am)'].map(a => (
+            <span key={a} className="text-[10px] px-2 py-0.5 rounded-full"
+              style={{background:'var(--bg-elevated)', border:'1px solid var(--border-subtle)', color:'var(--text-secondary)'}}>
+              {a}
+            </span>
+          ))}
         </div>
       </section>
 

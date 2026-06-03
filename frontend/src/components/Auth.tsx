@@ -6,15 +6,13 @@ interface Props {
 }
 
 export function Auth({ onSuccess }: Props) {
-  const [mode, setMode]       = useState<"login" | "register">("login");
-  const [email, setEmail]     = useState("");
+  const [mode, setMode]         = useState<"login" | "register">("login");
+  const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
-  const [name, setName]       = useState("");
-  const [error, setError]     = useState("");
-  const [loading, setLoading] = useState(false);
+  const [name, setName]         = useState("");
+  const [error, setError]       = useState("");
+  const [loading, setLoading]   = useState(false);
   const [showForgot, setShowForgot] = useState(false);
-
-  const switchMode = () => { setMode(m => m === "login" ? "register" : "login"); setError(""); };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,200 +35,201 @@ export function Auth({ onSuccess }: Props) {
     }
   };
 
+  const inp: React.CSSProperties = {
+    width: "100%", height: 44, padding: "0 14px",
+    borderRadius: 10, fontSize: 14,
+    background: "#f8fafc", border: "1.5px solid #e2e8f0",
+    color: "#0f172a", outline: "none", fontFamily: "inherit",
+    transition: "border-color .15s, box-shadow .15s",
+  };
+
   return (
-    <div style={{
-      minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-      background: "var(--bg-base)", fontFamily: "var(--f-ui)", position: "relative",
-    }}>
-      {/* Background glow orbs */}
-      <div style={{ position: "fixed", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 0 }}>
-        <div style={{
-          position: "absolute", top: "15%", left: "10%", width: 500, height: 500,
-          background: "radial-gradient(circle, rgba(124,58,237,0.18) 0%, transparent 65%)",
-          borderRadius: "50%", filter: "blur(70px)",
-        }} />
-        <div style={{
-          position: "absolute", bottom: "15%", right: "10%", width: 420, height: 420,
-          background: "radial-gradient(circle, rgba(6,182,212,0.12) 0%, transparent 65%)",
-          borderRadius: "50%", filter: "blur(80px)",
-        }} />
+    <div style={{ display: "flex", height: "100vh", fontFamily: "'Inter', system-ui, sans-serif" }}>
+
+      {/* ── LEFT PANEL: Branding ── */}
+      <div style={{
+        width: "42%", flexShrink: 0,
+        background: "linear-gradient(145deg, #0f0c29, #302b63, #24243e)",
+        display: "flex", flexDirection: "column",
+        justifyContent: "space-between",
+        padding: "48px 52px",
+        position: "relative", overflow: "hidden",
+      }}>
+        {/* Background glow */}
+        <div style={{ position: "absolute", top: "20%", left: "30%", width: 380, height: 380, borderRadius: "50%", background: "radial-gradient(circle, rgba(124,58,237,0.35) 0%, transparent 70%)", filter: "blur(60px)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", bottom: "15%", right: "-10%", width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, rgba(6,182,212,0.2) 0%, transparent 70%)", filter: "blur(50px)", pointerEvents: "none" }} />
+
+        {/* Logo */}
+        <div style={{ position: "relative", zIndex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: "linear-gradient(135deg, #8b5cf6, #06b6d4)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 8px 24px rgba(124,58,237,0.5)" }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+              </svg>
+            </div>
+            <span style={{ fontSize: 20, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em" }}>
+              Job<span style={{ background: "linear-gradient(90deg,#8b5cf6,#22d3ee)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Hunter</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Center content */}
+        <div style={{ position: "relative", zIndex: 1 }}>
+          <h2 style={{ fontSize: 36, fontWeight: 800, color: "#fff", lineHeight: 1.15, letterSpacing: "-0.03em", marginBottom: 16 }}>
+            Find your next<br />
+            <span style={{ background: "linear-gradient(90deg,#a78bfa,#22d3ee)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>dream job</span><br />
+            with AI.
+          </h2>
+          <p style={{ fontSize: 15, color: "rgba(255,255,255,0.55)", lineHeight: 1.7, maxWidth: 320 }}>
+            Scrape thousands of jobs, qualify matches, tailor your resume — all automatically.
+          </p>
+
+          {/* Stats row */}
+          <div style={{ display: "flex", gap: 32, marginTop: 40 }}>
+            {[
+              { n: "6,800+", label: "Jobs indexed" },
+              { n: "10+", label: "Job boards" },
+              { n: "AI", label: "Powered" },
+            ].map(s => (
+              <div key={s.label}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em" }}>{s.n}</div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginTop: 2 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ position: "relative", zIndex: 1, fontSize: 12, color: "rgba(255,255,255,0.3)" }}>
+          Your personal AI job search assistant
+        </div>
       </div>
 
-      {/* Card */}
+      {/* ── RIGHT PANEL: Form ── */}
       <div style={{
-        width: "100%", maxWidth: 420, margin: "0 20px",
-        background: "var(--glass-hi)",
-        backdropFilter: "blur(22px)", WebkitBackdropFilter: "blur(22px)",
-        border: "1px solid var(--glass-border)",
-        borderRadius: "var(--r-xl)", padding: "44px 40px",
-        boxShadow: "0 32px 64px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06)",
-        position: "relative", zIndex: 1,
+        flex: 1, background: "#ffffff",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: "40px 48px",
+        overflowY: "auto",
       }}>
+        <div style={{ width: "100%", maxWidth: 400 }}>
 
-        {/* Brand mark */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 34 }}>
+          {/* Heading */}
+          <div style={{ marginBottom: 32 }}>
+            <h1 style={{ fontSize: 26, fontWeight: 800, color: "#0f172a", margin: 0, letterSpacing: "-0.03em" }}>
+              {mode === "login" ? "Welcome back" : "Create account"}
+            </h1>
+            <p style={{ fontSize: 14, color: "#64748b", marginTop: 6, marginBottom: 0 }}>
+              {mode === "login"
+                ? "Sign in to your job search dashboard"
+                : "Set up your account and start hunting"}
+            </p>
+          </div>
+
+          {/* Tab toggle */}
           <div style={{
-            width: 42, height: 42, borderRadius: 13,
-            background: "var(--grad)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "0 6px 20px -4px var(--violet-glow)", flexShrink: 0,
+            display: "flex", background: "#f1f5f9", borderRadius: 10,
+            padding: 4, marginBottom: 28, gap: 4,
           }}>
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-            </svg>
+            {(["login", "register"] as const).map(m => (
+              <button key={m} type="button" onClick={() => { setMode(m); setError(""); }}
+                style={{
+                  flex: 1, height: 36, borderRadius: 8, fontSize: 13.5, fontWeight: 600,
+                  border: "none", cursor: "pointer", transition: "all .18s",
+                  background: mode === m ? "#fff" : "transparent",
+                  color: mode === m ? "#0f172a" : "#94a3b8",
+                  boxShadow: mode === m ? "0 1px 4px rgba(0,0,0,0.12)" : "none",
+                }}>
+                {m === "login" ? "Sign In" : "Register"}
+              </button>
+            ))}
           </div>
-          <div>
-            <div style={{ fontFamily: "var(--f-display)", fontSize: 18, fontWeight: 700, color: "var(--tx)", letterSpacing: "-0.02em", lineHeight: 1.2 }}>
-              Job<span style={{ background: "var(--grad)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Hunter</span>
-            </div>
-            <div style={{ fontSize: 11, color: "var(--tx-3)", marginTop: 2 }}>AI-powered job search</div>
-          </div>
-        </div>
 
-        {/* Tab toggle: Login | Register */}
-        <div style={{
-          position: "relative", display: "flex",
-          background: "var(--bg-elevated)", border: "1px solid var(--line)",
-          borderRadius: "var(--r)", padding: 4, marginBottom: 28,
-        }}>
-          {/* pill */}
-          <div style={{
-            position: "absolute", top: 4, left: 4,
-            width: "calc(50% - 4px)", height: "calc(100% - 8px)",
-            background: "var(--grad)", borderRadius: 6,
-            boxShadow: "0 4px 14px -4px var(--violet-glow)",
-            transform: mode === "register" ? "translateX(100%)" : "translateX(0)",
-            transition: "transform 0.25s cubic-bezier(0.34,1.56,0.64,1)",
-          }} />
-          <button type="button" onClick={() => { setMode("login"); setError(""); }}
-            style={{ flex: 1, padding: "9px", borderRadius: 6, fontSize: 13, fontWeight: 600,
-              color: mode === "login" ? "#fff" : "var(--tx-3)", zIndex: 1, transition: "color .18s" }}>
-            Sign In
-          </button>
-          <button type="button" onClick={() => { setMode("register"); setError(""); }}
-            style={{ flex: 1, padding: "9px", borderRadius: 6, fontSize: 13, fontWeight: 600,
-              color: mode === "register" ? "#fff" : "var(--tx-3)", zIndex: 1, transition: "color .18s" }}>
-            Register
-          </button>
-        </div>
+          {/* Form */}
+          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {mode === "register" && (
+              <div>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>Full Name</label>
+                <input type="text" value={name} onChange={e => setName(e.target.value)}
+                  placeholder="Jane Smith" required autoFocus
+                  style={inp}
+                  onFocus={e => { e.currentTarget.style.borderColor = "#8b5cf6"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(139,92,246,0.12)"; }}
+                  onBlur={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.boxShadow = "none"; }}
+                />
+              </div>
+            )}
 
-        {/* Heading */}
-        <div style={{ marginBottom: 22 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--tx)", margin: 0, letterSpacing: "-0.02em", fontFamily: "var(--f-display)" }}>
-            {mode === "login" ? "Welcome back" : "Create your account"}
-          </h1>
-          <p style={{ fontSize: 13, color: "var(--tx-3)", marginTop: 5, marginBottom: 0 }}>
-            {mode === "login"
-              ? "Sign in to your AI job search dashboard"
-              : "Start finding and winning jobs with AI"}
-          </p>
-        </div>
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="auth-form">
-          {mode === "register" && (
             <div>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "var(--tx-2)", marginBottom: 6 }}>Full Name</label>
-              <input type="text" value={name} onChange={e => setName(e.target.value)}
-                placeholder="Jane Smith" required autoFocus className="field" />
+              <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>Email Address</label>
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                placeholder="you@example.com" required autoFocus={mode === "login"}
+                style={inp}
+                onFocus={e => { e.currentTarget.style.borderColor = "#8b5cf6"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(139,92,246,0.12)"; }}
+                onBlur={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.boxShadow = "none"; }}
+              />
             </div>
-          )}
-          <div>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "var(--tx-2)", marginBottom: 6 }}>Email Address</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-              placeholder="you@example.com" required autoFocus={mode === "login"} className="field" />
-          </div>
-          <div>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "var(--tx-2)", marginBottom: 6 }}>Password</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-              placeholder={mode === "register" ? "At least 8 characters" : "Your password"}
-              required className="field" />
-            {mode === "login" && (
-              <div style={{ textAlign: "right", marginTop: 5 }}>
-                <button type="button" onClick={() => setShowForgot(f => !f)} style={{
-                  background: "none", border: "none", fontSize: 11.5,
-                  color: showForgot ? "var(--violet)" : "var(--tx-3)", cursor: "pointer",
-                  padding: 0, fontFamily: "inherit",
-                }}>
-                  {showForgot ? "Hide" : "Forgot password?"}
-                </button>
+
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+                <label style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>Password</label>
+                {mode === "login" && (
+                  <button type="button" onClick={() => setShowForgot(f => !f)}
+                    style={{ background: "none", border: "none", fontSize: 12, color: "#8b5cf6", cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
+                    Forgot password?
+                  </button>
+                )}
+              </div>
+              <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                placeholder={mode === "register" ? "At least 8 characters" : "Your password"}
+                required
+                style={inp}
+                onFocus={e => { e.currentTarget.style.borderColor = "#8b5cf6"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(139,92,246,0.12)"; }}
+                onBlur={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.boxShadow = "none"; }}
+              />
+
+              {showForgot && mode === "login" && (
+                <div style={{ marginTop: 10, padding: "12px 14px", background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 8, fontSize: 12.5, color: "#6b21a8", lineHeight: 1.6 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Reset password</div>
+                  <div style={{ color: "#7e22ce", marginBottom: 6 }}>Run this in your terminal:</div>
+                  <code style={{ display: "block", background: "#f3e8ff", padding: "6px 10px", borderRadius: 6, fontSize: 11, color: "#581c87", fontFamily: "monospace" }}>
+                    cd backend && python reset_password.py
+                  </code>
+                </div>
+              )}
+            </div>
+
+            {error && (
+              <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 14px", fontSize: 13, color: "#dc2626", display: "flex", alignItems: "center", gap: 8 }}>
+                <span>⚠️</span> {error}
               </div>
             )}
-            {showForgot && mode === "login" && (
-              <div style={{
-                marginTop: 8,
-                background: "rgba(124,58,237,0.08)", border: "1px solid rgba(124,58,237,0.2)",
-                borderRadius: "var(--r-sm)", padding: "14px 16px", fontSize: 12, color: "var(--tx-2)",
-                lineHeight: 1.7,
-              }}>
-                <div style={{ fontWeight: 600, marginBottom: 6, color: "var(--violet)" }}>🔑 Reset your password</div>
-                <div style={{ color: "var(--tx-3)", marginBottom: 10 }}>
-                  Open a new terminal, navigate to the backend folder, and run:
-                </div>
-                <div style={{
-                  background: "rgba(0,0,0,0.3)", borderRadius: 7, padding: "8px 12px",
-                  fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--tx)", marginBottom: 8,
-                }}>
-                  cd C:\Users\jagad\Downloads\job-hunter\backend{"\n"}
-                  python reset_password.py
-                </div>
-                <div style={{ color: "var(--tx-3)", fontSize: 11 }}>
-                  The tool will list all accounts and let you set a new password.
-                </div>
-              </div>
-            )}
-          </div>
 
-          {error && (
-            <div style={{
-              background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)",
-              borderRadius: "var(--r-sm)", padding: "11px 14px", fontSize: 13, color: "#fca5a5",
-              display: "flex", alignItems: "center", gap: 8,
-            }}>
-              <span style={{ fontSize: 15 }}>⚠️</span> {error}
-            </div>
-          )}
+            <button type="submit" disabled={loading} style={{
+              width: "100%", height: 46, borderRadius: 10, border: "none",
+              background: "linear-gradient(135deg, #7c3aed, #06b6d4)",
+              color: "#fff", fontSize: 15, fontWeight: 700,
+              cursor: loading ? "not-allowed" : "pointer",
+              opacity: loading ? 0.7 : 1,
+              boxShadow: "0 4px 18px rgba(124,58,237,0.35)",
+              transition: "all .15s", marginTop: 4,
+              fontFamily: "inherit",
+            }}
+              onMouseEnter={e => { if (!loading) e.currentTarget.style.boxShadow = "0 6px 24px rgba(124,58,237,0.5)"; }}
+              onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 4px 18px rgba(124,58,237,0.35)"; }}
+            >
+              {loading
+                ? (mode === "login" ? "Signing in…" : "Creating account…")
+                : (mode === "login" ? "Sign In →" : "Create Account →")}
+            </button>
+          </form>
 
-          <button type="submit" disabled={loading} className="auth-submit">
-            {loading
-              ? (mode === "login" ? "Signing in…" : "Creating account…")
-              : (mode === "login" ? "Sign In →" : "Create Account →")}
-          </button>
-        </form>
-
-        {/* Divider */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "22px 0" }}>
-          <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
-          <span style={{ fontSize: 11, color: "var(--tx-3)" }}>
-            {mode === "login" ? "New here?" : "Already have an account?"}
-          </span>
-          <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
-        </div>
-
-        <button onClick={switchMode} style={{
-          width: "100%", height: 40, borderRadius: "var(--r-sm)",
-          border: "1px solid var(--line)",
-          background: "var(--bg-elevated)",
-          color: "var(--tx-3)", cursor: "pointer", fontSize: 13.5,
-          fontWeight: 500, transition: "all 150ms", fontFamily: "inherit",
-        }}
-          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(124,58,237,0.4)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--violet)"; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--line)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--tx-3)"; }}
-        >
-          {mode === "login" ? "Create a free account" : "Sign in instead"}
-        </button>
-
-        {/* Feature list */}
-        <div style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 7 }}>
-          {[
-            { icon: "🏢", text: "2,000+ companies across all industries" },
-            { icon: "🤖", text: "AI resume tailoring + cover letters" },
-            { icon: "📊", text: "ATS score + job qualification check" },
-          ].map(f => (
-            <div key={f.text} style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 11.5, color: "var(--tx-3)" }}>
-              <span style={{ fontSize: 13 }}>{f.icon}</span> {f.text}
-            </div>
-          ))}
+          <p style={{ textAlign: "center", fontSize: 13, color: "#94a3b8", marginTop: 24 }}>
+            {mode === "login" ? "Don't have an account? " : "Already have an account? "}
+            <button type="button" onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}
+              style={{ background: "none", border: "none", color: "#7c3aed", fontWeight: 600, cursor: "pointer", fontSize: 13, padding: 0, fontFamily: "inherit" }}>
+              {mode === "login" ? "Register" : "Sign in"}
+            </button>
+          </p>
         </div>
       </div>
     </div>

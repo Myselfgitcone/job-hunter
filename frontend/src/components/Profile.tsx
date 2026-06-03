@@ -208,12 +208,12 @@ export function Profile() {
             <input value={profile.location} onChange={e => set('location', e.target.value)} placeholder="New York, NY" style={INPUT} />
           </div>
           <div>
-            <label style={LABEL}>Full Address (for auto-apply)</label>
+            <label style={LABEL}>Full Address</label>
             <input value={profile.address} onChange={e => set('address', e.target.value)} placeholder="123 Main St, New York, NY 10001" style={INPUT} />
           </div>
         </div>
-        {/* Row 3: LinkedIn, GitHub, website, visa */}
-        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:10}}>
+        {/* Row 3: LinkedIn, GitHub, Visa */}
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10}}>
           <div>
             <label style={LABEL}>LinkedIn URL</label>
             <input value={profile.linkedin} onChange={e => set('linkedin', e.target.value)} placeholder="linkedin.com/in/yourname" style={INPUT} />
@@ -223,14 +223,11 @@ export function Profile() {
             <input value={profile.github} onChange={e => set('github', e.target.value)} placeholder="github.com/yourname" style={INPUT} />
           </div>
           <div>
-            <label style={LABEL}>Website / Portfolio</label>
-            <input value={profile.website} onChange={e => set('website', e.target.value)} placeholder="yoursite.com" style={INPUT} />
-          </div>
-          <div>
             <label style={LABEL}>Visa / Work Status</label>
             <input value={profile.visa_status} onChange={e => set('visa_status', e.target.value)} placeholder="F1/OPT, H1B, US Citizen…" style={INPUT} />
           </div>
         </div>
+
       </div>
 
       {/* Experience */}

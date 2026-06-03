@@ -288,7 +288,6 @@ export default function App() {
           </div>
           <div style={{ lineHeight: 1.2 }}>
             <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: "-0.01em" }}>Job Hunter</div>
-            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>Data Engineer</div>
           </div>
         </div>
         <nav style={{ display: "flex", flexDirection: "column", gap: 2, padding: "10px 10px 8px" }}>
@@ -308,56 +307,7 @@ export default function App() {
             <Ic d={IC.sparkles} size={16} color="var(--purple)" /> Quick Tailor
           </button>
         </nav>
-        {view === "jobs" && (
-          <div style={{ flex: 1, overflowY: "auto", padding: "0 12px 16px", borderTop: "1px solid var(--border-subtle)", marginTop: 2 }}>
-
-            {/* Search */}
-            <div style={{ padding: "10px 0 6px" }}>
-              <input value={filters.role} onChange={e => setF("role", e.target.value)}
-                placeholder="🔍  Search title, role, keyword…"
-                style={{ width: "100%", fontSize: 12, height: 34, borderRadius: 8 }} />
-            </div>
-
-            {/* Category */}
-            <span className="section-label">Category</span>
-            <select value={filters.category} onChange={e => setF("category", e.target.value)} style={{ width: "100%", fontSize: 12, height: 32 }}>
-              {["All","Engineering","Data","Product","Design"].map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
-
-            {/* Experience Level */}
-            <span className="section-label">Experience Level</span>
-            <select value={filters.exp} onChange={e => setF("exp", e.target.value)} style={{ width: "100%", fontSize: 12, height: 32 }}>
-              {["All","Entry","Mid","Senior","Lead"].map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
-
-            {/* Work Type */}
-            <span className="section-label">Work Type</span>
-            <select value={filters.locType} onChange={e => setF("locType", e.target.value)} style={{ width: "100%", fontSize: 12, height: 32 }}>
-              {["Any","Remote","Onsite"].map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
-
-            {/* Country */}
-            <span className="section-label">Country</span>
-            <select value={filters.country} onChange={e => setF("country", e.target.value)} style={{ width: "100%", fontSize: 12, height: 32 }}>
-              {COUNTRIES.map(c => <option key={c} value={c}>{c === "All Countries" ? "All Countries (" + allJobs.length + ")" : c + " (" + allJobs.filter(j => j.country === c).length + ")"}</option>)}
-            </select>
-
-            {/* Posted time chips — stays as chips, easier to toggle */}
-            <span className="section-label">Posted</span>
-            <div style={{ display: "flex", gap: 2, background: "var(--bg-base)", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: 2 }}>
-              {["24h","48h","72h"].map(o => <button key={o} onClick={() => setF("posted", o)} className={"seg-btn" + (filters.posted === o ? " active" : "")}>{o}</button>)}
-            </div>
-
-            {/* Source */}
-            <span className="section-label">Source</span>
-            <select value={filters.source} onChange={e => setF("source", e.target.value)} style={{ width: "100%", fontSize: 12, height: 32 }}>
-              {SOURCES.map(s => <option key={s} value={s}>{s === "All Sources" ? "All Sources (" + allJobs.length + ")" : s + " (" + (sourceCounts[s] || 0) + ")"}</option>)}
-            </select>
-
-            {filtersActive && <button onClick={() => setFilters({ posted: "72h", country: "All Countries", locType: "Any", source: "All Sources", status: "all", role: "", exp: "All", category: "All" })} className="clear-btn" style={{ marginTop: 14, fontSize: 11, color: "var(--text-muted)", padding: "4px 6px", borderRadius: 6, transition: "all 120ms ease" }}>Clear filters</button>}
-          </div>
-        )}
-        {view !== "jobs" && <div style={{ flex: 1 }} />}
+        <div style={{ flex: 1 }} />
         <div style={{ flexShrink: 0, padding: "10px 12px", borderTop: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", gap: 9 }}>
           <div style={{ width: 26, height: 26, borderRadius: 999, background: "linear-gradient(135deg,#8b5cf6,#6366f1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600, color: "#fff", flexShrink: 0 }}>{initials}</div>
           <div style={{ lineHeight: 1.2, overflow: "hidden", flex: 1 }}>
@@ -379,49 +329,49 @@ export default function App() {
       {view === "profile"   && <div style={{ flex: 1, overflowY: "auto" }}><Profile /></div>}
       {view === "settings"  && <div style={{ flex: 1, overflowY: "auto" }}><Settings /></div>}
 
-      {view === "jobs" && viewMode === "kanban" && (
+      {view === "jobs" && (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" }}>
-          <Topbar scraping={scraping} scrapeMsg={scrapeMsg} lastScraped={lastScrapedDisplay} onScrape={handleScrape} count={filteredJobs.length} viewMode={viewMode} setViewMode={setViewMode} IC={IC} />
-          <Kanban jobs={filteredJobs} onStatusChange={(id, s) => handleStatusChange(id, s as JobStatus)} onSelect={id => { setViewMode("list"); handleSelect(id); }} />
+          {/* Full-width top bar: scrape + filters */}
+          <Topbar
+            scraping={scraping} scrapeMsg={scrapeMsg} lastScraped={lastScrapedDisplay}
+            onScrape={handleScrape} count={filteredJobs.length}
+            viewMode={viewMode} setViewMode={setViewMode} IC={IC}
+            filters={filters} setF={setF} setFilters={setFilters}
+            SOURCES={SOURCES} COUNTRIES={COUNTRIES} allJobs={allJobs} sourceCounts={sourceCounts}
+            filtersActive={filtersActive} search={search} setSearch={setSearch}
+            searchRef={searchRef} onClearAll={handleClearAll}
+          />
+          {/* Content row */}
+          {viewMode === "kanban" ? (
+            <Kanban jobs={filteredJobs} onStatusChange={(id, s) => handleStatusChange(id, s as JobStatus)} onSelect={id => { setViewMode("list"); handleSelect(id); }} />
+          ) : (
+            <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+              <section style={{ width: 370, flexShrink: 0, background: "var(--bg-base)", borderRight: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column", height: "100%" }}>
+                <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 14px", borderBottom: "1px solid var(--border-subtle)" }}>
+                  <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>{filteredJobs.length} jobs</span>
+                  <button onClick={handleClearAll} className="btn btn-ghost btn-danger" style={{ height: 24, padding: "0 8px", fontSize: 11, border: "none" }}><Ic d={IC.trash} size={12} /> Clear All</button>
+                </div>
+                <div style={{ flex: 1, overflowY: "auto", paddingBottom: 16 }}>
+                  {loading ? (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "40%", gap: 10, color: "var(--text-muted)" }}><Spinner size={18} /> Loading...</div>
+                  ) : filteredJobs.length === 0 ? (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "60%", gap: 12, padding: 24, textAlign: "center" }}>
+                      <Ic d={IC.search} size={34} color="var(--text-disabled)" />
+                      <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>No jobs match filters</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{allJobs.length === 0 ? "Click Scrape Now to fetch jobs" : "Try clearing filters"}</div>
+                    </div>
+                  ) : filteredJobs.map((job, i) => (
+                    <div key={job.id}>
+                      <JobCard job={job} index={i} selected={selectedId === job.id} isFresh={false} onClick={() => handleSelect(job.id)} onQualifyUpdated={(id, r) => updateJob(id, { qualify_result: r })} />
+                      {i < filteredJobs.length - 1 && selectedId !== job.id && selectedId !== filteredJobs[i + 1]?.id && <div style={{ height: 1, background: "var(--border-subtle)", margin: "0 16px" }} />}
+                    </div>
+                  ))}
+                </div>
+              </section>
+              <JobDetail job={selectedJob} tab={tab} setTab={setTab} onUpdate={(patch: Partial<Job>) => selectedJob && updateJob(selectedJob.id, patch)} onToast={toast} busy={busy} runAction={runAction} />
+            </div>
+          )}
         </div>
-      )}
-
-      {view === "jobs" && viewMode === "list" && (
-        <>
-          <section style={{ width: 380, flexShrink: 0, background: "var(--bg-base)", borderRight: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column", height: "100%" }}>
-            <Topbar scraping={scraping} scrapeMsg={scrapeMsg} lastScraped={lastScrapedDisplay} onScrape={handleScrape} count={filteredJobs.length} viewMode={viewMode} setViewMode={setViewMode} IC={IC} />
-            <div style={{ flexShrink: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px 0" }}>
-                <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>{filteredJobs.length} jobs</span>
-                <button onClick={handleClearAll} className="btn btn-ghost btn-danger" style={{ height: 24, padding: "0 8px", fontSize: 11, border: "none" }}><Ic d={IC.trash} size={12} /> Clear All</button>
-              </div>
-              <div style={{ padding: "8px 14px 10px" }}>
-                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                  <Ic d={IC.search} size={15} color="var(--text-muted)" style={{ position: "absolute", left: 11, pointerEvents: "none" }} />
-                  <input ref={searchRef} type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search jobs, companies..." style={{ paddingLeft: 34, paddingRight: 44, height: 36, fontSize: 13 }} />
-                  <span className="mono" style={{ position: "absolute", right: 10, fontSize: 10, color: "var(--text-muted)", border: "1px solid var(--border-default)", borderRadius: 4, padding: "1px 5px", pointerEvents: "none" }}>Ctrl+K</span>
-                </div>
-              </div>
-            </div>
-            <div style={{ flex: 1, overflowY: "auto", paddingBottom: 16 }}>
-              {loading ? (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "40%", gap: 10, color: "var(--text-muted)" }}><Spinner size={18} /> Loading...</div>
-              ) : filteredJobs.length === 0 ? (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "60%", gap: 12, padding: 24, textAlign: "center" }}>
-                  <Ic d={IC.search} size={34} color="var(--text-disabled)" />
-                  <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>No jobs match your filters</div>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{allJobs.length === 0 ? "Click Scrape Now to fetch jobs" : "Try clearing filters"}</div>
-                </div>
-              ) : filteredJobs.map((job, i) => (
-                <div key={job.id}>
-                  <JobCard job={job} index={i} selected={selectedId === job.id} isFresh={false} onClick={() => handleSelect(job.id)} onQualifyUpdated={(id, r) => updateJob(id, { qualify_result: r })} />
-                  {i < filteredJobs.length - 1 && selectedId !== job.id && selectedId !== filteredJobs[i + 1]?.id && <div style={{ height: 1, background: "var(--border-subtle)", margin: "0 16px" }} />}
-                </div>
-              ))}
-            </div>
-          </section>
-          <JobDetail job={selectedJob} tab={tab} setTab={setTab} onUpdate={(patch: Partial<Job>) => selectedJob && updateJob(selectedJob.id, patch)} onToast={toast} busy={busy} runAction={runAction} />
-        </>
       )}
 
       <QuickTailor open={tailorOpen} onClose={() => setTailorOpen(false)} onToast={toast} />
@@ -488,28 +438,93 @@ export default function App() {
   );
 }
 
-function Topbar({ scraping, scrapeMsg, lastScraped, onScrape, count, viewMode, setViewMode, IC }: {
+type TopbarProps = {
   scraping: boolean; scrapeMsg: string; lastScraped: string; onScrape: () => void;
   count: number; viewMode: string; setViewMode: (m: ViewMode) => void; IC: Record<string,string>;
-}) {
+  filters: Filters; setF: (k: keyof Filters, v: string) => void;
+  setFilters: (f: Filters) => void;
+  SOURCES: string[]; COUNTRIES: string[]; allJobs: Job[];
+  sourceCounts: Record<string,number>;
+  filtersActive: boolean; search: string; setSearch: (v: string) => void;
+  searchRef: React.RefObject<HTMLInputElement>; onClearAll: () => void;
+};
+
+function Topbar({ scraping, scrapeMsg, lastScraped, onScrape, count, viewMode, setViewMode, IC,
+  filters, setF, setFilters, SOURCES, COUNTRIES, allJobs, sourceCounts,
+  filtersActive, search, setSearch, searchRef, onClearAll }: TopbarProps) {
+  const sel: React.CSSProperties = { fontSize: 12, height: 30, borderRadius: 7, padding: "0 8px", background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", color: "var(--text-primary)", cursor: "pointer" };
   return (
-    <div style={{ height: 48, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 12px", borderBottom: "1px solid var(--border-subtle)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <button className="btn btn-accent" onClick={onScrape} disabled={scraping} style={{ height: 30 }}>
-          {scraping ? <Spinner size={13} color="#fff" /> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.refresh }} />}
-          {scraping ? "Scraping..." : "Scrape Now"}
-        </button>
-        {scrapeMsg && !scraping && <span style={{ fontSize: 11, fontWeight: 600, color: "#4ade80" }}>{scrapeMsg}</span>}
+    <div style={{ flexShrink: 0, borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-surface)" }}>
+      {/* Row 1: Scrape + last scraped + view toggle */}
+      <div style={{ height: 46, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 14px", borderBottom: "1px solid var(--border-subtle)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button className="btn btn-accent" onClick={onScrape} disabled={scraping} style={{ height: 30 }}>
+            {scraping ? <Spinner size={13} color="#fff" /> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.refresh }} />}
+            {scraping ? "Scraping..." : "Scrape Now"}
+          </button>
+          {scrapeMsg && !scraping && <span style={{ fontSize: 11, fontWeight: 600, color: "#4ade80" }}>{scrapeMsg}</span>}
+          {lastScraped && <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--text-muted)" }}><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.clock }} />{lastScraped}</span>}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>{count} jobs</span>
+          <div style={{ display: "flex", gap: 2, background: "var(--bg-elevated)", borderRadius: 8, padding: 2, border: "1px solid var(--border-subtle)" }}>
+            {([["list", IC.list], ["kanban", IC.kanban]] as [string, string][]).map(([m, d]) => (
+              <button key={m} onClick={() => setViewMode(m as ViewMode)} style={{ width: 28, height: 24, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", color: viewMode === m ? "var(--text-primary)" : "var(--text-muted)", background: viewMode === m ? "var(--bg-hover)" : "transparent", transition: "all 120ms ease" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: d }} />
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        {lastScraped && <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--text-muted)" }}><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.clock }} /> {lastScraped}</span>}
-        <div style={{ display: "flex", gap: 2, background: "var(--bg-elevated)", borderRadius: 8, padding: 2, border: "1px solid var(--border-subtle)" }}>
-          {([["list", IC.list], ["kanban", IC.kanban]] as [string, string][]).map(([m, d]) => (
-            <button key={m} onClick={() => setViewMode(m as ViewMode)} style={{ width: 28, height: 24, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", color: viewMode === m ? "var(--text-primary)" : "var(--text-muted)", background: viewMode === m ? "var(--bg-hover)" : "transparent", transition: "all 120ms ease" }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: d }} />
+      {/* Row 2: Filters */}
+      <div style={{ height: 44, display: "flex", alignItems: "center", gap: 8, padding: "0 14px", overflowX: "auto" }}>
+        {/* Search */}
+        <div style={{ position: "relative", display: "flex", alignItems: "center", flexShrink: 0 }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", left: 9, pointerEvents: "none", color: "var(--text-muted)" }} dangerouslySetInnerHTML={{ __html: IC.search }} />
+          <input ref={searchRef} type="text" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search jobs, companies…"
+            style={{ paddingLeft: 28, paddingRight: 10, height: 30, fontSize: 12, width: 200, borderRadius: 7 }} />
+        </div>
+        <div style={{ width: 1, height: 20, background: "var(--border-subtle)", flexShrink: 0 }} />
+        {/* Category */}
+        <select value={filters.category} onChange={e => setF("category", e.target.value)} style={sel}>
+          {["All","Engineering","Data","Product","Design"].map(o => <option key={o} value={o}>{o === "All" ? "Category" : o}</option>)}
+        </select>
+        {/* Exp Level */}
+        <select value={filters.exp} onChange={e => setF("exp", e.target.value)} style={sel}>
+          {["All","Entry","Mid","Senior","Lead"].map(o => <option key={o} value={o}>{o === "All" ? "Exp Level" : o}</option>)}
+        </select>
+        {/* Work Type */}
+        <select value={filters.locType} onChange={e => setF("locType", e.target.value)} style={sel}>
+          {["Any","Remote","Onsite"].map(o => <option key={o} value={o}>{o === "Any" ? "Work Type" : o}</option>)}
+        </select>
+        {/* Country */}
+        <select value={filters.country} onChange={e => setF("country", e.target.value)} style={sel}>
+          {COUNTRIES.map(c => <option key={c} value={c}>{c === "All Countries" ? "Country" : c + " (" + allJobs.filter(j => j.country === c).length + ")"}</option>)}
+        </select>
+        {/* Source */}
+        <select value={filters.source} onChange={e => setF("source", e.target.value)} style={sel}>
+          {SOURCES.map(s => <option key={s} value={s}>{s === "All Sources" ? "Source" : s + " (" + (sourceCounts[s] || 0) + ")"}</option>)}
+        </select>
+        <div style={{ width: 1, height: 20, background: "var(--border-subtle)", flexShrink: 0 }} />
+        {/* Posted chips */}
+        <div style={{ display: "flex", gap: 2, background: "var(--bg-elevated)", borderRadius: 7, padding: 2, border: "1px solid var(--border-subtle)", flexShrink: 0 }}>
+          {["24h","48h","72h"].map(o => (
+            <button key={o} onClick={() => setF("posted", o)}
+              style={{ height: 24, padding: "0 10px", borderRadius: 5, fontSize: 11, fontWeight: 500, border: "none", cursor: "pointer", transition: "all 120ms ease",
+                background: filters.posted === o ? "var(--accent)" : "transparent",
+                color: filters.posted === o ? "#fff" : "var(--text-muted)" }}>
+              {o}
             </button>
           ))}
         </div>
+        {/* Clear */}
+        {filtersActive && (
+          <button onClick={() => setFilters({ posted: "72h", country: "All Countries", locType: "Any", source: "All Sources", status: "all", role: "", exp: "All", category: "All" })}
+            style={{ height: 28, padding: "0 10px", borderRadius: 7, fontSize: 11, border: "1px solid var(--border-subtle)", background: "transparent", color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "all 120ms ease" }}>
+            Clear
+          </button>
+        )}
       </div>
     </div>
   );

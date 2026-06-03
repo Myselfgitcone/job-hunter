@@ -25,7 +25,8 @@ Dedup strategy: title+company fingerprint (not URL).
 """
 import asyncio
 from scrapers import (
-    greenhouse, lever, ashby,
+    # greenhouse,  # temporarily disabled
+    lever, ashby,
     google_jobs, apple_jobs, meta_jobs, netflix_jobs,
     hiringcafe,
 )
@@ -55,7 +56,7 @@ def _fingerprint(job: dict) -> str:
 async def run_all_scrapers(settings: dict) -> list[dict]:
     results = await asyncio.gather(
         # ── Direct ATS (run first — higher priority) ───────────────────────
-        greenhouse.fetch(settings),
+        # greenhouse.fetch(settings),  # temporarily disabled
         lever.fetch(settings),
         ashby.fetch(settings),
         # ── Direct company pages ───────────────────────────────────────────

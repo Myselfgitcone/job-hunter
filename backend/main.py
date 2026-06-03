@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, update, or_, text
+from sqlalchemy import select, update, or_, text, func
 from pydantic import BaseModel
 from typing import Optional, List
 import asyncio
@@ -90,6 +90,7 @@ async def _run_scrape() -> dict:
     print(f"[Scrape] {len(scraped)} jobs after date/country filter")
 
     new_count = 0
+    new_jobs_for_tg: list[dict] = []
     async with SessionLocal() as db:
         existing_result = await db.execute(select(Job.url, Job.title, Job.company))
         existing_rows = existing_result.all()
@@ -108,6 +109,7 @@ async def _run_scrape() -> dict:
                 existing_urls.add(url)
             existing_fps.add(fp)
             new_count += 1
+            new_jobs_for_tg.append(job_data)
 
         setting = await db.get(Setting, "last_scraped_at")
         if setting:
@@ -121,7 +123,10 @@ async def _run_scrape() -> dict:
     # Telegram digest
     try:
         import telegram_bot
-        await telegram_bot.send_scrape_digest(scraped)
+        async with SessionLocal() as db:
+            total_result = await db.execute(select(func.count()).select_from(Job))
+            total_jobs = total_result.scalar() or 0
+        await telegram_bot.send_scrape_digest(new_jobs_for_tg, total_jobs)
     except Exception as te:
         print(f"[Scrape] Telegram notify failed: {te}")
 
@@ -132,8 +137,10 @@ async def _auto_scrape():
     """Background auto-scrape task — runs on schedule."""
     print("[Scheduler] Auto-scrape starting…")
     try:
-        result = await _run_scrape()
+        result = await asyncio.wait_for(_run_scrape(), timeout=300)  # 5 min max
         print(f"[Scheduler] Auto-scrape complete: {result}")
+    except asyncio.TimeoutError:
+        print("[Scheduler] Auto-scrape timed out after 5 minutes")
     except Exception as e:
         print(f"[Scheduler] Auto-scrape failed: {e}")
         import traceback; traceback.print_exc()

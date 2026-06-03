@@ -444,8 +444,16 @@ async def _fetch_board(client: httpx.AsyncClient, board: str) -> list[dict]:
 async def fetch(settings: dict) -> list[dict]:
     # Use DB slugs if injected, else fall back to hardcoded BOARDS
     boards = settings.get("_gh_slugs") or BOARDS
+    print(f"[Greenhouse] Scraping {len(boards)} boards…")
+
+    sem = asyncio.Semaphore(30)  # max 30 concurrent requests
+
+    async def _bounded(client, board):
+        async with sem:
+            return await _fetch_board(client, board)
+
     async with httpx.AsyncClient(timeout=15, headers=HEADERS) as client:
-        tasks = [_fetch_board(client, board) for board in boards]
+        tasks = [_bounded(client, board) for board in boards]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
     jobs: list[dict] = []

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api } from "../api";
 
 interface Props {
@@ -41,6 +41,25 @@ function PulseRings() {
   );
 }
 
+/* ── Animated number counter ── */
+function Counter({ to, duration = 1600 }: { to: number; duration?: number }) {
+  const [val, setVal] = useState(0);
+  const raf = useRef<number | null>(null);
+  useEffect(() => {
+    if (!to) return;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setVal(Math.round(to * eased));
+      if (p < 1) raf.current = requestAnimationFrame(tick);
+    };
+    raf.current = requestAnimationFrame(tick);
+    return () => { if (raf.current) cancelAnimationFrame(raf.current); };
+  }, [to, duration]);
+  return <>{val.toLocaleString()}</>;
+}
+
 export function Auth({ onSuccess }: Props) {
   const [mode, setMode]             = useState<"login" | "register">("login");
   const [email, setEmail]           = useState("");
@@ -49,6 +68,22 @@ export function Auth({ onSuccess }: Props) {
   const [error, setError]           = useState("");
   const [loading, setLoading]       = useState(false);
   const [showForgot, setShowForgot] = useState(false);
+  const [jobCount, setJobCount]     = useState<number>(
+    parseInt(localStorage.getItem("jh_job_count") || "0", 10)
+  );
+
+  useEffect(() => {
+    const BASE = (import.meta.env.VITE_API_URL || "");
+    fetch(`${BASE}/api/jobs/count`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.count) {
+          setJobCount(d.count);
+          localStorage.setItem("jh_job_count", String(d.count));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -206,59 +241,74 @@ export function Auth({ onSuccess }: Props) {
           RIGHT — Brand panel
       ══════════════════════════════════════════ */}
       <div style={{
-        width: "46%", flexShrink: 0,
-        background: "linear-gradient(160deg, #0c1a3a 0%, #0f2051 40%, #0a1628 100%)",
+        width: "50%", flexShrink: 0,
+        background: "linear-gradient(155deg, #0c1a3a 0%, #0f2051 45%, #081020 100%)",
         display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center",
+        justifyContent: "center",
         position: "relative", overflow: "hidden",
-        padding: "48px 52px",
+        padding: "52px 64px",
       }}>
         <PulseRings />
 
         {/* Big logo mark */}
-        <div style={{ position: "relative", zIndex: 1, marginBottom: 40 }}>
+        <div style={{ position: "relative", zIndex: 1, marginBottom: 36 }}>
           <div style={{
-            width: 120, height: 120,
+            width: 160, height: 160,
             borderRadius: "50%",
-            background: "rgba(37,99,235,0.12)",
+            background: "rgba(37,99,235,0.1)",
             display: "flex", alignItems: "center", justifyContent: "center",
-            border: "1px solid rgba(37,99,235,0.3)",
-            boxShadow: "0 0 60px rgba(37,99,235,0.25)",
+            border: "1px solid rgba(37,99,235,0.25)",
+            boxShadow: "0 0 80px rgba(37,99,235,0.3), 0 0 160px rgba(37,99,235,0.1)",
           }}>
-            <BullseyeLogo size={72} color="#3b82f6" />
+            <BullseyeLogo size={100} color="#3b82f6" />
           </div>
         </div>
 
         {/* Headline */}
-        <div style={{ position: "relative", zIndex: 1, textAlign: "center", maxWidth: 340 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.18em", color: "#3b82f6", textTransform: "uppercase", marginBottom: 16 }}>
+        <div style={{ position: "relative", zIndex: 1, maxWidth: 420 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.18em", color: "#3b82f6", textTransform: "uppercase", marginBottom: 14 }}>
             Hunt Smarter, Not Harder
           </div>
-          <h2 style={{ fontSize: 30, fontWeight: 800, color: "#fff", lineHeight: 1.2, letterSpacing: "-0.03em", margin: "0 0 16px" }}>
-            Your AI-powered<br />job search engine
+          <h2 style={{ fontSize: 36, fontWeight: 800, color: "#fff", lineHeight: 1.15, letterSpacing: "-0.03em", margin: "0 0 14px" }}>
+            Wake up to interviews,<br />
+            <span style={{ color: "#60a5fa" }}>not job boards.</span>
           </h2>
-          <p style={{ fontSize: 14.5, color: "rgba(255,255,255,0.5)", lineHeight: 1.75, margin: "0 0 40px" }}>
-            Automatically scrapes thousands of jobs,<br />
-            qualifies matches, and tailors your resume —<br />
-            so every application counts.
+          <p style={{ fontSize: 15, color: "rgba(255,255,255,0.45)", lineHeight: 1.75, margin: "0 0 36px" }}>
+            Job Hunter scrapes thousands of openings every night,
+            qualifies the ones that fit you, and helps you apply — automatically.
           </p>
 
-          {/* Stats */}
-          <div style={{ display: "flex", gap: 0, borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)" }}>
+          {/* Feature bullets */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 40 }}>
             {[
-              { n: "6,800+", label: "Jobs scraped" },
-              { n: "10+", label: "Job boards" },
-              { n: "AI", label: "Qualify & tailor" },
-            ].map((s, i) => (
-              <div key={s.label} style={{
-                flex: 1, padding: "18px 14px", textAlign: "center",
-                background: "rgba(255,255,255,0.04)",
-                borderLeft: i > 0 ? "1px solid rgba(255,255,255,0.07)" : "none",
-              }}>
-                <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em" }}>{s.n}</div>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 3, fontWeight: 500 }}>{s.label}</div>
+              { icon: "🎯", text: "AI qualifies every match with a 0–100 fit score" },
+              { icon: "📝", text: "Resume tailored to each job in one click" },
+              { icon: "⚡", text: "Auto Apply — review & submit (coming soon)" },
+              { icon: "📊", text: "Track everything: kanban, dashboard, reminders" },
+            ].map(f => (
+              <div key={f.text} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>{f.icon}</span>
+                <span style={{ fontSize: 13.5, color: "rgba(255,255,255,0.6)", lineHeight: 1.5 }}>{f.text}</span>
               </div>
             ))}
+          </div>
+
+          {/* Stats row */}
+          <div style={{ display: "flex", gap: 0, borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ flex: 1, padding: "18px 14px", textAlign: "center", background: "rgba(255,255,255,0.04)" }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums" }}>
+                {jobCount > 0 ? <><Counter to={jobCount} />+</> : "—"}
+              </div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 3, fontWeight: 500 }}>Jobs indexed</div>
+            </div>
+            <div style={{ flex: 1, padding: "18px 14px", textAlign: "center", background: "rgba(255,255,255,0.04)", borderLeft: "1px solid rgba(255,255,255,0.07)" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#93c5fd", letterSpacing: "-0.01em" }}>Greenhouse</div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 3 }}>Lever · Ashby · more</div>
+            </div>
+            <div style={{ flex: 1, padding: "18px 14px", textAlign: "center", background: "rgba(255,255,255,0.04)", borderLeft: "1px solid rgba(255,255,255,0.07)" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#4ade80" }}>⚡ Auto Apply</div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 3 }}>Coming soon</div>
+            </div>
           </div>
         </div>
       </div>

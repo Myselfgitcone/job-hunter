@@ -470,14 +470,6 @@ async def toggle_company(company_id: str, user_id: str = Depends(get_current_use
 
 # ── Jobs ────────────────────────────────────────────────────────────────────────────────
 
-@app.get("/api/jobs/count")
-async def public_job_count():
-    """Public endpoint — returns total job count without auth (for login page stats)."""
-    async with SessionLocal() as db:
-        result = await db.execute(select(func.count()).select_from(Job))
-        count = result.scalar()
-    return {"count": count}
-
 @app.get("/api/jobs")
 async def list_jobs(
     user_id:    str            = Depends(get_current_user_id),

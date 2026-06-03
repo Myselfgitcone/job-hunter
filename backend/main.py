@@ -1409,6 +1409,10 @@ class ProfileData(BaseModel):
     email: str = ""
     phone: str = ""
     location: str = ""
+    address: str = ""
+    linkedin: str = ""
+    github: str = ""
+    website: str = ""
     visa_status: str = ""
     experience: List[ProfileExperience] = []
     education: List[ProfileEducation] = []

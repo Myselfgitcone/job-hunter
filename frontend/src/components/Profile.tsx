@@ -31,7 +31,8 @@ function calcYears(start: string, end: string): number | null {
 }
 
 const EMPTY_PROFILE: ProfileData = {
-  name: "", email: "", phone: "", location: "", visa_status: "",
+  name: "", email: "", phone: "", location: "", address: "",
+  linkedin: "", github: "", website: "", visa_status: "",
   experience: [], education: [], projects: [],
   skills: [], certifications: [],
 };
@@ -40,9 +41,9 @@ const EMPTY_EXP: ProfileExperience = { role: "", company: "", start_date: "", en
 const EMPTY_EDU: ProfileEducation = { degree: "", school: "", year: "" };
 const EMPTY_PRJ: ProfileProject = { name: "", description: "" };
 
-const INPUT = "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500";
-const LABEL = "block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1";
-const SECTION = "bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-4";
+const INPUT = { width: '100%' } as React.CSSProperties;
+const LABEL: React.CSSProperties = { display:'block', fontSize:10, fontWeight:600, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 };
+const CARD: React.CSSProperties = { background:'var(--bg-elevated)', border:'1px solid var(--border-default)', borderRadius:12, padding:20 };
 
 export function Profile() {
   const [profile, setProfile] = useState<ProfileData>(EMPTY_PROFILE);
@@ -157,22 +158,24 @@ export function Profile() {
   const totalYears = profile.experience.reduce((s, e) => s + (e.years || 0), 0);
 
   return (
-    <div className="max-w-4xl space-y-6 p-8">
+    <div style={{maxWidth:900, padding:32, display:'flex', flexDirection:'column', gap:24}}>
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div style={{display:'flex', alignItems:'center', justifyContent:'space-between'}}>
         <div>
-          <h2 className="text-lg font-semibold text-white">Your Profile</h2>
-          {totalYears > 0 && <p className="text-xs text-slate-500 mt-0.5">{totalYears} yrs total experience</p>}
+          <h2 style={{fontSize:18, fontWeight:600, color:'var(--text-primary)', margin:0}}>Your Profile</h2>
+          {totalYears > 0 && <p style={{fontSize:12, color:'var(--text-muted)', marginTop:2}}>{totalYears} yrs total experience</p>}
         </div>
-        <div className="flex items-center gap-2">
-          <input ref={fileRef} type="file" accept=".pdf,.docx,.txt" className="hidden" onChange={uploadResume} />
+        <div style={{display:'flex', alignItems:'center', gap:8}}>
+          <input ref={fileRef} type="file" accept=".pdf,.docx,.txt" style={{display:'none'}} onChange={uploadResume} />
           <button onClick={() => fileRef.current?.click()} disabled={parsing}
-            className="flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-slate-200 text-sm rounded-lg font-medium transition-colors border border-slate-600">
+            style={{display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, fontSize:13, fontWeight:500,
+              background:'var(--bg-elevated)', border:'1px solid var(--border-default)', color:'var(--text-primary)', cursor:'pointer', opacity:parsing?0.6:1}}>
             {parsing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
             {parsing ? "Parsing…" : "Upload Resume"}
           </button>
           <button onClick={save} disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm rounded-lg font-medium transition-colors">
+            style={{display:'flex', alignItems:'center', gap:6, padding:'7px 16px', borderRadius:8, fontSize:13, fontWeight:500,
+              background:'var(--accent)', color:'#fff', border:'none', cursor:'pointer', opacity:saving?0.6:1}}>
             {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <CheckCircle2 size={14} /> : <Save size={14} />}
             {saved ? "Saved!" : "Save Profile"}
           </button>
@@ -180,192 +183,143 @@ export function Profile() {
       </div>
 
       {/* Personal Info */}
-      <div className={SECTION}>
-        <div className="flex items-center gap-2 mb-1">
-          <User size={14} className="text-blue-400" />
-          <span className="text-sm font-semibold text-white">Personal Info</span>
+      <div style={CARD}>
+        <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:12}}>
+          <User size={14} style={{color:'var(--accent)'}} />
+          <span style={{fontSize:13, fontWeight:600, color:'var(--text-primary)'}}>Personal Info</span>
         </div>
-        <div className="grid grid-cols-3 gap-3">
-          {(["name","email","phone"] as const).map(k => (
+        {/* Row 1: name, email, phone */}
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:10}}>
+          {([['name','Full Name','Jagad...'], ['email','Email','you@email.com'], ['phone','Phone','+1 (555) 000-0000']] as const).map(([k, label, ph]) => (
             <div key={k}>
-              <label className={LABEL}>{k}</label>
-              <input value={(profile as any)[k]} onChange={e => set(k, e.target.value)}
-                className={INPUT} />
+              <label style={LABEL}>{label}</label>
+              <input value={(profile as any)[k]} onChange={e => set(k as any, e.target.value)} placeholder={ph} style={INPUT} />
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-3 gap-3">
+        {/* Row 2: location, address */}
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10}}>
           <div>
-            <label className={LABEL}>Location</label>
-            <input value={profile.location} onChange={e => set("location", e.target.value)}
-              className={INPUT} placeholder="New York, NY" />
+            <label style={LABEL}>City / Location</label>
+            <input value={profile.location} onChange={e => set('location', e.target.value)} placeholder="New York, NY" style={INPUT} />
           </div>
           <div>
-            <label className={LABEL}>Visa / Work Status</label>
-            <input value={profile.visa_status} onChange={e => set("visa_status", e.target.value)}
-              className={INPUT} placeholder="F1 / OPT, H1B, US Citizen…" />
+            <label style={LABEL}>Full Address (for auto-apply)</label>
+            <input value={profile.address} onChange={e => set('address', e.target.value)} placeholder="123 Main St, New York, NY 10001" style={INPUT} />
+          </div>
+        </div>
+        {/* Row 3: LinkedIn, GitHub, website, visa */}
+        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:10}}>
+          <div>
+            <label style={LABEL}>LinkedIn URL</label>
+            <input value={profile.linkedin} onChange={e => set('linkedin', e.target.value)} placeholder="linkedin.com/in/yourname" style={INPUT} />
+          </div>
+          <div>
+            <label style={LABEL}>GitHub URL</label>
+            <input value={profile.github} onChange={e => set('github', e.target.value)} placeholder="github.com/yourname" style={INPUT} />
+          </div>
+          <div>
+            <label style={LABEL}>Website / Portfolio</label>
+            <input value={profile.website} onChange={e => set('website', e.target.value)} placeholder="yoursite.com" style={INPUT} />
+          </div>
+          <div>
+            <label style={LABEL}>Visa / Work Status</label>
+            <input value={profile.visa_status} onChange={e => set('visa_status', e.target.value)} placeholder="F1/OPT, H1B, US Citizen…" style={INPUT} />
           </div>
         </div>
       </div>
 
       {/* Experience */}
-      <div className={SECTION}>
-        <div className="flex items-center justify-between">
-          <button onClick={() => toggleCollapse("exp")} className="flex items-center gap-2 text-left">
-            {collapsed.has("exp") ? <ChevronRight size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
-            <Briefcase size={14} className="text-violet-400" />
-            <span className="text-sm font-semibold text-white">Experience</span>
-            <span className="text-xs text-slate-500">({profile.experience.length})</span>
+      <div style={CARD}>
+        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12}}>
+          <button onClick={() => toggleCollapse('exp')} style={{display:'flex', alignItems:'center', gap:8, background:'none', border:'none', cursor:'pointer', padding:0}}>
+            {collapsed.has('exp') ? <ChevronRight size={14} style={{color:'var(--text-muted)'}} /> : <ChevronDown size={14} style={{color:'var(--text-muted)'}} />}
+            <Briefcase size={14} style={{color:'#a78bfa'}} />
+            <span style={{fontSize:13, fontWeight:600, color:'var(--text-primary)'}}>Experience</span>
+            <span style={{fontSize:12, color:'var(--text-muted)'}}>({profile.experience.length})</span>
           </button>
-          {!collapsed.has("exp") && <button onClick={addExp} className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300">
-            <Plus size={12} /> Add Role
-          </button>}
+          {!collapsed.has('exp') && <button onClick={addExp} style={{fontSize:12, color:'var(--accent)', background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:4}}><Plus size={12} /> Add Role</button>}
         </div>
-        {!collapsed.has("exp") && profile.experience.length === 0 && (
-          <p className="text-xs text-slate-600 text-center py-4">No experience added yet</p>
-        )}
-        {!collapsed.has("exp") && profile.experience.map((exp, i) => (
-          <div key={i} className="border border-slate-700 rounded-lg p-4 space-y-3">
-            <div className="grid grid-cols-5 gap-2">
-              <div className="col-span-2">
-                <label className={LABEL}>Role / Title</label>
-                <input value={exp.role} onChange={e => setExp(i, { role: e.target.value })}
-                  className={INPUT} placeholder="Senior Data Engineer" />
-              </div>
-              <div className="col-span-2">
-                <label className={LABEL}>Company</label>
-                <input value={exp.company} onChange={e => setExp(i, { company: e.target.value })}
-                  className={INPUT} placeholder="Cargill" />
-              </div>
-              <div className="col-span-1" />
+        {!collapsed.has('exp') && profile.experience.length === 0 && <p style={{fontSize:12, color:'var(--text-muted)', textAlign:'center', padding:'16px 0'}}>No experience added yet</p>}
+        {!collapsed.has('exp') && profile.experience.map((exp, i) => (
+          <div key={i} style={{border:'1px solid var(--border-default)', borderRadius:10, padding:14, marginBottom:10}}>
+            <div style={{display:'grid', gridTemplateColumns:'2fr 2fr 1fr', gap:8, marginBottom:8}}>
+              <div><label style={LABEL}>Role / Title</label><input value={exp.role} onChange={e => setExp(i, { role: e.target.value })} placeholder="Senior Data Engineer" style={INPUT} /></div>
+              <div><label style={LABEL}>Company</label><input value={exp.company} onChange={e => setExp(i, { company: e.target.value })} placeholder="Cargill" style={INPUT} /></div>
+              <div />
             </div>
-            <div className="grid grid-cols-5 gap-2">
-              <div className="col-span-2">
-                <label className={LABEL}>Start Date</label>
-                <input value={exp.start_date}
-                  onChange={e => {
-                    const start_date = e.target.value;
-                    const computed = calcYears(start_date, exp.end_date);
-                    setExp(i, { start_date, ...(computed !== null ? { years: computed } : {}) });
-                  }}
-                  className={INPUT} placeholder="Sep 2023" />
-              </div>
-              <div className="col-span-2">
-                <label className={LABEL}>End Date</label>
-                <input value={exp.end_date}
-                  onChange={e => {
-                    const end_date = e.target.value;
-                    const computed = calcYears(exp.start_date, end_date);
-                    setExp(i, { end_date, ...(computed !== null ? { years: computed } : {}) });
-                  }}
-                  className={INPUT} placeholder="Present" />
-              </div>
-              <div>
-                <label className={LABEL}>Years (auto)</label>
-                <input type="number" step="0.5" min="0" value={exp.years}
-                  onChange={e => setExp(i, { years: parseFloat(e.target.value) || 0 })}
-                  className={INPUT} />
-              </div>
+            <div style={{display:'grid', gridTemplateColumns:'2fr 2fr 1fr', gap:8, marginBottom:8}}>
+              <div><label style={LABEL}>Start Date</label>
+                <input value={exp.start_date} onChange={e => { const start_date=e.target.value; const computed=calcYears(start_date,exp.end_date); setExp(i,{start_date,...(computed!==null?{years:computed}:{})}); }} placeholder="Sep 2023" style={INPUT} /></div>
+              <div><label style={LABEL}>End Date</label>
+                <input value={exp.end_date} onChange={e => { const end_date=e.target.value; const computed=calcYears(exp.start_date,end_date); setExp(i,{end_date,...(computed!==null?{years:computed}:{})}); }} placeholder="Present" style={INPUT} /></div>
+              <div><label style={LABEL}>Years (auto)</label>
+                <input type="number" step="0.5" min="0" value={exp.years} onChange={e => setExp(i, { years: parseFloat(e.target.value)||0 })} style={INPUT} /></div>
             </div>
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className={LABEL}>Key Bullet Points</label>
-                <button onClick={() => addBullet(i)} className="text-[10px] text-blue-400 hover:text-blue-300">+ Add</button>
+              <div style={{display:'flex', justifyContent:'space-between', marginBottom:4}}>
+                <label style={LABEL}>Key Bullet Points</label>
+                <button onClick={() => addBullet(i)} style={{fontSize:11, color:'var(--accent)', background:'none', border:'none', cursor:'pointer'}}>+ Add</button>
               </div>
-              {(exp.bullets || []).map((b, bi) => (
-                <div key={bi} className="flex gap-2 mb-1.5 items-start">
-                  <textarea value={b}
-                    onChange={e => {
-                      setBullet(i, bi, e.target.value);
-                      e.target.style.height = "auto";
-                      e.target.style.height = e.target.scrollHeight + "px";
-                    }}
-                    ref={el => {
-                      if (el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; }
-                    }}
-                    rows={1}
-                    className={INPUT + " flex-1 resize-none leading-snug overflow-hidden"}
-                    placeholder="Led pipeline migration to Spark…" />
-                  <button onClick={() => rmBullet(i, bi)} className="text-slate-600 hover:text-red-400 mt-2">
-                    <Trash2 size={13} />
-                  </button>
+              {(exp.bullets||[]).map((b,bi) => (
+                <div key={bi} style={{display:'flex', gap:6, marginBottom:6, alignItems:'flex-start'}}>
+                  <textarea value={b} onChange={e => { setBullet(i,bi,e.target.value); e.target.style.height='auto'; e.target.style.height=e.target.scrollHeight+'px'; }}
+                    ref={el => { if(el){el.style.height='auto';el.style.height=el.scrollHeight+'px';} }}
+                    rows={1} style={{...INPUT, flex:1, resize:'none', lineHeight:1.4, overflow:'hidden'}} placeholder="Led pipeline migration to Spark…" />
+                  <button onClick={() => rmBullet(i,bi)} style={{color:'var(--text-muted)', background:'none', border:'none', cursor:'pointer', marginTop:8}}><Trash2 size={13} /></button>
                 </div>
               ))}
             </div>
-            <button onClick={() => rmExp(i)} className="text-[11px] text-red-500 hover:text-red-400 flex items-center gap-1">
-              <Trash2 size={11} /> Remove Role
-            </button>
+            <button onClick={() => rmExp(i)} style={{fontSize:12, color:'#f87171', background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:4, marginTop:4}}><Trash2 size={11} /> Remove Role</button>
           </div>
         ))}
       </div>
 
       {/* Education */}
-      <div className={SECTION}>
-        <div className="flex items-center justify-between">
-          <button onClick={() => toggleCollapse("edu")} className="flex items-center gap-2 text-left">
-            {collapsed.has("edu") ? <ChevronRight size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
-            <GraduationCap size={14} className="text-green-400" />
-            <span className="text-sm font-semibold text-white">Education</span>
-            <span className="text-xs text-slate-500">({profile.education.length})</span>
+      <div style={CARD}>
+        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12}}>
+          <button onClick={() => toggleCollapse('edu')} style={{display:'flex', alignItems:'center', gap:8, background:'none', border:'none', cursor:'pointer', padding:0}}>
+            {collapsed.has('edu') ? <ChevronRight size={14} style={{color:'var(--text-muted)'}} /> : <ChevronDown size={14} style={{color:'var(--text-muted)'}} />}
+            <GraduationCap size={14} style={{color:'#34d399'}} />
+            <span style={{fontSize:13, fontWeight:600, color:'var(--text-primary)'}}>Education</span>
+            <span style={{fontSize:12, color:'var(--text-muted)'}}>({profile.education.length})</span>
           </button>
-          {!collapsed.has("edu") && <button onClick={addEdu} className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300">
-            <Plus size={12} /> Add
-          </button>}
+          {!collapsed.has('edu') && <button onClick={addEdu} style={{fontSize:12, color:'var(--accent)', background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:4}}><Plus size={12} /> Add</button>}
         </div>
-        {!collapsed.has("edu") && profile.education.map((edu, i) => (
-          <div key={i} className="grid grid-cols-3 gap-2 items-end">
-            <div>
-              <label className={LABEL}>Degree</label>
-              <input value={edu.degree} onChange={e => setEdu(i, { degree: e.target.value })}
-                className={INPUT} placeholder="M.S. Information Systems" />
-            </div>
-            <div>
-              <label className={LABEL}>School</label>
-              <input value={edu.school} onChange={e => setEdu(i, { school: e.target.value })}
-                className={INPUT} placeholder="Saint Louis University" />
-            </div>
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <label className={LABEL}>Year</label>
-                <input value={edu.year} onChange={e => setEdu(i, { year: e.target.value })}
-                  className={INPUT} placeholder="2018" />
-              </div>
-              <button onClick={() => rmEdu(i)} className="text-slate-600 hover:text-red-400 mt-5">
-                <Trash2 size={13} />
-              </button>
+        {!collapsed.has('edu') && profile.education.map((edu,i) => (
+          <div key={i} style={{display:'grid', gridTemplateColumns:'1fr 1fr auto', gap:8, alignItems:'flex-end', marginBottom:8}}>
+            <div><label style={LABEL}>Degree</label><input value={edu.degree} onChange={e => setEdu(i,{degree:e.target.value})} placeholder="M.S. Information Systems" style={INPUT} /></div>
+            <div><label style={LABEL}>School</label><input value={edu.school} onChange={e => setEdu(i,{school:e.target.value})} placeholder="Saint Louis University" style={INPUT} /></div>
+            <div style={{display:'flex', gap:8, alignItems:'flex-end'}}>
+              <div><label style={LABEL}>Year</label><input value={edu.year} onChange={e => setEdu(i,{year:e.target.value})} placeholder="2025" style={{...INPUT, width:80}} /></div>
+              <button onClick={() => rmEdu(i)} style={{color:'var(--text-muted)', background:'none', border:'none', cursor:'pointer', marginBottom:2}}><Trash2 size={13} /></button>
             </div>
           </div>
         ))}
-        {!collapsed.has("edu") && profile.education.length === 0 && <p className="text-xs text-slate-600 text-center py-2">No education added</p>}
+        {!collapsed.has('edu') && profile.education.length === 0 && <p style={{fontSize:12, color:'var(--text-muted)', textAlign:'center', padding:'10px 0'}}>No education added</p>}
       </div>
 
       {/* Projects */}
-      <div className={SECTION}>
-        <div className="flex items-center justify-between">
-          <button onClick={() => toggleCollapse("prj")} className="flex items-center gap-2 text-left">
-            {collapsed.has("prj") ? <ChevronRight size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
-            <FolderOpen size={14} className="text-amber-400" />
-            <span className="text-sm font-semibold text-white">Projects</span>
-            <span className="text-xs text-slate-500">({profile.projects.length})</span>
+      <div style={CARD}>
+        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12}}>
+          <button onClick={() => toggleCollapse('prj')} style={{display:'flex', alignItems:'center', gap:8, background:'none', border:'none', cursor:'pointer', padding:0}}>
+            {collapsed.has('prj') ? <ChevronRight size={14} style={{color:'var(--text-muted)'}} /> : <ChevronDown size={14} style={{color:'var(--text-muted)'}} />}
+            <FolderOpen size={14} style={{color:'#fbbf24'}} />
+            <span style={{fontSize:13, fontWeight:600, color:'var(--text-primary)'}}>Projects</span>
+            <span style={{fontSize:12, color:'var(--text-muted)'}}>({profile.projects.length})</span>
           </button>
-          {!collapsed.has("prj") && <button onClick={addPrj} className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300">
-            <Plus size={12} /> Add
-          </button>}
+          {!collapsed.has('prj') && <button onClick={addPrj} style={{fontSize:12, color:'var(--accent)', background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:4}}><Plus size={12} /> Add</button>}
         </div>
-        {!collapsed.has("prj") && profile.projects.map((prj, i) => (
-          <div key={i} className="flex gap-2 items-start">
-            <div className="grid grid-cols-2 gap-2 flex-1">
-              <input value={prj.name} onChange={e => setPrj(i, { name: e.target.value })}
-                className={INPUT} placeholder="Real-time Pipeline" />
-              <input value={prj.description} onChange={e => setPrj(i, { description: e.target.value })}
-                className={INPUT} placeholder="Kafka → Spark → Snowflake ingestion system" />
+        {!collapsed.has('prj') && profile.projects.map((prj,i) => (
+          <div key={i} style={{display:'flex', gap:8, marginBottom:8, alignItems:'flex-start'}}>
+            <div style={{display:'grid', gridTemplateColumns:'1fr 2fr', gap:8, flex:1}}>
+              <input value={prj.name} onChange={e => setPrj(i,{name:e.target.value})} placeholder="Real-time Pipeline" style={INPUT} />
+              <input value={prj.description} onChange={e => setPrj(i,{description:e.target.value})} placeholder="Kafka → Spark → Snowflake ingestion system" style={INPUT} />
             </div>
-            <button onClick={() => rmPrj(i)} className="text-slate-600 hover:text-red-400 mt-1.5">
-              <Trash2 size={13} />
-            </button>
+            <button onClick={() => rmPrj(i)} style={{color:'var(--text-muted)', background:'none', border:'none', cursor:'pointer', marginTop:6}}><Trash2 size={13} /></button>
           </div>
         ))}
-        {!collapsed.has("prj") && profile.projects.length === 0 && <p className="text-xs text-slate-600 text-center py-2">No projects added</p>}
+        {!collapsed.has('prj') && profile.projects.length === 0 && <p style={{fontSize:12, color:'var(--text-muted)', textAlign:'center', padding:'10px 0'}}>No projects added</p>}
       </div>
 
       {/* Skills */}
@@ -418,7 +372,9 @@ export function Profile() {
       </div>
 
       <button onClick={save} disabled={saving}
-        className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm rounded-xl font-medium transition-colors">
+        style={{width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+          padding:'10px 0', background:'var(--accent)', color:'#fff', border:'none',
+          borderRadius:10, fontSize:13, fontWeight:500, cursor:'pointer', opacity:saving?0.6:1}}>
         {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <CheckCircle2 size={14} /> : <Save size={14} />}
         {saved ? "Saved!" : "Save Profile"}
       </button>

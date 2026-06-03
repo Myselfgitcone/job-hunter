@@ -318,72 +318,34 @@ export default function App() {
                 style={{ width: "100%", fontSize: 12, height: 34, borderRadius: 8 }} />
             </div>
 
-            {/* Category chips */}
+            {/* Category */}
             <span className="section-label">Category</span>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-              {["All","Engineering","Data","Product","Design"].map(o => (
-                <button key={o} onClick={() => setF("category", o)}
-                  style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, fontWeight: 500, cursor: "pointer", border: "1px solid", transition: "all 120ms",
-                    background: filters.category === o ? "var(--accent)" : "transparent",
-                    color: filters.category === o ? "#fff" : "var(--text-secondary)",
-                    borderColor: filters.category === o ? "var(--accent)" : "var(--border-default)" }}>
-                  {o}
-                </button>
-              ))}
-            </div>
+            <select value={filters.category} onChange={e => setF("category", e.target.value)} style={{ width: "100%", fontSize: 12, height: 32 }}>
+              {["All","Engineering","Data","Product","Design"].map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
 
-            {/* Experience chips */}
+            {/* Experience Level */}
             <span className="section-label">Experience Level</span>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-              {["All","Entry","Mid","Senior","Lead"].map(o => (
-                <button key={o} onClick={() => setF("exp", o)}
-                  style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, fontWeight: 500, cursor: "pointer", border: "1px solid", transition: "all 120ms",
-                    background: filters.exp === o ? "var(--accent)" : "transparent",
-                    color: filters.exp === o ? "#fff" : "var(--text-secondary)",
-                    borderColor: filters.exp === o ? "var(--accent)" : "var(--border-default)" }}>
-                  {o}
-                </button>
-              ))}
-            </div>
+            <select value={filters.exp} onChange={e => setF("exp", e.target.value)} style={{ width: "100%", fontSize: 12, height: 32 }}>
+              {["All","Entry","Mid","Senior","Lead"].map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
 
-            {/* Work type chips */}
+            {/* Work Type */}
             <span className="section-label">Work Type</span>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-              {["Any","Remote","Onsite"].map(o => (
-                <button key={o} onClick={() => setF("locType", o)}
-                  style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, fontWeight: 500, cursor: "pointer", border: "1px solid", transition: "all 120ms",
-                    background: filters.locType === o ? "var(--accent)" : "transparent",
-                    color: filters.locType === o ? "#fff" : "var(--text-secondary)",
-                    borderColor: filters.locType === o ? "var(--accent)" : "var(--border-default)" }}>
-                  {o}
-                </button>
-              ))}
-            </div>
+            <select value={filters.locType} onChange={e => setF("locType", e.target.value)} style={{ width: "100%", fontSize: 12, height: 32 }}>
+              {["Any","Remote","Onsite"].map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
 
-            {/* Posted time chips */}
-            <span className="section-label">Posted</span>
-            <div style={{ display: "flex", gap: 4 }}>
-              {["24h","48h","72h"].map(o => (
-                <button key={o} onClick={() => setF("posted", o)}
-                  style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, fontWeight: 500, cursor: "pointer", border: "1px solid", transition: "all 120ms",
-                    background: filters.posted === o ? "var(--accent)" : "transparent",
-                    color: filters.posted === o ? "#fff" : "var(--text-secondary)",
-                    borderColor: filters.posted === o ? "var(--accent)" : "var(--border-default)" }}>
-                  {o}
-                </button>
-              ))}
-            </div>
-
-            {/* Country list with counts */}
+            {/* Country */}
             <span className="section-label">Country</span>
-            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              {COUNTRIES.map(c => {
-                const active = filters.country === c;
-                const count = c === "All Countries" ? allJobs.length : allJobs.filter(j => j.country === c).length;
-                return <button key={c} onClick={() => setF("country", c)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", height: 28, padding: "0 8px", borderRadius: 6, fontSize: 12, color: active ? "var(--text-primary)" : "var(--text-secondary)", background: active ? "var(--bg-elevated)" : "transparent", transition: "all 120ms ease" }}>
-                  <span>{c}</span><span className="mono" style={{ fontSize: 10, color: "var(--text-muted)" }}>{count}</span>
-                </button>;
-              })}
+            <select value={filters.country} onChange={e => setF("country", e.target.value)} style={{ width: "100%", fontSize: 12, height: 32 }}>
+              {COUNTRIES.map(c => <option key={c} value={c}>{c === "All Countries" ? "All Countries (" + allJobs.length + ")" : c + " (" + allJobs.filter(j => j.country === c).length + ")"}</option>)}
+            </select>
+
+            {/* Posted time chips — stays as chips, easier to toggle */}
+            <span className="section-label">Posted</span>
+            <div style={{ display: "flex", gap: 2, background: "var(--bg-base)", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: 2 }}>
+              {["24h","48h","72h"].map(o => <button key={o} onClick={() => setF("posted", o)} className={"seg-btn" + (filters.posted === o ? " active" : "")}>{o}</button>)}
             </div>
 
             {/* Source */}

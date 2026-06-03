@@ -17,7 +17,7 @@ type ViewMode = "list" | "kanban";
 type Filters = { posted: string; country: string; locType: string; source: string; status: string; role: string; exp: string; category: string };
 
 const COUNTRIES = ["All Countries", "USA", "India", "Remote"];
-const SOURCES = ["All Sources","Lever","Ashby","HiringCafe","Netflix"];
+const SOURCES = ["All Sources","Lever","Ashby","HiringCafe"];
 const STATUS_ROWS = [
   { id: "all",       label: "All",       color: "var(--st-new)" },
   { id: "new",       label: "New",       color: "var(--st-new)" },

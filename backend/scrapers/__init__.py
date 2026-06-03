@@ -27,8 +27,7 @@ import asyncio
 from scrapers import (
     # greenhouse,  # temporarily disabled
     lever, ashby,
-    # google_jobs, apple_jobs, meta_jobs,  # covered by HiringCafe
-    netflix_jobs,
+    # google_jobs, apple_jobs, meta_jobs, netflix_jobs,  # covered by HiringCafe
     hiringcafe,
 )
 
@@ -61,10 +60,10 @@ async def run_all_scrapers(settings: dict) -> list[dict]:
         lever.fetch(settings),
         ashby.fetch(settings),
         # ── Direct company pages ───────────────────────────────────────────
-        # google_jobs.fetch(settings),  # covered by HiringCafe
-        # apple_jobs.fetch(settings),   # covered by HiringCafe
-        # meta_jobs.fetch(settings),    # covered by HiringCafe
-        netflix_jobs.fetch(settings),
+        # google_jobs.fetch(settings),   # covered by HiringCafe
+        # apple_jobs.fetch(settings),    # covered by HiringCafe
+        # meta_jobs.fetch(settings),     # covered by HiringCafe
+        # netflix_jobs.fetch(settings),  # covered by HiringCafe
         # ── HiringCafe last (lowest priority, but widest ATS coverage) ─────
         hiringcafe.fetch(settings),
         return_exceptions=True,

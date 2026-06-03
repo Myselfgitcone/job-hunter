@@ -282,13 +282,14 @@ export default function App() {
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
       <aside style={{ width: 208, flexShrink: 0, background: "var(--bg-surface)", borderRight: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column", height: "100%" }}>
-        <div style={{ height: 52, flexShrink: 0, display: "flex", alignItems: "center", gap: 9, padding: "0 14px", borderBottom: "1px solid var(--border-subtle)" }}>
-          <div style={{ width: 26, height: 26, borderRadius: 7, background: "linear-gradient(135deg,var(--accent),#1d4ed8)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 12px rgba(59,130,246,0.4)" }}>
-            <Ic d={IC.target} size={14} color="#fff" />
+        <div style={{ height: 58, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, borderBottom: "1px solid var(--border-subtle)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <div style={{ width: 22, height: 22, borderRadius: 6, background: "linear-gradient(135deg,var(--accent),#1d4ed8)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 10px rgba(59,130,246,0.4)" }}>
+              <Ic d={IC.target} size={12} color="#fff" />
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "-0.01em" }}>Job Hunter</div>
           </div>
-          <div style={{ lineHeight: 1.2 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: "-0.01em" }}>Job Hunter</div>
-          </div>
+          <div style={{ fontSize: 9.5, color: "var(--text-muted)", letterSpacing: "0.02em" }}>Hunt smarter, not harder</div>
         </div>
         <nav style={{ display: "flex", flexDirection: "column", gap: 2, padding: "10px 10px 8px" }}>
           {navItems.map(n => {

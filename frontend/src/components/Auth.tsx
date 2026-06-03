@@ -261,84 +261,84 @@ export function Auth({ onSuccess }: Props) {
         <div style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: 460 }}>
 
           {/* Tagline + Headline */}
-          <div style={{ marginBottom: 28 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.2em", color: "#3b82f6", textTransform: "uppercase", marginBottom: 10 }}>
+          <div style={{ marginBottom: 32 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.2em", color: "#3b82f6", textTransform: "uppercase", marginBottom: 12 }}>
               Hunt Smarter, Not Harder
             </div>
-            <h2 style={{ fontSize: 34, fontWeight: 800, color: "#fff", lineHeight: 1.2, letterSpacing: "-0.03em", margin: 0 }}>
+            <h2 style={{ fontSize: 40, fontWeight: 800, color: "#fff", lineHeight: 1.2, letterSpacing: "-0.03em", margin: 0 }}>
               Your AI-powered<br />job search engine
             </h2>
           </div>
 
           {/* Divider */}
-          <div style={{ height: 1, background: "rgba(255,255,255,0.1)", marginBottom: 24 }} />
+          <div style={{ height: 1, background: "rgba(255,255,255,0.1)", marginBottom: 28 }} />
 
           {/* WHAT'S WAITING FOR YOU */}
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.18em", color: "rgba(255,255,255,0.3)", textTransform: "uppercase", marginBottom: 20 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.18em", color: "rgba(255,255,255,0.3)", textTransform: "uppercase", marginBottom: 22 }}>
             What's waiting for you
           </div>
 
           {/* 4 Feature rows */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 20, marginBottom: 28 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 24, marginBottom: 32 }}>
             {[
               {
-                icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>,
+                icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>,
                 title: "Auto-scrape on your schedule",
                 desc: "New jobs arrive every hour automatically, or trigger a run anytime with one click.",
                 badge: null,
               },
               {
-                icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="1.5" fill="#34d399" stroke="none"/></svg>,
+                icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="1.5" fill="#34d399" stroke="none"/></svg>,
                 title: "AI fit score on every job",
                 desc: "Each job card shows a 0–100 match score. Filter by threshold — only open what's worth it.",
                 badge: null,
               },
               {
-                icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>,
+                icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>,
                 title: "Resume tailored per job",
                 desc: "ATS score before & after. Keywords rewritten for each specific JD.",
                 badge: null,
               },
               {
-                icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+                icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
                 title: "Auto Apply",
                 desc: "Review, tailor & submit — your application queue, managed for you.",
                 badge: "Coming Soon",
               },
             ].map(f => (
-              <div key={f.title} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-                <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+              <div key={f.title} style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+                <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
                   {f.icon}
                 </div>
                 <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                    <span style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0" }}>{f.title}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                    <span style={{ fontSize: 16, fontWeight: 700, color: "#e2e8f0" }}>{f.title}</span>
                     {f.badge && (
-                      <span style={{ fontSize: 10, fontWeight: 700, background: "rgba(251,191,36,0.15)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.3)", borderRadius: 6, padding: "2px 7px", letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, background: "rgba(251,191,36,0.15)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.3)", borderRadius: 6, padding: "2px 8px", letterSpacing: "0.05em", textTransform: "uppercase" }}>
                         {f.badge}
                       </span>
                     )}
                   </div>
-                  <div style={{ fontSize: 12.5, color: "rgba(255,255,255,0.42)", lineHeight: 1.6 }}>{f.desc}</div>
+                  <div style={{ fontSize: 14, color: "rgba(255,255,255,0.45)", lineHeight: 1.65 }}>{f.desc}</div>
                 </div>
               </div>
             ))}
           </div>
 
           {/* Divider */}
-          <div style={{ height: 1, background: "rgba(255,255,255,0.1)", marginBottom: 20 }} />
+          <div style={{ height: 1, background: "rgba(255,255,255,0.1)", marginBottom: 22 }} />
 
           {/* LIVE heading */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.15em", color: "#fff", textTransform: "uppercase" }}>Live</span>
-            <span style={{ position: "relative", display: "inline-flex", width: 9, height: 9 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+            <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.15em", color: "#fff", textTransform: "uppercase" }}>Live</span>
+            <span style={{ position: "relative", display: "inline-flex", width: 10, height: 10 }}>
               <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#22c55e", animation: "liveBlink 1.4s ease-in-out infinite" }} />
               <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#22c55e" }} />
             </span>
           </div>
 
           {/* 5-cell stats row */}
-          <div style={{ display: "flex", borderRadius: 12, overflow: "hidden", border: "1px solid rgba(255,255,255,0.1)" }}>
+          <div style={{ display: "flex", borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.1)" }}>
             {[
               {
                 value: liveStats?.last_scrape_mins_ago != null
@@ -360,12 +360,12 @@ export function Auth({ onSuccess }: Props) {
               { value: <span style={{ color: "#4ade80" }}>⚡</span>, label: "Auto Apply" },
             ].map((s, i) => (
               <div key={s.label} style={{
-                flex: 1, padding: "14px 8px", textAlign: "center",
+                flex: 1, padding: "16px 8px", textAlign: "center",
                 background: "rgba(255,255,255,0.04)",
                 borderLeft: i > 0 ? "1px solid rgba(255,255,255,0.08)" : "none",
               }}>
-                <div style={{ fontSize: 16, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", lineHeight: 1.2 }}>{s.value}</div>
-                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.38)", marginTop: 4, fontWeight: 500, lineHeight: 1.3 }}>{s.label}</div>
+                <div style={{ fontSize: 19, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", lineHeight: 1.2 }}>{s.value}</div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.38)", marginTop: 5, fontWeight: 500, lineHeight: 1.3 }}>{s.label}</div>
               </div>
             ))}
           </div>

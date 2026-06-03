@@ -464,7 +464,7 @@ export default function App() {
       {view === "settings"  && <div style={{ flex: 1, overflowY: "auto" }}><Settings /></div>}
 
       {view === "jobs" && (
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
           {/* Full-width top bar: scrape + filters */}
           <Topbar
             scraping={scraping} scrapeMsg={scrapeMsg} lastScraped={lastScrapedDisplay}

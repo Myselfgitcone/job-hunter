@@ -705,7 +705,7 @@ function Topbar({ scraping, scrapeMsg, lastScraped, onScrape, count, viewMode, s
   }, [allJobs]);
 
   return (
-    <div style={{ flexShrink: 0, borderBottom: "1px solid var(--border-default)", background: "var(--bg-surface)", boxShadow: "var(--shadow-1)" }}>
+    <div style={{ flexShrink: 0, borderBottom: "1px solid var(--border-default)", background: "var(--bg-surface)", boxShadow: "var(--shadow-1)", position: "relative", zIndex: 50 }}>
       {/* Row 1: Scrape + view toggle */}
       <div style={{ height: 48, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", borderBottom: "1px solid var(--border-subtle)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>

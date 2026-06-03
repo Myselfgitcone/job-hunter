@@ -478,6 +478,42 @@ async def public_job_count():
         count = result.scalar() or 0
     return {"count": count}
 
+@app.get("/api/stats/today")
+async def public_today_stats():
+    """Public endpoint — live stats for login page (no auth needed)."""
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    async with SessionLocal() as db:
+        # Jobs added today
+        added_r = await db.execute(
+            select(func.count()).select_from(Job).where(Job.scraped_at.like(f"{today}%"))
+        )
+        added_today = added_r.scalar() or 0
+        # Most recent scrape timestamp
+        last_r = await db.execute(
+            select(Job.scraped_at).order_by(Job.scraped_at.desc()).limit(1)
+        )
+        last_scraped_at = last_r.scalar()
+        # Best ATS match score
+        score_r = await db.execute(
+            select(func.max(Job.ats_score_before)).select_from(Job)
+        )
+        best_score = score_r.scalar()
+
+    mins_ago = None
+    if last_scraped_at:
+        try:
+            last_dt = datetime.fromisoformat(last_scraped_at.replace("Z", "+00:00"))
+            mins_ago = max(0, int((datetime.now(timezone.utc) - last_dt).total_seconds() / 60))
+        except Exception:
+            pass
+
+    return {
+        "added_today": added_today,
+        "last_scrape_mins_ago": mins_ago,
+        "best_match_score": best_score,
+    }
+
 @app.get("/api/jobs")
 async def list_jobs(
     user_id:    str            = Depends(get_current_user_id),

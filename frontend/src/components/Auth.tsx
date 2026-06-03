@@ -71,17 +71,21 @@ export function Auth({ onSuccess }: Props) {
   const [jobCount, setJobCount]     = useState<number>(
     parseInt(localStorage.getItem("jh_job_count") || "0", 10)
   );
+  const [liveStats, setLiveStats]   = useState<{
+    added_today: number;
+    last_scrape_mins_ago: number | null;
+    best_match_score: number | null;
+  } | null>(null);
 
   useEffect(() => {
     const BASE = (import.meta.env.VITE_API_URL || "");
     fetch(`${BASE}/api/jobs/count`)
       .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (d?.count) {
-          setJobCount(d.count);
-          localStorage.setItem("jh_job_count", String(d.count));
-        }
-      })
+      .then(d => { if (d?.count) { setJobCount(d.count); localStorage.setItem("jh_job_count", String(d.count)); } })
+      .catch(() => {});
+    fetch(`${BASE}/api/stats/today`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setLiveStats(d); })
       .catch(() => {});
   }, []);
 
@@ -237,64 +241,150 @@ export function Auth({ onSuccess }: Props) {
         </div>
       </div>
 
-      {/* ══════════════════════════════════════════
-          RIGHT — Brand panel
-      ══════════════════════════════════════════ */}
+      {/* RIGHT — Brand panel */}
       <div style={{
         width: "50%", flexShrink: 0,
         background: "linear-gradient(155deg, #0c1a3a 0%, #0f2051 45%, #081020 100%)",
         display: "flex", flexDirection: "column",
         justifyContent: "center",
         position: "relative", overflow: "hidden",
-        padding: "52px 64px",
+        padding: "48px 60px",
       }}>
         <PulseRings />
 
-        {/* Big logo mark */}
-        <div style={{ position: "relative", zIndex: 1, marginBottom: 36 }}>
-          <div style={{
-            width: 160, height: 160,
-            borderRadius: "50%",
-            background: "rgba(37,99,235,0.1)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            border: "1px solid rgba(37,99,235,0.25)",
-            boxShadow: "0 0 80px rgba(37,99,235,0.3), 0 0 160px rgba(37,99,235,0.1)",
-          }}>
-            <BullseyeLogo size={100} color="#3b82f6" />
-          </div>
-        </div>
+        <div style={{ position: "relative", zIndex: 1 }}>
 
-        {/* Headline */}
-        <div style={{ position: "relative", zIndex: 1, textAlign: "center", maxWidth: 400 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.18em", color: "#3b82f6", textTransform: "uppercase", marginBottom: 16 }}>
-            Hunt Smarter, Not Harder
+          {/* Tagline + Headline */}
+          <div style={{ marginBottom: 32 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.2em", color: "#3b82f6", textTransform: "uppercase", marginBottom: 10 }}>
+              Hunt Smarter, Not Harder
+            </div>
+            <h2 style={{ fontSize: 28, fontWeight: 800, color: "#fff", lineHeight: 1.2, letterSpacing: "-0.03em", margin: 0 }}>
+              Your AI-powered<br />job search engine
+            </h2>
           </div>
-          <h2 style={{ fontSize: 30, fontWeight: 800, color: "#fff", lineHeight: 1.2, letterSpacing: "-0.03em", margin: "0 0 16px" }}>
-            Your AI-powered<br />job search engine
-          </h2>
-          <p style={{ fontSize: 14.5, color: "rgba(255,255,255,0.5)", lineHeight: 1.75, margin: "0 0 40px" }}>
-            Automatically scrapes thousands of jobs,<br />
-            qualifies matches, and tailors your resume —<br />
-            so every application counts.
-          </p>
 
-          {/* Stats */}
-          <div style={{ display: "flex", gap: 0, borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)" }}>
-            <div style={{ flex: 1, padding: "18px 14px", textAlign: "center", background: "rgba(255,255,255,0.04)" }}>
-              <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em" }}>
+          {/* Divider */}
+          <div style={{ height: 1, background: "rgba(255,255,255,0.08)", marginBottom: 24 }} />
+
+          {/* HOW IT WORKS */}
+          <div style={{ marginBottom: 28 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.15em", color: "rgba(255,255,255,0.3)", textTransform: "uppercase", marginBottom: 16 }}>
+              How it works
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {[
+                { n: "1", label: "Scrape",  desc: "Jobs pulled nightly from 10+ boards" },
+                { n: "2", label: "Qualify", desc: "AI scores every match 0–100" },
+                { n: "3", label: "Apply",   desc: "Review, tailor & submit in one place" },
+              ].map(step => (
+                <div key={step.n} style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                  <div style={{
+                    width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+                    background: "rgba(37,99,235,0.2)", border: "1px solid rgba(59,130,246,0.4)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 12, fontWeight: 800, color: "#60a5fa",
+                  }}>
+                    {step.n}
+                  </div>
+                  <div>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0", marginRight: 8 }}>{step.label}</span>
+                    <span style={{ fontSize: 12.5, color: "rgba(255,255,255,0.4)" }}>{step.desc}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div style={{ height: 1, background: "rgba(255,255,255,0.08)", marginBottom: 24 }} />
+
+          {/* LIVE */}
+          <div style={{ marginBottom: 28 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.15em", color: "rgba(255,255,255,0.3)", textTransform: "uppercase" }}>Live</div>
+              {/* Pulsing green dot */}
+              <div style={{ position: "relative", width: 7, height: 7 }}>
+                <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#22c55e", animation: "livePulse 2s ease-in-out infinite" }} />
+                <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#22c55e" }} />
+              </div>
+              <style>{`@keyframes livePulse { 0%,100%{transform:scale(1);opacity:.4} 50%{transform:scale(2.2);opacity:0} }`}</style>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {/* Last scrape */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="9"/>
+                    <polyline points="12 7 12 12 15 14"/>
+                  </svg>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginBottom: 1 }}>Last scrape</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>
+                    {liveStats?.last_scrape_mins_ago != null
+                      ? liveStats.last_scrape_mins_ago < 60
+                        ? `${liveStats.last_scrape_mins_ago} min ago`
+                        : `${Math.round(liveStats.last_scrape_mins_ago / 60)}h ago`
+                      : "—"}
+                  </div>
+                </div>
+              </div>
+              {/* Added today */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
+                    <polyline points="16 7 22 7 22 13"/>
+                  </svg>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginBottom: 1 }}>Added today</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>
+                    {liveStats ? `${liveStats.added_today.toLocaleString()} new jobs` : "—"}
+                  </div>
+                </div>
+              </div>
+              {/* Best match */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <circle cx="12" cy="12" r="5.5"/>
+                    <circle cx="12" cy="12" r="1.5" fill="#f59e0b" stroke="none"/>
+                  </svg>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginBottom: 1 }}>Best match score</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>
+                    {liveStats?.best_match_score != null ? `${liveStats.best_match_score}%` : "—"}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div style={{ height: 1, background: "rgba(255,255,255,0.08)", marginBottom: 24 }} />
+
+          {/* Stats bar */}
+          <div style={{ display: "flex", gap: 0, borderRadius: 12, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ flex: 1, padding: "14px 12px", textAlign: "center", background: "rgba(255,255,255,0.04)" }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em" }}>
                 {jobCount > 0 ? <><Counter to={jobCount} />+</> : "—"}
               </div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 3, fontWeight: 500 }}>Jobs scraped</div>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 2, fontWeight: 500 }}>Jobs scraped</div>
             </div>
-            <div style={{ flex: 1, padding: "18px 14px", textAlign: "center", background: "rgba(255,255,255,0.04)", borderLeft: "1px solid rgba(255,255,255,0.07)" }}>
-              <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em" }}>10+</div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 3, fontWeight: 500 }}>Job boards</div>
+            <div style={{ flex: 1, padding: "14px 12px", textAlign: "center", background: "rgba(255,255,255,0.04)", borderLeft: "1px solid rgba(255,255,255,0.07)" }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em" }}>10+</div>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 2, fontWeight: 500 }}>Job boards</div>
             </div>
-            <div style={{ flex: 1, padding: "18px 14px", textAlign: "center", background: "rgba(255,255,255,0.04)", borderLeft: "1px solid rgba(255,255,255,0.07)" }}>
-              <div style={{ fontSize: 20, fontWeight: 800, color: "#4ade80", letterSpacing: "-0.03em" }}>⚡</div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 3, fontWeight: 500 }}>Auto Apply</div>
+            <div style={{ flex: 1, padding: "14px 12px", textAlign: "center", background: "rgba(255,255,255,0.04)", borderLeft: "1px solid rgba(255,255,255,0.07)" }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#4ade80" }}>⚡</div>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 2, fontWeight: 500 }}>Auto Apply</div>
             </div>
           </div>
+
         </div>
       </div>
     </div>

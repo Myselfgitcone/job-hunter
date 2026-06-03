@@ -63,6 +63,8 @@ export function Settings() {
   const [showTgToken, setShowTgToken] = useState(false);
   const [cronExpr, setCronExpr] = useState("0 * * * *");
   const [cronMsg, setCronMsg]   = useState("");
+  const [scraping, setScraping] = useState(false);
+  const [scrapeResult, setScrapeResult] = useState<string>("");
 
   const [schedulerStatus, setSchedulerStatus] = useState<any>(null);
 
@@ -77,6 +79,18 @@ export function Settings() {
     api.getSchedulerStatus().then(setSchedulerStatus).catch(() => {});
   }, []);
 
+  const handleRunNow = async () => {
+    setScraping(true); setScrapeResult("");
+    try {
+      await api.runScraperNow();
+      setScrapeResult("✅ Scraper triggered! Check Railway logs — takes 3–5 min.");
+    } catch (e: any) {
+      setScrapeResult(`❌ ${e.message}`);
+    } finally {
+      setScraping(false);
+    }
+  };
+
   const handleTgTest = async () => {
     if (!tgToken || !tgChatId) { setTgStatus({ok:false, msg:"Enter both token and chat ID first"}); return; }
     setTgTesting(true); setTgStatus(null);
@@ -90,6 +104,7 @@ export function Settings() {
       setTgTesting(false);
     }
   };
+
 
   const handleSave = async () => {
     setSaving(true); setSaved(false);
@@ -330,8 +345,14 @@ export function Settings() {
             style={{background:'var(--bg-elevated)',border:'1px solid var(--border-default)',color:'var(--text-primary)'}}>
             Update
           </button>
+          <button onClick={handleRunNow} disabled={scraping}
+            className="px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
+            style={{background:'var(--accent)',color:'#fff',border:'none',opacity:scraping?0.7:1,cursor:scraping?'wait':'pointer'}}>
+            {scraping ? <><Loader2 size={13} className="animate-spin inline mr-1"/>Running…</> : '▶ Run Now'}
+          </button>
         </div>
         {cronMsg && <p className="text-xs text-green-400">{cronMsg}</p>}
+        {scrapeResult && <p className="text-xs" style={{color: scrapeResult.startsWith('✅') ? '#34d399' : '#f87171'}}>{scrapeResult}</p>}
         <p className="text-[11px]" style={{color:'var(--text-muted)'}}>
           <code>0 * * * *</code> = every 1h · <code>0 */6 * * *</code> = every 6h · <code>0 8 * * *</code> = daily 8am
         </p>

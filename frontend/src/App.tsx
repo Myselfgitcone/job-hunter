@@ -189,22 +189,32 @@ export default function App() {
   }, [allJobs]);
 
   // Dynamic source list — sorted by count, only sources that have jobs
+  const DEFAULT_SOURCES = [
+    "Greenhouse","Lever","LinkedIn","Workday","Indeed","Dice",
+    "Ashby","SmartRecruiters","BambooHR","Recruitee","Workable",
+    "Remotive","Google","TheMuse",
+  ];
   const SOURCES = useMemo(() => {
-    const srcs = Object.entries(sourceCounts)
+    const scraped = Object.entries(sourceCounts)
       .sort((a, b) => b[1] - a[1])
       .map(([src]) => src);
-    return ["All Sources", ...srcs];
+    // merge: scraped first (sorted by count), then defaults not already in list
+    const merged = [...scraped, ...DEFAULT_SOURCES.filter(s => !scraped.includes(s))];
+    return merged;
   }, [sourceCounts]);
 
-  // Dynamic country list — built from actual job data
+  const DEFAULT_COUNTRIES = ["India","USA","Remote","UK","Canada","Australia","Germany","Singapore","Netherlands","Ireland"];
+  // Dynamic country list — always includes defaults, scraped data merged in sorted by count
   const COUNTRIES = useMemo(() => {
     const counts: Record<string, number> = {};
     allJobs.forEach(j => { if (j.country) counts[j.country] = (counts[j.country] || 0) + 1; });
-    const countries = Object.entries(counts)
+    const scraped = Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
       .map(([c]) => c);
-    return ["All Countries", ...countries];
+    const merged = [...scraped, ...DEFAULT_COUNTRIES.filter(c => !scraped.includes(c))];
+    return merged;
   }, [allJobs]);
+
 
   const filteredJobs = useMemo(() => {
     const now = Date.now();
@@ -767,14 +777,9 @@ function Topbar({ scraping, scrapeMsg, lastScraped, onScrape, count, viewMode, s
         <FilterDropdown label="Category"  options={["Engineering","Data","Product","Design"]}           selected={filters.categories} onToggle={v => toggleArr("categories", v)} />
         <FilterDropdown label="Level"     options={["Entry","Mid","Senior","Lead"]}                     selected={filters.exps}       onToggle={v => toggleArr("exps", v)} />
         <FilterDropdown label="Type"      options={["Remote","Onsite","Hybrid"]}                        selected={filters.locTypes}   onToggle={v => toggleArr("locTypes", v)} />
-        <FilterDropdown label="Country" options={
-          COUNTRIES.length > 0 ? COUNTRIES :
-          ["USA","Canada","UK","India","Remote","Australia","Germany","Singapore","Netherlands","Ireland"]
-        } selected={filters.countries} onToggle={v => toggleArr("countries", v)} countMap={countryCounts} />
-        <FilterDropdown label="Source" options={
-          SOURCES.length > 0 ? SOURCES :
-          ["Greenhouse","Workday","Lever","LinkedIn","Dice","Ashby","SmartRecruiters","BambooHR","Recruitee","Workable","Remotive","Google","Indeed","TheMuse"]
-        } selected={filters.sources} onToggle={v => toggleArr("sources", v)} countMap={sourceCounts} />
+        <FilterDropdown label="Country" options={COUNTRIES} selected={filters.countries} onToggle={v => toggleArr("countries", v)} countMap={countryCounts} />
+        <FilterDropdown label="Source"  options={SOURCES}   selected={filters.sources}   onToggle={v => toggleArr("sources", v)}   countMap={sourceCounts} />
+
 
         <div style={{ width: 1, height: 18, background: "var(--border-subtle)", flexShrink: 0, margin: "0 2px" }} />
 

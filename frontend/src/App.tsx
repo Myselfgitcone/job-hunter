@@ -310,16 +310,6 @@ export default function App() {
             <select value={filters.source} onChange={e => setF("source", e.target.value)} style={{ width: "100%", fontSize: 12, height: 32 }}>
               {SOURCES.map(s => <option key={s} value={s}>{s === "All Sources" ? "All Sources (" + allJobs.length + ")" : s + " (" + (sourceCounts[s] || 0) + ")"}</option>)}
             </select>
-            <span className="section-label">Status</span>
-            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              {STATUS_ROWS.map(s => {
-                const active = filters.status === s.id;
-                return <button key={s.id} onClick={() => setF("status", s.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", height: 30, padding: "0 8px", borderRadius: 8, fontSize: 12.5, color: active ? "var(--text-primary)" : "var(--text-secondary)", background: active ? "var(--bg-elevated)" : "transparent", transition: "all 120ms ease" }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 7, height: 7, borderRadius: 999, background: s.color }} />{s.label}</span>
-                  <span className="mono" style={{ fontSize: 10, color: "var(--text-muted)" }}>{statusCounts[s.id] || 0}</span>
-                </button>;
-              })}
-            </div>
             {filtersActive && <button onClick={() => setFilters({ posted: "72h", country: "All Countries", locType: "Any", source: "All Sources", status: "all" })} className="clear-btn" style={{ marginTop: 14, fontSize: 11, color: "var(--text-muted)", padding: "4px 6px", borderRadius: 6, transition: "all 120ms ease" }}>Clear filters</button>}
           </div>
         )}

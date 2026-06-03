@@ -210,6 +210,7 @@ textarea { resize: none; }
 /* ── M3 INPUTS ───────────────────────────────────────────────────────────── */
 input[type="text"], input[type="email"], input[type="tel"], input[type="number"],
 input[type="date"], input[type="datetime-local"], input[type="password"],
+input:not([type]),
 textarea, select {
   background: var(--bg-elevated);
   border: 1px solid var(--border-default);
@@ -228,6 +229,7 @@ input:focus, textarea:focus, select:focus {
 :root.light input[type="text"], :root.light input[type="email"],
 :root.light input[type="password"], :root.light input[type="number"],
 :root.light input[type="date"], :root.light input[type="tel"],
+:root.light input:not([type]),
 :root.light textarea, :root.light select {
   background-color: #ffffff;
   border-color: #dadce0;

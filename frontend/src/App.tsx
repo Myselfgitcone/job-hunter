@@ -282,14 +282,18 @@ export default function App() {
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
       <aside style={{ width: 208, flexShrink: 0, background: "var(--bg-surface)", borderRight: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column", height: "100%" }}>
-        <div style={{ height: 58, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, borderBottom: "1px solid var(--border-subtle)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <div style={{ width: 22, height: 22, borderRadius: 6, background: "linear-gradient(135deg,var(--accent),#1d4ed8)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 10px rgba(59,130,246,0.4)" }}>
-              <Ic d={IC.target} size={12} color="#fff" />
+        <div style={{ height: 62, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, borderBottom: "1px solid var(--border-subtle)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+              <circle cx="11" cy="11" r="8.5" stroke="#3b82f6" strokeWidth="2.2"/>
+              <circle cx="11" cy="11" r="2.8" fill="#3b82f6"/>
+            </svg>
+            <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.01em" }}>
+              <span style={{ color: "var(--text-primary)" }}>Job </span>
+              <span style={{ color: "#3b82f6" }}>Hunter</span>
             </div>
-            <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "-0.01em" }}>Job Hunter</div>
           </div>
-          <div style={{ fontSize: 9.5, color: "var(--text-muted)", letterSpacing: "0.02em" }}>Hunt Smarter, Not Harder</div>
+          <div style={{ fontSize: 9, color: "var(--text-muted)", letterSpacing: "0.08em", textTransform: "uppercase" }}>Hunt Smarter, Not Harder</div>
         </div>
         <nav style={{ display: "flex", flexDirection: "column", gap: 2, padding: "10px 10px 8px" }}>
           {navItems.map(n => {
@@ -384,11 +388,15 @@ export default function App() {
           <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 16, padding: "36px 40px", maxWidth: 520, width: "100%", boxShadow: "0 24px 80px rgba(0,0,0,0.5)" }}>
             {/* Logo + title */}
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
-              <div style={{ width: 40, height: 40, borderRadius: 10, background: "linear-gradient(135deg,var(--accent),#1d4ed8)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 20px rgba(59,130,246,0.4)" }}>
-                <Ic d={IC.target} size={20} color="#fff" />
-              </div>
+              <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
+                <circle cx="22" cy="22" r="17" stroke="#3b82f6" strokeWidth="3.5"/>
+                <circle cx="22" cy="22" r="5.5" fill="#3b82f6"/>
+              </svg>
               <div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>Welcome to Job Hunter</div>
+                <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em" }}>
+                  <span style={{ color: "var(--text-primary)" }}>Welcome to Job </span>
+                  <span style={{ color: "#3b82f6" }}>Hunter</span>
+                </div>
                 <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>Your AI-powered job search assistant</div>
               </div>
             </div>

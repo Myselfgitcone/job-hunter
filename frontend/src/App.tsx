@@ -17,7 +17,7 @@ import { Onboarding } from "./components/Onboarding";
 
 type View = "jobs" | "dashboard" | "profile" | "settings";
 type ViewMode = "list" | "kanban";
-type Filters = { posted: string; countries: string[]; locTypes: string[]; sources: string[]; status: string; role: string; exps: string[]; categories: string[]; };
+type Filters = { posted: string; countries: string[]; locTypes: string[]; sources: string[]; status: string; role: string; exps: string[]; categories: string[]; minScore: number; };
 
 // SOURCES and COUNTRIES are now dynamic — built from actual jobs (see useMemo below)
 // SOURCES is now dynamic — built from actual jobs (see useMemo below)
@@ -126,7 +126,7 @@ export default function App() {
   };
 
   const [filters, setFilters] = useState<Filters>({
-    posted: "72h", countries: [], locTypes: [], sources: [], status: "all", role: "", exps: [], categories: [],
+    posted: "72h", countries: [], locTypes: [], sources: [], status: "all", role: "", exps: [], categories: [], minScore: 0,
   });
   const [myRolesOnly, setMyRolesOnly] = useState(true);
 
@@ -275,6 +275,11 @@ export default function App() {
         };
         if (!filters.exps.some(e => EXP[e]?.test(t))) return false;
       }
+      // Match score filter
+      if (filters.minScore > 0) {
+        const score = (j.qualify_result as any)?.score ?? null;
+        if (score === null || score < filters.minScore) return false;
+      }
       if (filters.status !== "all" && j.status !== filters.status) return false;
       // Countries (multi-select)
       if (filters.countries.length > 0 && !filters.countries.includes(j.country || "")) return false;
@@ -327,7 +332,7 @@ export default function App() {
 
   // Resets only filters — does NOT delete any jobs
   const handleResetFilters = () => {
-    setFilters({ posted: "72h", countries: [], locTypes: [], sources: [], status: "all", role: "", exps: [], categories: [] });
+    setFilters({ posted: "72h", countries: [], locTypes: [], sources: [], status: "all", role: "", exps: [], categories: [], minScore: 0 });
     setSearch("");
     setMyRolesOnly(true);
   };
@@ -375,7 +380,7 @@ export default function App() {
   // Expose nav to Settings component for "Go to Profile" link
   useEffect(() => { (window as any).__navToProfile = () => setView("profile"); }, []);
   const handleNav = (v: string) => { if (v === "tailor") { setTailorOpen(true); return; } setView(v as View); };
-  const filtersActive = filters.posted !== "72h" || filters.countries.length > 0 || filters.locTypes.length > 0 || filters.sources.length > 0 || filters.status !== "all" || filters.role !== "" || filters.exps.length > 0 || filters.categories.length > 0 || search.trim() !== "";
+  const filtersActive = filters.posted !== "72h" || filters.countries.length > 0 || filters.locTypes.length > 0 || filters.sources.length > 0 || filters.status !== "all" || filters.role !== "" || filters.exps.length > 0 || filters.categories.length > 0 || filters.minScore > 0 || search.trim() !== "";
   const navItems = [
     { id: "jobs", label: "Jobs", ic: IC.search },
     { id: "dashboard", label: "Dashboard", ic: IC.dash },
@@ -480,6 +485,7 @@ export default function App() {
             filters={filters} setF={setF} toggleArr={toggleArr}
             SOURCES={SOURCES.filter(s => s !== "All Sources")}
             COUNTRIES={COUNTRIES.filter(c => c !== "All Countries")}
+            setMinScore={(v) => setFilters(f => ({ ...f, minScore: v }))}
             allJobs={allJobs} sourceCounts={sourceCounts}
             filtersActive={filtersActive} search={search} setSearch={setSearch}
             searchRef={searchRef} onClearAll={handleResetFilters}
@@ -595,6 +601,7 @@ type TopbarProps = {
   filtersActive: boolean; search: string; setSearch: (v: string) => void;
   searchRef: React.RefObject<HTMLInputElement>; onClearAll: () => void;
   myRolesOnly: boolean; setMyRolesOnly: (v: boolean) => void; userRoles: string[];
+  setMinScore: (v: number) => void;
 };
 
 // ── FilterDropdown: checkbox multi-select popover ─────────────────────────────
@@ -703,7 +710,7 @@ function FilterDropdown({
 function Topbar({ scraping, scrapeMsg, lastScraped, onScrape, count, viewMode, setViewMode, IC,
   filters, setF, toggleArr, SOURCES, COUNTRIES, allJobs, sourceCounts,
   filtersActive, search, setSearch, searchRef, onClearAll,
-  myRolesOnly, setMyRolesOnly, userRoles }: TopbarProps) {
+  myRolesOnly, setMyRolesOnly, userRoles, setMinScore }: TopbarProps) {
 
   const countryCounts = React.useMemo(() => {
     const m: Record<string,number> = {};
@@ -777,6 +784,20 @@ function Topbar({ scraping, scrapeMsg, lastScraped, onScrape, count, viewMode, s
         <FilterDropdown label="Country" options={COUNTRIES} selected={filters.countries} onToggle={v => toggleArr("countries", v)} countMap={countryCounts} />
         <FilterDropdown label="Source"  options={SOURCES}   selected={filters.sources}   onToggle={v => toggleArr("sources", v)}   countMap={sourceCounts} />
 
+        <div style={{ width: 1, height: 18, background: "var(--border-subtle)", flexShrink: 0, margin: "0 2px" }} />
+
+        {/* Match score filter */}
+        <div style={{ display: "flex", gap: 2, background: "var(--bg-elevated)", borderRadius: 6, padding: 2, border: "1px solid var(--border-subtle)", flexShrink: 0, alignItems: "center" }}>
+          <span style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 4px", fontWeight: 600 }}>Match</span>
+          {([0, 60, 70, 80, 90] as const).map(v => (
+            <button key={v} onClick={() => setMinScore(v)} style={{
+              height: 22, padding: "0 7px", borderRadius: 4, fontSize: 11, fontWeight: 500,
+              border: "none", cursor: "pointer", transition: "all 100ms ease",
+              background: filters.minScore === v ? "var(--accent)" : "transparent",
+              color: filters.minScore === v ? "#fff" : "var(--text-muted)",
+            }}>{v === 0 ? "Any" : `≥${v}%`}</button>
+          ))}
+        </div>
 
         <div style={{ width: 1, height: 18, background: "var(--border-subtle)", flexShrink: 0, margin: "0 2px" }} />
 

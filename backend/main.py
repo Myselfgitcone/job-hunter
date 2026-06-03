@@ -123,12 +123,12 @@ async def _run_scrape() -> dict:
     # Telegram digest
     try:
         import telegram_bot
-        async with SessionLocal() as db:
-            total_result = await db.execute(select(func.count()).select_from(Job))
-            total_jobs = total_result.scalar() or 0
-        await telegram_bot.send_scrape_digest(new_jobs_for_tg, total_jobs)
+        await telegram_bot.send_scrape_digest(new_jobs_for_tg)
     except Exception as te:
         print(f"[Scrape] Telegram notify failed: {te}")
+
+    # Auto-qualify new jobs in background (fire-and-forget)
+    asyncio.create_task(_run_qualify_all())
 
     return {"new_jobs": new_count, "total_scraped": len(scraped), "deleted_old": deleted, "scraped_at": now_iso}
 
@@ -1659,49 +1659,55 @@ async def qualify_job_endpoint(job_id: str, user_id: str = Depends(get_current_u
 @app.post("/api/jobs/qualify-all")
 async def qualify_all_jobs(background_tasks: BackgroundTasks, user_id: str = Depends(get_current_user_id)):
     """Qualify all unanalyzed jobs in the background."""
-    async def _run():
-        from ai.qualify import qualify_job
+    background_tasks.add_task(_run_qualify_all)
+    return {"message": "Qualification running in background"}
 
-        async with SessionLocal() as db:
-            settings_result = await db.execute(select(Setting))
-            settings = {r.key: r.value for r in settings_result.scalars().all()}
 
-        api_key = settings.get("ai_api_key", "")
-        provider = settings.get("ai_provider", "openrouter")
-        model = settings.get("ai_model", "anthropic/claude-sonnet-4-5")
-        profile_raw = settings.get("profile", "{}")
+async def _run_qualify_all():
+    """Standalone qualify-all — usable from scheduler and endpoint."""
+    from ai.qualify import qualify_job
+
+    async with SessionLocal() as db:
+        settings_result = await db.execute(select(Setting))
+        settings = {r.key: r.value for r in settings_result.scalars().all()}
+
+    api_key = settings.get("ai_api_key", "")
+    provider = settings.get("ai_provider", "openrouter")
+    model = settings.get("ai_model", "anthropic/claude-sonnet-4-5")
+    profile_raw = settings.get("profile", "{}")
+    try:
+        profile = json.loads(profile_raw)
+    except Exception:
+        profile = {}
+
+    if not api_key or not profile:
+        print("[Qualify] No API key or profile — skipping auto-qualify")
+        return
+
+    async with SessionLocal() as db:
+        result = await db.execute(
+            select(Job).where(Job.qualify_result == None, Job.status == "new")
+        )
+        jobs = result.scalars().all()
+
+    print(f"[Qualify] Auto-qualifying {len(jobs)} new jobs…")
+    qualified = disqualified = 0
+
+    for job in jobs:
         try:
-            profile = json.loads(profile_raw)
-        except Exception:
-            profile = {}
-
-        if not api_key or not profile:
-            print("[Qualify] No API key or profile — skipping")
-            return
-
-        async with SessionLocal() as db:
-            result = await db.execute(
-                select(Job).where(Job.qualify_result == None, Job.status == "new")
+            res = await qualify_job(
+                profile=profile,
+                job_title=job.title,
+                job_description=job.description or "",
+                company=job.company,
+                location=job.location or "",
+                api_key=api_key,
+                provider=provider,
+                model=model,
             )
-            jobs = result.scalars().all()
-
-        print(f"[Qualify] Analyzing {len(jobs)} unqualified jobs…")
-        qualified = disqualified = 0
-
-        for job in jobs:
-            try:
-                res = await qualify_job(
-                    profile=profile,
-                    job_title=job.title,
-                    job_description=job.description or "",
-                    company=job.company,
-                    location=job.location or "",
-                    api_key=api_key,
-                    provider=provider,
-                    model=model,
-                )
-                async with SessionLocal() as db2:
-                    j = await db2.get(Job, job.id)
+            async with SessionLocal() as db2:
+                j = await db2.get(Job, job.id)
+                if j:
                     j.qualify_result = json.dumps(res)
                     score = res.get("score", 0)
                     if res.get("qualified") and score >= 80:
@@ -1709,18 +1715,15 @@ async def qualify_all_jobs(background_tasks: BackgroundTasks, user_id: str = Dep
                     elif res.get("qualified") and score >= 60:
                         j.priority = 1
                     await db2.commit()
-                if res.get("qualified"):
-                    qualified += 1
-                else:
-                    disqualified += 1
-            except Exception as e:
-                print(f"[Qualify] Error on {job.id}: {e}")
-            await asyncio.sleep(0.3)  # rate limit
+            if res.get("qualified"):
+                qualified += 1
+            else:
+                disqualified += 1
+        except Exception as e:
+            print(f"[Qualify] Error on {job.id}: {e}")
+        await asyncio.sleep(0.3)
 
-        print(f"[Qualify] Done. Qualified={qualified} Disqualified={disqualified}")
-
-    background_tasks.add_task(_run)
-    return {"message": "Qualification running in background"}
+    print(f"[Qualify] Done. Qualified={qualified} Disqualified={disqualified}")
 
 
 

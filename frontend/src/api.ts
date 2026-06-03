@@ -180,4 +180,10 @@ export const api = {
 
   qualifyJob: (id: string) => req<QualifyResult>(`/api/jobs/${id}/qualify`, { method: "POST" }),
   qualifyAll: () => req("/api/jobs/qualify-all", { method: "POST" }),
+
+  testTelegram: (token: string, chat_id: string) =>
+    req<{ ok: boolean; message: string }>("/api/telegram/test", {
+      method: "POST",
+      body: JSON.stringify({ token, chat_id }),
+    }),
 };

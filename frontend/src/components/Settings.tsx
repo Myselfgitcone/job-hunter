@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { api } from "../api";
 import type { Settings as SettingsType } from "../types";
-import { Save, Loader2, Eye, EyeOff, CheckCircle2 } from "lucide-react";
+import { Save, Loader2, Eye, EyeOff, CheckCircle2, Send, BotMessageSquare } from "lucide-react";
 
 const PROVIDERS = [
   {
@@ -55,18 +55,41 @@ export function Settings() {
   const [saving, setSaving]     = useState(false);
   const [saved, setSaved]       = useState(false);
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
+  const [tgToken,   setTgToken]   = useState("");
+  const [tgChatId,  setTgChatId]  = useState("");
+  const [tgTesting, setTgTesting] = useState(false);
+  const [tgStatus,  setTgStatus]  = useState<{ok:boolean;msg:string}|null>(null);
+  const [tgConfigured, setTgConfigured] = useState(false);
+  const [showTgToken, setShowTgToken] = useState(false);
   const [cronExpr, setCronExpr] = useState("0 * * * *");
   const [cronMsg, setCronMsg]   = useState("");
+
   const [schedulerStatus, setSchedulerStatus] = useState<any>(null);
 
   useEffect(() => {
     api.getSettings().then(data => {
       setForm(data);
       if ((data as any).auto_scrape_cron) setCronExpr((data as any).auto_scrape_cron);
+      setTgConfigured(!!(data as any).telegram_configured);
+      if ((data as any).telegram_chat_id) setTgChatId((data as any).telegram_chat_id);
       setLoading(false);
     });
     api.getSchedulerStatus().then(setSchedulerStatus).catch(() => {});
   }, []);
+
+  const handleTgTest = async () => {
+    if (!tgToken || !tgChatId) { setTgStatus({ok:false, msg:"Enter both token and chat ID first"}); return; }
+    setTgTesting(true); setTgStatus(null);
+    try {
+      const res = await api.testTelegram(tgToken, tgChatId);
+      setTgStatus({ok: res.ok, msg: res.message});
+      if (res.ok) setTgConfigured(true);
+    } catch(e: any) {
+      setTgStatus({ok: false, msg: e.message});
+    } finally {
+      setTgTesting(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true); setSaved(false);
@@ -190,7 +213,90 @@ export function Settings() {
       </section>
 
 
-      {/* Schedule */}
+      {/* ── Telegram Bot ─────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <div className="flex items-center gap-2">
+          <BotMessageSquare size={16} style={{color:'var(--accent)'}} />
+          <h3 className="text-xs font-semibold uppercase tracking-wider" style={{color:'var(--text-muted)'}}>Telegram Notifications</h3>
+          {tgConfigured && (
+            <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full"
+              style={{background:'rgba(52,211,153,0.15)',color:'#34d399'}}>
+              <CheckCircle2 size={10}/> Connected
+            </span>
+          )}
+        </div>
+
+        {/* How to get token + chat ID */}
+        <div className="rounded-xl p-4 text-xs space-y-1" style={{background:'var(--bg-elevated)',border:'1px solid var(--border-default)'}}>
+          <p className="font-semibold" style={{color:'var(--text-primary)'}}>📱 Setup in 2 steps:</p>
+          <p style={{color:'var(--text-muted)'}}>1. Open Telegram → search <code className="px-1 rounded" style={{background:'var(--bg-surface)'}}>@BotFather</code> → send <code className="px-1 rounded" style={{background:'var(--bg-surface)'}}>/newbot</code> → copy the <strong>token</strong></p>
+          <p style={{color:'var(--text-muted)'}}>2. Search <code className="px-1 rounded" style={{background:'var(--bg-surface)'}}>@userinfobot</code> → send any message → copy your <strong>Chat ID</strong> (a number like <code className="px-1 rounded" style={{background:'var(--bg-surface)'}}>123456789</code>)</p>
+        </div>
+
+        <div className="space-y-2">
+          {/* Bot Token */}
+          <div className="relative">
+            <label className="block text-[11px] font-medium mb-1" style={{color:'var(--text-muted)'}}>Bot Token</label>
+            <div className="relative">
+              <input
+                type={showTgToken ? "text" : "password"}
+                value={tgToken}
+                onChange={e => setTgToken(e.target.value)}
+                placeholder={tgConfigured ? "••••••••••••••••• (saved)" : "1234567890:ABCDEFabcdef..."}
+                style={{width:'100%', paddingRight:36}}
+              />
+              <button onClick={() => setShowTgToken(s => !s)}
+                className="absolute right-2.5 top-2.5" style={{color:'var(--text-muted)'}}>
+                {showTgToken ? <EyeOff size={14}/> : <Eye size={14}/>}
+              </button>
+            </div>
+          </div>
+
+          {/* Chat ID */}
+          <div>
+            <label className="block text-[11px] font-medium mb-1" style={{color:'var(--text-muted)'}}>Chat ID</label>
+            <input
+              type="text"
+              value={tgChatId}
+              onChange={e => setTgChatId(e.target.value)}
+              placeholder="123456789"
+              style={{width:'100%'}}
+            />
+          </div>
+
+          {/* Test button */}
+          <button
+            onClick={handleTgTest}
+            disabled={tgTesting}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all w-full justify-center"
+            style={{
+              background: tgConfigured ? 'rgba(52,211,153,0.15)' : 'var(--accent-tonal)',
+              border: `1px solid ${tgConfigured ? 'rgba(52,211,153,0.4)' : 'var(--accent)'}`,
+              color: tgConfigured ? '#34d399' : 'var(--accent)',
+              opacity: tgTesting ? 0.7 : 1,
+            }}
+          >
+            {tgTesting
+              ? <><Loader2 size={14} className="animate-spin"/> Testing…</>
+              : <><Send size={14}/> {tgConfigured ? "Re-test & Send Test Message" : "Test & Connect Bot"}</>
+            }
+          </button>
+
+          {/* Status */}
+          {tgStatus && (
+            <p className="text-xs font-medium flex items-center gap-1.5" style={{color: tgStatus.ok ? '#34d399' : '#f87171'}}>
+              {tgStatus.ok ? <CheckCircle2 size={12}/> : '⚠️'} {tgStatus.msg}
+            </p>
+          )}
+        </div>
+
+        <div className="text-[11px] space-y-0.5" style={{color:'var(--text-muted)'}}>
+          <p>🔔 You'll receive alerts when:</p>
+          <p>  · New jobs are scraped &nbsp;·&nbsp; A job moves to Interview &nbsp;·&nbsp; Daily summary (8am)</p>
+        </div>
+      </section>
+
+      {/* ── Schedule ─────────────────────────────────────────────────── */}
       <section className="space-y-3">
         <h3 className="text-xs font-semibold uppercase tracking-wider" style={{color:'var(--text-muted)'}}>Auto-Scrape Schedule</h3>
         {schedulerStatus && (

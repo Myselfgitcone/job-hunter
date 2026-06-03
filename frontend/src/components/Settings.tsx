@@ -100,11 +100,12 @@ export function Settings() {
       {/* Header + Save */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-white">Settings</h2>
-          <p className="text-sm text-slate-500 mt-0.5">AI provider · job sources · schedule</p>
+          <h2 className="text-lg font-semibold" style={{color:'var(--text-primary)'}}>Settings</h2>
+          <p className="text-sm mt-0.5" style={{color:'var(--text-muted)'}}>AI provider · job sources · schedule</p>
         </div>
         <button onClick={handleSave} disabled={saving}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm rounded-lg font-medium transition-colors">
+          className="flex items-center gap-2 px-5 py-2 rounded-full text-sm font-medium transition-all"
+          style={{background:'var(--accent)',color:'#fff',opacity:saving?0.6:1}}>
           {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <CheckCircle2 size={14} /> : <Save size={14} />}
           {saved ? "Saved!" : "Save Settings"}
         </button>
@@ -112,35 +113,34 @@ export function Settings() {
 
       {/* AI Providers — all in one */}
       <section className="space-y-3">
-        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">AI Provider</h3>
-        <p className="text-xs text-slate-500">Select which provider to use. Enter its API key. Only one is active at a time.</p>
+        <h3 className="text-xs font-semibold uppercase tracking-wider" style={{color:'var(--text-muted)'}}>AI Provider</h3>
+        <p className="text-xs" style={{color:'var(--text-muted)'}}>Select which provider to use. Enter its API key. Only one is active at a time.</p>
         <div className="space-y-2">
           {PROVIDERS.map(p => {
             const isActive = form.ai_provider === p.value;
             return (
-              <div key={p.value}
-                className={`border rounded-xl p-4 transition-all cursor-pointer ${
-                  isActive
-                    ? "border-blue-500/60 bg-blue-950/20"
-                    : "border-slate-700/60 bg-slate-800/40 hover:border-slate-600"
-                }`}
+            <div key={p.value}
+                className="border rounded-xl p-4 transition-all cursor-pointer"
+                style={{
+                  borderColor: isActive ? 'var(--accent)' : 'var(--border-default)',
+                  background: isActive ? 'var(--bg-selected)' : 'var(--bg-elevated)',
+                }}
                 onClick={() => setForm(f => ({ ...f, ai_provider: p.value, ai_model: p.models[0] }))}
-              >
+            >
                 {/* Row 1: radio + name + hint */}
                 <div className="flex items-start gap-3">
-                  <div className={`mt-0.5 w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
-                    isActive ? "border-blue-400" : "border-slate-600"
-                  }`}>
-                    {isActive && <div className="w-2 h-2 rounded-full bg-blue-400" />}
+                  <div className={`mt-0.5 w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center`}
+                    style={{borderColor: isActive ? 'var(--accent)' : 'var(--border-default)'}}>
+                    {isActive && <div className="w-2 h-2 rounded-full" style={{background:'var(--accent)'}} />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className={`text-sm font-semibold ${isActive ? "text-white" : "text-slate-300"}`}>{p.label}</span>
+                      <span className="text-sm font-semibold" style={{color:'var(--text-primary)'}}>{p.label}</span>
                       <a href={p.url} target="_blank" rel="noopener noreferrer"
                         onClick={e => e.stopPropagation()}
-                        className="text-[10px] text-blue-400 hover:underline">Get key →</a>
+                        className="text-[10px] hover:underline" style={{color:'var(--accent)'}}>Get key →</a>
                     </div>
-                    <p className="text-xs text-slate-500 mt-0.5">{p.hint}</p>
+                    <p className="text-xs mt-0.5" style={{color:'var(--text-muted)'}}>{p.hint}</p>
                   </div>
                 </div>
 
@@ -154,21 +154,22 @@ export function Settings() {
                         value={form.ai_api_key}
                         onChange={e => setForm(f => ({ ...f, ai_api_key: e.target.value }))}
                         placeholder={p.placeholder}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 pr-9 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
+                        style={{width:'100%'}}
                       />
                       <button
                         onClick={() => setShowKeys(s => ({ ...s, [p.value]: !s[p.value] }))}
-                        className="absolute right-2.5 top-2.5 text-slate-500 hover:text-slate-300"
+                        className="absolute right-2.5 top-2.5"
+                        style={{color:'var(--text-muted)'}}
                       >
                         {showKeys[p.value] ? <EyeOff size={14} /> : <Eye size={14} />}
                       </button>
                     </div>
-                    {/* Model */}
-                    <div className="flex gap-2">
+                    {/* Model selector */}
+                    <div className="flex gap-2 items-center">
                       <select
                         value={form.ai_model}
                         onChange={e => setForm(f => ({ ...f, ai_model: e.target.value }))}
-                        className="flex-1 bg-slate-900 border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500"
+                        style={{flex:1}}
                       >
                         {p.models.map(m => <option key={m} value={m}>{m}</option>)}
                       </select>
@@ -176,8 +177,8 @@ export function Settings() {
                         type="text"
                         value={form.ai_model}
                         onChange={e => setForm(f => ({ ...f, ai_model: e.target.value }))}
-                        placeholder="custom model ID"
-                        className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-blue-500"
+                        placeholder="or type custom model ID"
+                        style={{flex:1}}
                       />
                     </div>
                   </div>
@@ -191,7 +192,7 @@ export function Settings() {
 
       {/* Schedule */}
       <section className="space-y-3">
-        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Auto-Scrape Schedule</h3>
+        <h3 className="text-xs font-semibold uppercase tracking-wider" style={{color:'var(--text-muted)'}}>Auto-Scrape Schedule</h3>
         {schedulerStatus && (
           <div className="flex items-center gap-2 text-xs">
             <span className={`w-1.5 h-1.5 rounded-full ${schedulerStatus.running ? "bg-green-400" : "bg-red-400"}`} />
@@ -205,11 +206,12 @@ export function Settings() {
           <input
             value={cronExpr}
             onChange={e => setCronExpr(e.target.value)}
-            className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 font-mono focus:outline-none focus:border-blue-500"
             placeholder="0 * * * *"
+            style={{flex:1, fontFamily:'monospace'}}
           />
           <button onClick={handleCronSave}
-            className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-sm text-white rounded-lg transition-colors whitespace-nowrap">
+            className="px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
+            style={{background:'var(--bg-elevated)',border:'1px solid var(--border-default)',color:'var(--text-primary)'}}>
             Update
           </button>
         </div>

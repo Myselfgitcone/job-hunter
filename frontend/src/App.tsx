@@ -14,7 +14,7 @@ import { Toasts, useToasts, Spinner } from "./components/primitives";
 
 type View = "jobs" | "dashboard" | "profile" | "settings";
 type ViewMode = "list" | "kanban";
-type Filters = { posted: string; country: string; locType: string; source: string; status: string };
+type Filters = { posted: string; country: string; locType: string; source: string; status: string; role: string; exp: string };
 
 const COUNTRIES = ["All Countries", "USA", "India", "Remote"];
 const SOURCES = ["All Sources","Greenhouse","Lever","Ashby","HiringCafe","Google","Apple","Meta","Netflix"];
@@ -100,7 +100,7 @@ export default function App() {
     : "?";
 
   const [filters, setFilters]       = useState<Filters>({
-    posted: "72h", country: "All Countries", locType: "Any", source: "All Sources", status: "all",
+    posted: "72h", country: "All Countries", locType: "Any", source: "All Sources", status: "all", role: "", exp: "All",
   });
 
   const setF = (k: keyof Filters, v: string) => setFilters(f => ({ ...f, [k]: v }));
@@ -166,6 +166,15 @@ export default function App() {
     };
 
     return jobs.filter(j => {
+      if (filters.role.trim()) {
+        if (!j.title.toLowerCase().includes(filters.role.toLowerCase())) return false;
+      }
+      if (filters.exp !== "All") {
+        const t = j.title.toLowerCase();
+        if (filters.exp === "Entry"  && !/(entry|junior|jr\.?|associate|intern)/i.test(t)) return false;
+        if (filters.exp === "Mid"    && !/(mid|ii|2|intermediate)/i.test(t)) return false;
+        if (filters.exp === "Senior" && !/(senior|sr\.?|lead|principal|staff)/i.test(t)) return false;
+      }
       if (filters.status !== "all" && j.status !== filters.status) return false;
       if (filters.country !== "All Countries" && j.country !== filters.country) return false;
       if (filters.locType === "Remote" && !j.remote) return false;
@@ -251,7 +260,7 @@ export default function App() {
   // Expose nav to Settings component for "Go to Profile" link
   useEffect(() => { (window as any).__navToProfile = () => setView("profile"); }, []);
   const handleNav = (v: string) => { if (v === "tailor") { setTailorOpen(true); return; } setView(v as View); };
-  const filtersActive = filters.posted !== "72h" || filters.country !== "All Countries" || filters.locType !== "Any" || filters.source !== "All Sources" || filters.status !== "all";
+  const filtersActive = filters.posted !== "72h" || filters.country !== "All Countries" || filters.locType !== "Any" || filters.source !== "All Sources" || filters.status !== "all" || filters.role !== "" || filters.exp !== "All";
   const navItems = [
     { id: "jobs", label: "Jobs", ic: IC.search },
     { id: "dashboard", label: "Dashboard", ic: IC.dash },
@@ -290,6 +299,14 @@ export default function App() {
         </nav>
         {view === "jobs" && (
           <div style={{ flex: 1, overflowY: "auto", padding: "0 14px 16px", borderTop: "1px solid var(--border-subtle)", marginTop: 2 }}>
+            <span className="section-label">Role / Title</span>
+            <input value={filters.role} onChange={e => setF("role", e.target.value)}
+              placeholder="data engineer, PM, devops…"
+              style={{ width: "100%", fontSize: 12, height: 30, marginBottom: 8 }} />
+            <span className="section-label">Experience</span>
+            <div style={{ display: "flex", gap: 2, background: "var(--bg-base)", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: 2, marginBottom: 8 }}>
+              {["All","Entry","Mid","Senior"].map(o => <button key={o} onClick={() => setF("exp", o)} className={"seg-btn" + (filters.exp === o ? " active" : "")}>{o}</button>)}
+            </div>
             <span className="section-label">Posted Time</span>
             <div style={{ display: "flex", gap: 2, background: "var(--bg-base)", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: 2 }}>
               {["24h","48h","72h"].map(o => <button key={o} onClick={() => setF("posted", o)} className={"seg-btn" + (filters.posted === o ? " active" : "")}>{o}</button>)}
@@ -310,7 +327,7 @@ export default function App() {
             <select value={filters.source} onChange={e => setF("source", e.target.value)} style={{ width: "100%", fontSize: 12, height: 32 }}>
               {SOURCES.map(s => <option key={s} value={s}>{s === "All Sources" ? "All Sources (" + allJobs.length + ")" : s + " (" + (sourceCounts[s] || 0) + ")"}</option>)}
             </select>
-            {filtersActive && <button onClick={() => setFilters({ posted: "72h", country: "All Countries", locType: "Any", source: "All Sources", status: "all" })} className="clear-btn" style={{ marginTop: 14, fontSize: 11, color: "var(--text-muted)", padding: "4px 6px", borderRadius: 6, transition: "all 120ms ease" }}>Clear filters</button>}
+            {filtersActive && <button onClick={() => setFilters({ posted: "72h", country: "All Countries", locType: "Any", source: "All Sources", status: "all", role: "", exp: "All" })} className="clear-btn" style={{ marginTop: 14, fontSize: 11, color: "var(--text-muted)", padding: "4px 6px", borderRadius: 6, transition: "all 120ms ease" }}>Clear filters</button>}
           </div>
         )}
         {view !== "jobs" && <div style={{ flex: 1 }} />}

@@ -68,7 +68,12 @@ async def _auto_scrape():
 
 @app.on_event("startup")
 async def startup():
-    await init_db()
+    try:
+        await init_db()
+        print("[Startup] DB initialized")
+    except Exception as e:
+        print(f"[Startup] DB init error (will retry on requests): {e}")
+
 
     # ── Auto-migrate: add any missing columns safely ──────────────────────
     new_columns = [

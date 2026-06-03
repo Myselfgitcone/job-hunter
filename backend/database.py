@@ -5,6 +5,7 @@ from datetime import datetime
 import json
 
 import os
+import ssl
 
 _raw_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./jobs.db")
 
@@ -18,11 +19,20 @@ else:
 
 _is_postgres = DATABASE_URL.startswith("postgresql")
 
-# PostgreSQL needs no connect_args; SQLite needs check_same_thread=False
-_connect_args = {} if _is_postgres else {"check_same_thread": False}
+# PostgreSQL on Railway external URL requires SSL; SQLite needs check_same_thread=False
+if _is_postgres:
+    _connect_args = {"ssl": "require"}
+else:
+    _connect_args = {"check_same_thread": False}
 
-engine = create_async_engine(DATABASE_URL, echo=False, connect_args=_connect_args)
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    connect_args=_connect_args,
+    pool_pre_ping=True,   # verify connections before use
+)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
 
 
 

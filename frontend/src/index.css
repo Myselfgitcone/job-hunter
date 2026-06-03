@@ -229,7 +229,7 @@ input:focus, textarea:focus, select:focus {
 :root.light input[type="password"], :root.light input[type="number"],
 :root.light input[type="date"], :root.light input[type="tel"],
 :root.light textarea, :root.light select {
-  background: #ffffff;
+  background-color: #ffffff;
   border-color: #dadce0;
   color: #202124;
 }

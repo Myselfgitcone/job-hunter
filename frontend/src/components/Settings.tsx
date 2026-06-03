@@ -216,7 +216,7 @@ export function Settings() {
           </button>
         </div>
         {cronMsg && <p className="text-xs text-green-400">{cronMsg}</p>}
-        <p className="text-[11px] text-slate-600">
+        <p className="text-[11px]" style={{color:'var(--text-muted)'}}>
           <code>0 * * * *</code> = every 1h · <code>0 */6 * * *</code> = every 6h · <code>0 8 * * *</code> = daily 8am
         </p>
       </section>

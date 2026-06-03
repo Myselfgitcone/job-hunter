@@ -57,11 +57,32 @@ async def _auto_scrape():
     """Background auto-scrape task — runs on schedule."""
     print("[Scheduler] Auto-scrape starting…")
     try:
-        from fastapi.testclient import TestClient  # avoid circular import
-        import httpx as _httpx
-        async with _httpx.AsyncClient(base_url="http://localhost:8000") as client:
-            await client.post("/api/jobs/scrape", timeout=300)
-        print("[Scheduler] Auto-scrape complete.")
+        from scrapers import run_all_scrapers
+        from database import SessionLocal, Job
+        from sqlalchemy import select
+
+        settings = await _get_user_settings("default")
+        jobs = await run_all_scrapers(settings)
+
+        async with SessionLocal() as db:
+            new_count = 0
+            for job in jobs:
+                existing = await db.execute(select(Job).where(Job.url == job.get("url", "")))
+                if existing.scalar_one_or_none():
+                    continue
+                db.add(Job(**{k: v for k, v in job.items() if hasattr(Job, k)}))
+                new_count += 1
+            await db.commit()
+
+        print(f"[Scheduler] Auto-scrape complete. {new_count} new jobs saved.")
+
+        # Send Telegram notification
+        try:
+            import telegram_bot
+            await telegram_bot.send_scrape_digest(jobs)
+        except Exception as te:
+            print(f"[Scheduler] Telegram notify failed: {te}")
+
     except Exception as e:
         print(f"[Scheduler] Auto-scrape failed: {e}")
 

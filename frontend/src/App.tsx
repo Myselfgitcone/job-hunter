@@ -190,21 +190,17 @@ export default function App() {
 
   // Dynamic source list — sorted by count, only sources that have jobs
   const DEFAULT_SOURCES = [
-    "Greenhouse","Lever","LinkedIn","Workday","Indeed","Dice",
-    "Ashby","SmartRecruiters","BambooHR","Recruitee","Workable",
-    "Remotive","Google","TheMuse",
+    "LinkedIn","Indeed","Greenhouse","Lever","Workday","Dice","Remotive","Google",
   ];
   const SOURCES = useMemo(() => {
     const scraped = Object.entries(sourceCounts)
       .sort((a, b) => b[1] - a[1])
       .map(([src]) => src);
-    // merge: scraped first (sorted by count), then defaults not already in list
     const merged = [...scraped, ...DEFAULT_SOURCES.filter(s => !scraped.includes(s))];
     return merged;
   }, [sourceCounts]);
 
-  const DEFAULT_COUNTRIES = ["India","USA","Remote","UK","Canada","Australia","Germany","Singapore","Netherlands","Ireland"];
-  // Dynamic country list — always includes defaults, scraped data merged in sorted by count
+  const DEFAULT_COUNTRIES = ["India", "USA"];
   const COUNTRIES = useMemo(() => {
     const counts: Record<string, number> = {};
     allJobs.forEach(j => { if (j.country) counts[j.country] = (counts[j.country] || 0) + 1; });

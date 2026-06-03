@@ -92,6 +92,10 @@ export function Profile() {
         email:          parsed.email          || p.email,
         phone:          parsed.phone          || p.phone,
         location:       parsed.location       || p.location,
+        address:        p.address,
+        linkedin:       p.linkedin,
+        github:         p.github,
+        website:        p.website,
         visa_status:    p.visa_status,
         experience:     experience.length          ? experience        : p.experience,
         education:      parsed.education?.length   ? parsed.education  : p.education,
@@ -323,52 +327,52 @@ export function Profile() {
       </div>
 
       {/* Skills */}
-      <div className={SECTION}>
-        <button onClick={() => toggleCollapse("skills")} className="flex items-center gap-2 mb-1 w-full text-left">
-          {collapsed.has("skills") ? <ChevronRight size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
-          <Zap size={14} className="text-yellow-400" />
-          <span className="text-sm font-semibold text-white">Skills</span>
-          <span className="text-xs text-slate-500">({profile.skills.length})</span>
+      <div style={CARD}>
+
+        <button onClick={() => toggleCollapse('skills')} style={{display:'flex', alignItems:'center', gap:8, background:'none', border:'none', cursor:'pointer', padding:0, marginBottom:10, width:'100%', textAlign:'left'}}>
+          {collapsed.has('skills') ? <ChevronRight size={14} style={{color:'var(--text-muted)'}} /> : <ChevronDown size={14} style={{color:'var(--text-muted)'}} />}
+          <Zap size={14} style={{color:'#facc15'}} />
+          <span style={{fontSize:13, fontWeight:600, color:'var(--text-primary)'}}>Skills</span>
+          <span style={{fontSize:12, color:'var(--text-muted)'}}>({profile.skills.length})</span>
         </button>
-        {!collapsed.has("skills") && <>
-          <div className="flex flex-wrap gap-1.5 min-h-[32px]">
+        {!collapsed.has('skills') && <>
+          <div style={{display:'flex', flexWrap:'wrap', gap:6, minHeight:32, marginBottom:8}}>
             {profile.skills.map(s => (
-              <span key={s} className="flex items-center gap-1 px-2 py-0.5 bg-slate-700 text-slate-200 text-xs rounded-full">
+              <span key={s} style={{display:'flex', alignItems:'center', gap:4, padding:'3px 10px', background:'var(--accent-tonal)', color:'var(--accent)', fontSize:12, borderRadius:999, border:'1px solid var(--accent)'}}>
                 {s}
-                <button onClick={() => rmSkill(s)} className="text-slate-500 hover:text-red-400">×</button>
+                <button onClick={() => rmSkill(s)} style={{color:'var(--text-muted)', background:'none', border:'none', cursor:'pointer', fontSize:14, lineHeight:1}}>×</button>
               </span>
             ))}
           </div>
-          <input value={skillInput}
-            onChange={e => setSkillInput(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addSkill(skillInput); } }}
-            className={INPUT} placeholder="Type skill + Enter (Python, Spark, AWS…)" />
-          <p className="text-[10px] text-slate-600">Press Enter or comma to add</p>
-        </>}
+          <input value={skillInput} onChange={e => setSkillInput(e.target.value)}
+            onKeyDown={e => { if (e.key==='Enter'||e.key===','){e.preventDefault();addSkill(skillInput);} }}
+            placeholder="Type skill + Enter (Python, Spark, AWS…)" style={INPUT} />
+          <p style={{fontSize:11, color:'var(--text-muted)', marginTop:4}}>Press Enter or comma to add</p>
+        </> }
       </div>
 
       {/* Certifications */}
-      <div className={SECTION}>
-        <button onClick={() => toggleCollapse("certs")} className="flex items-center gap-2 mb-1 w-full text-left">
-          {collapsed.has("certs") ? <ChevronRight size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
-          <Award size={14} className="text-cyan-400" />
-          <span className="text-sm font-semibold text-white">Certifications</span>
-          <span className="text-xs text-slate-500">({profile.certifications.length})</span>
+
+      <div style={CARD}>
+        <button onClick={() => toggleCollapse('certs')} style={{display:'flex', alignItems:'center', gap:8, background:'none', border:'none', cursor:'pointer', padding:0, marginBottom:10, width:'100%', textAlign:'left'}}>
+          {collapsed.has('certs') ? <ChevronRight size={14} style={{color:'var(--text-muted)'}} /> : <ChevronDown size={14} style={{color:'var(--text-muted)'}} />}
+          <Award size={14} style={{color:'#22d3ee'}} />
+          <span style={{fontSize:13, fontWeight:600, color:'var(--text-primary)'}}>Certifications</span>
+          <span style={{fontSize:12, color:'var(--text-muted)'}}>({profile.certifications.length})</span>
         </button>
-        {!collapsed.has("certs") && <>
-          <div className="flex flex-wrap gap-1.5 min-h-[32px]">
+        {!collapsed.has('certs') && <>
+          <div style={{display:'flex', flexWrap:'wrap', gap:6, minHeight:32, marginBottom:8}}>
             {profile.certifications.map(c => (
-              <span key={c} className="flex items-center gap-1 px-2 py-0.5 bg-slate-700 text-slate-200 text-xs rounded-full">
+              <span key={c} style={{display:'flex', alignItems:'center', gap:4, padding:'3px 10px', background:'var(--bg-surface)', color:'var(--text-primary)', fontSize:12, borderRadius:999, border:'1px solid var(--border-default)'}}>
                 {c}
-                <button onClick={() => rmCert(c)} className="text-slate-500 hover:text-red-400">×</button>
+                <button onClick={() => rmCert(c)} style={{color:'var(--text-muted)', background:'none', border:'none', cursor:'pointer', fontSize:14, lineHeight:1}}>×</button>
               </span>
             ))}
           </div>
-          <input value={certInput}
-            onChange={e => setCertInput(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addCert(certInput); } }}
-            className={INPUT} placeholder="AWS Solutions Architect, Databricks DE…" />
-        </>}
+          <input value={certInput} onChange={e => setCertInput(e.target.value)}
+            onKeyDown={e => { if (e.key==='Enter'||e.key===','){e.preventDefault();addCert(certInput);} }}
+            placeholder="AWS Solutions Architect, Databricks DE…" style={INPUT} />
+        </> }
       </div>
 
       <button onClick={save} disabled={saving}

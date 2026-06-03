@@ -265,49 +265,34 @@ export function Auth({ onSuccess }: Props) {
         </div>
 
         {/* Headline */}
-        <div style={{ position: "relative", zIndex: 1, maxWidth: 420 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.18em", color: "#3b82f6", textTransform: "uppercase", marginBottom: 14 }}>
+        <div style={{ position: "relative", zIndex: 1, textAlign: "center", maxWidth: 400 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.18em", color: "#3b82f6", textTransform: "uppercase", marginBottom: 16 }}>
             Hunt Smarter, Not Harder
           </div>
-          <h2 style={{ fontSize: 36, fontWeight: 800, color: "#fff", lineHeight: 1.15, letterSpacing: "-0.03em", margin: "0 0 14px" }}>
-            Wake up to interviews,<br />
-            <span style={{ color: "#60a5fa" }}>not job boards.</span>
+          <h2 style={{ fontSize: 30, fontWeight: 800, color: "#fff", lineHeight: 1.2, letterSpacing: "-0.03em", margin: "0 0 16px" }}>
+            Your AI-powered<br />job search engine
           </h2>
-          <p style={{ fontSize: 15, color: "rgba(255,255,255,0.45)", lineHeight: 1.75, margin: "0 0 36px" }}>
-            Job Hunter scrapes thousands of openings every night,
-            qualifies the ones that fit you, and helps you apply — automatically.
+          <p style={{ fontSize: 14.5, color: "rgba(255,255,255,0.5)", lineHeight: 1.75, margin: "0 0 40px" }}>
+            Automatically scrapes thousands of jobs,<br />
+            qualifies matches, and tailors your resume —<br />
+            so every application counts.
           </p>
 
-          {/* Feature bullets */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 40 }}>
-            {[
-              { icon: "🎯", text: "AI qualifies every match with a 0–100 fit score" },
-              { icon: "📝", text: "Resume tailored to each job in one click" },
-              { icon: "⚡", text: "Auto Apply — review & submit (coming soon)" },
-              { icon: "📊", text: "Track everything: kanban, dashboard, reminders" },
-            ].map(f => (
-              <div key={f.text} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>{f.icon}</span>
-                <span style={{ fontSize: 13.5, color: "rgba(255,255,255,0.6)", lineHeight: 1.5 }}>{f.text}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Stats row */}
+          {/* Stats */}
           <div style={{ display: "flex", gap: 0, borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)" }}>
             <div style={{ flex: 1, padding: "18px 14px", textAlign: "center", background: "rgba(255,255,255,0.04)" }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums" }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em" }}>
                 {jobCount > 0 ? <><Counter to={jobCount} />+</> : "—"}
               </div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 3, fontWeight: 500 }}>Jobs indexed</div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 3, fontWeight: 500 }}>Jobs scraped</div>
             </div>
             <div style={{ flex: 1, padding: "18px 14px", textAlign: "center", background: "rgba(255,255,255,0.04)", borderLeft: "1px solid rgba(255,255,255,0.07)" }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#93c5fd", letterSpacing: "-0.01em" }}>Greenhouse</div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 3 }}>Lever · Ashby · more</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em" }}>10+</div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 3, fontWeight: 500 }}>Job boards</div>
             </div>
             <div style={{ flex: 1, padding: "18px 14px", textAlign: "center", background: "rgba(255,255,255,0.04)", borderLeft: "1px solid rgba(255,255,255,0.07)" }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#4ade80" }}>⚡ Auto Apply</div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 3 }}>Coming soon</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#4ade80", letterSpacing: "-0.03em" }}>⚡</div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 3, fontWeight: 500 }}>Auto Apply</div>
             </div>
           </div>
         </div>

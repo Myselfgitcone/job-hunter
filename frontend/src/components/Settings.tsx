@@ -204,6 +204,7 @@ export function Settings() {
         )}
         <div className="flex gap-2">
           <input
+            type="text"
             value={cronExpr}
             onChange={e => setCronExpr(e.target.value)}
             placeholder="0 * * * *"

@@ -705,7 +705,7 @@ function Topbar({ scraping, scrapeMsg, lastScraped, onScrape, count, viewMode, s
   }, [allJobs]);
 
   return (
-    <div style={{ flexShrink: 0, borderBottom: "1px solid var(--border-default)", background: "var(--bg-surface)", boxShadow: "var(--shadow-1)", position: "relative", zIndex: 50 }}>
+    <div style={{ flexShrink: 0, borderBottom: "1px solid var(--border-default)", background: "var(--bg-surface)", boxShadow: "var(--shadow-1)", position: "relative", zIndex: 50, overflow: "visible" }}>
       {/* Row 1: Scrape + view toggle */}
       <div style={{ height: 48, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", borderBottom: "1px solid var(--border-subtle)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -729,7 +729,7 @@ function Topbar({ scraping, scrapeMsg, lastScraped, onScrape, count, viewMode, s
       </div>
 
       {/* Row 2: M3 Filter chips */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 12px", height: 48, overflowX: "auto" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 12px", height: 48, overflow: "visible" }}>
 
         {/* My Roles chip */}
         {userRoles.length > 0 && (

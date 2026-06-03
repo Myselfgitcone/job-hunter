@@ -14,7 +14,7 @@ import { Toasts, useToasts, Spinner } from "./components/primitives";
 
 type View = "jobs" | "dashboard" | "profile" | "settings";
 type ViewMode = "list" | "kanban";
-type Filters = { posted: string; country: string; locType: string; source: string; status: string; role: string; exp: string };
+type Filters = { posted: string; country: string; locType: string; source: string; status: string; role: string; exp: string; category: string };
 
 const COUNTRIES = ["All Countries", "USA", "India", "Remote"];
 const SOURCES = ["All Sources","Greenhouse","Lever","Ashby","HiringCafe","Google","Apple","Meta","Netflix"];
@@ -100,7 +100,7 @@ export default function App() {
     : "?";
 
   const [filters, setFilters]       = useState<Filters>({
-    posted: "72h", country: "All Countries", locType: "Any", source: "All Sources", status: "all", role: "", exp: "All",
+    posted: "72h", country: "All Countries", locType: "Any", source: "All Sources", status: "all", role: "", exp: "All", category: "All",
   });
 
   const setF = (k: keyof Filters, v: string) => setFilters(f => ({ ...f, [k]: v }));
@@ -165,7 +165,18 @@ export default function App() {
       return isNaN(t) ? null : t;
     };
 
+    const CAT_TERMS: Record<string, string[]> = {
+      Engineering: ["engineer","developer","devops","sre","platform","infrastructure","backend","frontend","fullstack"],
+      Data:        ["data","analytics","analyst","scientist","ml","machine learning","ai","etl","pipeline","bi"],
+      Product:     ["product manager","pm","product owner","program manager"],
+      Design:      ["design","ux","ui","figma","creative"],
+    };
+
     return jobs.filter(j => {
+      if (filters.category !== "All") {
+        const terms = CAT_TERMS[filters.category] || [];
+        if (!terms.some(t => j.title.toLowerCase().includes(t))) return false;
+      }
       if (filters.role.trim()) {
         if (!j.title.toLowerCase().includes(filters.role.toLowerCase())) return false;
       }
@@ -260,7 +271,7 @@ export default function App() {
   // Expose nav to Settings component for "Go to Profile" link
   useEffect(() => { (window as any).__navToProfile = () => setView("profile"); }, []);
   const handleNav = (v: string) => { if (v === "tailor") { setTailorOpen(true); return; } setView(v as View); };
-  const filtersActive = filters.posted !== "72h" || filters.country !== "All Countries" || filters.locType !== "Any" || filters.source !== "All Sources" || filters.status !== "all" || filters.role !== "" || filters.exp !== "All";
+  const filtersActive = filters.posted !== "72h" || filters.country !== "All Countries" || filters.locType !== "Any" || filters.source !== "All Sources" || filters.status !== "all" || filters.role !== "" || filters.exp !== "All" || filters.category !== "All";
   const navItems = [
     { id: "jobs", label: "Jobs", ic: IC.search },
     { id: "dashboard", label: "Dashboard", ic: IC.dash },
@@ -298,36 +309,90 @@ export default function App() {
           </button>
         </nav>
         {view === "jobs" && (
-          <div style={{ flex: 1, overflowY: "auto", padding: "0 14px 16px", borderTop: "1px solid var(--border-subtle)", marginTop: 2 }}>
-            <span className="section-label">Role / Title</span>
-            <input value={filters.role} onChange={e => setF("role", e.target.value)}
-              placeholder="data engineer, PM, devops…"
-              style={{ width: "100%", fontSize: 12, height: 30, marginBottom: 8 }} />
-            <span className="section-label">Experience</span>
-            <div style={{ display: "flex", gap: 2, background: "var(--bg-base)", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: 2, marginBottom: 8 }}>
-              {["All","Entry","Mid","Senior"].map(o => <button key={o} onClick={() => setF("exp", o)} className={"seg-btn" + (filters.exp === o ? " active" : "")}>{o}</button>)}
+          <div style={{ flex: 1, overflowY: "auto", padding: "0 12px 16px", borderTop: "1px solid var(--border-subtle)", marginTop: 2 }}>
+
+            {/* Search */}
+            <div style={{ padding: "10px 0 6px" }}>
+              <input value={filters.role} onChange={e => setF("role", e.target.value)}
+                placeholder="🔍  Search title, role, keyword…"
+                style={{ width: "100%", fontSize: 12, height: 34, borderRadius: 8 }} />
             </div>
-            <span className="section-label">Posted Time</span>
-            <div style={{ display: "flex", gap: 2, background: "var(--bg-base)", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: 2 }}>
-              {["24h","48h","72h"].map(o => <button key={o} onClick={() => setF("posted", o)} className={"seg-btn" + (filters.posted === o ? " active" : "")}>{o}</button>)}
+
+            {/* Category chips */}
+            <span className="section-label">Category</span>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+              {["All","Engineering","Data","Product","Design"].map(o => (
+                <button key={o} onClick={() => setF("category", o)}
+                  style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, fontWeight: 500, cursor: "pointer", border: "1px solid", transition: "all 120ms",
+                    background: filters.category === o ? "var(--accent)" : "transparent",
+                    color: filters.category === o ? "#fff" : "var(--text-secondary)",
+                    borderColor: filters.category === o ? "var(--accent)" : "var(--border-default)" }}>
+                  {o}
+                </button>
+              ))}
             </div>
+
+            {/* Experience chips */}
+            <span className="section-label">Experience Level</span>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+              {["All","Entry","Mid","Senior","Lead"].map(o => (
+                <button key={o} onClick={() => setF("exp", o)}
+                  style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, fontWeight: 500, cursor: "pointer", border: "1px solid", transition: "all 120ms",
+                    background: filters.exp === o ? "var(--accent)" : "transparent",
+                    color: filters.exp === o ? "#fff" : "var(--text-secondary)",
+                    borderColor: filters.exp === o ? "var(--accent)" : "var(--border-default)" }}>
+                  {o}
+                </button>
+              ))}
+            </div>
+
+            {/* Work type chips */}
+            <span className="section-label">Work Type</span>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+              {["Any","Remote","Onsite"].map(o => (
+                <button key={o} onClick={() => setF("locType", o)}
+                  style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, fontWeight: 500, cursor: "pointer", border: "1px solid", transition: "all 120ms",
+                    background: filters.locType === o ? "var(--accent)" : "transparent",
+                    color: filters.locType === o ? "#fff" : "var(--text-secondary)",
+                    borderColor: filters.locType === o ? "var(--accent)" : "var(--border-default)" }}>
+                  {o}
+                </button>
+              ))}
+            </div>
+
+            {/* Posted time chips */}
+            <span className="section-label">Posted</span>
+            <div style={{ display: "flex", gap: 4 }}>
+              {["24h","48h","72h"].map(o => (
+                <button key={o} onClick={() => setF("posted", o)}
+                  style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, fontWeight: 500, cursor: "pointer", border: "1px solid", transition: "all 120ms",
+                    background: filters.posted === o ? "var(--accent)" : "transparent",
+                    color: filters.posted === o ? "#fff" : "var(--text-secondary)",
+                    borderColor: filters.posted === o ? "var(--accent)" : "var(--border-default)" }}>
+                  {o}
+                </button>
+              ))}
+            </div>
+
+            {/* Country list with counts */}
             <span className="section-label">Country</span>
             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
               {COUNTRIES.map(c => {
                 const active = filters.country === c;
                 const count = c === "All Countries" ? allJobs.length : allJobs.filter(j => j.country === c).length;
-                return <button key={c} onClick={() => setF("country", c)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", height: 28, padding: "0 8px", borderRadius: 6, fontSize: 12, color: active ? "var(--text-primary)" : "var(--text-secondary)", background: active ? "var(--bg-elevated)" : "transparent", transition: "all 120ms ease" }}><span>{c}</span><span className="mono" style={{ fontSize: 10, color: "var(--text-muted)" }}>{count}</span></button>;
+                return <button key={c} onClick={() => setF("country", c)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", height: 28, padding: "0 8px", borderRadius: 6, fontSize: 12, color: active ? "var(--text-primary)" : "var(--text-secondary)", background: active ? "var(--bg-elevated)" : "transparent", transition: "all 120ms ease" }}>
+                  <span>{c}</span><span className="mono" style={{ fontSize: 10, color: "var(--text-muted)" }}>{count}</span>
+                </button>;
               })}
             </div>
-            <span className="section-label">Location Type</span>
-            <div style={{ display: "flex", gap: 4 }}>
-              {["Any","Remote","Onsite"].map(o => <button key={o} onClick={() => setF("locType", o)} className={"pill-btn" + (filters.locType === o ? " active" : "")}>{o}</button>)}
-            </div>
+
+            {/* Source */}
             <span className="section-label">Source</span>
             <select value={filters.source} onChange={e => setF("source", e.target.value)} style={{ width: "100%", fontSize: 12, height: 32 }}>
               {SOURCES.map(s => <option key={s} value={s}>{s === "All Sources" ? "All Sources (" + allJobs.length + ")" : s + " (" + (sourceCounts[s] || 0) + ")"}</option>)}
             </select>
-            {filtersActive && <button onClick={() => setFilters({ posted: "72h", country: "All Countries", locType: "Any", source: "All Sources", status: "all", role: "", exp: "All" })} className="clear-btn" style={{ marginTop: 14, fontSize: 11, color: "var(--text-muted)", padding: "4px 6px", borderRadius: 6, transition: "all 120ms ease" }}>Clear filters</button>}
+
+            {filtersActive && <button onClick={() => setFilters({ posted: "72h", country: "All Countries", locType: "Any", source: "All Sources", status: "all", role: "", exp: "All", category: "All" })} className="clear-btn" style={{ marginTop: 14, fontSize: 11, color: "var(--text-muted)", padding: "4px 6px", borderRadius: 6, transition: "all 120ms ease" }}>Clear filters</button>}
           </div>
         )}
         {view !== "jobs" && <div style={{ flex: 1 }} />}

@@ -255,7 +255,7 @@ export function Auth({ onSuccess }: Props) {
         <div style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: 440 }}>
 
           {/* Tagline + Headline */}
-          <div style={{ marginBottom: 36 }}>
+          <div style={{ marginBottom: 40 }}>
             <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.2em", color: "#3b82f6", textTransform: "uppercase", marginBottom: 12 }}>
               Hunt Smarter, Not Harder
             </div>
@@ -267,103 +267,81 @@ export function Auth({ onSuccess }: Props) {
           {/* Divider */}
           <div style={{ height: 1, background: "rgba(255,255,255,0.1)", marginBottom: 32 }} />
 
-          {/* HOW IT WORKS */}
-          <div style={{ marginBottom: 32 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.15em", color: "rgba(255,255,255,0.35)", textTransform: "uppercase", marginBottom: 20 }}>
-              How it works
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-              {[
-                { n: "1", label: "Scrape",  desc: "Jobs pulled nightly from 10+ boards" },
-                { n: "2", label: "Qualify", desc: "AI scores every match 0–100" },
-                { n: "3", label: "Apply",   desc: "Review, tailor & submit in one place" },
-              ].map(step => (
-                <div key={step.n} style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                  <div style={{
-                    width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
-                    background: "rgba(37,99,235,0.2)", border: "1.5px solid rgba(59,130,246,0.5)",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 14, fontWeight: 800, color: "#60a5fa",
-                  }}>
-                    {step.n}
-                  </div>
-                  <div>
-                    <span style={{ fontSize: 15, fontWeight: 700, color: "#e2e8f0", marginRight: 10 }}>{step.label}</span>
-                    <span style={{ fontSize: 14, color: "rgba(255,255,255,0.45)" }}>{step.desc}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+          {/* LIVE heading */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+            <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.12em", color: "#fff", textTransform: "uppercase" }}>Live</span>
+            {/* Blinking live dot */}
+            <span style={{ position: "relative", display: "inline-flex", width: 10, height: 10 }}>
+              <span style={{
+                position: "absolute", inset: 0, borderRadius: "50%",
+                background: "#22c55e", animation: "liveBlink 1.2s ease-in-out infinite",
+              }} />
+              <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#22c55e" }} />
+            </span>
+            <style>{`
+              @keyframes liveBlink {
+                0%, 100% { transform: scale(1); opacity: 1; }
+                50% { transform: scale(2.5); opacity: 0; }
+              }
+            `}</style>
           </div>
 
-          {/* Divider */}
-          <div style={{ height: 1, background: "rgba(255,255,255,0.1)", marginBottom: 32 }} />
-
-          {/* LIVE */}
-          <div style={{ marginBottom: 32 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.15em", color: "rgba(255,255,255,0.35)", textTransform: "uppercase" }}>Live</div>
-              <div style={{ position: "relative", width: 8, height: 8 }}>
-                <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#22c55e", animation: "livePulse 2s ease-in-out infinite" }} />
-                <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#22c55e" }} />
-              </div>
-              <style>{`@keyframes livePulse { 0%,100%{transform:scale(1);opacity:.4} 50%{transform:scale(2.4);opacity:0} }`}</style>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {[
-                {
-                  svg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>,
-                  label: "Last scrape",
-                  value: liveStats?.last_scrape_mins_ago != null
-                    ? liveStats.last_scrape_mins_ago < 60
-                      ? `${liveStats.last_scrape_mins_ago} min ago`
-                      : `${Math.round(liveStats.last_scrape_mins_ago / 60)}h ago`
-                    : "—",
-                },
-                {
-                  svg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>,
-                  label: "Added today",
-                  value: liveStats ? `${liveStats.added_today.toLocaleString()} new jobs` : "—",
-                },
-                {
-                  svg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="1.5" fill="#f59e0b" stroke="none"/></svg>,
-                  label: "Best match score",
-                  value: liveStats?.best_match_score != null ? `${liveStats.best_match_score}%` : "—",
-                },
-              ].map(row => (
-                <div key={row.label} style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    {row.svg}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 2 }}>{row.label}</div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: "#e2e8f0" }}>{row.value}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div style={{ height: 1, background: "rgba(255,255,255,0.1)", marginBottom: 24 }} />
-
-          {/* Stats bar */}
-          <div style={{ display: "flex", gap: 0, borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.1)" }}>
+          {/* 2 equal boxes: Last scrape | Added today */}
+          <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
             {[
-              { value: jobCount > 0 ? <><Counter to={jobCount} />+</> : "—", label: "Jobs scraped" },
-              { value: "10+", label: "Job boards" },
-              { value: <span style={{ color: "#4ade80" }}>⚡</span>, label: "Auto Apply" },
-            ].map((s, i) => (
-              <div key={s.label} style={{ flex: 1, padding: "16px 14px", textAlign: "center", background: "rgba(255,255,255,0.04)", borderLeft: i > 0 ? "1px solid rgba(255,255,255,0.08)" : "none" }}>
-                <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em" }}>{s.value}</div>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 3, fontWeight: 500 }}>{s.label}</div>
+              {
+                icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>,
+                label: "Last scrape",
+                value: liveStats?.last_scrape_mins_ago != null
+                  ? liveStats.last_scrape_mins_ago < 60
+                    ? `${liveStats.last_scrape_mins_ago} min ago`
+                    : `${Math.round(liveStats.last_scrape_mins_ago / 60)}h ago`
+                  : "—",
+              },
+              {
+                icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>,
+                label: "Added today",
+                value: liveStats ? `${liveStats.added_today.toLocaleString()} new jobs` : "—",
+              },
+            ].map(box => (
+              <div key={box.label} style={{
+                flex: 1, padding: "20px 18px",
+                background: "rgba(255,255,255,0.05)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: 14,
+                display: "flex", flexDirection: "column", gap: 10,
+              }}>
+                {box.icon}
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", fontWeight: 500 }}>{box.label}</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "#e2e8f0", letterSpacing: "-0.02em" }}>{box.value}</div>
               </div>
             ))}
           </div>
 
+          {/* Stats bar — 3 equal boxes same style */}
+          <div style={{ display: "flex", gap: 12 }}>
+            {[
+              { value: jobCount > 0 ? <><Counter to={jobCount} />+</> : "—", label: "Jobs scraped", color: "#fff" },
+              { value: "10+", label: "Job boards", color: "#fff" },
+              { value: <span style={{ color: "#4ade80" }}>⚡</span>, label: "Auto Apply", color: "#fff" },
+            ].map(s => (
+              <div key={s.label} style={{
+                flex: 1, padding: "20px 18px",
+                background: "rgba(255,255,255,0.05)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: 14,
+                display: "flex", flexDirection: "column", gap: 10,
+                alignItems: "flex-start",
+              }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: s.color, letterSpacing: "-0.03em" }}>{s.value}</div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", fontWeight: 500 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
+
   );
 }
 

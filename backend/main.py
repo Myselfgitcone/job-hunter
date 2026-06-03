@@ -53,38 +53,92 @@ async def health_check():
 _scheduler = AsyncIOScheduler()
 
 
+async def _run_scrape() -> dict:
+    """Core scrape logic — shared by the scheduler and the /api/jobs/scrape endpoint."""
+    from datetime import timezone, timedelta
+
+    async with SessionLocal() as db:
+        settings_result = await db.execute(select(Setting))
+        settings = {r.key: r.value for r in settings_result.scalars().all()}
+
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+
+    from scrapers.base import CUTOFF_HOURS as _CUTOFF_H
+    cutoff_old = (now - timedelta(hours=_CUTOFF_H)).isoformat()
+    async with SessionLocal() as db:
+        old_jobs_result = await db.execute(
+            select(Job).where(
+                Job.scraped_at < cutoff_old,
+                Job.status.in_(["new", "skipped"]),
+            )
+        )
+        old_jobs = old_jobs_result.scalars().all()
+        for j in old_jobs:
+            await db.delete(j)
+        deleted = len(old_jobs)
+        await db.commit()
+    if deleted:
+        print(f"[Scrape] Deleted {deleted} jobs older than {_CUTOFF_H}h")
+
+    scraped = await run_all_scrapers(settings)
+    ALLOWED_COUNTRIES = {"USA", "India", "Remote"}
+    scraped = [j for j in scraped if j.get("country", "") in ALLOWED_COUNTRIES]
+
+    cutoff_posted = (now - timedelta(hours=_CUTOFF_H)).isoformat()
+    scraped = [j for j in scraped if not j.get("posted_at") or j["posted_at"] >= cutoff_posted]
+    print(f"[Scrape] {len(scraped)} jobs after date/country filter")
+
+    new_count = 0
+    async with SessionLocal() as db:
+        existing_result = await db.execute(select(Job.url, Job.title, Job.company))
+        existing_rows = existing_result.all()
+        existing_urls = {row.url for row in existing_rows if row.url}
+        existing_fps  = {
+            f"{(row.title or '').lower().strip()}|||{(row.company or '').lower().strip()}"
+            for row in existing_rows
+        }
+        for job_data in scraped:
+            url = job_data.get("url", "")
+            fp  = f"{(job_data.get('title','') or '').lower().strip()}|||{(job_data.get('company','') or '').lower().strip()}"
+            if (url and url in existing_urls) or fp in existing_fps:
+                continue
+            db.add(Job(id=str(uuid.uuid4()), scraped_at=now_iso, **job_data))
+            if url:
+                existing_urls.add(url)
+            existing_fps.add(fp)
+            new_count += 1
+
+        setting = await db.get(Setting, "last_scraped_at")
+        if setting:
+            setting.value = now_iso
+        else:
+            db.add(Setting(key="last_scraped_at", value=now_iso))
+        await db.commit()
+
+    print(f"[Scrape] Done — {new_count} new jobs saved.")
+
+    # Telegram digest
+    try:
+        import telegram_bot
+        await telegram_bot.send_scrape_digest(scraped)
+    except Exception as te:
+        print(f"[Scrape] Telegram notify failed: {te}")
+
+    return {"new_jobs": new_count, "total_scraped": len(scraped), "deleted_old": deleted, "scraped_at": now_iso}
+
+
 async def _auto_scrape():
     """Background auto-scrape task — runs on schedule."""
     print("[Scheduler] Auto-scrape starting…")
     try:
-        from scrapers import run_all_scrapers
-        from database import SessionLocal, Job
-        from sqlalchemy import select
-
-        settings = await _get_user_settings("default")
-        jobs = await run_all_scrapers(settings)
-
-        async with SessionLocal() as db:
-            new_count = 0
-            for job in jobs:
-                existing = await db.execute(select(Job).where(Job.url == job.get("url", "")))
-                if existing.scalar_one_or_none():
-                    continue
-                db.add(Job(**{k: v for k, v in job.items() if hasattr(Job, k)}))
-                new_count += 1
-            await db.commit()
-
-        print(f"[Scheduler] Auto-scrape complete. {new_count} new jobs saved.")
-
-        # Send Telegram notification
-        try:
-            import telegram_bot
-            await telegram_bot.send_scrape_digest(jobs)
-        except Exception as te:
-            print(f"[Scheduler] Telegram notify failed: {te}")
-
+        result = await _run_scrape()
+        print(f"[Scheduler] Auto-scrape complete: {result}")
     except Exception as e:
         print(f"[Scheduler] Auto-scrape failed: {e}")
+        import traceback; traceback.print_exc()
+
+
 
 
 @app.on_event("startup")
@@ -666,105 +720,14 @@ async def debug_google():
 
 # ── Scrape ────────────────────────────────────────────────────────────────────
 
+
 @app.post("/api/jobs/scrape")
 async def scrape_jobs(user_id: str = Depends(get_current_user_id)):
-    from datetime import timezone, timedelta
-    from sqlalchemy import delete as sa_delete
-
-    async with SessionLocal() as db:
-        settings_result = await db.execute(select(Setting))
-        settings = {r.key: r.value for r in settings_result.scalars().all()}
-
-    now = datetime.now(timezone.utc)
-    now_iso = now.isoformat()
-
-    # ── 1. Delete jobs older than 7 days (keep applied/interview forever) ──
-    from scrapers.base import CUTOFF_HOURS as _CUTOFF_H
-    cutoff_old = (now - timedelta(hours=_CUTOFF_H)).isoformat()
-    async with SessionLocal() as db:
-        old_jobs_result = await db.execute(
-            select(Job).where(
-                Job.scraped_at < cutoff_old,
-                Job.status.in_(["new", "skipped"]),
-            )
-        )
-        old_jobs = old_jobs_result.scalars().all()
-        for j in old_jobs:
-            await db.delete(j)
-        deleted = len(old_jobs)
-        await db.commit()
-    if deleted:
-        print(f"[Scrape] Deleted {deleted} jobs older than {_CUTOFF_H}h")
-
-    # ── 2. Run scrapers ──
-    scraped = await run_all_scrapers(settings)
-    new_count = 0
-
-
-    # Whitelist — USA, India, and Remote (remote jobs at US companies)
-    ALLOWED_COUNTRIES = {"USA", "India", "Remote"}
-    scraped = [j for j in scraped if j.get("country", "") in ALLOWED_COUNTRIES]
-
-    # Drop jobs with posted_at older than cutoff (stale results from scrapers)
-    cutoff_posted = (now - timedelta(hours=_CUTOFF_H)).isoformat()
-    def _posted_ok(j: dict) -> bool:
-        pa = j.get("posted_at", "")
-        if not pa:
-            return True  # no date = keep (can't tell age)
-        return pa >= cutoff_posted
-    scraped = [j for j in scraped if _posted_ok(j)]
-
-    # All filters removed — accept all titles, all experience levels, all visa types
-    print(f"[Scrape] {len(scraped)} jobs after date/country filter (no title/visa/exp filters)")
-
-    async with SessionLocal() as db:
-        # Load existing (url, title+company fingerprints) to dedup against DB
-        existing_result = await db.execute(select(Job.url, Job.title, Job.company))
-        existing_rows = existing_result.all()
-        existing_urls = {row.url for row in existing_rows if row.url}
-        existing_fps  = {
-            f"{(row.title or '').lower().strip()}|||{(row.company or '').lower().strip()}"
-            for row in existing_rows
-        }
-
-        for job_data in scraped:
-            url = job_data.get("url", "")
-            fp  = f"{(job_data.get('title','') or '').lower().strip()}|||{(job_data.get('company','') or '').lower().strip()}"
-
-            if url and url in existing_urls:
-                continue  # exact URL already in DB
-            if fp in existing_fps:
-                continue  # same title+company already in DB (cross-source dup)
-
-            job = Job(
-                id=str(uuid.uuid4()),
-                scraped_at=now_iso,
-                **job_data,
-            )
-            db.add(job)
-            if url:
-                existing_urls.add(url)
-            existing_fps.add(fp)
-            new_count += 1
-
-        # ── 3. Save last scrape timestamp ──
-        setting = await db.get(Setting, "last_scraped_at")
-        if setting:
-            setting.value = now_iso
-        else:
-            db.add(Setting(key="last_scraped_at", value=now_iso))
-
-        await db.commit()
-
-    return {
-        "new_jobs": new_count,
-        "total_scraped": len(scraped),
-        "deleted_old": deleted,
-        "scraped_at": now_iso,
-    }
+    return await _run_scrape()
 
 
 # ── Fetch Full JD ─────────────────────────────────────────────────────────────
+
 
 class DescriptionUpdate(BaseModel):
     description: str

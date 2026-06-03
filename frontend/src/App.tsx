@@ -327,7 +327,7 @@ export default function App() {
         <div style={{ flexShrink: 0, padding: "10px 12px", borderTop: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", gap: 9 }}>
           <div style={{ width: 26, height: 26, borderRadius: 999, background: "linear-gradient(135deg,#8b5cf6,#6366f1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600, color: "#fff", flexShrink: 0 }}>{initials}</div>
           <div style={{ lineHeight: 1.2, overflow: "hidden", flex: 1 }}>
-            <div style={{ fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{profileName || "Your Name"}</div>
+            <div style={{ fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{profileName.split(" ")[0] || "Your Name"}</div>
             {profileVisa && <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{profileVisa}</div>}
           </div>
           <button

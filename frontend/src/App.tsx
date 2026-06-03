@@ -190,8 +190,9 @@ export default function App() {
 
   // Dynamic source list — sorted by count, only sources that have jobs
   const DEFAULT_SOURCES = [
-    "LinkedIn","Indeed","Greenhouse","Lever","Workday","Dice","Remotive","Google",
+    "Greenhouse", "Lever", "Ashby", "Workday", "HiringCafe",
   ];
+
   const SOURCES = useMemo(() => {
     const scraped = Object.entries(sourceCounts)
       .sort((a, b) => b[1] - a[1])

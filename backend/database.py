@@ -5,10 +5,25 @@ from datetime import datetime
 import json
 
 import os
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./jobs.db")
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+_raw_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./jobs.db")
+
+# Railway gives postgres:// — SQLAlchemy needs postgresql+asyncpg://
+if _raw_url.startswith("postgres://"):
+    DATABASE_URL = _raw_url.replace("postgres://", "postgresql+asyncpg://", 1)
+elif _raw_url.startswith("postgresql://") and "+asyncpg" not in _raw_url:
+    DATABASE_URL = _raw_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+else:
+    DATABASE_URL = _raw_url
+
+_is_postgres = DATABASE_URL.startswith("postgresql")
+
+# PostgreSQL needs no connect_args; SQLite needs check_same_thread=False
+_connect_args = {} if _is_postgres else {"check_same_thread": False}
+
+engine = create_async_engine(DATABASE_URL, echo=False, connect_args=_connect_args)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
 
 
 class Base(DeclarativeBase):
@@ -55,10 +70,81 @@ class Setting(Base):
     value = Column(Text, default="")
 
 
+class User(Base):
+    __tablename__ = "users"
+    id            = Column(String, primary_key=True)
+    email         = Column(String, unique=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    name          = Column(String, default="")
+    created_at    = Column(String, default="")
+    last_seen_at  = Column(String, default="")
+
+
+class UserSettings(Base):
+    __tablename__ = "user_settings"
+    user_id              = Column(String, primary_key=True)  # references users.id
+    resume               = Column(Text, default="")
+    job_roles            = Column(Text, default='["Data Engineer"]')   # JSON array
+    countries            = Column(Text, default='["USA", "Remote"]')   # JSON array
+    visa_filter          = Column(Boolean, default=False)   # True = hide no-sponsorship
+    level_filter         = Column(Boolean, default=False)   # True = hide overqualified
+    ai_provider          = Column(String, default="openrouter")
+    ai_api_key           = Column(String, default="")
+    ai_model             = Column(String, default="anthropic/claude-sonnet-4-5")
+    profile_name         = Column(String, default="")
+    profile_visa         = Column(String, default="")  # display: "F1/OPT", "H1B", "Citizen"
+    # Profile fields for auto-apply
+    profile_phone        = Column(String, default="")
+    profile_address      = Column(String, default="")
+    profile_linkedin     = Column(String, default="")
+    profile_github       = Column(String, default="")
+    profile_website      = Column(String, default="")
+    profile_summary      = Column(Text, default="")
+    # Telegram bot
+    telegram_bot_token   = Column(String, default="")
+    telegram_chat_id     = Column(String, default="")
+
+
+class UserJob(Base):
+    __tablename__ = "user_jobs"
+    id                   = Column(String, primary_key=True)
+    user_id              = Column(String, nullable=False)   # references users.id
+    job_id               = Column(String, nullable=False)   # references jobs.id
+    status               = Column(String, default="new")    # new/applied/skipped/interview
+    tailored_resume      = Column(Text, default=None)
+    cover_letter         = Column(Text, default=None)
+    ats_score_before     = Column(Integer, default=None)
+    ats_score_after      = Column(Integer, default=None)
+    ats_keywords_matched = Column(Text, default=None)
+    ats_keywords_missing = Column(Text, default=None)
+    fit_analysis         = Column(Text, default=None)
+    interview_tips       = Column(Text, default=None)
+    notes                = Column(Text, default="")
+    deadline             = Column(String, default=None)
+    interview_date       = Column(String, default=None)
+    priority             = Column(Integer, default=0)
+    qualify_result       = Column(Text, default=None)
+    applied_at           = Column(String, default=None)
+    tailored_at          = Column(String, default=None)
+    saved_at             = Column(String, default="")
+
+
+class Company(Base):
+    __tablename__ = "companies"
+    id          = Column(String, primary_key=True)
+    name        = Column(String, nullable=False)
+    ats         = Column(String, nullable=False)   # greenhouse/lever/ashby/workday
+    slug        = Column(String, nullable=False)
+    careers_url = Column(String, default="")
+    active      = Column(Boolean, default=True)
+    added_at    = Column(String, default="")
+    source      = Column(String, default="jseek_csv")  # jseek_csv/manual
+
+
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Migrations
+        # Migrations — jobs table columns
         for stmt in [
             "ALTER TABLE jobs ADD COLUMN country TEXT DEFAULT ''",
             "ALTER TABLE jobs ADD COLUMN cover_letter TEXT",

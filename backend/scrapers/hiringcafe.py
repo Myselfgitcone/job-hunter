@@ -36,10 +36,7 @@ HEADERS = {
 }
 
 SEARCH_TERMS = [
-    "software engineer", "data engineer", "data analyst",
-    "product manager", "frontend engineer", "backend engineer",
-    "fullstack engineer", "devops engineer", "machine learning",
-    "data scientist", "engineering manager",
+    "data engineer",
 ]
 
 

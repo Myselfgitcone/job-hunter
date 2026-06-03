@@ -442,8 +442,10 @@ async def _fetch_board(client: httpx.AsyncClient, board: str) -> list[dict]:
 
 
 async def fetch(settings: dict) -> list[dict]:
+    # Use DB slugs if injected, else fall back to hardcoded BOARDS
+    boards = settings.get("_gh_slugs") or BOARDS
     async with httpx.AsyncClient(timeout=15, headers=HEADERS) as client:
-        tasks = [_fetch_board(client, board) for board in BOARDS]
+        tasks = [_fetch_board(client, board) for board in boards]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
     jobs: list[dict] = []
@@ -457,5 +459,6 @@ async def fetch(settings: dict) -> list[dict]:
                 seen.add(url)
                 jobs.append(j)
 
-    print(f"[Greenhouse] {len(jobs)} jobs from {len(BOARDS)} boards")
+    print(f"[Greenhouse] {len(jobs)} jobs from {len(boards)} boards")
     return jobs
+

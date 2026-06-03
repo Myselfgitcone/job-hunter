@@ -105,11 +105,61 @@ def exceeds_experience_limit(description: str) -> bool:
     return years > MAX_YEARS_EXPERIENCE
 
 
+# Broad list of knowledge-work title keywords — covers all tech, finance, product, design, etc.
+_RELEVANT_KEYWORDS = [
+    # Engineering / Tech
+    "engineer", "developer", "programmer", "architect", "devops", "sre",
+    "infrastructure", "platform", "backend", "frontend", "fullstack", "full-stack",
+    "full stack", "cloud", "security", "embedded", "firmware",
+    # Data / Analytics
+    "data", "analytics", "analyst", "etl", "pipeline", "warehouse",
+    "bi ", " bi", "business intelligence", "reporting",
+    # AI / ML / Research
+    "machine learning", "ml ", " ml", "artificial intelligence", "ai ", " ai",
+    "scientist", "research", "nlp", "computer vision", "deep learning",
+    "llm", "generative",
+    # Product
+    "product manager", "product owner", "program manager", "project manager",
+    "product analyst", "product lead",
+    # Design
+    "designer", "ux", "ui ", " ui", "user experience", "user interface",
+    "visual design", "interaction design",
+    # Finance / Quant
+    "quantitative", "quant", "financial", "finance", "trading", "investment",
+    "risk", "portfolio", "actuarial", "credit analyst", "equity", "fixed income",
+    # Operations / Strategy
+    "operations", "strategy", "consultant", "business analyst",
+    # Marketing / Growth
+    "growth", "marketing analyst", "marketing engineer", "seo", "sem",
+    # Management (tech/data)
+    "engineering manager", "tech lead", "technical lead", "staff engineer",
+    "principal engineer", "vp of engineering", "cto", "director of engineering",
+    "head of data", "head of engineering",
+]
+
+_EXCLUDE_KEYWORDS = [
+    "nurse", "physician", "doctor", "pharmacist", "therapist", "counselor",
+    "teacher", "instructor", "professor", "principal",
+    "chef", "cook", "barista", "server", "bartender",
+    "driver", "delivery", "warehouse worker", "forklift",
+    "cleaner", "janitor", "custodian",
+    "electrician", "plumber", "carpenter", "mechanic",
+    "sales representative", "account executive", "sales associate",
+    "customer service representative", "call center",
+]
+
+
 def is_relevant_title(title: str) -> bool:
-    if not RELEVANT_TITLE_TERMS:
-        return True  # no filter — accept all
     t = title.lower()
-    return any(term in t for term in RELEVANT_TITLE_TERMS)
+    # First check hard exclusions
+    for kw in _EXCLUDE_KEYWORDS:
+        if kw in t:
+            return False
+    # Then check if any relevant keyword matches
+    for kw in _RELEVANT_KEYWORDS:
+        if kw in t:
+            return True
+    return False
 
 
 def is_recent(posted_at_iso: str, hours: int = CUTOFF_HOURS) -> bool:

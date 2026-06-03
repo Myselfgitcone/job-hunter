@@ -237,8 +237,9 @@ async def _fetch_company(client: httpx.AsyncClient, company: str) -> list[dict]:
 
 
 async def fetch(settings: dict) -> list[dict]:
+    companies = settings.get("_ashby_slugs") or COMPANIES
     async with httpx.AsyncClient(timeout=15, headers=HEADERS) as client:
-        tasks = [_fetch_company(client, co) for co in COMPANIES]
+        tasks = [_fetch_company(client, co) for co in companies]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
     jobs: list[dict] = []
@@ -252,5 +253,6 @@ async def fetch(settings: dict) -> list[dict]:
                 seen.add(url)
                 jobs.append(j)
 
-    print(f"[Ashby] {len(jobs)} jobs from {len(COMPANIES)} companies")
+    print(f"[Ashby] {len(jobs)} jobs from {len(companies)} companies")
     return jobs
+

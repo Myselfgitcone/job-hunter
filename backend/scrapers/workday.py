@@ -133,6 +133,16 @@ def _parse_posted_days(posted_text: str) -> int:
     return 0  # unknown = assume recent
 
 
+def _days_ago_to_iso(days: int) -> str:
+    """Convert 'X days ago' to ISO timestamp at start of that calendar day.
+    Using start-of-day matches how Workday labels posts (not exact hour).
+    """
+    from datetime import datetime, timezone, timedelta
+    d = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    d = d - timedelta(days=days)
+    return d.isoformat()
+
+
 async def _fetch_company(
     client: httpx.AsyncClient,
     sub: str, wdn: str, board: str, display: str
@@ -163,7 +173,9 @@ async def _fetch_company(
 
                     from scrapers.base import CUTOFF_HOURS
                     days = _parse_posted_days(item.get("postedOn", ""))
-                    if days > (CUTOFF_HOURS // 24):  # older than cutoff
+                    # Allow up to 3 days on backend (frontend applies fine-grained filter)
+                    # Using 3 days ensures '2 Days Ago' jobs always get through
+                    if days > max(3, CUTOFF_HOURS // 24):
                         continue
 
                     ext_path = item.get("externalPath", "")
@@ -178,6 +190,7 @@ async def _fetch_company(
                     if country not in ("USA", "India", "Remote"):
                         continue
 
+                    days = _parse_posted_days(item.get("postedOn", ""))
                     seen.add(job_url)
                     jobs.append(JobData(
                         title=title,
@@ -189,7 +202,7 @@ async def _fetch_company(
                         country=country,
                         salary="",
                         remote="remote" in loc.lower(),
-                        posted_at="",
+                        posted_at=_days_ago_to_iso(days),  # ✅ now stores actual date
                     ).to_dict())
 
             except Exception:
@@ -199,10 +212,22 @@ async def _fetch_company(
 
 
 async def fetch(settings: dict) -> list[dict]:
+    wd_slugs = settings.get("_wd_slugs")
+    if wd_slugs:
+        # Build a lookup from DB slugs → COMPANIES entries so we keep wdn/board/display
+        _lookup = {sub: (sub, wdn, board, display) for sub, wdn, board, display in COMPANIES}
+        companies = [_lookup[s] for s in wd_slugs if s in _lookup]
+        # Any DB slugs not in hardcoded list — use sensible defaults
+        for s in wd_slugs:
+            if s not in _lookup:
+                companies.append((s, "wd5", "External", s.replace("-", " ").title()))
+    else:
+        companies = COMPANIES
+
     async with httpx.AsyncClient(timeout=20, headers=HEADERS) as client:
         tasks = [
             _fetch_company(client, sub, wdn, board, display)
-            for sub, wdn, board, display in COMPANIES
+            for sub, wdn, board, display in companies
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -217,5 +242,6 @@ async def fetch(settings: dict) -> list[dict]:
                 seen.add(url)
                 jobs.append(j)
 
-    print(f"[Workday] {len(jobs)} jobs from {len(COMPANIES)} companies")
+    print(f"[Workday] {len(jobs)} jobs from {len(companies)} companies")
     return jobs
+

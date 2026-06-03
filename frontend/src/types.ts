@@ -79,6 +79,31 @@ export interface Settings {
   jobo_api_key: string;
 }
 
+export interface UserSettings {
+  resume: string;
+  job_roles: string[];
+  countries: string[];
+  visa_filter: boolean;
+  level_filter: boolean;
+  ai_provider: string;
+  ai_api_key: string;
+  ai_model: string;
+  profile_name: string;
+  profile_visa: string;
+  auto_scrape_cron?: string;
+  last_scraped_at?: string;
+}
+
+export interface Company {
+  id: string;
+  name: string;
+  ats: string;
+  slug: string;
+  careers_url: string;
+  active: boolean;
+  source: string;
+}
+
 export interface TailorResult {
   ats_before: { score: number; matched: string[]; missing: string[]; total: number };
   ats_after: { score: number; matched: string[]; missing: string[]; total: number };

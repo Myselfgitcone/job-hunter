@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type { Job, JobStatus, QualifyResult } from "./types";
 import { api } from "./api";
 import { checkVisa } from "./utils/visaCheck";
 import { isLevelMatch } from "./utils/levelCheck";
 import { JobCard } from "./components/JobCard";
+import { JobList } from "./components/JobList";
 import { Dashboard } from "./components/Dashboard";
 import { Kanban } from "./components/Kanban";
 import { QuickTailor } from "./components/QuickTailor";
@@ -11,13 +12,15 @@ import { Profile } from "./components/Profile";
 import { Settings } from "./components/Settings";
 import { JobDetail } from "./components/JobDetail";
 import { Toasts, useToasts, Spinner } from "./components/primitives";
+import { Auth } from "./components/Auth";
+import { Onboarding } from "./components/Onboarding";
 
 type View = "jobs" | "dashboard" | "profile" | "settings";
 type ViewMode = "list" | "kanban";
-type Filters = { posted: string; country: string; locType: string; source: string; status: string; role: string; exp: string; category: string };
+type Filters = { posted: string; countries: string[]; locTypes: string[]; sources: string[]; status: string; role: string; exps: string[]; categories: string[]; };
 
-const COUNTRIES = ["All Countries", "USA", "India", "Remote"];
-const SOURCES = ["All Sources","Lever","Ashby","HiringCafe"];
+// SOURCES and COUNTRIES are now dynamic — built from actual jobs (see useMemo below)
+// SOURCES is now dynamic — built from actual jobs (see useMemo below)
 const STATUS_ROWS = [
   { id: "all",       label: "All",       color: "var(--st-new)" },
   { id: "new",       label: "New",       color: "var(--st-new)" },
@@ -61,6 +64,15 @@ function timeAgo(iso: string): string {
 }
 
 export default function App() {
+  // ── Auth state ────────────────────────────────────────────────────────────
+  const _storedUser = localStorage.getItem("jh_user");
+  const [currentUser, setCurrentUser] = useState<{ id: string; email: string; name: string } | null>(
+    _storedUser ? JSON.parse(_storedUser) : null
+  );
+  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem("jh_token"));
+  const [showOnboarding, setShowOnboarding]   = useState(false);
+  const [userSettings, setUserSettings]       = useState<any>(null);
+
   const [view, setView]             = useState<View>("jobs");
   const [viewMode, setViewMode]     = useState<ViewMode>("list");
   const [jobs, setJobs]             = useState<Job[]>([]);
@@ -71,7 +83,7 @@ export default function App() {
   const [loading, setLoading]       = useState(false);
   const [scraping, setScraping]     = useState(false);
   const [scrapeMsg, setScrapeMsg]   = useState("");
-  const [lastScrapedTs, setLastScrapedTs] = useState<string>("");  // ISO timestamp
+  const [lastScrapedTs, setLastScrapedTs] = useState<string>("");
   const [lastScrapedDisplay, setLastScrapedDisplay] = useState("");
 
   // Live-update "X min ago" every 30s
@@ -82,28 +94,50 @@ export default function App() {
     const iv = setInterval(update, 30000);
     return () => clearInterval(iv);
   }, [lastScrapedTs]);
+
+  // Load user settings on auth
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    api.getSettings().then((s: any) => {
+      setUserSettings(s);
+      if (s.last_scraped_at) setLastScrapedTs(s.last_scraped_at);
+    }).catch(() => {});
+  }, [isAuthenticated]);
+
   const [tailorOpen, setTailorOpen] = useState(false);
   const [busy, setBusy]             = useState<string | null>(null);
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem("jh_welcomed"));
   const { toasts, toast }           = useToasts();
   const searchRef                   = useRef<HTMLInputElement>(null);
-  const [profileName, setProfileName]     = useState("");
-  const [profileVisa, setProfileVisa]     = useState("");
-  useEffect(() => {
-    api.getProfile().then((p: any) => {
-      if (p?.name) setProfileName(p.name);
-      if (p?.visa_status) setProfileVisa(p.visa_status);
-    }).catch(() => {});
-  }, []);
-  const initials = profileName
+
+  // Dynamic user display from auth
+  const profileName = currentUser?.name || userSettings?.profile_name || "";
+  const initials    = profileName
     ? profileName.split(" ").map((w: string) => w[0]).slice(0, 2).join("").toUpperCase()
     : "?";
 
-  const [filters, setFilters]       = useState<Filters>({
-    posted: "72h", country: "All Countries", locType: "Any", source: "All Sources", status: "all", role: "", exp: "All", category: "All",
-  });
+  const handleLogout = () => {
+    localStorage.removeItem("jh_token");
+    localStorage.removeItem("jh_user");
+    setIsAuthenticated(false);
+    setCurrentUser(null);
+    setUserSettings(null);
+    setJobs([]); setAllJobs([]);
+  };
 
-  const setF = (k: keyof Filters, v: string) => setFilters(f => ({ ...f, [k]: v }));
+  const [filters, setFilters] = useState<Filters>({
+    posted: "72h", countries: [], locTypes: [], sources: [], status: "all", role: "", exps: [], categories: [],
+  });
+  const [myRolesOnly, setMyRolesOnly] = useState(true);
+
+  const setF = (k: "posted" | "status" | "role", v: string) => setFilters(f => ({ ...f, [k]: v }));
+  const toggleArr = (k: "categories"|"exps"|"locTypes"|"countries"|"sources", val: string) =>
+    setFilters(f => ({
+      ...f,
+      [k]: (f[k] as string[]).includes(val)
+        ? (f[k] as string[]).filter(v => v !== val)
+        : [...(f[k] as string[]), val],
+    }));
 
   // ── Theme toggle ──────────────────────────────────────────────────────────
   const [isDark, setIsDark] = useState<boolean>(() => {
@@ -126,19 +160,21 @@ export default function App() {
     return () => document.removeEventListener("keydown", h);
   }, []);
 
-  const filterJob = useCallback((j: Job) =>
-    checkVisa(j.title + " " + (j.description || "")).eligible && isLevelMatch(j.title), []);
+  // Visa / level filters — opt-in based on user's own settings
+  const filterJob = useCallback((j: Job) => {
+    if (userSettings?.visa_filter  && !checkVisa(j.title + " " + (j.description || "")).eligible) return false;
+    if (userSettings?.level_filter && !isLevelMatch(j.title)) return false;
+    return true;
+  }, [userSettings]);
 
   const loadJobs = useCallback(async () => {
+    if (!isAuthenticated) return;
     setLoading(true);
     try { const raw = await api.getJobs(); const f = raw.filter(filterJob); setJobs(f); setAllJobs(f); }
     catch {} finally { setLoading(false); }
-  }, [filterJob]);
+  }, [filterJob, isAuthenticated]);
 
   useEffect(() => { loadJobs(); }, [loadJobs]);
-  useEffect(() => {
-    api.getSettings().then((s: any) => { if (s.last_scraped_at) setLastScrapedTs(s.last_scraped_at); }).catch(() => {});
-  }, []);
 
   const statusCounts = useMemo(() => {
     const c: Record<string, number> = { all: allJobs.length, new: 0, applied: 0, interview: 0, skipped: 0 };
@@ -152,9 +188,35 @@ export default function App() {
     return m;
   }, [allJobs]);
 
+  // Dynamic source list — sorted by count, only sources that have jobs
+  const SOURCES = useMemo(() => {
+    const srcs = Object.entries(sourceCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([src]) => src);
+    return ["All Sources", ...srcs];
+  }, [sourceCounts]);
+
+  // Dynamic country list — built from actual job data
+  const COUNTRIES = useMemo(() => {
+    const counts: Record<string, number> = {};
+    allJobs.forEach(j => { if (j.country) counts[j.country] = (counts[j.country] || 0) + 1; });
+    const countries = Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([c]) => c);
+    return ["All Countries", ...countries];
+  }, [allJobs]);
+
   const filteredJobs = useMemo(() => {
     const now = Date.now();
-    const postedCutoff: Record<string, number> = { "24h": 24*3600000, "48h": 48*3600000, "72h": 72*3600000, "7d": 7*24*3600000 };
+    // Add 6h grace buffer so "48h" catches jobs posted ~2 days ago
+    // (Workday/scrapers may record post time hours before we scrape it)
+    const GRACE = 6 * 3600000; // 6 hours
+    const postedCutoff: Record<string, number> = {
+      "24h": 24*3600000 + GRACE,
+      "48h": 48*3600000 + GRACE,
+      "72h": 72*3600000 + GRACE,
+      "7d":  7*24*3600000 + GRACE,
+    };
     const cutoffMs = postedCutoff[filters.posted] ?? Infinity;
 
     // Robust ISO parse — strips microseconds Python adds (e.g. .123456 → .123)
@@ -173,24 +235,52 @@ export default function App() {
     };
 
     return jobs.filter(j => {
-      if (filters.category !== "All") {
-        const terms = CAT_TERMS[filters.category] || [];
+      // My Roles filter — only show jobs matching user's configured roles
+      if (myRolesOnly && userSettings?.job_roles?.length) {
+        const roles: string[] = Array.isArray(userSettings.job_roles)
+          ? userSettings.job_roles
+          : JSON.parse(userSettings.job_roles || '[]');
+        if (roles.length > 0) {
+          const title = j.title.toLowerCase();
+          const matched = roles.some((r: string) =>
+            title.includes(r.toLowerCase().split(' ')[0]) ||
+            title.includes(r.toLowerCase())
+          );
+          if (!matched) return false;
+        }
+      }
+      // Categories (multi-select — empty = all)
+      if (filters.categories.length > 0) {
+        const terms = filters.categories.flatMap(c => CAT_TERMS[c] || []);
         if (!terms.some(t => j.title.toLowerCase().includes(t))) return false;
       }
       if (filters.role.trim()) {
         if (!j.title.toLowerCase().includes(filters.role.toLowerCase())) return false;
       }
-      if (filters.exp !== "All") {
+      // Exp levels (multi-select)
+      if (filters.exps.length > 0) {
         const t = j.title.toLowerCase();
-        if (filters.exp === "Entry"  && !/(entry|junior|jr\.?|associate|intern)/i.test(t)) return false;
-        if (filters.exp === "Mid"    && !/(mid|ii|2|intermediate)/i.test(t)) return false;
-        if (filters.exp === "Senior" && !/(senior|sr\.?|lead|principal|staff)/i.test(t)) return false;
+        const EXP: Record<string,RegExp> = {
+          Entry:  /(entry|junior|jr\.?|associate|intern)/i,
+          Mid:    /(mid|\bii\b|\b2\b|intermediate)/i,
+          Senior: /(senior|sr\.?|lead|principal|staff)/i,
+          Lead:   /(lead|principal|staff|director)/i,
+        };
+        if (!filters.exps.some(e => EXP[e]?.test(t))) return false;
       }
       if (filters.status !== "all" && j.status !== filters.status) return false;
-      if (filters.country !== "All Countries" && j.country !== filters.country) return false;
-      if (filters.locType === "Remote" && !j.remote) return false;
-      if (filters.locType === "Onsite" && j.remote) return false;
-      if (filters.source !== "All Sources" && j.source !== filters.source) return false;
+      // Countries (multi-select)
+      if (filters.countries.length > 0 && !filters.countries.includes(j.country || "")) return false;
+      // Work type (multi-select)
+      if (filters.locTypes.length > 0) {
+        const isRemote = j.remote || (j.location || "").toLowerCase().includes("remote");
+        const matchRemote = filters.locTypes.includes("Remote") && isRemote;
+        const matchOnsite = filters.locTypes.includes("Onsite") && !isRemote;
+        const matchHybrid = filters.locTypes.includes("Hybrid") && (j.location || "").toLowerCase().includes("hybrid");
+        if (!matchRemote && !matchOnsite && !matchHybrid) return false;
+      }
+      // Sources (multi-select)
+      if (filters.sources.length > 0 && !filters.sources.includes(j.source)) return false;
       // Time filter — posted_at first (actual job post date), scraped_at as fallback
       if (cutoffMs !== Infinity) {
         const t = parseMs(j.posted_at) ?? parseMs(j.scraped_at);
@@ -226,6 +316,13 @@ export default function App() {
     if (!confirm("Delete ALL jobs? Cannot be undone.")) return;
     try { const r = await api.clearAllJobs(); setJobs([]); setAllJobs([]); setSelectedId(null); toast("Cleared " + r.deleted + " jobs", "success"); }
     catch (e: any) { toast(e.message, "error"); }
+  };
+
+  // Resets only filters — does NOT delete any jobs
+  const handleResetFilters = () => {
+    setFilters({ posted: "72h", countries: [], locTypes: [], sources: [], status: "all", role: "", exps: [], categories: [] });
+    setSearch("");
+    setMyRolesOnly(true);
   };
 
   const handleStatusChange = async (id: string, status: JobStatus) => {
@@ -271,13 +368,37 @@ export default function App() {
   // Expose nav to Settings component for "Go to Profile" link
   useEffect(() => { (window as any).__navToProfile = () => setView("profile"); }, []);
   const handleNav = (v: string) => { if (v === "tailor") { setTailorOpen(true); return; } setView(v as View); };
-  const filtersActive = filters.posted !== "72h" || filters.country !== "All Countries" || filters.locType !== "Any" || filters.source !== "All Sources" || filters.status !== "all" || filters.role !== "" || filters.exp !== "All" || filters.category !== "All";
+  const filtersActive = filters.posted !== "72h" || filters.countries.length > 0 || filters.locTypes.length > 0 || filters.sources.length > 0 || filters.status !== "all" || filters.role !== "" || filters.exps.length > 0 || filters.categories.length > 0 || search.trim() !== "";
   const navItems = [
     { id: "jobs", label: "Jobs", ic: IC.search },
     { id: "dashboard", label: "Dashboard", ic: IC.dash },
     { id: "profile", label: "My Profile", ic: IC.user },
     { id: "settings", label: "Settings", ic: IC.settings },
   ];
+
+  // ── Auth gate ────────────────────────────────────────────────────────────
+  if (!isAuthenticated) {
+    return <Auth onSuccess={(user) => {
+      setCurrentUser(user);
+      setIsAuthenticated(true);
+      // Check if new user → show onboarding
+      api.getSettings().then((s: any) => {
+        setUserSettings(s);
+        if (!s.resume && !s.profile_name) setShowOnboarding(true);
+      }).catch(() => setShowOnboarding(true));
+    }} />;
+  }
+
+  if (showOnboarding && currentUser) {
+    return <Onboarding
+      user={currentUser}
+      onComplete={() => {
+        setShowOnboarding(false);
+        api.getSettings().then((s: any) => setUserSettings(s)).catch(() => {});
+        loadJobs();
+      }}
+    />;
+  }
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
@@ -316,17 +437,25 @@ export default function App() {
         <div style={{ flexShrink: 0, padding: "10px 12px", borderTop: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", gap: 9 }}>
           <div style={{ width: 26, height: 26, borderRadius: 999, background: "linear-gradient(135deg,#8b5cf6,#6366f1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600, color: "#fff", flexShrink: 0 }}>{initials}</div>
           <div style={{ lineHeight: 1.2, overflow: "hidden", flex: 1 }}>
-            <div style={{ fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{profileName.split(" ")[0] || "Your Name"}</div>
+            <div style={{ fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{profileName.split(" ")[0] || currentUser?.email?.split("@")[0] || "User"}</div>
+            <div style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{userSettings?.profile_visa || "Job Hunter"}</div>
           </div>
           <button
             onClick={() => setIsDark(d => !d)}
             title={isDark ? "Switch to Light" : "Switch to Dark"}
-            style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", color: "var(--text-muted)", transition: "all 120ms ease", fontSize: 14 }}
+            style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", color: "var(--text-muted)", transition: "all 120ms ease", fontSize: 13 }}
             onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "var(--bg-hover)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)"; }}
             onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "var(--bg-elevated)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; }}
           >
             {isDark ? "☀️" : "🌙"}
           </button>
+          <button
+            onClick={handleLogout}
+            title="Sign out"
+            style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", color: "var(--text-muted)", transition: "all 120ms ease", fontSize: 13 }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(239,68,68,0.4)"; (e.currentTarget as HTMLButtonElement).style.color = "#f87171"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border-subtle)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; }}
+          >⏻</button>
         </div>
       </aside>
 
@@ -341,10 +470,14 @@ export default function App() {
             scraping={scraping} scrapeMsg={scrapeMsg} lastScraped={lastScrapedDisplay}
             onScrape={handleScrape} count={filteredJobs.length}
             viewMode={viewMode} setViewMode={setViewMode} IC={IC}
-            filters={filters} setF={setF} setFilters={setFilters}
-            SOURCES={SOURCES} COUNTRIES={COUNTRIES} allJobs={allJobs} sourceCounts={sourceCounts}
+            filters={filters} setF={setF} toggleArr={toggleArr}
+            SOURCES={SOURCES.filter(s => s !== "All Sources")}
+            COUNTRIES={COUNTRIES.filter(c => c !== "All Countries")}
+            allJobs={allJobs} sourceCounts={sourceCounts}
             filtersActive={filtersActive} search={search} setSearch={setSearch}
-            searchRef={searchRef} onClearAll={handleClearAll}
+            searchRef={searchRef} onClearAll={handleResetFilters}
+            myRolesOnly={myRolesOnly} setMyRolesOnly={setMyRolesOnly}
+            userRoles={Array.isArray(userSettings?.job_roles) ? userSettings.job_roles : JSON.parse(userSettings?.job_roles || '[]')}
           />
           {/* Content row */}
           {viewMode === "kanban" ? (
@@ -356,21 +489,18 @@ export default function App() {
                   <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>{filteredJobs.length} jobs</span>
                   <button onClick={handleClearAll} className="btn btn-ghost btn-danger" style={{ height: 24, padding: "0 8px", fontSize: 11, border: "none" }}><Ic d={IC.trash} size={12} /> Clear All</button>
                 </div>
-                <div style={{ flex: 1, overflowY: "auto", paddingBottom: 16 }}>
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                   {loading ? (
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "40%", gap: 10, color: "var(--text-muted)" }}><Spinner size={18} /> Loading...</div>
-                  ) : filteredJobs.length === 0 ? (
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "60%", gap: 12, padding: 24, textAlign: "center" }}>
-                      <Ic d={IC.search} size={34} color="var(--text-disabled)" />
-                      <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>No jobs match filters</div>
-                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{allJobs.length === 0 ? "Click Scrape Now to fetch jobs" : "Try clearing filters"}</div>
-                    </div>
-                  ) : filteredJobs.map((job, i) => (
-                    <div key={job.id}>
-                      <JobCard job={job} index={i} selected={selectedId === job.id} isFresh={false} onClick={() => handleSelect(job.id)} onQualifyUpdated={(id, r) => updateJob(id, { qualify_result: r })} />
-                      {i < filteredJobs.length - 1 && selectedId !== job.id && selectedId !== filteredJobs[i + 1]?.id && <div style={{ height: 1, background: "var(--border-subtle)", margin: "0 16px" }} />}
-                    </div>
-                  ))}
+                  ) : (
+                    <JobList
+                      jobs={filteredJobs}
+                      selectedId={selectedId}
+                      onSelect={handleSelect}
+                      onQualifyUpdated={(id, r) => updateJob(id, { qualify_result: r })}
+                      emptyState={allJobs.length === 0 ? "Click Scrape Now to fetch jobs" : "Try clearing filters"}
+                    />
+                  )}
                 </div>
               </section>
               <JobDetail job={selectedJob} tab={tab} setTab={setTab} onUpdate={(patch: Partial<Job>) => selectedJob && updateJob(selectedJob.id, patch)} onToast={toast} busy={busy} runAction={runAction} />
@@ -450,90 +580,232 @@ export default function App() {
 type TopbarProps = {
   scraping: boolean; scrapeMsg: string; lastScraped: string; onScrape: () => void;
   count: number; viewMode: string; setViewMode: (m: ViewMode) => void; IC: Record<string,string>;
-  filters: Filters; setF: (k: keyof Filters, v: string) => void;
-  setFilters: (f: Filters) => void;
+  filters: Filters;
+  setF: (k: "posted" | "status" | "role", v: string) => void;
+  toggleArr: (k: "categories"|"exps"|"locTypes"|"countries"|"sources", val: string) => void;
   SOURCES: string[]; COUNTRIES: string[]; allJobs: Job[];
   sourceCounts: Record<string,number>;
   filtersActive: boolean; search: string; setSearch: (v: string) => void;
   searchRef: React.RefObject<HTMLInputElement>; onClearAll: () => void;
+  myRolesOnly: boolean; setMyRolesOnly: (v: boolean) => void; userRoles: string[];
 };
 
-function Topbar({ scraping, scrapeMsg, lastScraped, onScrape, count, viewMode, setViewMode, IC,
-  filters, setF, setFilters, SOURCES, COUNTRIES, allJobs, sourceCounts,
-  filtersActive, search, setSearch, searchRef, onClearAll }: TopbarProps) {
-  const sel: React.CSSProperties = { fontSize: 12, height: 30, borderRadius: 7, padding: "0 8px", background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", color: "var(--text-primary)", cursor: "pointer" };
+// ── FilterDropdown: checkbox multi-select popover ─────────────────────────────
+function FilterDropdown({
+  label, options, selected, onToggle, countMap,
+}: {
+  label: string;
+  options: string[];
+  selected: string[];
+  onToggle: (val: string) => void;
+  countMap?: Record<string, number>;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const isActive = selected.length > 0;
+  const displayLabel = isActive
+    ? selected.length === 1 ? selected[0] : `${selected[0]} +${selected.length - 1}`
+    : label;
+
   return (
-    <div style={{ flexShrink: 0, borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-surface)" }}>
-      {/* Row 1: Scrape + last scraped + view toggle */}
-      <div style={{ height: 46, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 14px", borderBottom: "1px solid var(--border-subtle)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button className="btn btn-accent" onClick={onScrape} disabled={scraping} style={{ height: 30 }}>
+    <div ref={ref} style={{ position: "relative", flex: 1, minWidth: 0 }}>
+      {/* M3 Filter Chip */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: "100%", height: 30, borderRadius: 8, padding: "0 10px",
+          fontSize: 11.5, fontWeight: isActive ? 600 : 400,
+          border: isActive ? "1px solid var(--accent)" : "1px solid var(--border-default)",
+          background: isActive ? "var(--accent-tonal)" : "var(--bg-elevated)",
+          color: isActive ? "var(--accent)" : "var(--text-secondary)",
+          cursor: "pointer", outline: "none", display: "flex", alignItems: "center",
+          justifyContent: "space-between", gap: 4,
+          transition: "all 150ms cubic-bezier(0.2,0,0,1)",
+          whiteSpace: "nowrap", overflow: "hidden",
+          boxShadow: isActive ? "none" : "var(--shadow-1)",
+        }}
+      >
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", flex: 1, textAlign: "left" }}>
+          {displayLabel}
+        </span>
+        {isActive && (
+          <span style={{
+            background: "var(--accent)", color: "#fff",
+            borderRadius: 999, fontSize: 9, fontWeight: 700,
+            padding: "1px 5px", flexShrink: 0,
+          }}>{selected.length}</span>
+        )}
+      </button>
+
+      {/* M3 Menu surface */}
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 200,
+          background: "var(--bg-elevated)",
+          border: "1px solid var(--border-default)",
+          borderRadius: 12, padding: "6px 0",
+          boxShadow: "var(--shadow-3)",
+          minWidth: 200, maxHeight: 280, overflowY: "auto",
+        }}>
+          {options.map(opt => {
+            const checked = selected.includes(opt);
+            return (
+              <label
+                key={opt}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "8px 14px", cursor: "pointer",
+                  fontSize: 13, lineHeight: 1,
+                  color: checked ? "var(--accent)" : "var(--text-primary)",
+                  background: checked ? "var(--accent-tonal)" : "transparent",
+                  transition: "background 80ms ease",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => onToggle(opt)}
+                  style={{ accentColor: "var(--accent)", width: 14, height: 14, flexShrink: 0, cursor: "pointer" }}
+                />
+                <span style={{ flex: 1, fontWeight: checked ? 500 : 400 }}>{opt}</span>
+                {countMap?.[opt] != null && (
+                  <span style={{
+                    fontSize: 10.5, color: checked ? "var(--accent)" : "var(--text-muted)",
+                    fontWeight: checked ? 600 : 400, marginLeft: "auto",
+                  }}>{countMap[opt]}</span>
+                )}
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Topbar({ scraping, scrapeMsg, lastScraped, onScrape, count, viewMode, setViewMode, IC,
+  filters, setF, toggleArr, SOURCES, COUNTRIES, allJobs, sourceCounts,
+  filtersActive, search, setSearch, searchRef, onClearAll,
+  myRolesOnly, setMyRolesOnly, userRoles }: TopbarProps) {
+
+  const countryCounts = React.useMemo(() => {
+    const m: Record<string,number> = {};
+    allJobs.forEach(j => { if (j.country) m[j.country] = (m[j.country] || 0) + 1; });
+    return m;
+  }, [allJobs]);
+
+  return (
+    <div style={{ flexShrink: 0, borderBottom: "1px solid var(--border-default)", background: "var(--bg-surface)", boxShadow: "var(--shadow-1)" }}>
+      {/* Row 1: Scrape + view toggle */}
+      <div style={{ height: 48, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", borderBottom: "1px solid var(--border-subtle)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button className="btn btn-accent" onClick={onScrape} disabled={scraping} style={{ height: 32, fontSize: 13, letterSpacing: "0.02em" }}>
             {scraping ? <Spinner size={13} color="#fff" /> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.refresh }} />}
             {scraping ? "Scraping..." : "Scrape Now"}
           </button>
-          {scrapeMsg && !scraping && <span style={{ fontSize: 11, fontWeight: 600, color: "#4ade80" }}>{scrapeMsg}</span>}
-          {lastScraped && <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--text-muted)" }}><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.clock }} />{lastScraped}</span>}
+          {scrapeMsg && !scraping && <span style={{ fontSize: 12, fontWeight: 600, color: "#34d399" }}>{scrapeMsg}</span>}
+          {lastScraped && <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--text-muted)" }}><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.clock }} />{lastScraped}</span>}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>{count} jobs</span>
-          <div style={{ display: "flex", gap: 2, background: "var(--bg-elevated)", borderRadius: 8, padding: 2, border: "1px solid var(--border-subtle)" }}>
+          <div style={{ display: "flex", gap: 2, background: "var(--bg-elevated)", borderRadius: 10, padding: 3, border: "1px solid var(--border-default)", boxShadow: "var(--shadow-1)" }}>
             {([["list", IC.list], ["kanban", IC.kanban]] as [string, string][]).map(([m, d]) => (
-              <button key={m} onClick={() => setViewMode(m as ViewMode)} style={{ width: 28, height: 24, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", color: viewMode === m ? "var(--text-primary)" : "var(--text-muted)", background: viewMode === m ? "var(--bg-hover)" : "transparent", transition: "all 120ms ease" }}>
+              <button key={m} onClick={() => setViewMode(m as ViewMode)} style={{ width: 30, height: 26, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: viewMode === m ? "var(--accent)" : "var(--text-muted)", background: viewMode === m ? "var(--accent-tonal)" : "transparent", transition: "all 150ms cubic-bezier(0.2,0,0,1)" }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: d }} />
               </button>
             ))}
           </div>
         </div>
       </div>
-      {/* Row 2: Filters */}
-      <div style={{ height: 44, display: "flex", alignItems: "center", gap: 8, padding: "0 14px", overflowX: "auto" }}>
-        {/* Search */}
-        <div style={{ position: "relative", display: "flex", alignItems: "center", flexShrink: 0 }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", left: 9, pointerEvents: "none", color: "var(--text-muted)" }} dangerouslySetInnerHTML={{ __html: IC.search }} />
-          <input ref={searchRef} type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search jobs, companies…"
-            style={{ paddingLeft: 28, paddingRight: 10, height: 30, fontSize: 12, width: 200, borderRadius: 7 }} />
-        </div>
-        <div style={{ width: 1, height: 20, background: "var(--border-subtle)", flexShrink: 0 }} />
-        {/* Category */}
-        <select value={filters.category} onChange={e => setF("category", e.target.value)} style={sel}>
-          {["All","Engineering","Data","Product","Design"].map(o => <option key={o} value={o}>{o === "All" ? "Category" : o}</option>)}
-        </select>
-        {/* Exp Level */}
-        <select value={filters.exp} onChange={e => setF("exp", e.target.value)} style={sel}>
-          {["All","Entry","Mid","Senior","Lead"].map(o => <option key={o} value={o}>{o === "All" ? "Exp Level" : o}</option>)}
-        </select>
-        {/* Work Type */}
-        <select value={filters.locType} onChange={e => setF("locType", e.target.value)} style={sel}>
-          {["Any","Remote","Onsite"].map(o => <option key={o} value={o}>{o === "Any" ? "Work Type" : o}</option>)}
-        </select>
-        {/* Country */}
-        <select value={filters.country} onChange={e => setF("country", e.target.value)} style={sel}>
-          {COUNTRIES.map(c => <option key={c} value={c}>{c === "All Countries" ? "Country" : c + " (" + allJobs.filter(j => j.country === c).length + ")"}</option>)}
-        </select>
-        {/* Source */}
-        <select value={filters.source} onChange={e => setF("source", e.target.value)} style={sel}>
-          {SOURCES.map(s => <option key={s} value={s}>{s === "All Sources" ? "Source" : s + " (" + (sourceCounts[s] || 0) + ")"}</option>)}
-        </select>
-        <div style={{ width: 1, height: 20, background: "var(--border-subtle)", flexShrink: 0 }} />
-        {/* Posted chips */}
-        <div style={{ display: "flex", gap: 2, background: "var(--bg-elevated)", borderRadius: 7, padding: 2, border: "1px solid var(--border-subtle)", flexShrink: 0 }}>
-          {["24h","48h","72h"].map(o => (
-            <button key={o} onClick={() => setF("posted", o)}
-              style={{ height: 24, padding: "0 10px", borderRadius: 5, fontSize: 11, fontWeight: 500, border: "none", cursor: "pointer", transition: "all 120ms ease",
-                background: filters.posted === o ? "var(--accent)" : "transparent",
-                color: filters.posted === o ? "#fff" : "var(--text-muted)" }}>
-              {o}
-            </button>
-          ))}
-        </div>
-        {/* Clear */}
-        {filtersActive && (
-          <button onClick={() => setFilters({ posted: "72h", country: "All Countries", locType: "Any", source: "All Sources", status: "all", role: "", exp: "All", category: "All" })}
-            style={{ height: 28, padding: "0 10px", borderRadius: 7, fontSize: 11, border: "1px solid var(--border-subtle)", background: "transparent", color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "all 120ms ease" }}>
-            Clear
+
+      {/* Row 2: M3 Filter chips */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 12px", height: 48, overflowX: "auto" }}>
+
+        {/* My Roles chip */}
+        {userRoles.length > 0 && (
+          <button onClick={() => setMyRolesOnly(!myRolesOnly)} style={{
+            height: 30, padding: "0 12px", borderRadius: 8, fontSize: 11.5, fontWeight: 600, flexShrink: 0,
+            border: myRolesOnly ? "1px solid var(--accent)" : "1px solid var(--border-default)",
+            background: myRolesOnly ? "var(--accent-tonal)" : "var(--bg-elevated)",
+            color: myRolesOnly ? "#93c5fd" : "var(--text-muted)",
+            cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
+            transition: "all 150ms ease", whiteSpace: "nowrap",
+          }}>
+            {myRolesOnly ? "🎯" : "🌐"} {myRolesOnly ? userRoles[0] : "All"}
           </button>
         )}
+
+        <div style={{ width: 1, height: 18, background: "var(--border-subtle)", flexShrink: 0, margin: "0 2px" }} />
+
+        {/* Search */}
+        <div style={{ position: "relative", flex: 1.5, minWidth: 0 }}>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "var(--text-muted)" }} dangerouslySetInnerHTML={{ __html: IC.search }} />
+          <input ref={searchRef} type="text" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search…"
+            style={{
+              width: "100%", paddingLeft: 24, paddingRight: 8, height: 28, fontSize: 11,
+              borderRadius: 6, boxSizing: "border-box" as any,
+              border: search ? "1px solid rgba(59,130,246,0.5)" : "1px solid var(--border-subtle)",
+              background: search ? "rgba(59,130,246,0.06)" : "var(--bg-elevated)",
+              color: "var(--text-primary)", outline: "none",
+            }} />
+        </div>
+
+        <div style={{ width: 1, height: 18, background: "var(--border-subtle)", flexShrink: 0, margin: "0 2px" }} />
+
+        {/* Multi-select filter dropdowns */}
+        <FilterDropdown label="Category"  options={["Engineering","Data","Product","Design"]}           selected={filters.categories} onToggle={v => toggleArr("categories", v)} />
+        <FilterDropdown label="Level"     options={["Entry","Mid","Senior","Lead"]}                     selected={filters.exps}       onToggle={v => toggleArr("exps", v)} />
+        <FilterDropdown label="Type"      options={["Remote","Onsite","Hybrid"]}                        selected={filters.locTypes}   onToggle={v => toggleArr("locTypes", v)} />
+        <FilterDropdown label="Country" options={
+          COUNTRIES.length > 0 ? COUNTRIES :
+          ["USA","Canada","UK","India","Remote","Australia","Germany","Singapore","Netherlands","Ireland"]
+        } selected={filters.countries} onToggle={v => toggleArr("countries", v)} countMap={countryCounts} />
+        <FilterDropdown label="Source" options={
+          SOURCES.length > 0 ? SOURCES :
+          ["Greenhouse","Workday","Lever","LinkedIn","Dice","Ashby","SmartRecruiters","BambooHR","Recruitee","Workable","Remotive","Google","Indeed","TheMuse"]
+        } selected={filters.sources} onToggle={v => toggleArr("sources", v)} countMap={sourceCounts} />
+
+        <div style={{ width: 1, height: 18, background: "var(--border-subtle)", flexShrink: 0, margin: "0 2px" }} />
+
+        {/* Posted chips */}
+        <div style={{ display: "flex", gap: 2, background: "var(--bg-elevated)", borderRadius: 6, padding: 2, border: "1px solid var(--border-subtle)", flexShrink: 0 }}>
+          {(["24h","48h","72h","7d"] as const).map(o => (
+            <button key={o} onClick={() => setF("posted", o)} style={{
+              height: 22, padding: "0 8px", borderRadius: 4, fontSize: 11, fontWeight: 500,
+              border: "none", cursor: "pointer", transition: "all 100ms ease",
+              background: filters.posted === o ? "var(--accent)" : "transparent",
+              color: filters.posted === o ? "#fff" : "var(--text-muted)",
+            }}>{o}</button>
+          ))}
+        </div>
+
+        {/* Clear */}
+        {filtersActive && (() => {
+          const n = [filters.categories.length, filters.exps.length, filters.locTypes.length,
+            filters.countries.length, filters.sources.length, search.trim() ? 1 : 0].reduce((a,b) => a+b, 0);
+          return (
+            <button onClick={onClearAll} style={{
+              height: 28, padding: "0 9px", borderRadius: 6, fontSize: 11, fontWeight: 600,
+              border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.08)",
+              color: "#f87171", cursor: "pointer", flexShrink: 0,
+              display: "flex", alignItems: "center", gap: 4,
+            }}>
+              <span style={{ background: "rgba(239,68,68,0.2)", borderRadius: 999, width: 15, height: 15, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9 }}>{n}</span>
+              Clear
+            </button>
+          );
+        })()}
       </div>
     </div>
   );

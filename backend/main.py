@@ -1,7 +1,7 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, update, or_
+from sqlalchemy import select, update, or_, text
 from pydantic import BaseModel
 from typing import Optional, List
 import asyncio
@@ -9,12 +9,14 @@ import httpx
 import json
 import re
 import uuid
+import uuid as _uuid
 from pathlib import Path
 from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from database import init_db, SessionLocal, Job, Setting
+from database import init_db, SessionLocal, engine, Job, Setting, User, UserSettings, UserJob, Company
+from auth import get_current_user_id, get_optional_user_id, hash_password, verify_password, create_token
 from scrapers import run_all_scrapers
 from scrapers.jobspy_scraper import fetch as jobspy_fetch
 from ai.ats import score_ats
@@ -62,6 +64,50 @@ async def _auto_scrape():
 @app.on_event("startup")
 async def startup():
     await init_db()
+
+    # ── Auto-migrate: add any missing columns safely ──────────────────────
+    new_columns = [
+        ("user_settings", "profile_phone",     "VARCHAR"),
+        ("user_settings", "profile_address",    "VARCHAR"),
+        ("user_settings", "profile_linkedin",   "VARCHAR"),
+        ("user_settings", "profile_github",     "VARCHAR"),
+        ("user_settings", "profile_website",    "VARCHAR"),
+        ("user_settings", "profile_summary",    "TEXT"),
+        ("user_settings", "telegram_bot_token", "VARCHAR"),
+        ("user_settings", "telegram_chat_id",   "VARCHAR"),
+    ]
+    try:
+        async with engine.begin() as conn:
+            for table, col, typedef in new_columns:
+                try:
+                    # Works for both SQLite and PostgreSQL
+                    await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {typedef}"))
+                except Exception:
+                    pass  # column already exists — safe to ignore
+        print("[Startup] DB migration complete")
+    except Exception as e:
+        print(f"[Startup] DB migration error: {e}")
+
+    # ── Init Telegram bot if configured ──────────────────────────────────
+    try:
+        async with SessionLocal() as db:
+            result = await db.execute(text(
+                "SELECT telegram_bot_token, telegram_chat_id FROM user_settings "
+                "WHERE telegram_bot_token IS NOT NULL AND telegram_bot_token != '' LIMIT 1"
+            ))
+            row = result.fetchone()
+            if row and row[0] and row[1]:
+                await telegram_bot.init_bot(row[0], row[1])
+    except Exception as e:
+        print(f"[Startup] Telegram init skipped: {e}")
+
+
+    # Seed companies from JSeek CSV if empty
+    try:
+        from scrapers.company_seeder import seed_companies_if_empty
+        await seed_companies_if_empty()
+    except Exception as e:
+        print(f"[Startup] Company seeder failed: {e}")
     # Start auto-scraper scheduler (every 6 hours by default)
     async with SessionLocal() as db:
         result = await db.execute(select(Setting).where(Setting.key == "auto_scrape_cron"))
@@ -73,56 +119,279 @@ async def startup():
     print(f"[Scheduler] Auto-scrape scheduled: {cron_expr}")
 
 
-# ── Settings ──────────────────────────────────────────────────────────────────
+
+# ── Auth ────────────────────────────────────────────────────────────────────────────────
+
+class RegisterBody(BaseModel):
+    email: str
+    password: str
+    name: Optional[str] = ""
+
+class LoginBody(BaseModel):
+    email: str
+    password: str
+
+@app.post("/api/auth/register")
+async def register(body: RegisterBody):
+    async with SessionLocal() as db:
+        existing = await db.execute(select(User).where(User.email == body.email.lower()))
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Email already registered")
+        user_id = str(_uuid.uuid4())
+        now = datetime.utcnow().isoformat()
+        user = User(
+            id=user_id,
+            email=body.email.lower().strip(),
+            password_hash=hash_password(body.password),
+            name=body.name or "",
+            created_at=now,
+            last_seen_at=now,
+        )
+        db.add(user)
+        # Create default user settings
+        db.add(UserSettings(
+            user_id=user_id,
+            resume="",
+            job_roles='["Data Engineer"]',
+            countries='["USA", "Remote"]',
+            visa_filter=False,
+            level_filter=False,
+        ))
+        await db.commit()
+    token = create_token(user_id)
+    return {"token": token, "user": {"id": user_id, "email": body.email.lower(), "name": body.name or ""}}
+
+
+@app.post("/api/auth/login")
+async def login(body: LoginBody):
+    try:
+        async with SessionLocal() as db:
+            result = await db.execute(select(User).where(User.email == body.email.lower()))
+            user = result.scalar_one_or_none()
+            if not user or not verify_password(body.password, user.password_hash):
+                raise HTTPException(status_code=401, detail="Invalid email or password")
+            # Update last_seen
+            user.last_seen_at = datetime.utcnow().isoformat()
+            await db.commit()
+        token = create_token(user.id)
+        return {"token": token, "user": {"id": user.id, "email": user.email, "name": user.name}}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print("[LOGIN ERROR]", str(e))
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/auth/me")
+async def get_me(user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return {"id": user.id, "email": user.email, "name": user.name, "created_at": user.created_at}
+
+
+import telegram_bot
+
+# ── Settings ────────────────────────────────────────────────────────────────────────────────
+
+async def _get_user_settings(user_id: str) -> dict:
+    """Helper to fetch user's AI/resume settings from user_settings table."""
+    async with SessionLocal() as db:
+        result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+        s = result.scalar_one_or_none()
+        if not s:
+            return {}
+        return {
+            "resume": s.resume or "",
+            "ai_provider": s.ai_provider or "openrouter",
+            "ai_api_key": s.ai_api_key or "",
+            "ai_model": s.ai_model or "anthropic/claude-sonnet-4-5",
+        }
+
 
 @app.get("/api/settings")
-async def get_settings():
+async def get_settings(user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
-        result = await db.execute(select(Setting))
-        rows = result.scalars().all()
-        return {r.key: r.value for r in rows}
-
-
-class SettingsUpdate(BaseModel):
-    resume: Optional[str] = None
-    ai_provider: Optional[str] = None      # openrouter / groq / nvidia / anthropic
-    ai_api_key: Optional[str] = None
-    ai_model: Optional[str] = None
-    adzuna_app_id: Optional[str] = None
-    adzuna_app_key: Optional[str] = None
-    jobo_api_key: Optional[str] = None
+        result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+        s = result.scalar_one_or_none()
+        if not s:
+            # Create defaults
+            s = UserSettings(user_id=user_id)
+            db.add(s)
+            await db.commit()
+        data = {
+            "resume": s.resume or "",
+            "job_roles": json.loads(s.job_roles or '["Data Engineer"]'),
+            "countries": json.loads(s.countries or '["USA","Remote"]'),
+            "visa_filter": bool(s.visa_filter),
+            "level_filter": bool(s.level_filter),
+            "ai_provider": s.ai_provider or "openrouter",
+            "ai_api_key": (s.ai_api_key or "")[:8] + "••••••••" if s.ai_api_key else "",
+            "ai_model": s.ai_model or "anthropic/claude-sonnet-4-5",
+            "profile_name": s.profile_name or "",
+            "profile_visa": s.profile_visa or "",
+            "profile_phone": s.profile_phone or "",
+            "profile_address": s.profile_address or "",
+            "profile_linkedin": s.profile_linkedin or "",
+            "profile_github": s.profile_github or "",
+            "profile_website": s.profile_website or "",
+            "profile_summary": s.profile_summary or "",
+            "telegram_bot_token": "••••" if s.telegram_bot_token else "",
+            "telegram_chat_id": s.telegram_chat_id or "",
+            "telegram_configured": bool(s.telegram_bot_token and s.telegram_chat_id),
+            # Legacy fields for backward compat
+            "auto_scrape_cron": "0 * * * *",
+            "last_scraped_at": "",
+        }
+        return data
 
 
 @app.put("/api/settings")
-async def update_settings(body: SettingsUpdate):
+async def update_settings(body: dict = Body(...), user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
-        for key, val in body.model_dump(exclude_none=True).items():
-            existing = await db.get(Setting, key)
-            if existing:
-                existing.value = val
-            else:
-                db.add(Setting(key=key, value=val))
+        result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+        s = result.scalar_one_or_none()
+        if not s:
+            s = UserSettings(user_id=user_id)
+            db.add(s)
+        for field in ["resume", "ai_provider", "ai_model", "profile_name", "profile_visa",
+                       "profile_phone", "profile_address", "profile_linkedin",
+                       "profile_github", "profile_website", "profile_summary",
+                       "telegram_chat_id"]:
+            if field in body:
+                setattr(s, field, body[field])
+        if "ai_api_key" in body and body["ai_api_key"] and "••" not in body["ai_api_key"]:
+            s.ai_api_key = body["ai_api_key"]
+        if "telegram_bot_token" in body and body["telegram_bot_token"] and "••" not in body["telegram_bot_token"]:
+            s.telegram_bot_token = body["telegram_bot_token"]
+        if "job_roles" in body:
+            s.job_roles = json.dumps(body["job_roles"] if isinstance(body["job_roles"], list) else [body["job_roles"]])
+        if "countries" in body:
+            s.countries = json.dumps(body["countries"] if isinstance(body["countries"], list) else [body["countries"]])
+        if "visa_filter" in body:
+            s.visa_filter = bool(body["visa_filter"])
+        if "level_filter" in body:
+            s.level_filter = bool(body["level_filter"])
         await db.commit()
     return {"ok": True}
 
 
-# ── Jobs ──────────────────────────────────────────────────────────────────────
+@app.post("/api/telegram/test")
+async def test_telegram(body: dict = Body(...), user_id: str = Depends(get_current_user_id)):
+    """Test Telegram bot connection and send a test message."""
+    token = body.get("token", "")
+    chat_id = body.get("chat_id", "")
+    if not token or not chat_id:
+        raise HTTPException(status_code=400, detail="Bot token and Chat ID are required")
+    ok, msg = await telegram_bot.test_connection(token, chat_id)
+    if ok:
+        # Also save to settings
+        async with SessionLocal() as db:
+            result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+            s = result.scalar_one_or_none()
+            if not s:
+                s = UserSettings(user_id=user_id)
+                db.add(s)
+            s.telegram_bot_token = token
+            s.telegram_chat_id = chat_id
+            await db.commit()
+        # Initialize the live bot
+        await telegram_bot.init_bot(token, chat_id)
+        return {"ok": True, "message": msg}
+    else:
+        raise HTTPException(status_code=400, detail=f"Telegram error: {msg}")
+
+
+# ── Companies ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/api/companies")
+async def list_companies(user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        result = await db.execute(select(Company).order_by(Company.ats, Company.name))
+        companies = result.scalars().all()
+        return [{"id": c.id, "name": c.name, "ats": c.ats, "slug": c.slug,
+                 "careers_url": c.careers_url, "active": c.active, "source": c.source}
+                for c in companies]
+
+
+@app.post("/api/companies/detect")
+async def detect_company_ats(body: dict, user_id: str = Depends(get_current_user_id)):
+    url = body.get("url", "")
+    if not url:
+        raise HTTPException(status_code=400, detail="url required")
+    from scrapers.ats_detect import detect
+    result = await detect(url)
+    if not result:
+        raise HTTPException(status_code=422, detail="Could not detect ATS from this URL")
+    return result
+
+
+@app.post("/api/companies")
+async def add_company(body: dict, user_id: str = Depends(get_current_user_id)):
+    name = body.get("name", "")
+    ats = body.get("ats", "")
+    slug = body.get("slug", "")
+    careers_url = body.get("careers_url", "")
+    if not ats or not slug:
+        raise HTTPException(status_code=400, detail="ats and slug required")
+    async with SessionLocal() as db:
+        company = Company(
+            id=str(_uuid.uuid4()),
+            name=name or slug.replace("-", " ").title(),
+            ats=ats, slug=slug, careers_url=careers_url,
+            active=True,
+            added_at=datetime.utcnow().isoformat(),
+            source="manual",
+        )
+        db.add(company)
+        await db.commit()
+        return {"id": company.id, "name": company.name, "ats": company.ats, "slug": company.slug}
+
+
+@app.delete("/api/companies/{company_id}")
+async def delete_company(company_id: str, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        result = await db.execute(select(Company).where(Company.id == company_id))
+        c = result.scalar_one_or_none()
+        if not c:
+            raise HTTPException(status_code=404, detail="Company not found")
+        await db.delete(c)
+        await db.commit()
+    return {"ok": True}
+
+
+@app.put("/api/companies/{company_id}/toggle")
+async def toggle_company(company_id: str, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        result = await db.execute(select(Company).where(Company.id == company_id))
+        c = result.scalar_one_or_none()
+        if not c:
+            raise HTTPException(status_code=404, detail="Company not found")
+        c.active = not c.active
+        await db.commit()
+        return {"id": c.id, "active": c.active}
+
+
+# ── Jobs ────────────────────────────────────────────────────────────────────────────────
 
 @app.get("/api/jobs")
 async def list_jobs(
+    user_id:    str            = Depends(get_current_user_id),
     status:     Optional[str]  = None,
     source:     Optional[str]  = None,
     remote:     Optional[bool] = None,
     country:    Optional[str]  = None,
-    time_range: Optional[str]  = None,   # "24h" | "48h" | None=all
+    time_range: Optional[str]  = None,   # "24h" | "48h" | "7d" | None=all
 ):
     from datetime import timezone, timedelta
     now = datetime.now(timezone.utc)
 
     async with SessionLocal() as db:
         q = select(Job).order_by(Job.posted_at.desc(), Job.scraped_at.desc())
-        if status:
-            q = q.where(Job.status == status)
         if source:
             q = q.where(Job.source == source)
         if remote is not None:
@@ -131,6 +400,21 @@ async def list_jobs(
             q = q.where(Job.country == country)
         result = await db.execute(q)
         jobs = result.scalars().all()
+
+        # Get user's job statuses
+        job_ids = [j.id for j in jobs]
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id.in_(job_ids))
+        )
+        user_jobs_map = {uj.job_id: uj for uj in uj_result.scalars().all()}
+
+    # Filter by status using user_jobs overlay
+    def get_uj_status(j):
+        uj = user_jobs_map.get(j.id)
+        return uj.status if uj else "new"
+
+    if status:
+        jobs = [j for j in jobs if get_uj_status(j) == status]
 
     # Time filter in Python — use posted_at when available, fallback to scraped_at
     def parse_dt(s: str):
@@ -158,22 +442,61 @@ async def list_jobs(
         jobs = [j for j in jobs if effective_dt(j) >= cutoff]
         jobs = sorted(jobs, key=effective_dt, reverse=True)
 
-    return [_job_to_dict(j) for j in jobs]
+    # Merge user_jobs overlay into job dicts
+    out = []
+    for job in jobs:
+        d = _job_to_dict(job)
+        uj = user_jobs_map.get(job.id)
+        if uj:
+            d["status"] = uj.status
+            d["tailored_resume"] = uj.tailored_resume
+            d["cover_letter"] = uj.cover_letter or ""
+            d["ats_score_before"] = uj.ats_score_before
+            d["ats_score_after"] = uj.ats_score_after
+            d["ats_keywords_matched"] = json.loads(uj.ats_keywords_matched) if uj.ats_keywords_matched else []
+            d["ats_keywords_missing"] = json.loads(uj.ats_keywords_missing) if uj.ats_keywords_missing else []
+            d["fit_analysis"] = uj.fit_analysis
+            d["interview_tips"] = json.loads(uj.interview_tips) if uj.interview_tips else []
+            d["notes"] = uj.notes or ""
+            d["priority"] = uj.priority or 0
+            d["qualify_result"] = json.loads(uj.qualify_result) if uj.qualify_result else None
+            d["deadline"] = uj.deadline or ""
+            d["interview_date"] = uj.interview_date or ""
+        else:
+            d["status"] = "new"
+        out.append(d)
+    return out
+
 
 
 @app.get("/api/jobs/{job_id}")
-async def get_job(job_id: str):
+async def get_job(job_id: str, user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
         job = await db.get(Job, job_id)
         if not job:
             raise HTTPException(404, "Job not found")
-        return _job_to_dict(job)
+        d = _job_to_dict(job)
+        # Overlay user-specific data
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        if uj:
+            d["status"] = uj.status
+            d["tailored_resume"] = uj.tailored_resume
+            d["cover_letter"] = uj.cover_letter or ""
+            d["ats_score_before"] = uj.ats_score_before
+            d["ats_score_after"] = uj.ats_score_after
+            d["notes"] = uj.notes or ""
+            d["priority"] = uj.priority or 0
+            d["qualify_result"] = json.loads(uj.qualify_result) if uj.qualify_result else None
+        return d
 
 
 # ── Live job verification ─────────────────────────────────────────────────────
 
 @app.get("/api/jobs/{job_id}/verify")
-async def verify_job_live(job_id: str):
+async def verify_job_live(job_id: str, user_id: str = Depends(get_current_user_id)):
     """
     HEAD-ping the job URL to check if it still exists.
     Returns: {alive: bool|null, status_code: int|null}
@@ -229,18 +552,27 @@ class StatusUpdate(BaseModel):
 
 
 @app.put("/api/jobs/{job_id}/status")
-async def set_status(job_id: str, body: StatusUpdate):
+async def set_status(job_id: str, body: StatusUpdate, user_id: str = Depends(get_current_user_id)):
     if body.status not in ("new", "applied", "skipped", "interview"):
         raise HTTPException(400, "Invalid status")
     async with SessionLocal() as db:
+        # Verify job exists
         job = await db.get(Job, job_id)
         if not job:
             raise HTTPException(404, "Job not found")
-        job.status = body.status
-        if body.status == "applied" and not getattr(job, "applied_at", None):
-            job.applied_at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        # Write to user_jobs table
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        if not uj:
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.utcnow().isoformat())
+            db.add(uj)
+        uj.status = body.status
+        if body.status == "applied" and not uj.applied_at:
+            uj.applied_at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
         elif body.status != "applied":
-            job.applied_at = None  # reset if un-applied
+            uj.applied_at = None  # reset if un-applied
         await db.commit()
     return {"ok": True}
 
@@ -248,7 +580,7 @@ async def set_status(job_id: str, body: StatusUpdate):
 # ── Clear All Jobs ────────────────────────────────────────────────────────────
 
 @app.delete("/api/jobs/all")
-async def clear_all_jobs():
+async def clear_all_jobs(user_id: str = Depends(get_current_user_id)):
     from sqlalchemy import delete as sa_delete
     async with SessionLocal() as db:
         result = await db.execute(sa_delete(Job))
@@ -259,7 +591,7 @@ async def clear_all_jobs():
 # ── Debug JobSpy ──────────────────────────────────────────────────────────────
 
 @app.get("/api/debug/jobspy")
-async def debug_jobspy():
+async def debug_jobspy(user_id: str = Depends(get_current_user_id)):
     """Test JobSpy directly — bypasses DB, shows raw counts."""
     jobs = await jobspy_fetch({})
     by_source: dict = {}
@@ -304,7 +636,7 @@ async def debug_google():
 # ── Scrape ────────────────────────────────────────────────────────────────────
 
 @app.post("/api/jobs/scrape")
-async def scrape_jobs():
+async def scrape_jobs(user_id: str = Depends(get_current_user_id)):
     from datetime import timezone, timedelta
     from sqlalchemy import delete as sa_delete
 
@@ -407,7 +739,7 @@ class DescriptionUpdate(BaseModel):
     description: str
 
 @app.put("/api/jobs/{job_id}/description")
-async def set_description(job_id: str, body: DescriptionUpdate):
+async def set_description(job_id: str, body: DescriptionUpdate, user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
         job = await db.get(Job, job_id)
         if not job:
@@ -417,7 +749,7 @@ async def set_description(job_id: str, body: DescriptionUpdate):
     return {"ok": True}
 
 @app.post("/api/jobs/{job_id}/fetch-jd")
-async def fetch_jd(job_id: str):
+async def fetch_jd(job_id: str, user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
         job = await db.get(Job, job_id)
         if not job:
@@ -445,23 +777,21 @@ async def fetch_jd(job_id: str):
 # ── Tailor ────────────────────────────────────────────────────────────────────
 
 @app.post("/api/jobs/{job_id}/tailor")
-async def tailor_job(job_id: str):
+async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
         job = await db.get(Job, job_id)
         if not job:
             raise HTTPException(404, "Job not found")
 
-        settings_result = await db.execute(select(Setting))
-        settings = {r.key: r.value for r in settings_result.scalars().all()}
-
-    api_key = settings.get("ai_api_key", "")
-    provider = settings.get("ai_provider", "openrouter")
-    model = settings.get("ai_model", "anthropic/claude-sonnet-4-5")
+    user_cfg = await _get_user_settings(user_id)
+    api_key = user_cfg.get("ai_api_key", "")
+    provider = user_cfg.get("ai_provider", "openrouter")
+    model = user_cfg.get("ai_model", "anthropic/claude-sonnet-4-5")
 
     if not api_key:
         raise HTTPException(400, "No AI API key set. Add one in Settings.")
 
-    base_resume = settings.get("resume", "")
+    base_resume = user_cfg.get("resume", "")
     jd = job.description
 
     ats_before = score_ats(base_resume, jd)
@@ -471,18 +801,24 @@ async def tailor_job(job_id: str):
 
     fit = await analyze_fit(base_resume, jd, job.title, job.company, api_key, provider, model)
 
+    # Write tailored resume to user_jobs table
     async with SessionLocal() as db:
-        job = await db.get(Job, job_id)
-        job.tailored_resume = tailored_text
-        job.tailored_at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-        job.ats_score_before = ats_before["score"]
-        job.ats_score_after = ats_after["score"]
-        job.ats_keywords_matched = json.dumps(ats_after["matched"])
-        job.ats_keywords_missing = json.dumps(ats_after["missing"])
-        job.fit_analysis = fit["analysis"]
-        job.interview_tips = json.dumps(fit["tips"])
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        if not uj:
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.utcnow().isoformat())
+            db.add(uj)
+        uj.tailored_resume = tailored_text
+        uj.tailored_at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        uj.ats_score_before = ats_before["score"]
+        uj.ats_score_after = ats_after["score"]
+        uj.ats_keywords_matched = json.dumps(ats_after["matched"])
+        uj.ats_keywords_missing = json.dumps(ats_after["missing"])
+        uj.fit_analysis = fit["analysis"]
+        uj.interview_tips = json.dumps(fit["tips"])
         await db.commit()
-        job = await db.get(Job, job_id)
 
     return {
         "ats_before": ats_before,
@@ -496,29 +832,35 @@ async def tailor_job(job_id: str):
 # ── Cover Letter ─────────────────────────────────────────────────────────────
 
 @app.post("/api/jobs/{job_id}/cover-letter")
-async def generate_cover_letter_endpoint(job_id: str):
+async def generate_cover_letter_endpoint(job_id: str, user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
         job = await db.get(Job, job_id)
         if not job:
             raise HTTPException(404, "Job not found")
-        settings_result = await db.execute(select(Setting))
-        settings = {r.key: r.value for r in settings_result.scalars().all()}
 
-    api_key = settings.get("ai_api_key", "")
-    provider = settings.get("ai_provider", "openrouter")
-    model = settings.get("ai_model", "anthropic/claude-sonnet-4-5")
+    user_cfg = await _get_user_settings(user_id)
+    api_key = user_cfg.get("ai_api_key", "")
+    provider = user_cfg.get("ai_provider", "openrouter")
+    model = user_cfg.get("ai_model", "anthropic/claude-sonnet-4-5")
 
     if not api_key:
         raise HTTPException(400, "No AI API key set. Add one in Settings.")
 
-    resume = settings.get("resume", "")
+    resume = user_cfg.get("resume", "")
     jd = job.description or ""
 
     letter = await generate_cover_letter(resume, jd, job.title, job.company, api_key, provider, model)
 
+    # Write cover letter to user_jobs table
     async with SessionLocal() as db:
-        job = await db.get(Job, job_id)
-        job.cover_letter = letter
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        if not uj:
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.utcnow().isoformat())
+            db.add(uj)
+        uj.cover_letter = letter
         await db.commit()
 
     return {"cover_letter": letter}
@@ -529,12 +871,21 @@ class NotesUpdate(BaseModel):
 
 
 @app.put("/api/jobs/{job_id}/notes")
-async def update_notes(job_id: str, body: NotesUpdate):
+async def update_notes(job_id: str, body: NotesUpdate, user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
+        # Verify job exists
         job = await db.get(Job, job_id)
         if not job:
             raise HTTPException(404, "Job not found")
-        job.notes = body.notes
+        # Write to user_jobs
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        if not uj:
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.utcnow().isoformat())
+            db.add(uj)
+        uj.notes = body.notes
         await db.commit()
     return {"ok": True}
 
@@ -542,15 +893,20 @@ async def update_notes(job_id: str, body: NotesUpdate):
 # ── PDF Download ──────────────────────────────────────────────────────────────
 
 @app.get("/api/jobs/{job_id}/resume/pdf")
-async def download_pdf(job_id: str):
+async def download_pdf(job_id: str, user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
         job = await db.get(Job, job_id)
         if not job:
             raise HTTPException(404, "Job not found")
-        if not job.tailored_resume:
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        tailored_resume = uj.tailored_resume if uj else None
+        if not tailored_resume:
             raise HTTPException(400, "No tailored resume yet. Click Tailor Resume first.")
 
-    pdf_bytes = generate_pdf(job.tailored_resume, job.title, job.company)
+    pdf_bytes = generate_pdf(tailored_resume, job.title, job.company)
     title_slug = re.sub(r"[^\w]+", "_", job.title or "Senior_Data_Engineer").strip("_")
     filename = f"Jagadish_Reddy_Butukuri_{title_slug}.pdf"
 
@@ -564,15 +920,20 @@ async def download_pdf(job_id: str):
 # ── DOCX Download ─────────────────────────────────────────────────────────────
 
 @app.get("/api/jobs/{job_id}/resume/docx")
-async def download_docx(job_id: str):
+async def download_docx(job_id: str, user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
         job = await db.get(Job, job_id)
         if not job:
             raise HTTPException(404, "Job not found")
-        if not job.tailored_resume:
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        tailored_resume = uj.tailored_resume if uj else None
+        if not tailored_resume:
             raise HTTPException(400, "No tailored resume yet. Click Tailor Resume first.")
 
-    docx_bytes = generate_docx(job.tailored_resume, job.title, job.company)
+    docx_bytes = generate_docx(tailored_resume, job.title, job.company)
     title_slug = re.sub(r"[^\w]+", "_", job.title or "Senior_Data_Engineer").strip("_")
     filename = f"Jagadish_Reddy_Butukuri_{title_slug}.docx"
 
@@ -590,19 +951,16 @@ class QuickTailorRequest(BaseModel):
     company: str = "Company"
 
 @app.post("/api/quick-tailor")
-async def quick_tailor(body: QuickTailorRequest):
-    async with SessionLocal() as db:
-        settings_result = await db.execute(select(Setting))
-        settings = {r.key: r.value for r in settings_result.scalars().all()}
-
-    api_key = settings.get("ai_api_key", "")
-    provider = settings.get("ai_provider", "openrouter")
-    model    = settings.get("ai_model", "anthropic/claude-sonnet-4-5")
+async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_current_user_id)):
+    user_cfg = await _get_user_settings(user_id)
+    api_key = user_cfg.get("ai_api_key", "")
+    provider = user_cfg.get("ai_provider", "openrouter")
+    model    = user_cfg.get("ai_model", "anthropic/claude-sonnet-4-5")
 
     if not api_key:
         raise HTTPException(400, "No AI API key set. Add one in Settings.")
 
-    base_resume = settings.get("resume", "")
+    base_resume = user_cfg.get("resume", "")
     if not base_resume:
         raise HTTPException(400, "No base resume found. Add it in Settings.")
 
@@ -611,19 +969,16 @@ async def quick_tailor(body: QuickTailorRequest):
 
 
 @app.post("/api/quick-tailor/pdf")
-async def quick_tailor_pdf(body: QuickTailorRequest):
-    async with SessionLocal() as db:
-        settings_result = await db.execute(select(Setting))
-        settings = {r.key: r.value for r in settings_result.scalars().all()}
-
-    api_key = settings.get("ai_api_key", "")
-    provider = settings.get("ai_provider", "openrouter")
-    model    = settings.get("ai_model", "anthropic/claude-sonnet-4-5")
+async def quick_tailor_pdf(body: QuickTailorRequest, user_id: str = Depends(get_current_user_id)):
+    user_cfg = await _get_user_settings(user_id)
+    api_key = user_cfg.get("ai_api_key", "")
+    provider = user_cfg.get("ai_provider", "openrouter")
+    model    = user_cfg.get("ai_model", "anthropic/claude-sonnet-4-5")
 
     if not api_key:
         raise HTTPException(400, "No AI API key set.")
 
-    base_resume = settings.get("resume", "")
+    base_resume = user_cfg.get("resume", "")
     if not base_resume:
         raise HTTPException(400, "No base resume found.")
 
@@ -636,19 +991,16 @@ async def quick_tailor_pdf(body: QuickTailorRequest):
 
 
 @app.post("/api/quick-tailor/docx")
-async def quick_tailor_docx(body: QuickTailorRequest):
-    async with SessionLocal() as db:
-        settings_result = await db.execute(select(Setting))
-        settings = {r.key: r.value for r in settings_result.scalars().all()}
-
-    api_key = settings.get("ai_api_key", "")
-    provider = settings.get("ai_provider", "openrouter")
-    model    = settings.get("ai_model", "anthropic/claude-sonnet-4-5")
+async def quick_tailor_docx(body: QuickTailorRequest, user_id: str = Depends(get_current_user_id)):
+    user_cfg = await _get_user_settings(user_id)
+    api_key = user_cfg.get("ai_api_key", "")
+    provider = user_cfg.get("ai_provider", "openrouter")
+    model    = user_cfg.get("ai_model", "anthropic/claude-sonnet-4-5")
 
     if not api_key:
         raise HTTPException(400, "No AI API key set.")
 
-    base_resume = settings.get("resume", "")
+    base_resume = user_cfg.get("resume", "")
     if not base_resume:
         raise HTTPException(400, "No base resume found.")
 
@@ -680,15 +1032,21 @@ def _build_package_zip(company: str, jd: str, tailored_resume: str, cover_letter
 
 
 @app.get("/api/jobs/{job_id}/save-package")
-async def save_package(job_id: str):
+async def save_package(job_id: str, user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
         job = await db.get(Job, job_id)
         if not job:
             raise HTTPException(404, "Job not found")
-        if not job.tailored_resume:
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        tailored_resume = uj.tailored_resume if uj else None
+        cover_letter = uj.cover_letter if uj else ""
+        if not tailored_resume:
             raise HTTPException(400, "No tailored resume yet. Tailor first.")
 
-    zip_bytes = _build_package_zip(job.company, job.description or "", job.tailored_resume, job.cover_letter or "")
+    zip_bytes = _build_package_zip(job.company, job.description or "", tailored_resume, cover_letter or "")
     slug = re.sub(r"[^\w]+", "_", job.company).strip("_")
     return StreamingResponse(
         iter([zip_bytes]),
@@ -704,7 +1062,7 @@ class QuickSaveRequest(BaseModel):
     cover_letter: str = ""
 
 @app.post("/api/quick-tailor/save-package")
-async def quick_save_package(body: QuickSaveRequest):
+async def quick_save_package(body: QuickSaveRequest, user_id: str = Depends(get_current_user_id)):
     zip_bytes = _build_package_zip(body.company, body.jd, body.tailored_resume, body.cover_letter)
     slug = re.sub(r"[^\w]+", "_", body.company).strip("_")
     return StreamingResponse(
@@ -717,7 +1075,7 @@ async def quick_save_package(body: QuickSaveRequest):
 # ── Analytics ────────────────────────────────────────────────────────────────
 
 @app.get("/api/analytics")
-async def get_analytics():
+async def get_analytics(user_id: str = Depends(get_current_user_id)):
     from collections import defaultdict
     from datetime import date, timedelta
 
@@ -840,17 +1198,25 @@ class DeadlineUpdate(BaseModel):
     priority: Optional[int] = None        # 0/1/2
 
 @app.patch("/api/jobs/{job_id}/meta")
-async def update_job_meta(job_id: str, body: DeadlineUpdate):
+async def update_job_meta(job_id: str, body: DeadlineUpdate, user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
         job = await db.get(Job, job_id)
         if not job:
             raise HTTPException(404, "Job not found")
+        # Write to user_jobs for per-user deadline/interview/priority
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        if not uj:
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.utcnow().isoformat())
+            db.add(uj)
         if body.deadline is not None:
-            job.deadline = body.deadline
+            uj.deadline = body.deadline
         if body.interview_date is not None:
-            job.interview_date = body.interview_date
+            uj.interview_date = body.interview_date
         if body.priority is not None:
-            job.priority = body.priority
+            uj.priority = body.priority
         await db.commit()
     return {"ok": True}
 
@@ -859,6 +1225,7 @@ async def update_job_meta(job_id: str, body: DeadlineUpdate):
 
 @app.get("/api/search")
 async def search_jobs(
+    user_id: str = Depends(get_current_user_id),
     q: str = "",
     status: str = "",
     remote: Optional[bool] = None,
@@ -934,7 +1301,7 @@ async def search_jobs(
 # ── Upcoming deadlines / reminders ───────────────────────────────────────────
 
 @app.get("/api/reminders")
-async def get_reminders():
+async def get_reminders(user_id: str = Depends(get_current_user_id)):
     """Return jobs with upcoming deadlines or interview dates within 7 days."""
     from datetime import timezone, timedelta
     now = datetime.now(timezone.utc)
@@ -980,7 +1347,7 @@ class SchedulerConfig(BaseModel):
     cron: str  # e.g. "0 */6 * * *"
 
 @app.get("/api/scheduler/status")
-async def scheduler_status():
+async def scheduler_status(user_id: str = Depends(get_current_user_id)):
     jobs = _scheduler.get_jobs()
     return {
         "running": _scheduler.running,
@@ -988,7 +1355,7 @@ async def scheduler_status():
     }
 
 @app.put("/api/scheduler/cron")
-async def update_scheduler_cron(body: SchedulerConfig):
+async def update_scheduler_cron(body: SchedulerConfig, user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
         setting = await db.get(Setting, "auto_scrape_cron")
         if setting:
@@ -1001,7 +1368,7 @@ async def update_scheduler_cron(body: SchedulerConfig):
     return {"ok": True, "cron": body.cron}
 
 @app.post("/api/scheduler/run-now")
-async def run_scraper_now():
+async def run_scraper_now(user_id: str = Depends(get_current_user_id)):
     """Trigger scraper immediately outside the schedule."""
     _scheduler.modify_job("auto_scrape", next_run_time=datetime.now())
     return {"ok": True, "message": "Scraper triggered immediately"}
@@ -1040,7 +1407,7 @@ class ProfileData(BaseModel):
     certifications: List[str] = []
 
 @app.get("/api/profile")
-async def get_profile():
+async def get_profile(user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
         row = await db.get(Setting, "profile")
         if row and row.value:
@@ -1102,7 +1469,7 @@ def _profile_to_resume_text(p: dict) -> str:
 
 
 @app.put("/api/profile")
-async def save_profile(body: ProfileData):
+async def save_profile(body: ProfileData, user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
         row = await db.get(Setting, "profile")
         val = json.dumps(body.model_dump())
@@ -1127,16 +1494,13 @@ async def save_profile(body: ProfileData):
 # ── Parse Resume File → structured profile ───────────────────────────────────
 
 @app.post("/api/profile/parse-resume")
-async def parse_resume_file(file: UploadFile = File(...)):
+async def parse_resume_file(file: UploadFile = File(...), user_id: str = Depends(get_current_user_id)):
     import io
 
-    async with SessionLocal() as db:
-        settings_result = await db.execute(select(Setting))
-        settings = {r.key: r.value for r in settings_result.scalars().all()}
-
-    api_key = settings.get("ai_api_key", "")
-    provider = settings.get("ai_provider", "openrouter")
-    model = settings.get("ai_model", "anthropic/claude-sonnet-4-5")
+    user_cfg = await _get_user_settings(user_id)
+    api_key = user_cfg.get("ai_api_key", "")
+    provider = user_cfg.get("ai_provider", "openrouter")
+    model = user_cfg.get("ai_model", "anthropic/claude-sonnet-4-5")
 
     if not api_key:
         raise HTTPException(400, "No AI API key set. Add one in Settings first.")
@@ -1229,7 +1593,7 @@ Rules:
 # ── Job Qualification ─────────────────────────────────────────────────────────
 
 @app.post("/api/jobs/{job_id}/qualify")
-async def qualify_job_endpoint(job_id: str):
+async def qualify_job_endpoint(job_id: str, user_id: str = Depends(get_current_user_id)):
     from ai.qualify import qualify_job
 
     async with SessionLocal() as db:
@@ -1237,13 +1601,14 @@ async def qualify_job_endpoint(job_id: str):
         if not job:
             raise HTTPException(404, "Job not found")
 
-        settings_result = await db.execute(select(Setting))
-        settings = {r.key: r.value for r in settings_result.scalars().all()}
-
-    api_key = settings.get("ai_api_key", "")
-    provider = settings.get("ai_provider", "openrouter")
-    model = settings.get("ai_model", "anthropic/claude-sonnet-4-5")
-    profile_raw = settings.get("profile", "{}")
+    user_cfg = await _get_user_settings(user_id)
+    api_key = user_cfg.get("ai_api_key", "")
+    provider = user_cfg.get("ai_provider", "openrouter")
+    model = user_cfg.get("ai_model", "anthropic/claude-sonnet-4-5")
+    # Profile still read from global Setting for now
+    async with SessionLocal() as db:
+        profile_row = await db.get(Setting, "profile")
+    profile_raw = profile_row.value if profile_row else "{}"
     try:
         profile = json.loads(profile_raw)
     except Exception:
@@ -1266,21 +1631,28 @@ async def qualify_job_endpoint(job_id: str):
     )
 
     async with SessionLocal() as db:
-        job = await db.get(Job, job_id)
-        job.qualify_result = json.dumps(result)
+        # Write qualify_result to user_jobs table
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        if not uj:
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.utcnow().isoformat())
+            db.add(uj)
+        uj.qualify_result = json.dumps(result)
         # Auto-set priority based on score
         score = result.get("score", 0)
         if result.get("qualified") and score >= 80:
-            job.priority = 2
+            uj.priority = 2
         elif result.get("qualified") and score >= 60:
-            job.priority = 1
+            uj.priority = 1
         await db.commit()
 
     return result
 
 
 @app.post("/api/jobs/qualify-all")
-async def qualify_all_jobs(background_tasks: BackgroundTasks):
+async def qualify_all_jobs(background_tasks: BackgroundTasks, user_id: str = Depends(get_current_user_id)):
     """Qualify all unanalyzed jobs in the background."""
     async def _run():
         from ai.qualify import qualify_job
@@ -1350,7 +1722,7 @@ async def qualify_all_jobs(background_tasks: BackgroundTasks):
 # ── Clean HTML descriptions ───────────────────────────────────────────────────
 
 @app.post("/api/jobs/clean-descriptions")
-async def clean_html_descriptions():
+async def clean_html_descriptions(user_id: str = Depends(get_current_user_id)):
     """Strip raw HTML from all job descriptions in DB. One-time cleanup."""
     from bs4 import BeautifulSoup
     import re

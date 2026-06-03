@@ -289,7 +289,7 @@ export default function App() {
             </div>
             <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "-0.01em" }}>Job Hunter</div>
           </div>
-          <div style={{ fontSize: 9.5, color: "var(--text-muted)", letterSpacing: "0.02em" }}>Hunt smarter, not harder</div>
+          <div style={{ fontSize: 9.5, color: "var(--text-muted)", letterSpacing: "0.02em" }}>Hunt Smarter, Not Harder</div>
         </div>
         <nav style={{ display: "flex", flexDirection: "column", gap: 2, padding: "10px 10px 8px" }}>
           {navItems.map(n => {

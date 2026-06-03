@@ -35,7 +35,12 @@ HEADERS = {
     "Referer": "https://hiring.cafe/",
 }
 
-SEARCH_TERMS = ["data engineer", "data analyst"]
+SEARCH_TERMS = [
+    "software engineer", "data engineer", "data analyst",
+    "product manager", "frontend engineer", "backend engineer",
+    "fullstack engineer", "devops engineer", "machine learning",
+    "data scientist", "engineering manager",
+]
 
 
 async def _get_build_id(client: httpx.AsyncClient) -> str | None:
@@ -163,7 +168,7 @@ async def fetch(settings: dict) -> list[dict]:
                             or ""
                         ).strip()
 
-                        if not title or not is_relevant_title(title):
+                        if not title:
                             continue
 
                         # Country + remote filter
@@ -171,20 +176,7 @@ async def fetch(settings: dict) -> list[dict]:
                         if country not in ("USA", "India", "Remote"):
                             continue
 
-                        # Skip clearance jobs
-                        if _has_clearance(v5):
-                            continue
-
                         req_summary = v5.get("requirements_summary") or ""
-
-                        # Skip no-sponsorship jobs
-                        if _has_no_sponsorship(v5, req_summary):
-                            continue
-
-                        # Experience filter (respect MAX_YEARS from base)
-                        min_yoe = v5.get("min_industry_and_role_yoe")
-                        if min_yoe and min_yoe > 8:
-                            continue
 
                         seen.add(apply_url)
 

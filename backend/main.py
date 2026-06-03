@@ -17,7 +17,6 @@ from apscheduler.triggers.cron import CronTrigger
 from database import init_db, SessionLocal, Job, Setting
 from scrapers import run_all_scrapers
 from scrapers.jobspy_scraper import fetch as jobspy_fetch
-from scrapers.base import exceeds_experience_limit
 from ai.ats import score_ats
 from ai.tailor import tailor_resume
 from ai.fit import analyze_fit
@@ -352,40 +351,8 @@ async def scrape_jobs():
         return pa >= cutoff_posted
     scraped = [j for j in scraped if _posted_ok(j)]
 
-    # ── F1/OPT filter: drop jobs requiring citizenship, GC, or clearance ──
-    import re as _re
-    _VISA_BLOCK = _re.compile(
-        r"(us\s*citizen(ship)?|u\.s\.?\s*citizen(ship)?|united\s+states\s+citizen"
-        r"|must\s+be\s+(a\s+)?citizen"
-        r"|permanent\s+residen(t|ce)|green\s*card"
-        r"|no\s+(visa\s+)?sponsorship|unable\s+to\s+sponsor|cannot\s+sponsor"
-        r"|not\s+able\s+to\s+sponsor|will\s+not\s+sponsor|does\s+not\s+sponsor"
-        r"|sponsorship\s+(is\s+)?(not\s+available|unavailable)"
-        r"|top\s*secret|ts/sci|ts\s*clearance|secret\s+clearance"
-        r"|security\s+clearance|dod\s+clearance|active\s+clearance"
-        r"|with\s+(security\s+)?clearance|clearance\s+required"
-        r"|polygraph|public\s+trust|position\s+of\s+public\s+trust"
-        r"|must\s+work\s+without\s+(any\s+)?sponsorship)",
-        _re.IGNORECASE,
-    )
-
-    def _visa_ok(j: dict) -> bool:
-        text = (j.get("title", "") + " " + j.get("description", "")).lower()
-        return not _VISA_BLOCK.search(text)
-
-    before = len(scraped)
-    scraped = [j for j in scraped if _visa_ok(j)]
-    print(f"[Visa filter] dropped {before - len(scraped)} ineligible jobs (clearance/citizenship)")
-
-    before = len(scraped)
-    scraped = [j for j in scraped if not exceeds_experience_limit(j.get("description", ""))]
-    print(f"[Exp filter] dropped {before - len(scraped)} jobs requiring 7+ years experience")
-
-    # ── Hard title filter — final gate before DB ──
-    from scrapers.base import is_relevant_title as _is_title_ok
-    before = len(scraped)
-    scraped = [j for j in scraped if _is_title_ok(j.get("title", ""))]
-    print(f"[Title filter] dropped {before - len(scraped)} non-DE titles (kept {len(scraped)} jobs)")
+    # All filters removed — accept all titles, all experience levels, all visa types
+    print(f"[Scrape] {len(scraped)} jobs after date/country filter (no title/visa/exp filters)")
 
     async with SessionLocal() as db:
         # Load existing (url, title+company fingerprints) to dedup against DB

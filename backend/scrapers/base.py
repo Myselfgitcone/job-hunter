@@ -3,11 +3,7 @@ from typing import Optional
 from datetime import datetime, timedelta, timezone
 import re
 
-RELEVANT_TITLE_TERMS = [
-    "data engineer",
-    "data engineering",
-    "data analyst",
-]
+RELEVANT_TITLE_TERMS = []  # empty = accept all titles
 
 CUTOFF_HOURS = 96  # 4 days
 
@@ -110,6 +106,8 @@ def exceeds_experience_limit(description: str) -> bool:
 
 
 def is_relevant_title(title: str) -> bool:
+    if not RELEVANT_TITLE_TERMS:
+        return True  # no filter — accept all
     t = title.lower()
     return any(term in t for term in RELEVANT_TITLE_TERMS)
 

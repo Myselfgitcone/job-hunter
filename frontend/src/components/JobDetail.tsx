@@ -50,10 +50,10 @@ const STATUS_COLORS: Record<string, string> = {
 
 function srcColorFn(source: string): string {
   const m: Record<string, string> = {
-    Greenhouse: "#4ade80", Lever: "#34d399", Ashby: "#22d3ee",
-    Workday: "#a78bfa", BambooHR: "#fb923c", Recruitee: "#f472b6",
-    HiringCafe: "#facc15", Google: "#60a5fa", Apple: "#94a3b8",
-    Meta: "#818cf8", Netflix: "#ef4444",
+    Greenhouse: "#16a34a", Lever:  "#059669", Ashby:  "#0891b2",
+    HiringCafe: "#b45309", Google: "#2563eb", Apple:  "#475569",
+    Meta:       "#4f46e5", Netflix:"#dc2626", Workday:"#7c3aed",
+    BambooHR:   "#c2410c", Recruitee:"#be185d",
   };
   return m[source] || "var(--text-secondary)";
 }

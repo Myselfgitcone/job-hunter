@@ -62,7 +62,8 @@
       "Bash(git commit *)",
       "mcp__Claude_in_Chrome__list_connected_browsers",
       "mcp__Claude_in_Chrome__select_browser",
-      "mcp__Claude_in_Chrome__read_page"
+      "mcp__Claude_in_Chrome__read_page",
+      "Bash(git checkout *)"
     ]
   }
 }

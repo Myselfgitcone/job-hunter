@@ -606,68 +606,102 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
 }
 
 // ── FilterBar (exact match to shell.jsx FilterBar) ──────────────────────────────
-// ── Grouped category data ─────────────────────────────────────────────────────
-const CATEGORY_GROUPS: { group: string; items: string[] }[] = [
-  { group: "Technology & Engineering", items: ["Software Engineering","Data Engineering","ML / AI Engineering","DevOps / Infrastructure","Mobile Engineering","QA / Testing","Cybersecurity"] },
-  { group: "Data & Analytics",         items: ["Data Science","Data Analysis","Business Intelligence","Analytics Engineering","Data Architecture"] },
-  { group: "Product & Design",         items: ["Product Management","UX Design","UI Design","Product Design","UX Research"] },
-  { group: "Business & Operations",    items: ["Project Management","Business Operations","Finance & Accounting","Legal & Compliance","Human Resources","Administrative Support"] },
-  { group: "Sales & Marketing",        items: ["Sales","Marketing","Business Development","Content & Communications"] },
-  { group: "Other",                    items: ["Customer Success","Healthcare","Education","Consulting","Support"] },
+// ── All department groups (Category) ─────────────────────────────────────────
+const DEPT_GROUPS: { group: string; items: string[] }[] = [
+  { group: "Technology",                items: ["Software Engineering","Data Engineering","ML / AI Engineering","DevOps / Infrastructure","Mobile Engineering","QA / Testing","Cybersecurity","IT Support","Systems Administration"] },
+  { group: "Data and Analytics",        items: ["Data Science","Data Analysis","Business Intelligence","Analytics Engineering","Data Architecture","Database Administration"] },
+  { group: "Design and Creative",       items: ["UX Design","UI Design","Product Design","Graphic Design","Creative and Art Services","UX Research","Motion Design"] },
+  { group: "Product",                   items: ["Product Management","Technical Product Management","Program Management"] },
+  { group: "Business Operations",       items: ["Project Management","Business Operations","Finance and Accounting","Legal and Compliance","Human Resources","Administrative Support","Strategy and Consulting"] },
+  { group: "Sales and Marketing",       items: ["Sales","Marketing","Business Development","Content and Communications","Public Affairs","Account Management"] },
+  { group: "Healthcare",                items: ["Healthcare Services - Advanced Practice","Healthcare Services - Allied Health","Healthcare Services - Nursing","Healthcare Administration","Pharmacy","Mental Health"] },
+  { group: "Education",                 items: ["Teaching and Instruction","Curriculum and Training","Educational Administration","Academic Research"] },
+  { group: "Customer and Social Services", items: ["Customer Success","Customer Support","Social Work","Community Services","Non-Profit"] },
+  { group: "Research and Development",  items: ["R&D Engineering","Scientific Research","Lab Services","Product Research"] },
+  { group: "Skilled Trades",            items: ["Construction","Mechanical","Electrical","Repair and Maintenance","Labor"] },
+  { group: "Transportation and Logistics", items: ["Logistics","Supply Chain","Fleet Management","Warehousing","Delivery"] },
+  { group: "Quality and Safety",        items: ["Quality Assurance","Regulatory Compliance","Environment Health and Safety","Risk Management"] },
+  { group: "Food and Hospitality",      items: ["Food Service","Restaurant Management","Hotel and Lodging","Event Management"] },
+  { group: "Protective Services",       items: ["Law Enforcement","Security","Fire Services","Emergency Management"] },
+  { group: "Custodial Services",        items: ["Facilities Management","Janitorial","Groundskeeping"] },
 ];
 
-// ── Grouped category selector ─────────────────────────────────────────────────
-function CategorySelector({ selected, onChange }: { selected: string[]; onChange: (v: string[]) => void }) {
-  const [q, setQ] = React.useState("");
-  const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>({});
-
-  const toggle = (item: string) => onChange(selected.includes(item) ? selected.filter(x => x !== item) : [...selected, item]);
-  const toggleGroup = (g: string) => setCollapsed(c => ({ ...c, [g]: !c[g] }));
-  const expandAll  = () => setCollapsed({});
-  const collapseAll = () => { const m: Record<string,boolean> = {}; CATEGORY_GROUPS.forEach(g => m[g.group] = true); setCollapsed(m); };
-
-  const filtered = q.trim()
-    ? CATEGORY_GROUPS.map(g => ({ ...g, items: g.items.filter(i => i.toLowerCase().includes(q.toLowerCase())) })).filter(g => g.items.length > 0)
-    : CATEGORY_GROUPS;
-
+// ── Accordion section (collapsible filter group) ──────────────────────────────
+function AccordionSection({ label, count, children, defaultOpen = false }: {
+  label: string; count: number; children: React.ReactNode; defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = React.useState(defaultOpen);
   return (
-    <div className="cat-selector">
-      <div className="cat-search-wrap">
+    <div className="acc-section">
+      <button className="acc-head" onClick={() => setOpen(o => !o)}>
+        <span className="acc-label">{label}</span>
+        {count > 0 && <span className="acc-count">{count}</span>}
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+          style={{ marginLeft: count > 0 ? 4 : "auto", transition: "transform .15s", transform: open ? "rotate(0deg)" : "rotate(-90deg)", flexShrink: 0 }}>
+          <path d="M6 9l6 6 6-6"/>
+        </svg>
+      </button>
+      {open && <div className="acc-body">{children}</div>}
+    </div>
+  );
+}
+
+// ── Department selector (nested: dept group → items) ─────────────────────────
+function DeptSelector({ selected, onChange }: { selected: string[]; onChange: (v: string[]) => void }) {
+  const [q, setQ] = React.useState("");
+  const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>(
+    Object.fromEntries(DEPT_GROUPS.map(g => [g.group, true]))
+  );
+  const toggleItem = (item: string) => onChange(selected.includes(item) ? selected.filter(x => x !== item) : [...selected, item]);
+  const toggleGroup = (g: string) => setCollapsed(c => ({ ...c, [g]: !c[g] }));
+  const expandAll   = () => setCollapsed(Object.fromEntries(DEPT_GROUPS.map(g => [g.group, false])));
+  const collapseAll = () => setCollapsed(Object.fromEntries(DEPT_GROUPS.map(g => [g.group, true])));
+  const filtered = q.trim()
+    ? DEPT_GROUPS.map(g => ({ ...g, items: g.items.filter(i => i.toLowerCase().includes(q.toLowerCase())) })).filter(g => g.items.length > 0)
+    : DEPT_GROUPS;
+  return (
+    <div className="dept-sel">
+      <div className="dept-search-wrap">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"var(--tx-3)", pointerEvents:"none" }}>
           <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
         </svg>
-        <input className="cat-search" value={q} onChange={e => setQ(e.target.value)} placeholder="Search departments…" />
+        <input className="dept-search" value={q} onChange={e => setQ(e.target.value)} placeholder="Search departments…" />
       </div>
       {!q && (
-        <div className="cat-actions">
+        <div className="dept-actions">
           <button onClick={expandAll}>↓ Expand All</button>
           <button onClick={collapseAll}>↑ Collapse All</button>
-          {selected.length > 0 && <button className="cat-clear" onClick={() => onChange([])}>Clear ({selected.length})</button>}
+          {selected.length > 0 && <button className="dept-clear" onClick={() => onChange([])}>Clear ({selected.length})</button>}
         </div>
       )}
-      <div className="cat-groups">
-        {filtered.map(({ group, items }) => (
-          <div className="cat-group" key={group}>
-            <button className="cat-group-head" onClick={() => toggleGroup(group)}>
-              <span>{group}</span>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ transition:"transform .15s", transform: collapsed[group] ? "rotate(-90deg)" : "rotate(0deg)" }}>
-                <path d="M6 9l6 6 6-6"/>
-              </svg>
-            </button>
-            {!collapsed[group] && (
-              <div className="cat-items">
-                {items.map(item => (
-                  <label key={item} className={`fp-check${selected.includes(item) ? " on" : ""}`} onClick={() => toggle(item)}>
-                    <span className="fp-box">
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
-                    </span>
-                    {item}
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
+      <div className="dept-groups">
+        {filtered.map(({ group, items }) => {
+          const selCount = items.filter(i => selected.includes(i)).length;
+          return (
+            <div className="dept-group" key={group}>
+              <button className="dept-group-head" onClick={() => toggleGroup(group)}>
+                <span>{group}</span>
+                {selCount > 0 && <span className="dept-sel-count">{selCount}</span>}
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+                  style={{ marginLeft: selCount > 0 ? 4 : "auto", transition:"transform .15s", transform: collapsed[group] ? "rotate(-90deg)" : "rotate(0deg)", flexShrink: 0 }}>
+                  <path d="M6 9l6 6 6-6"/>
+                </svg>
+              </button>
+              {!collapsed[group] && (
+                <div className="dept-items">
+                  {items.map(item => (
+                    <label key={item} className={`fp-check${selected.includes(item) ? " on" : ""}`} onClick={() => toggleItem(item)}>
+                      <span className="fp-box">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
+                      </span>
+                      {item}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -748,40 +782,36 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, CO
               <span className="fp-title">Filters</span>
               <button className="fp-reset" onClick={resetAll}>Reset all</button>
             </div>
-            <div className="fp-grid">
-              <div className="fp-group span cat-span">
-                <div className="fp-group-label">Category</div>
-                <CategorySelector selected={draft.category} onChange={v => setDraft(d => ({ ...d, category: v }))} />
-              </div>
+            <div className="fp-accordion">
+              <AccordionSection label="Department" count={draft.category.length} defaultOpen={true}>
+                <DeptSelector selected={draft.category} onChange={v => setDraft(d => ({ ...d, category: v }))} />
+              </AccordionSection>
               {groups.map(([key, label, opts]) => (
-                <div className="fp-group" key={key}>
-                  <div className="fp-group-label">{label}</div>
-                  <div className="fp-opts">
+                <AccordionSection key={key} label={label} count={(draft[key] as string[]).length}>
+                  <div className="acc-opts">
                     {opts.map(o => {
                       const arr = draft[key] as string[];
                       return (
                         <label key={o} className={`fp-check${arr.includes(o) ? " on" : ""}`} onClick={() => toggle(key, o)}>
                           <span className="fp-box">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
                           </span>
                           {o}
                         </label>
                       );
                     })}
                   </div>
-                </div>
+                </AccordionSection>
               ))}
-              <div className="fp-group span">
-                <div className="fp-group-label">Match Score</div>
-                <div className="fp-opts">
+              <AccordionSection label="Match Score" count={draft.score !== "any" ? 1 : 0}>
+                <div className="acc-opts acc-pills">
                   {scoreOpts.map(([v, l]) => (
                     <label key={v} className={`fp-radio${draft.score === v ? " on" : ""}`} onClick={() => setDraft(d => ({ ...d, score: v }))}>
-                      <span className="fp-dot" />
-                      {l}
+                      <span className="fp-dot" />{l}
                     </label>
                   ))}
                 </div>
-              </div>
+              </AccordionSection>
             </div>
             <div className="fp-toggles">
               <div className="fp-toggle-row">

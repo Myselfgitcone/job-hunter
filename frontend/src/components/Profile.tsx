@@ -162,7 +162,7 @@ export function Profile() {
   const totalYears = profile.experience.reduce((s, e) => s + (e.years || 0), 0);
 
   return (
-    <div style={{maxWidth:900, padding:32, display:'flex', flexDirection:'column', gap:24}}>
+    <div style={{maxWidth:900, padding:32, display:'flex', flexDirection:'column', gap:24, overflowY:'auto', flex:1}}>
       {/* Header */}
       <div style={{display:'flex', alignItems:'center', justifyContent:'space-between'}}>
         <div>

@@ -12,7 +12,7 @@ import { Profile } from "./components/Profile";
 import { Settings } from "./components/Settings";
 import { JobDetail } from "./components/JobDetail";
 import { Toasts, useToasts, Spinner } from "./components/primitives";
-import { Auth } from "./components/Auth";
+import Auth from "./components/Auth";
 import { Onboarding } from "./components/Onboarding";
 
 type View = "jobs" | "dashboard" | "profile" | "settings";
@@ -390,7 +390,7 @@ export default function App() {
 
   // ── Auth gate ────────────────────────────────────────────────────────────
   if (!isAuthenticated) {
-    return <Auth onSuccess={(user) => {
+    return <Auth onSuccess={(user: { id: string; email: string; name: string }) => {
       setCurrentUser(user);
       setIsAuthenticated(true);
       // Check if new user → show onboarding

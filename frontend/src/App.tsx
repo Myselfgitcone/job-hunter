@@ -606,57 +606,7 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
   );
 }
 
-// ── Single filter chip with its own card popup ───────────────────────────────
-function FilterChip({ label, opts, selected, onChange }: {
-  label: string; opts: string[];
-  selected: string[]; onChange: (vals: string[]) => void;
-}) {
-  const [open, setOpen] = React.useState(false);
-  const ref = React.useRef<HTMLDivElement>(null);
-  React.useEffect(() => {
-    if (!open) return;
-    const fn = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener("mousedown", fn);
-    return () => document.removeEventListener("mousedown", fn);
-  }, [open]);
-  const toggle = (o: string) => onChange(selected.includes(o) ? selected.filter(x => x !== o) : [...selected, o]);
-  return (
-    <div ref={ref} style={{ position: "relative" }}>
-      <button className={`chip${selected.length > 0 ? " on" : ""}`} onClick={() => setOpen(o => !o)}>
-        {label}
-        {selected.length > 0 && <span className="fb-count">{selected.length}</span>}
-        <svg className="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 9l6 6 6-6"/></svg>
-      </button>
-      {open && (
-        <div className="fp-card">
-          <div className="fp-card-head">
-            <span className="fp-card-title">{label}</span>
-            <button className="fp-card-close" onClick={() => setOpen(false)}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-            </button>
-          </div>
-          {selected.length > 0 && (
-            <div className="fp-card-clear">
-              <button onClick={() => onChange([])}>Clear all</button>
-            </div>
-          )}
-          <div className="fp-card-opts">
-            {opts.map(o => (
-              <label key={o} className={`fp-check${selected.includes(o) ? " on" : ""}`} onClick={() => toggle(o)}>
-                <span className="fp-box">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
-                </span>
-                {o}
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── FilterBar ──────────────────────────────────────────────────────────────────
+// ── FilterBar (exact match to shell.jsx FilterBar) ──────────────────────────────
 function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, COUNTRIES, visaFilter, setVisaFilter, expFilter, setExpFilter }: {
   filters: Filters; setFilters: React.Dispatch<React.SetStateAction<Filters>>;
   role: string; roleOn: boolean; setRoleOn: (v: boolean) => void;
@@ -665,18 +615,45 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, CO
   expFilter: boolean; setExpFilter: (v: boolean) => void;
 }) {
   const set = (k: keyof Filters, v: any) => setFilters(f => ({ ...f, [k]: v }));
-  const timeOpts: [Filters["time"], string][] = [["any","Any"],["24","24h"],["48","48h"],["72","72h"],["168","7d"]];
-  const scoreOpts: [string, string][] = [["any","Any"],["60","≥60%"],["70","≥70%"],["80","≥80%"],["90","≥90%"]];
-  const countryOpts = COUNTRIES.length ? COUNTRIES : ["USA","Canada","United Kingdom","Germany","France","India","Remote"];
+  const [open, setOpen] = React.useState(false);
+  const [draft, setDraft] = React.useState({ category: [] as string[], level: [] as string[], type: [] as string[], country: [] as string[], source: [] as string[], score: "any" as string });
+  const ref = React.useRef<HTMLDivElement>(null);
 
-  const activeCount = countPanelFilters(filters);
-  const hasAny = activeCount > 0 || !roleOn || visaFilter || expFilter;
+  React.useEffect(() => {
+    if (open) setDraft({ category: filters.category, level: filters.level, type: filters.type, country: filters.country, source: filters.source, score: filters.score });
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const fn = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+  }, [open]);
+
+  const toggle = (key: keyof typeof draft, val: string) => setDraft(d => {
+    const arr = d[key] as string[];
+    return { ...d, [key]: arr.includes(val) ? arr.filter((x: string) => x !== val) : [...arr, val] };
+  });
+  const resetAll = () => setDraft({ category: [], level: [], type: [], country: [], source: [], score: "any" });
+  const apply = () => { setFilters(f => ({ ...f, ...draft, score: draft.score as Filters["score"] })); setOpen(false); };
+
+  const committed = countPanelFilters(filters);
+  const draftCount = countPanelFilters(draft);
+  const timeOpts: [Filters["time"], string][] = [["any","Any"],["24","24h"],["48","48h"],["72","72h"],["168","7d"]];
+  const groups: [keyof typeof draft, string, string[]][] = [
+    ["category", "Category", ["Engineering","Data","Product","Design"]],
+    ["level",    "Level",    ["Entry","Mid","Senior","Lead"]],
+    ["type",     "Work Type",["Remote","Onsite","Hybrid"]],
+    ["source",   "Source",   ["Greenhouse","Lever","Ashby","Workday","HiringCafe"]],
+    ["country",  "Country",  COUNTRIES.length ? COUNTRIES : ["USA","Canada","United Kingdom","Germany","France","India","Remote"]],
+  ];
+  const scoreOpts: [string, string][] = [["any","Any"],["60","≥60%"],["70","≥70%"],["80","≥80%"],["90","≥90%"]];
 
   return (
     <div className="filterbar">
       {/* Role chip */}
-      <button className={`chip role${roleOn ? " on" : ""}`} onClick={() => setRoleOn(!roleOn)}>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--violet)" }}>
+      <button className={`chip role`} onClick={() => setRoleOn(!roleOn)} style={{ opacity: roleOn ? 1 : 0.5 }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--violet)" }}>
           <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>
         </svg>
         My Role: <b style={{ color: "var(--violet)", fontWeight: 600 }}>{role}</b>
@@ -691,31 +668,83 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, CO
         {!filters.q && <span className="kbd s-kbd">⌘K</span>}
       </div>
 
-      <div className="fb-divider" />
-
-      {/* Per-group filter chips */}
-      <FilterChip label="Category"  opts={["Engineering","Data","Product","Design"]}                                                                     selected={filters.category} onChange={v => set("category", v)} />
-      <FilterChip label="Level"     opts={["No Experience","Entry","Mid","Senior","Lead"]}                                                               selected={filters.level}    onChange={v => set("level",    v)} />
-      <FilterChip label="Work Type" opts={["Remote","Onsite","Hybrid"]}                                                                                  selected={filters.type}     onChange={v => set("type",     v)} />
-      <FilterChip label="Source"    opts={["Greenhouse","Lever","Ashby","Workday","HiringCafe"]}                                                         selected={filters.source}   onChange={v => set("source",   v)} />
-      <FilterChip label="Country"   opts={countryOpts}                                                                                                   selected={filters.country}  onChange={v => set("country",  v)} />
-
-      {/* Score segchips */}
-      <div className="segchips score">
-        {scoreOpts.map(([v, l]) => (
-          <button key={v} className={filters.score === v ? "on" : ""} onClick={() => set("score", v as Filters["score"])}>{l}</button>
-        ))}
+      {/* Single Filters button + panel */}
+      <div ref={ref} style={{ position: "relative" }}>
+        <button className={`filters-btn${committed > 0 ? " has" : ""}`} onClick={() => setOpen(o => !o)}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 4h18l-7 8v6l-4 2v-8z"/>
+          </svg>
+          Filters
+          {committed > 0 && <span className="fb-count">{committed}</span>}
+          <svg className="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        {open && (
+          <div className="filter-panel">
+            <div className="fp-head">
+              <span className="fp-title">Filters</span>
+              <button className="fp-reset" onClick={resetAll}>Reset all</button>
+            </div>
+            <div className="fp-grid">
+              {groups.map(([key, label, opts]) => (
+                <div className="fp-group" key={key}>
+                  <div className="fp-group-label">{label}</div>
+                  <div className="fp-opts">
+                    {opts.map(o => {
+                      const arr = draft[key] as string[];
+                      return (
+                        <label key={o} className={`fp-check${arr.includes(o) ? " on" : ""}`} onClick={() => toggle(key, o)}>
+                          <span className="fp-box">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
+                          </span>
+                          {o}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+              <div className="fp-group span">
+                <div className="fp-group-label">Match Score</div>
+                <div className="fp-opts">
+                  {scoreOpts.map(([v, l]) => (
+                    <label key={v} className={`fp-radio${draft.score === v ? " on" : ""}`} onClick={() => setDraft(d => ({ ...d, score: v }))}>
+                      <span className="fp-dot" />
+                      {l}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="fp-toggles">
+              <div className="fp-toggle-row">
+                <div>
+                  <div className="fp-toggle-name">Visa filter</div>
+                  <div className="fp-toggle-desc">Only show roles matching your visa status</div>
+                </div>
+                <button className={`toggle${visaFilter ? " on" : ""}`} onClick={() => setVisaFilter(!visaFilter)}>
+                  <span className="toggle-knob" />
+                </button>
+              </div>
+              <div className="fp-toggle-row">
+                <div>
+                  <div className="fp-toggle-name">Experience level</div>
+                  <div className="fp-toggle-desc">Hide roles outside your seniority range</div>
+                </div>
+                <button className={`toggle${expFilter ? " on" : ""}`} onClick={() => setExpFilter(!expFilter)}>
+                  <span className="toggle-knob" />
+                </button>
+              </div>
+            </div>
+            <div className="fp-foot">
+              <span className="fp-summary"><b>{draftCount}</b> filter{draftCount === 1 ? "" : "s"} selected</span>
+              <button className="fp-apply" onClick={apply}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
+                Apply filters
+              </button>
+            </div>
+          </div>
+        )}
       </div>
-
-      {/* Visa / exp toggles as chips */}
-      <button className={`chip${visaFilter ? " on" : ""}`} onClick={() => setVisaFilter(!visaFilter)} title="Only show visa-sponsored roles">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h2m4 0h2"/></svg>
-        Visa
-      </button>
-      <button className={`chip${expFilter ? " on" : ""}`} onClick={() => setExpFilter(!expFilter)} title="Hide roles outside your seniority range">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M2 20h20M6 20V10l6-6 6 6v10"/></svg>
-        Exp Level
-      </button>
 
       <div className="fb-divider" />
       <span className="fb-time-label">Posted</span>
@@ -724,13 +753,6 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, CO
           <button key={v} className={filters.time === v ? "on" : ""} onClick={() => set("time", v)}>{l}</button>
         ))}
       </div>
-
-      {/* Reset all — only when active */}
-      {hasAny && (
-        <button className="clear-btn" onClick={() => { setFilters({ q: filters.q, category: [], level: [], type: [], country: [], source: [], score: "any", time: "any" }); setRoleOn(true); setVisaFilter(false); setExpFilter(false); }}>
-          Reset
-        </button>
-      )}
     </div>
   );
 }

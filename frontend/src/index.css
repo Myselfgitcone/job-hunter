@@ -1189,6 +1189,10 @@ input.field::placeholder, textarea.field::placeholder { color: var(--tx-faint); 
 .tag-pill button { display: grid; place-items: center; width: 16px; height: 16px; border-radius: 4px; color: inherit; opacity: .7; }
 .tag-pill button:hover { opacity: 1; background: rgba(255,255,255,.12); }
 .tag-pill button svg { width: 11px; height: 11px; }
+/* light mode — #c4b5fd is near-invisible on white, use dark violet */
+html.light .tag-pill { color: var(--violet-deep); background: rgba(124,58,237,.1); border-color: rgba(124,58,237,.35); }
+html.light .tag-pill button:hover { background: rgba(124,58,237,.15); }
+
 .tag-suggest { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .tag-sg { font-size: 11.5px; color: var(--tx-3); padding: 4px 10px; border-radius: 20px; border: 1px dashed var(--line-hi); transition: all .14s; }
 .tag-sg:hover { color: var(--tx); border-color: var(--violet); border-style: solid; }

@@ -358,7 +358,7 @@ async def forgot_password(body: ForgotPasswordBody):
         import resend
         resend.api_key = _os.getenv("RESEND_API_KEY", "")
         resend.Emails.send({
-            "from": _os.getenv("EMAIL_FROM", "noreply@jobhunter.app"),
+            "from": _os.getenv("EMAIL_FROM", "onboarding@resend.dev"),
             "to": [user.email],
             "subject": "Reset your Job Hunter password",
             "html": f"""

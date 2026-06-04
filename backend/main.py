@@ -349,7 +349,7 @@ async def forgot_password(body: ForgotPasswordBody):
         await db.commit()
 
     # Build reset link
-    frontend_url = _os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
+    frontend_url = _os.getenv("FRONTEND_URL", "https://job-hunter-sigma.vercel.app").rstrip("/")
     reset_link = f"{frontend_url}?reset_token={token}"
     user_name = user.name or "there"
 

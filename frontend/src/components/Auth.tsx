@@ -308,21 +308,44 @@ export default function Auth({ onSuccess }: Props) {
               ))}
             </ul>
 
-            {/* Live stats */}
-            <div className="auth-stats">
-              <div className="auth-stat">
-                <b>{jobCount > 0 ? <><Counter to={jobCount} />+</> : "—"}</b>
-                <span>Jobs scraped</span>
+
+            {/* LIVE stats grid */}
+            <div style={{ marginTop: 28, position: "relative", zIndex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".15em", color: "var(--tx)", textTransform: "uppercase" }}>Live</span>
+                <span style={{ position: "relative", display: "inline-flex", width: 9, height: 9 }}>
+                  <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#22c55e", animation: "livePip 1.4s ease-in-out infinite" }} />
+                  <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#22c55e" }} />
+                </span>
+                <style>{`@keyframes livePip { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(2.5);opacity:0} }`}</style>
               </div>
-              <div className="auth-stat">
-                <b>{liveStats ? liveStats.added_today : "—"}</b>
-                <span>Added today</span>
-              </div>
-              <div className="auth-stat">
-                <b>10+</b>
-                <span>Job boards</span>
+              <div style={{ display: "flex", borderRadius: "var(--r)", overflow: "hidden", border: "1px solid var(--line)" }}>
+                {[
+                  {
+                    value: liveStats?.last_scrape_mins_ago != null
+                      ? liveStats.last_scrape_mins_ago < 60
+                        ? `${liveStats.last_scrape_mins_ago}m ago`
+                        : `${Math.round(liveStats.last_scrape_mins_ago / 60)}h ago`
+                      : "—",
+                    label: "Last scrape",
+                  },
+                  { value: jobCount > 0 ? <><Counter to={jobCount} />+</> : "—", label: "Jobs scraped" },
+                  { value: liveStats ? liveStats.added_today : "—", label: "New today" },
+                  { value: "10+", label: "Job boards" },
+                  { value: <span style={{ color: "#4ade80" }}>⚡</span>, label: "Auto Apply" },
+                ].map((s, i) => (
+                  <div key={s.label} style={{
+                    flex: 1, padding: "13px 6px", textAlign: "center",
+                    background: "rgba(255,255,255,0.03)",
+                    borderLeft: i > 0 ? "1px solid var(--line)" : "none",
+                  }}>
+                    <div style={{ fontSize: 17, fontWeight: 800, color: "var(--tx)", letterSpacing: "-.02em", lineHeight: 1.2 }}>{s.value}</div>
+                    <div style={{ fontSize: 10.5, color: "var(--tx-3)", marginTop: 4, fontWeight: 500, lineHeight: 1.3 }}>{s.label}</div>
+                  </div>
+                ))}
               </div>
             </div>
+
           </div>
 
           {/* RIGHT — Login form */}

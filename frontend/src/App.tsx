@@ -462,8 +462,7 @@ export default function App() {
               role={userRole} roleOn={myRolesOnly} setRoleOn={setMyRolesOnly}
               searchRef={searchRef}
               COUNTRIES={COUNTRIES}
-              visaFilter={visaFilter} setVisaFilter={(v) => { setVisaFilter(v); saveFilterToggle(v, expFilter); }}
-              expFilter={expFilter}   setExpFilter={(v)  => { setExpFilter(v);  saveFilterToggle(visaFilter, v); }}
+              visaFilter={visaFilter} setVisaFilter={(v) => { setVisaFilter(v); saveFilterToggle(v, false); }}
             />
               {scraping && (
               <div className="scrape-banner">
@@ -607,12 +606,11 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
 }
 
 // ── FilterBar (exact match to shell.jsx FilterBar) ──────────────────────────────
-function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, COUNTRIES, visaFilter, setVisaFilter, expFilter, setExpFilter }: {
+function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, COUNTRIES, visaFilter, setVisaFilter }: {
   filters: Filters; setFilters: React.Dispatch<React.SetStateAction<Filters>>;
   role: string; roleOn: boolean; setRoleOn: (v: boolean) => void;
   searchRef: React.RefObject<HTMLInputElement>; COUNTRIES: string[];
   visaFilter: boolean; setVisaFilter: (v: boolean) => void;
-  expFilter: boolean; setExpFilter: (v: boolean) => void;
 }) {
   const set = (k: keyof Filters, v: any) => setFilters(f => ({ ...f, [k]: v }));
   const [open, setOpen] = React.useState(false);
@@ -642,7 +640,7 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, CO
   const timeOpts: [Filters["time"], string][] = [["any","Any"],["24","24h"],["48","48h"],["72","72h"],["168","7d"]];
   const groups: [keyof typeof draft, string, string[]][] = [
     ["category", "Category", ["Engineering","Data","Product","Design"]],
-    ["level",    "Level",    ["Entry","Mid","Senior","Lead"]],
+    ["level",    "Experience Level", ["Internship","Entry Level","Mid Level","Senior","Lead"]],
     ["type",     "Work Type",["Remote","Onsite","Hybrid"]],
     ["source",   "Source",   ["Greenhouse","Lever","Ashby","Workday","HiringCafe"]],
     ["country",  "Country",  COUNTRIES.length ? COUNTRIES : ["USA","Canada","United Kingdom","Germany","France","India","Remote"]],
@@ -722,15 +720,6 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, CO
                   <div className="fp-toggle-desc">Only show roles matching your visa status</div>
                 </div>
                 <button className={`toggle${visaFilter ? " on" : ""}`} onClick={() => setVisaFilter(!visaFilter)}>
-                  <span className="toggle-knob" />
-                </button>
-              </div>
-              <div className="fp-toggle-row">
-                <div>
-                  <div className="fp-toggle-name">Experience level</div>
-                  <div className="fp-toggle-desc">Hide roles outside your seniority range</div>
-                </div>
-                <button className={`toggle${expFilter ? " on" : ""}`} onClick={() => setExpFilter(!expFilter)}>
                   <span className="toggle-knob" />
                 </button>
               </div>

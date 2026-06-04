@@ -57,11 +57,11 @@
   --grad: linear-gradient(120deg, #7c3aed 0%, #06b6d4 100%);
   --grad-soft: linear-gradient(120deg, rgba(124,58,237,0.18), rgba(6,182,212,0.14));
 
-  /* Compat accent aliases — Electric Blue (design system) */
-  --accent:         #4f8bff;
-  --accent-hover:   #3d74e8;
-  --accent-glow:    rgba(79,139,255,0.18);
-  --accent-tonal:   rgba(79,139,255,0.14);
+  /* Compat accent aliases */
+  --accent:         #8b5cf6;
+  --accent-hover:   #7c3aed;
+  --accent-glow:    rgba(124,58,237,0.2);
+  --accent-tonal:   rgba(124,58,237,0.15);
   --purple:         #8b5cf6;
 
   /* — Status — */
@@ -100,8 +100,8 @@
   --shadow-1: 0 1px 2px rgba(0,0,0,.4);
   --shadow-2: 0 6px 24px -6px rgba(0,0,0,.6);
   --shadow-3: 0 18px 50px -12px rgba(0,0,0,.7);
-  --card-shadow: 0 0 0 1px rgba(255,255,255,0.06), 0 4px 16px rgba(0,0,0,.4);
-  --selected-glow: 0 0 0 1px rgba(79,139,255,0.45), 0 0 22px rgba(79,139,255,0.12);
+  --card-shadow: 0 1px 2px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.3);
+  --selected-glow: 0 0 0 2px rgba(124,58,237,.4);
 
   --sidebar-w: 212px;
   --ease: cubic-bezier(.22,.61,.36,1);
@@ -775,17 +775,17 @@ textarea { resize: none; }
   white-space: nowrap;
 }
 .btn-accent {
-  background: var(--accent); color: #fff;
-  box-shadow: 0 0 0 1px rgba(79,139,255,0.5), 0 1px 10px rgba(79,139,255,0.25);
+  background: var(--grad); color: #fff;
+  box-shadow: 0 5px 16px -6px var(--violet-glow), inset 0 1px 0 rgba(255,255,255,.2);
 }
-.btn-accent:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-accent:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
 .btn-accent:disabled { opacity: .5; cursor: not-allowed; }
 
 .btn-ghost {
-  background: transparent; color: var(--text-secondary);
-  border: 1px solid var(--border-default);
+  background: rgba(34,211,238,.07); color: #67e8f9;
+  border: 1px solid rgba(34,211,238,.28);
 }
-.btn-ghost:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-strong); }
+.btn-ghost:hover { background: rgba(34,211,238,.13); }
 
 .btn-subtle {
   background: var(--bg-elevated); color: var(--tx-2);

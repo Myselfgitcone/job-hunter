@@ -17,7 +17,7 @@ import { Onboarding } from "./components/Onboarding";
 
 type View = "jobs" | "dashboard" | "profile" | "settings";
 type ViewMode = "list" | "kanban";
-type Filters = { posted: string; country: string; locType: string; source: string; status: string; };
+type Filters = { posted: string; countries: string[]; locTypes: string[]; sources: string[]; status: string; role: string; exps: string[]; categories: string[]; minScore: number; };
 
 // SOURCES and COUNTRIES are now dynamic — built from actual jobs (see useMemo below)
 // SOURCES is now dynamic — built from actual jobs (see useMemo below)
@@ -126,11 +126,18 @@ export default function App() {
   };
 
   const [filters, setFilters] = useState<Filters>({
-    posted: "All", country: "All Countries", locType: "Any", source: "All Sources", status: "all",
+    posted: "72h", countries: [], locTypes: [], sources: [], status: "all", role: "", exps: [], categories: [], minScore: 0,
   });
   const [myRolesOnly, setMyRolesOnly] = useState(true);
 
-  const setF = (k: keyof Filters, v: string) => setFilters(f => ({ ...f, [k]: v }));
+  const setF = (k: "posted" | "status" | "role", v: string) => setFilters(f => ({ ...f, [k]: v }));
+  const toggleArr = (k: "categories"|"exps"|"locTypes"|"countries"|"sources", val: string) =>
+    setFilters(f => ({
+      ...f,
+      [k]: (f[k] as string[]).includes(val)
+        ? (f[k] as string[]).filter(v => v !== val)
+        : [...(f[k] as string[]), val],
+    }));
 
   // ── Theme toggle ──────────────────────────────────────────────────────────
   const [isDark, setIsDark] = useState<boolean>(() => {
@@ -214,8 +221,14 @@ export default function App() {
       return isNaN(t) ? null : t;
     };
 
+    const CAT_TERMS: Record<string, string[]> = {
+      Engineering: ["engineer","developer","devops","sre","platform","infrastructure","backend","frontend","fullstack"],
+      Data:        ["data","analytics","analyst","scientist","ml","machine learning","ai","etl","pipeline","bi"],
+      Product:     ["product manager","pm","product owner","program manager"],
+      Design:      ["design","ux","ui","figma","creative"],
+    };
+
     return jobs.filter(j => {
-      // My Roles filter
       if (myRolesOnly && userSettings?.job_roles?.length) {
         const roles: string[] = Array.isArray(userSettings.job_roles)
           ? userSettings.job_roles : JSON.parse(userSettings.job_roles || '[]');
@@ -224,19 +237,32 @@ export default function App() {
           if (!roles.some((r: string) => title.includes(r.toLowerCase().split(' ')[0]) || title.includes(r.toLowerCase()))) return false;
         }
       }
+      if (filters.categories.length > 0) {
+        const terms = filters.categories.flatMap(c => CAT_TERMS[c] || []);
+        if (!terms.some(t => j.title.toLowerCase().includes(t))) return false;
+      }
+      if (filters.role.trim() && !j.title.toLowerCase().includes(filters.role.toLowerCase())) return false;
+      if (filters.exps.length > 0) {
+        const t = j.title.toLowerCase();
+        const EXP: Record<string,RegExp> = { Entry:/(entry|junior|jr\.?|associate|intern)/i, Mid:/(mid|\bii\b|\b2\b|intermediate)/i, Senior:/(senior|sr\.?|lead|principal|staff)/i, Lead:/(lead|principal|staff|director)/i };
+        if (!filters.exps.some(e => EXP[e]?.test(t))) return false;
+      }
+      if (filters.minScore > 0) {
+        const score = (j.qualify_result as any)?.score ?? null;
+        if (score === null || score < filters.minScore) return false;
+      }
       if (filters.status !== "all" && j.status !== filters.status) return false;
-      if (filters.country !== "All Countries" && j.country !== filters.country) return false;
-      if (filters.locType === "Remote" && !j.remote && !(j.location || "").toLowerCase().includes("remote")) return false;
-      if (filters.locType === "Onsite" && (j.remote || (j.location || "").toLowerCase().includes("remote"))) return false;
-      if (filters.source !== "All Sources" && j.source !== filters.source) return false;
+      if (filters.countries.length > 0 && !filters.countries.includes(j.country || "")) return false;
+      if (filters.locTypes.length > 0) {
+        const isRemote = j.remote || (j.location || "").toLowerCase().includes("remote");
+        if (!((filters.locTypes.includes("Remote") && isRemote) || (filters.locTypes.includes("Onsite") && !isRemote) || (filters.locTypes.includes("Hybrid") && (j.location || "").toLowerCase().includes("hybrid")))) return false;
+      }
+      if (filters.sources.length > 0 && !filters.sources.includes(j.source)) return false;
       if (cutoffMs !== Infinity) {
         const t = parseMs(j.posted_at) ?? parseMs(j.scraped_at);
         if (t !== null && now - t > cutoffMs) return false;
       }
-      if (search.trim()) {
-        const q = search.toLowerCase();
-        if (!j.title.toLowerCase().includes(q) && !j.company.toLowerCase().includes(q)) return false;
-      }
+      if (search.trim()) { const q = search.toLowerCase(); if (!j.title.toLowerCase().includes(q) && !j.company.toLowerCase().includes(q)) return false; }
       return true;
     });
   }, [jobs, filters, search, myRolesOnly, userSettings]);
@@ -269,7 +295,7 @@ export default function App() {
 
   // Resets only filters — does NOT delete any jobs
   const handleResetFilters = () => {
-    setFilters({ posted: "All", country: "All Countries", locType: "Any", source: "All Sources", status: "all" });
+    setFilters({ posted: "72h", countries: [], locTypes: [], sources: [], status: "all", role: "", exps: [], categories: [], minScore: 0 });
     setSearch("");
     setMyRolesOnly(true);
   };
@@ -317,7 +343,7 @@ export default function App() {
   // Expose nav to Settings component for "Go to Profile" link
   useEffect(() => { (window as any).__navToProfile = () => setView("profile"); }, []);
   const handleNav = (v: string) => { if (v === "tailor") { setTailorOpen(true); return; } setView(v as View); };
-  const filtersActive = filters.posted !== "All" || filters.country !== "All Countries" || filters.locType !== "Any" || filters.source !== "All Sources" || filters.status !== "all" || search.trim() !== "";
+  const filtersActive = filters.posted !== "72h" || filters.countries.length > 0 || filters.locTypes.length > 0 || filters.sources.length > 0 || filters.status !== "all" || filters.role !== "" || filters.exps.length > 0 || filters.categories.length > 0 || filters.minScore > 0 || search.trim() !== "";
   const navItems = [
     { id: "jobs", label: "Jobs", ic: IC.search },
     { id: "dashboard", label: "Dashboard", ic: IC.dash },
@@ -349,229 +375,113 @@ export default function App() {
     />;
   }
 
-  // ── Sidebar filter data ──────────────────────────────────────────────────────
-  const STATUS_ROWS = [
-    { id: "all", label: "All", color: "var(--st-new)" },
-    { id: "new", label: "New", color: "var(--st-new)" },
-    { id: "applied", label: "Applied", color: "var(--st-applied)" },
-    { id: "interview", label: "Interview", color: "var(--st-interview)" },
-    { id: "skipped", label: "Skipped", color: "#3b4252" },
-  ];
-  const statusCounts = useMemo(() => {
-    const c: Record<string,number> = { all: allJobs.length, new: 0, applied: 0, interview: 0, skipped: 0 };
-    allJobs.forEach(j => { if (c[j.status] !== undefined) c[j.status]++; });
-    return c;
-  }, [allJobs]);
-  const countryList = useMemo(() => {
-    const m: Record<string,number> = {};
-    allJobs.forEach(j => { if (j.country) m[j.country] = (m[j.country] || 0) + 1; });
-    return [{ v: "All Countries", n: allJobs.length }, ...Object.entries(m).sort((a,b) => b[1]-a[1]).map(([v,n]) => ({ v, n }))];
-  }, [allJobs]);
-
   return (
     <div className="app">
       {/* ── SIDEBAR ── */}
-      <aside style={{ width: 208, flexShrink: 0, background: "var(--bg-surface)", borderRight: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column", height: "100%" }}>
-        {/* Logo */}
-        <div style={{ height: 52, flexShrink: 0, display: "flex", alignItems: "center", gap: 9, padding: "0 14px", borderBottom: "1px solid var(--border-subtle)" }}>
-          <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-            <circle cx="11" cy="11" r="8.5" stroke="#4f8bff" strokeWidth="2.2"/>
-            <circle cx="11" cy="11" r="2.8" fill="#4f8bff"/>
-          </svg>
-          <div style={{ lineHeight: 1.2 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "-0.01em" }}>
-              <span style={{ color: "var(--text-primary)" }}>Job </span>
-              <span style={{ color: "#4f8bff" }}>Hunter</span>
-            </div>
-            <div style={{ fontSize: 9, color: "var(--text-muted)", letterSpacing: "0.08em", textTransform: "uppercase" }}>Hunt Smarter, Not Harder</div>
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="brand-mark">
+            <div className="brand-dot" />
+          </div>
+          <div className="brand-text">
+            <div className="brand-name">Job <span className="hl">Hunter</span></div>
+            <div className="brand-sub">Hunt Smarter, Not Harder</div>
           </div>
         </div>
 
-        {/* Nav */}
-        <nav style={{ display: "flex", flexDirection: "column", gap: 2, padding: "10px 10px 8px" }}>
+        <div className="nav-group">
           {navItems.map(n => {
             const active = view === n.id;
             return (
               <button key={n.id} onClick={() => handleNav(n.id)}
-                className="nav-item" style={{ position: "relative", display: "flex", alignItems: "center", gap: 10, height: 36, padding: "0 12px", borderRadius: 8, fontSize: 13, fontWeight: 500, textAlign: "left", width: "100%", color: active ? "var(--text-primary)" : "var(--text-secondary)", background: active ? "var(--bg-selected)" : "transparent", transition: "all 120ms ease" }}>
-                {active && <span style={{ position: "absolute", left: 0, top: 7, bottom: 7, width: 2, borderRadius: 999, background: "var(--accent)" }} />}
-                <Ic d={n.ic} size={16} color={active ? "var(--accent)" : "var(--text-muted)"} />
+                className={`nav-item${active ? " active" : ""}`}>
+                <Ic d={n.ic} size={16} />
                 {n.label}
               </button>
             );
           })}
           <button onClick={() => setTailorOpen(true)}
-            style={{ display: "flex", alignItems: "center", gap: 10, height: 36, padding: "0 12px", borderRadius: 8, fontSize: 13, fontWeight: 500, textAlign: "left", width: "100%", color: "var(--purple)", background: "transparent", transition: "all 120ms ease" }}>
-            <Ic d={IC.sparkles} size={16} color="var(--purple)" /> Quick Tailor
+            className="nav-item" style={{ color: "var(--violet)" }}>
+            <Ic d={IC.sparkles} size={16} color="var(--violet)" />
+            Quick Tailor
           </button>
-        </nav>
+        </div>
 
-        {/* Filters (jobs view only) */}
-        {view === "jobs" && (
-          <div style={{ flex: 1, overflowY: "auto", padding: "0 14px 16px", borderTop: "1px solid var(--border-subtle)", marginTop: 2 }}>
-            <span className="section-label">Posted</span>
-            <div style={{ display: "flex", gap: 2, background: "var(--bg-base)", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: 2 }}>
-              {["All","24h","48h","7d"].map(o => (
-                <button key={o} onClick={() => setF("posted", o)} style={{ flex: 1, height: 24, borderRadius: 6, fontSize: 11, fontWeight: 600, color: filters.posted === o ? "var(--text-primary)" : "var(--text-muted)", background: filters.posted === o ? "var(--bg-elevated)" : "transparent", border: filters.posted === o ? "1px solid rgba(79,139,255,0.3)" : "1px solid transparent", transition: "all 120ms ease" }}>{o}</button>
-              ))}
-            </div>
+        <div className="sidebar-spacer" />
 
-            <span className="section-label">Country</span>
-            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              {countryList.slice(0, 5).map(c => {
-                const active = filters.country === c.v;
-                return (
-                  <button key={c.v} onClick={() => setF("country", c.v)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", height: 28, padding: "0 8px", borderRadius: 6, fontSize: 12, color: active ? "var(--text-primary)" : "var(--text-secondary)", background: active ? "var(--bg-elevated)" : "transparent", transition: "all 120ms ease" }}>
-                    <span>{c.v}</span>
-                    <span className="mono" style={{ fontSize: 10, color: "var(--text-muted)" }}>{c.n}</span>
-                  </button>
-                );
-              })}
-            </div>
+        {/* Theme toggle */}
+        <div className="theme-switch">
+          <button className={isDark ? "on" : ""} onClick={() => setIsDark(true)}>🌙 Dark</button>
+          <button className={!isDark ? "on" : ""} onClick={() => setIsDark(false)}>☀️ Light</button>
+        </div>
 
-            <span className="section-label">Work Type</span>
-            <div style={{ display: "flex", gap: 4 }}>
-              {["Any","Remote","Onsite"].map(o => {
-                const active = filters.locType === o;
-                return <button key={o} onClick={() => setF("locType", o)} style={{ flex: 1, height: 26, borderRadius: 999, fontSize: 11, fontWeight: 500, color: active ? "var(--text-primary)" : "var(--text-muted)", background: active ? "var(--bg-elevated)" : "transparent", border: active ? "1px solid rgba(79,139,255,0.3)" : "1px solid var(--border-subtle)", transition: "all 120ms ease" }}>{o}</button>;
-              })}
-            </div>
-
-            <span className="section-label">Source</span>
-            <select value={filters.source} onChange={e => setF("source", e.target.value)} style={{ width: "100%", fontSize: 12, height: 32 }}>
-              {SOURCES.map(s => <option key={s} value={s}>{s === "All Sources" ? "All Sources" : `${s} (${sourceCounts[s] || 0})`}</option>)}
-            </select>
-
-            <span className="section-label">Status</span>
-            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              {STATUS_ROWS.map(s => {
-                const active = filters.status === s.id;
-                const count = s.id === "all" ? statusCounts.all : statusCounts[s.id] || 0;
-                return (
-                  <button key={s.id} onClick={() => setF("status", s.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", height: 30, padding: "0 8px", borderRadius: 8, fontSize: 12.5, color: active ? "var(--text-primary)" : "var(--text-secondary)", background: active ? "var(--bg-elevated)" : "transparent", transition: "all 120ms ease" }}>
-                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ width: 7, height: 7, borderRadius: 999, background: s.color, boxShadow: (s.id === "interview" || s.id === "applied") ? `0 0 6px ${s.color}` : "none" }} />
-                      {s.label}
-                    </span>
-                    <span className="mono" style={{ fontSize: 10, color: "var(--text-muted)" }}>{count}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {filtersActive && (
-              <button onClick={handleResetFilters} className="clear-btn" style={{ marginTop: 14, fontSize: 11, color: "var(--text-muted)", padding: "4px 6px", borderRadius: 6, transition: "all 120ms ease" }}>
-                Clear filters
-              </button>
-            )}
+        {/* User card */}
+        <div className="user-card">
+          <div className="user-av">{initials}</div>
+          <div className="user-meta">
+            <div className="user-name">{profileName.split(" ")[0] || currentUser?.email?.split("@")[0] || "User"}</div>
+            <div className="user-mail">{userSettings?.profile_visa || "Job Hunter"}</div>
           </div>
-        )}
-        {view !== "jobs" && <div style={{ flex: 1 }} />}
-
-        {/* Footer profile chip */}
-        <div style={{ flexShrink: 0, padding: "10px 12px", borderTop: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", gap: 9 }}>
-          <div style={{ width: 26, height: 26, borderRadius: 999, background: "linear-gradient(135deg,#8b5cf6,#6366f1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600, color: "#fff", flexShrink: 0 }}>{initials}</div>
-          <div style={{ lineHeight: 1.2, overflow: "hidden", flex: 1 }}>
-            <div style={{ fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{profileName.split(" ")[0] || currentUser?.email?.split("@")[0] || "User"}</div>
-            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{userSettings?.profile_visa || "Job Hunter"}</div>
-          </div>
-          <button onClick={() => setIsDark(d => !d)} title={isDark ? "Light mode" : "Dark mode"}
-            style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", color: "var(--text-muted)", fontSize: 13 }}>
-            {isDark ? "☀️" : "🌙"}
-          </button>
-          <button onClick={handleLogout} title="Sign out"
-            style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", color: "var(--text-muted)", fontSize: 13 }}
-            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(239,68,68,0.4)"; (e.currentTarget as HTMLButtonElement).style.color = "#f87171"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border-subtle)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; }}>
-            ⏻
+          <button className="user-logout" onClick={handleLogout} title="Sign out">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
           </button>
         </div>
       </aside>
 
       {/* ── MAIN CONTENT ── */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+      <div className="main">
         {view === "dashboard" && <Dashboard />}
-        {view === "profile"   && <div style={{ flex: 1, overflowY: "auto" }}><Profile /></div>}
-        {view === "settings"  && <div style={{ flex: 1, overflowY: "auto" }}><Settings /></div>}
+        {view === "profile"   && <Profile />}
+        {view === "settings"  && <Settings />}
 
-        {view === "jobs" && viewMode === "kanban" && (
-          <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-            <div style={{ height: 48, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 18px", borderBottom: "1px solid var(--border-subtle)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <button className="btn btn-accent" onClick={handleScrape} disabled={scraping} style={{ height: 30 }}>
-                  {scraping ? <Spinner size={13} color="#fff" /> : <Ic d={IC.refresh} size={14} />}
-                  {scraping ? "Scraping…" : "Scrape Now"}
-                </button>
-                {scrapeMsg && !scraping && <span style={{ fontSize: 11, fontWeight: 600, color: "#4ade80" }}>{scrapeMsg}</span>}
-                <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>{filteredJobs.length} jobs</span>
-              </div>
-              <div style={{ display: "flex", gap: 2, background: "var(--bg-elevated)", borderRadius: 8, padding: 2, border: "1px solid var(--border-subtle)" }}>
-                {(["list","kanban"] as ViewMode[]).map(m => (
-                  <button key={m} onClick={() => setViewMode(m)} style={{ width: 28, height: 24, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", color: viewMode === m ? "var(--text-primary)" : "var(--text-muted)", background: viewMode === m ? "var(--bg-hover)" : "transparent" }}>
-                    <Ic d={m === "list" ? IC.list : IC.kanban} size={14} />
-                  </button>
-                ))}
-              </div>
-            </div>
-            <Kanban jobs={filteredJobs} onStatusChange={(id, s) => handleStatusChange(id, s as JobStatus)} onSelect={id => { setViewMode("list"); handleSelect(id); }} />
-          </div>
-        )}
-
-        {view === "jobs" && viewMode === "list" && (
+        {view === "jobs" && (
           <>
-            {/* Job List Panel */}
-            <section style={{ width: 380, flexShrink: 0, background: "var(--bg-base)", borderRight: "1px solid var(--border-subtle)", display: "flex", flexDirection: "column", height: "100%" }}>
-              {/* Panel topbar */}
-              <div style={{ height: 48, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 12px", borderBottom: "1px solid var(--border-subtle)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <button className="btn btn-accent" onClick={handleScrape} disabled={scraping} style={{ height: 30, opacity: scraping ? 0.85 : 1 }}>
-                    {scraping ? <Spinner size={13} color="#fff" /> : <Ic d={IC.refresh} size={14} />}
-                    {scraping ? "Scraping…" : "Scrape Now"}
-                  </button>
-                  {scrapeMsg && !scraping && <span style={{ fontSize: 11, fontWeight: 600, color: "#4ade80" }}>{scrapeMsg}</span>}
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {lastScrapedDisplay && <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--text-muted)" }}><Ic d={IC.clock} size={11} /> {lastScrapedDisplay}</span>}
-                  <div style={{ display: "flex", gap: 2, background: "var(--bg-elevated)", borderRadius: 8, padding: 2, border: "1px solid var(--border-subtle)" }}>
-                    {(["list","kanban"] as ViewMode[]).map(m => (
-                      <button key={m} onClick={() => setViewMode(m)} style={{ width: 28, height: 24, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", color: viewMode === m ? "var(--text-primary)" : "var(--text-muted)", background: viewMode === m ? "var(--bg-hover)" : "transparent", transition: "all 120ms ease" }}>
-                        <Ic d={m === "list" ? IC.list : IC.kanban} size={14} />
-                      </button>
-                    ))}
+            <Topbar
+              scraping={scraping} scrapeMsg={scrapeMsg} lastScraped={lastScrapedDisplay}
+              onScrape={handleScrape} count={filteredJobs.length}
+              viewMode={viewMode} setViewMode={setViewMode} IC={IC}
+              filters={filters} setF={setF} toggleArr={toggleArr}
+              SOURCES={SOURCES.filter(s => s !== "All Sources")}
+              COUNTRIES={COUNTRIES.filter(c => c !== "All Countries")}
+              setMinScore={(v: number) => setFilters(f => ({ ...f, minScore: v }))}
+              allJobs={allJobs} sourceCounts={sourceCounts}
+              filtersActive={filtersActive} search={search} setSearch={setSearch}
+              searchRef={searchRef} onClearAll={handleResetFilters}
+              myRolesOnly={myRolesOnly} setMyRolesOnly={setMyRolesOnly}
+              userRoles={Array.isArray(userSettings?.job_roles) ? userSettings.job_roles : JSON.parse(userSettings?.job_roles || '[]')}
+            />
+            {viewMode === "kanban" ? (
+              <Kanban jobs={filteredJobs} onStatusChange={(id, s) => handleStatusChange(id, s as JobStatus)} onSelect={id => { setViewMode("list"); handleSelect(id); }} />
+            ) : (
+              <div className="jobs-body">
+                <div className="list-pane">
+                  <div className="list-head">
+                    <span className="mono" style={{ fontSize: 11, color: "var(--tx-3)" }}>{filteredJobs.length} jobs</span>
+                    <button onClick={handleClearAll} className="btn btn-ghost btn-danger" style={{ height: 24, padding: "0 8px", fontSize: 11, border: "none" }}>
+                      <Ic d={IC.trash} size={12} /> Clear All
+                    </button>
+                  </div>
+                  <div className="list-scroll">
+                    {loading ? (
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "40%", gap: 10, color: "var(--tx-3)" }}><Spinner size={18} /> Loading...</div>
+                    ) : (
+                      <JobList
+                        jobs={filteredJobs}
+                        selectedId={selectedId}
+                        onSelect={handleSelect}
+                        onQualifyUpdated={(id, r) => updateJob(id, { qualify_result: r })}
+                        emptyState={allJobs.length === 0 ? "Click Scrape Now to fetch jobs" : "Try clearing filters"}
+                      />
+                    )}
                   </div>
                 </div>
+                <JobDetail job={selectedJob} tab={tab} setTab={setTab} onUpdate={(patch: Partial<Job>) => selectedJob && updateJob(selectedJob.id, patch)} onToast={toast} busy={busy} runAction={runAction} />
               </div>
-              {/* Count strip + clear */}
-              <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px 0" }}>
-                <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>{filteredJobs.length} jobs</span>
-                <button onClick={handleClearAll} className="btn btn-ghost btn-danger" style={{ height: 24, padding: "0 8px", fontSize: 11, border: "none" }}>
-                  <Ic d={IC.trash} size={12} /> Clear All
-                </button>
-              </div>
-              {/* Search */}
-              <div style={{ flexShrink: 0, padding: "8px 14px 10px" }}>
-                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                  <Ic d={IC.search} size={15} color="var(--text-muted)" style={{ position: "absolute", left: 11, pointerEvents: "none" }} />
-                  <input ref={searchRef} type="text" value={search} onChange={e => setSearch(e.target.value)}
-                    placeholder="Search jobs, companies…"
-                    style={{ width: "100%", height: 36, paddingLeft: 34, paddingRight: 44 }} />
-                  <span className="mono" style={{ position: "absolute", right: 10, fontSize: 10, color: "var(--text-muted)", border: "1px solid var(--border-default)", borderRadius: 4, padding: "1px 5px", pointerEvents: "none" }}>⌘K</span>
-                </div>
-              </div>
-              {/* Cards */}
-              <div style={{ flex: 1, overflowY: "auto", paddingBottom: 16 }}>
-                {loading ? (
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "40%", gap: 10, color: "var(--text-muted)" }}><Spinner size={18} /> Loading...</div>
-                ) : (
-                  <JobList jobs={filteredJobs} selectedId={selectedId} onSelect={handleSelect}
-                    onQualifyUpdated={(id, r) => updateJob(id, { qualify_result: r })}
-                    emptyState={allJobs.length === 0 ? "Click Scrape Now to fetch jobs" : "Try clearing filters"} />
-                )}
-              </div>
-            </section>
-            <JobDetail job={selectedJob} tab={tab} setTab={setTab}
-              onUpdate={(patch: Partial<Job>) => selectedJob && updateJob(selectedJob.id, patch)}
-              onToast={toast} busy={busy} runAction={runAction} />
+            )}
           </>
         )}
       </div>
@@ -629,5 +539,142 @@ export default function App() {
         </div>
       )}
     </div>
+  );
+}
+
+// ── FilterDropdown ─────────────────────────────────────────────────────────────
+function FilterDropdown({ label, options, selected, onToggle, countMap }: {
+  label: string; options: string[]; selected: string[];
+  onToggle: (val: string) => void; countMap?: Record<string, number>;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+  const isActive = selected.length > 0;
+  const displayLabel = isActive ? (selected.length === 1 ? selected[0] : `${selected[0]} +${selected.length - 1}`) : label;
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button className={`chip${isActive ? " on" : ""}`} onClick={() => setOpen(o => !o)}>
+        {displayLabel}
+        {isActive && <span className="fb-count">{selected.length}</span>}
+        <svg className="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      {open && (
+        <div className="menu" style={{ minWidth: 190, maxHeight: 280, overflowY: "auto" }}>
+          {options.map(opt => {
+            const checked = selected.includes(opt);
+            return (
+              <label key={opt} className={`menu-item${checked ? " sel" : ""}`}>
+                <input type="checkbox" checked={checked} onChange={() => onToggle(opt)} style={{ display: "none" }} />
+                <svg className="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
+                <span style={{ flex: 1 }}>{opt}</span>
+                {countMap?.[opt] != null && <span style={{ fontSize: 10.5, color: "var(--tx-3)", fontFamily: "var(--f-mono)" }}>{countMap[opt]}</span>}
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Topbar + FilterBar ─────────────────────────────────────────────────────────
+function Topbar({ scraping, scrapeMsg, lastScraped, onScrape, count, viewMode, setViewMode, IC,
+  filters, setF, toggleArr, SOURCES, COUNTRIES, allJobs, sourceCounts,
+  filtersActive, search, setSearch, searchRef, onClearAll,
+  myRolesOnly, setMyRolesOnly, userRoles, setMinScore }: {
+  scraping: boolean; scrapeMsg: string; lastScraped: string; onScrape: () => void;
+  count: number; viewMode: string; setViewMode: (m: ViewMode) => void; IC: Record<string,string>;
+  filters: Filters; setF: (k: "posted"|"status"|"role", v: string) => void;
+  toggleArr: (k: "categories"|"exps"|"locTypes"|"countries"|"sources", val: string) => void;
+  SOURCES: string[]; COUNTRIES: string[]; allJobs: Job[]; sourceCounts: Record<string,number>;
+  filtersActive: boolean; search: string; setSearch: (v: string) => void;
+  searchRef: React.RefObject<HTMLInputElement>; onClearAll: () => void;
+  myRolesOnly: boolean; setMyRolesOnly: (v: boolean) => void; userRoles: string[];
+  setMinScore: (v: number) => void;
+}) {
+  const countryCounts = React.useMemo(() => {
+    const m: Record<string,number> = {};
+    allJobs.forEach(j => { if (j.country) m[j.country] = (m[j.country] || 0) + 1; });
+    return m;
+  }, [allJobs]);
+
+  return (
+    <>
+      {/* ── TOP BAR ── */}
+      <div className="topbar">
+        <button className={`scrape-btn${scraping ? " running" : ""}`} onClick={onScrape} disabled={scraping}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.refresh }} />
+          {scraping ? "Scraping…" : "Scrape Now"}
+        </button>
+        {scrapeMsg && !scraping && <span style={{ fontSize: 12, fontWeight: 600, color: "var(--st-applied)" }}>{scrapeMsg}</span>}
+        {lastScraped && (
+          <div className="meta">
+            <div className="live-pip" />
+            <span>Last scraped</span>
+            <b>{lastScraped}</b>
+          </div>
+        )}
+        <div className="topbar-right">
+          <div className="job-count"><b>{count}</b> jobs</div>
+          <div className="seg">
+            {([["list", IC.list], ["kanban", IC.kanban]] as [string,string][]).map(([m, d]) => (
+              <button key={m} className={viewMode === m ? "on" : ""} onClick={() => setViewMode(m as ViewMode)} title={m}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: d }} />
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── FILTER BAR ── */}
+      <div className="filterbar">
+        {userRoles.length > 0 && (
+          <button className={`chip${myRolesOnly ? " on" : ""}`} onClick={() => setMyRolesOnly(!myRolesOnly)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.target }} />
+            {myRolesOnly ? userRoles[0] : "All Roles"}
+          </button>
+        )}
+        <div className="fb-divider" />
+        <div className="search-wrap">
+          <svg className="s-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.search }} />
+          <input ref={searchRef} className="search-input" type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search jobs, companies…" />
+          {!search && <span className="kbd s-kbd">⌘K</span>}
+        </div>
+        <div className="fb-divider" />
+        <FilterDropdown label="Category" options={["Engineering","Data","Product","Design"]} selected={filters.categories} onToggle={v => toggleArr("categories", v)} />
+        <FilterDropdown label="Level"    options={["Entry","Mid","Senior","Lead"]}           selected={filters.exps}       onToggle={v => toggleArr("exps", v)} />
+        <FilterDropdown label="Type"     options={["Remote","Onsite","Hybrid"]}              selected={filters.locTypes}   onToggle={v => toggleArr("locTypes", v)} />
+        <FilterDropdown label="Country"  options={COUNTRIES} selected={filters.countries}    onToggle={v => toggleArr("countries", v)} countMap={countryCounts} />
+        <FilterDropdown label="Source"   options={SOURCES}   selected={filters.sources}      onToggle={v => toggleArr("sources", v)} countMap={sourceCounts} />
+        <div className="fb-divider" />
+        <div className="segchips score">
+          {([0, 60, 70, 80, 90] as const).map(v => (
+            <button key={v} className={filters.minScore === v ? "on" : ""} onClick={() => setMinScore(v)}>
+              {v === 0 ? "Any" : `≥${v}%`}
+            </button>
+          ))}
+        </div>
+        <div className="segchips">
+          {(["24h","48h","72h","7d"] as const).map(o => (
+            <button key={o} className={filters.posted === o ? "on" : ""} onClick={() => setF("posted", o)}>{o}</button>
+          ))}
+        </div>
+        {filtersActive && (() => {
+          const n = [filters.categories.length, filters.exps.length, filters.locTypes.length,
+            filters.countries.length, filters.sources.length, search.trim() ? 1 : 0].reduce((a,b) => a+b, 0);
+          return (
+            <button className="clear-btn" onClick={onClearAll}>
+              <span className="n">{n}</span> Clear
+            </button>
+          );
+        })()}
+      </div>
+    </>
   );
 }

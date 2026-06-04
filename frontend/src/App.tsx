@@ -606,6 +606,73 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
 }
 
 // ── FilterBar (exact match to shell.jsx FilterBar) ──────────────────────────────
+// ── Grouped category data ─────────────────────────────────────────────────────
+const CATEGORY_GROUPS: { group: string; items: string[] }[] = [
+  { group: "Technology & Engineering", items: ["Software Engineering","Data Engineering","ML / AI Engineering","DevOps / Infrastructure","Mobile Engineering","QA / Testing","Cybersecurity"] },
+  { group: "Data & Analytics",         items: ["Data Science","Data Analysis","Business Intelligence","Analytics Engineering","Data Architecture"] },
+  { group: "Product & Design",         items: ["Product Management","UX Design","UI Design","Product Design","UX Research"] },
+  { group: "Business & Operations",    items: ["Project Management","Business Operations","Finance & Accounting","Legal & Compliance","Human Resources","Administrative Support"] },
+  { group: "Sales & Marketing",        items: ["Sales","Marketing","Business Development","Content & Communications"] },
+  { group: "Other",                    items: ["Customer Success","Healthcare","Education","Consulting","Support"] },
+];
+
+// ── Grouped category selector ─────────────────────────────────────────────────
+function CategorySelector({ selected, onChange }: { selected: string[]; onChange: (v: string[]) => void }) {
+  const [q, setQ] = React.useState("");
+  const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>({});
+
+  const toggle = (item: string) => onChange(selected.includes(item) ? selected.filter(x => x !== item) : [...selected, item]);
+  const toggleGroup = (g: string) => setCollapsed(c => ({ ...c, [g]: !c[g] }));
+  const expandAll  = () => setCollapsed({});
+  const collapseAll = () => { const m: Record<string,boolean> = {}; CATEGORY_GROUPS.forEach(g => m[g.group] = true); setCollapsed(m); };
+
+  const filtered = q.trim()
+    ? CATEGORY_GROUPS.map(g => ({ ...g, items: g.items.filter(i => i.toLowerCase().includes(q.toLowerCase())) })).filter(g => g.items.length > 0)
+    : CATEGORY_GROUPS;
+
+  return (
+    <div className="cat-selector">
+      <div className="cat-search-wrap">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"var(--tx-3)", pointerEvents:"none" }}>
+          <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
+        </svg>
+        <input className="cat-search" value={q} onChange={e => setQ(e.target.value)} placeholder="Search departments…" />
+      </div>
+      {!q && (
+        <div className="cat-actions">
+          <button onClick={expandAll}>↓ Expand All</button>
+          <button onClick={collapseAll}>↑ Collapse All</button>
+          {selected.length > 0 && <button className="cat-clear" onClick={() => onChange([])}>Clear ({selected.length})</button>}
+        </div>
+      )}
+      <div className="cat-groups">
+        {filtered.map(({ group, items }) => (
+          <div className="cat-group" key={group}>
+            <button className="cat-group-head" onClick={() => toggleGroup(group)}>
+              <span>{group}</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ transition:"transform .15s", transform: collapsed[group] ? "rotate(-90deg)" : "rotate(0deg)" }}>
+                <path d="M6 9l6 6 6-6"/>
+              </svg>
+            </button>
+            {!collapsed[group] && (
+              <div className="cat-items">
+                {items.map(item => (
+                  <label key={item} className={`fp-check${selected.includes(item) ? " on" : ""}`} onClick={() => toggle(item)}>
+                    <span className="fp-box">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    </span>
+                    {item}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, COUNTRIES, visaFilter, setVisaFilter }: {
   filters: Filters; setFilters: React.Dispatch<React.SetStateAction<Filters>>;
   role: string; roleOn: boolean; setRoleOn: (v: boolean) => void;
@@ -639,7 +706,6 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, CO
   const draftCount = countPanelFilters(draft);
   const timeOpts: [Filters["time"], string][] = [["any","Any"],["24","24h"],["48","48h"],["72","72h"],["168","7d"]];
   const groups: [keyof typeof draft, string, string[]][] = [
-    ["category", "Category", ["Engineering","Data","Product","Design"]],
     ["level",    "Experience Level", ["Internship","Entry Level","Mid Level","Senior","Lead"]],
     ["type",     "Work Type",["Remote","Onsite","Hybrid"]],
     ["source",   "Source",   ["Greenhouse","Lever","Ashby","Workday","HiringCafe"]],
@@ -683,6 +749,10 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, CO
               <button className="fp-reset" onClick={resetAll}>Reset all</button>
             </div>
             <div className="fp-grid">
+              <div className="fp-group span cat-span">
+                <div className="fp-group-label">Category</div>
+                <CategorySelector selected={draft.category} onChange={v => setDraft(d => ({ ...d, category: v }))} />
+              </div>
               {groups.map(([key, label, opts]) => (
                 <div className="fp-group" key={key}>
                   <div className="fp-group-label">{label}</div>

@@ -299,9 +299,9 @@ export default function Auth({ onSuccess }: Props) {
 
           {/* ── RIGHT: Form ── */}
           <div style={{ ...S.formSide, position: "relative" }}>
-            {/* Bottom-left credit */}
+            {/* Bottom-right credit */}
             <div style={{
-              position: "absolute", bottom: 20, left: 24,
+              position: "absolute", bottom: 20, right: 24,
               display: "flex", alignItems: "center", gap: 5,
             }}>
               <span style={{ color: "#7c3aed", fontSize: 13 }}>✦</span>

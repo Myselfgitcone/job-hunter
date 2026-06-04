@@ -343,10 +343,11 @@ export default function App() {
   const activeFilterCount = filters.category.length + filters.level.length + filters.type.length + filters.country.length + filters.source.length + (filters.score !== "any" ? 1 : 0);
   const filtersActive = activeFilterCount > 0 || filters.q !== "" || !myRolesOnly;
   const navItems = [
-    { id: "jobs",      label: "Jobs",       ic: IC.search   },
-    { id: "dashboard", label: "Dashboard",  ic: IC.dash     },
-    { id: "profile",   label: "My Profile", ic: IC.user     },
-    { id: "settings",  label: "Settings",   ic: IC.settings },
+    { id: "jobs",      label: "Jobs",         ic: IC.search   },
+    { id: "dashboard", label: "Dashboard",    ic: IC.dash     },
+    { id: "profile",   label: "My Profile",   ic: IC.user     },
+    { id: "settings",  label: "Settings",     ic: IC.settings },
+    { id: "tailor",    label: "Quick Tailor", ic: IC.sparkles },
   ];
 
   // ── Auth gate ────────────────────────────────────────────────────────────

@@ -42,6 +42,7 @@ const TABS = [
   { id: "resume",      label: "Tailored Resume" },
   { id: "fit",         label: "Fit & Tips" },
   { id: "cover",       label: "Cover Letter" },
+  { id: "notes",       label: "Notes" },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -500,7 +501,8 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
 
   const tabHasContent: Record<string, boolean> = {
     resume: !!job.tailored_resume, cover: !!job.cover_letter,
-    notes: !!job.notes, qualify: !!job.qualify_result, fit: !!job.fit_analysis,
+    notes: !!(job.notes || job.deadline || job.interview_date),
+    qualify: !!job.qualify_result, fit: !!job.fit_analysis,
   };
 
   const handleStatusChange = async (s: string) => {
@@ -600,6 +602,7 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
           {tab === "resume"      && <ResumeTab job={job} tailoring={busy === "resume"} onTailor={() => runAction("resume")} onToast={onToast} />}
           {tab === "fit"         && <FitTab job={job} running={busy === "fit"} onRun={() => runAction("fit")} />}
           {tab === "cover"       && <CoverTab job={job} generating={busy === "cover"} onGenerate={() => runAction("cover")} onChange={v => onUpdate({ cover_letter: v })} onToast={onToast} />}
+          {tab === "notes"       && <NotesTab job={job} onUpdate={onUpdate} onToast={onToast} />}
         </div>
       </div>
     </div>

@@ -529,7 +529,7 @@ const styles = {
   } as React.CSSProperties,
 
   card: {
-    width: "100%", maxWidth: "100%",
+    width: "100%", maxWidth: 480,
   } as React.CSSProperties,
 
   resetCard: {

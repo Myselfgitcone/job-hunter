@@ -429,7 +429,7 @@ const styles = {
   aside: {
     width: "42%", flexShrink: 0,
     background: "linear-gradient(135deg, #ede9fe 0%, #f0f9ff 40%, #f8f7f4 100%)",
-    padding: "48px 52px",
+    padding: "48px 52px 48px 72px",
     display: "flex", flexDirection: "column",
     borderRight: "1px solid rgba(0,0,0,0.07)",
     overflowY: "auto",

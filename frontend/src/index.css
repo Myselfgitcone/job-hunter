@@ -103,7 +103,7 @@
   --card-shadow: 0 1px 2px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.3);
   --selected-glow: 0 0 0 2px rgba(124,58,237,.4);
 
-  --sidebar-w: 212px;
+  --sidebar-w: 240px;
   --ease: cubic-bezier(.22,.61,.36,1);
   --ease-spring: cubic-bezier(.34,1.56,.64,1);
 

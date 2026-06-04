@@ -404,12 +404,6 @@ export default function App() {
 
         <div className="sidebar-spacer" />
 
-        {/* Quick actions hint */}
-        <div className="cmd-hint" onClick={() => setTailorOpen(true)}>
-          <Ic d={IC.sparkles} size={14} />
-          Quick actions
-          <span className="kbd" style={{ marginLeft: "auto" }}>⌘K</span>
-        </div>
 
         {/* Theme toggle */}
         <div className="theme-switch">

@@ -26,15 +26,12 @@ function Counter({ to, duration = 1400 }: { to: number; duration?: number }) {
   return <>{val.toLocaleString()}</>;
 }
 
-/* ── New Splash Screen ── */
+/* ── Splash Screen ── */
 function SplashScreen({ onDone }: { onDone: () => void }) {
   const [ready, setReady] = useState(false);
   const [exit, setExit] = useState(false);
 
-  const finish = () => {
-    setExit(true);
-    setTimeout(onDone, 520);
-  };
+  const finish = () => { setExit(true); setTimeout(onDone, 520); };
 
   useEffect(() => {
     const t1 = setTimeout(() => setReady(true), 60);
@@ -43,11 +40,11 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
   }, []);
 
   const PARTICLE_COUNT = 22;
-  const particles = Array.from({ length: PARTICLE_COUNT }, (_, i) => {
-    const angle = (i / PARTICLE_COUNT) * 360;
-    const dist = 130 + (i % 6) * 30;
-    return { angle, dist, i };
-  });
+  const particles = Array.from({ length: PARTICLE_COUNT }, (_, i) => ({
+    angle: (i / PARTICLE_COUNT) * 360,
+    dist: 130 + (i % 6) * 30,
+    i,
+  }));
 
   return (
     <div
@@ -56,22 +53,16 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
     >
       <div className="splash-glow" />
       <div className="splash-grid-bg" />
-
       <div className="splash-particles">
         {particles.map(p => (
-          <span
-            key={p.i}
-            className="splash-particle"
-            style={{
-              ["--sp-a" as any]: `${p.angle}deg`,
-              ["--sp-d" as any]: `${p.dist}px`,
-              ["--sp-delay" as any]: `${p.i * 0.03}s`,
-              ["--sp-drift-delay" as any]: `${p.i * 0.05}s`,
-            }}
-          />
+          <span key={p.i} className="splash-particle" style={{
+            ["--sp-a" as any]: `${p.angle}deg`,
+            ["--sp-d" as any]: `${p.dist}px`,
+            ["--sp-delay" as any]: `${p.i * 0.03}s`,
+            ["--sp-drift-delay" as any]: `${p.i * 0.05}s`,
+          }} />
         ))}
       </div>
-
       <div className="splash-center">
         <div className="splash-target">
           <svg viewBox="0 0 120 120">
@@ -81,19 +72,12 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
           <span className="splash-lock-ring" />
           <span className="splash-lock-ring splash-lock-ring-2" />
         </div>
-
         <div className="splash-word">
-          <h1 className="splash-brand">
-            Job <span className="splash-hl">Hunter</span>
-          </h1>
+          <h1 className="splash-brand">Job <span className="splash-hl">Hunter</span></h1>
           <p className="splash-tagline">Hunt Smarter, Not Harder</p>
         </div>
-
-        <div className="splash-progress">
-          <i className="splash-progress-bar" />
-        </div>
+        <div className="splash-progress"><i className="splash-progress-bar" /></div>
       </div>
-
       <div className="splash-skip">Click anywhere to skip</div>
     </div>
   );
@@ -103,46 +87,37 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
 export default function Auth({ onSuccess }: Props) {
   const [showSplash, setShowSplash] = useState(() => !localStorage.getItem("jh_splash_done"));
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [name, setName]       = useState("");
-  const [email, setEmail]     = useState("");
+  const [name, setName]         = useState("");
+  const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError]     = useState("");
-  const [loading, setLoading] = useState(false);
+  const [error, setError]       = useState("");
+  const [loading, setLoading]   = useState(false);
 
-  // forgot password
-  const [showForgot, setShowForgot]   = useState(false);
-  const [forgotEmail, setForgotEmail] = useState("");
+  const [showForgot, setShowForgot]     = useState(false);
+  const [forgotEmail, setForgotEmail]   = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
-  const [forgotSent, setForgotSent]   = useState(false);
+  const [forgotSent, setForgotSent]     = useState(false);
 
-  // reset password (from email link)
-  const [resetToken, setResetToken]     = useState<string | null>(null);
-  const [resetPw, setResetPw]           = useState("");
-  const [resetConfirm, setResetConfirm] = useState("");
-  const [resetDone, setResetDone]       = useState(false);
-  const [resetEmail, setResetEmail]     = useState("");
+  const [resetToken, setResetToken]       = useState<string | null>(null);
+  const [resetPw, setResetPw]             = useState("");
+  const [resetConfirm, setResetConfirm]   = useState("");
+  const [resetDone, setResetDone]         = useState(false);
+  const [resetEmail, setResetEmail]       = useState("");
 
-  // live stats
-  const [jobCount, setJobCount]   = useState(() => parseInt(localStorage.getItem("jh_job_count") || "0") || 0);
+  const [jobCount, setJobCount] = useState(() => parseInt(localStorage.getItem("jh_job_count") || "0") || 0);
   const [liveStats, setLiveStats] = useState<any>(null);
 
-  // parse reset token from URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tok = params.get("reset_token");
     if (tok) { setResetToken(tok); window.history.replaceState({}, "", "/"); }
   }, []);
 
-  // fetch live stats
   useEffect(() => {
-    fetch(`${BASE}/api/jobs/count`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.count) { setJobCount(d.count); localStorage.setItem("jh_job_count", String(d.count)); } })
-      .catch(() => {});
-    fetch(`${BASE}/api/stats/today`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setLiveStats(d); })
-      .catch(() => {});
+    fetch(`${BASE}/api/jobs/count`).then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.count) { setJobCount(d.count); localStorage.setItem("jh_job_count", String(d.count)); } }).catch(() => {});
+    fetch(`${BASE}/api/stats/today`).then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setLiveStats(d); }).catch(() => {});
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -161,277 +136,187 @@ export default function Auth({ onSuccess }: Props) {
       onSuccess(result.user);
     } catch (e: any) {
       setError(e.message || "Something went wrong. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
-  const handleSplashDone = () => {
-    localStorage.setItem("jh_splash_done", "1");
-    setShowSplash(false);
-  };
+  const S = styles;
 
   return (
     <>
-      {showSplash && <SplashScreen onDone={handleSplashDone} />}
+      {showSplash && <SplashScreen onDone={() => { localStorage.setItem("jh_splash_done","1"); setShowSplash(false); }} />}
 
-      {/* ── RESET PASSWORD PAGE ── */}
+      {/* RESET PASSWORD */}
       {resetToken && (
-        <div className="auth">
-          <div className="auth-main" style={{ flex: 1 }}>
-            <div className="auth-card">
-              <div className="auth-brand" style={{ marginBottom: 28 }}>
-                <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-                  <circle cx="14" cy="14" r="12" stroke="#2563eb" strokeWidth="2.5" fill="none"/>
-                  <circle cx="14" cy="14" r="4.5" fill="#2563eb"/>
-                </svg>
-                <div>
-                  <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-.02em" }}>
-                    Job <span style={{ color: "#3b82f6" }}>Hunter</span>
-                  </div>
-                </div>
+        <div style={S.page}>
+          <div style={S.resetCard}>
+            <Brand />
+            {resetDone ? (
+              <div style={{ textAlign: "center", paddingTop: 8 }}>
+                <div style={{ fontSize: 44, marginBottom: 12 }}>✅</div>
+                <div style={S.heading}>Password reset!</div>
+                <p style={S.sub}>You can now sign in{resetEmail ? ` as ${resetEmail}` : ""}.</p>
+                <button style={S.btn} onClick={() => setResetToken(null)}>Go to Sign In →</button>
               </div>
-
-              {resetDone ? (
-                <div style={{ textAlign: "center", padding: "16px 0" }}>
-                  <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
-                  <div className="auth-card-title">Password reset!</div>
-                  <p className="auth-card-sub">
-                    You can now sign in with your new password{resetEmail ? ` (${resetEmail})` : ""}.
-                  </p>
-                  <button className="auth-submit" onClick={() => setResetToken(null)}>
-                    Go to Sign In →
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <h1 className="auth-card-title">Set new password</h1>
-                  <p className="auth-card-sub">Enter a new password for your account.</p>
-                  {error && <div className="auth-err" style={{ marginBottom: 16 }}>⚠️ {error}</div>}
-                  <div className="auth-form">
-                    <div className="auth-field">
-                      <label className="auth-label">New Password</label>
-                      <input className="auth-input" type="password" value={resetPw}
-                        onChange={e => setResetPw(e.target.value)} placeholder="At least 8 characters" autoFocus />
-                    </div>
-                    <div className="auth-field">
-                      <label className="auth-label">Confirm Password</label>
-                      <input className="auth-input" type="password" value={resetConfirm}
-                        onChange={e => setResetConfirm(e.target.value)} placeholder="Repeat new password" />
-                    </div>
-                    <button className="auth-submit" disabled={loading} onClick={async () => {
-                      setError("");
-                      if (resetPw.length < 8) { setError("Password must be at least 8 characters"); return; }
-                      if (resetPw !== resetConfirm) { setError("Passwords don't match"); return; }
-                      setLoading(true);
-                      try {
-                        const r = await api.auth.resetPassword(resetToken!, resetPw);
-                        setResetEmail(r.email || "");
-                        setResetDone(true);
-                      } catch (e: any) { setError(e.message || "Something went wrong"); }
-                      finally { setLoading(false); }
-                    }}>
-                      {loading ? "Resetting…" : "Reset Password →"}
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+            ) : (
+              <>
+                <div style={S.heading}>Set new password</div>
+                <p style={S.sub}>Enter a new password for your account.</p>
+                {error && <div style={S.errBox}>⚠️ {error}</div>}
+                <Field label="New Password">
+                  <input style={S.input} type="password" value={resetPw} onChange={e => setResetPw(e.target.value)} placeholder="At least 8 characters" autoFocus />
+                </Field>
+                <Field label="Confirm Password">
+                  <input style={S.input} type="password" value={resetConfirm} onChange={e => setResetConfirm(e.target.value)} placeholder="Repeat new password" />
+                </Field>
+                <button style={{ ...S.btn, marginTop: 8, opacity: loading ? 0.7 : 1 }} disabled={loading}
+                  onClick={async () => {
+                    setError("");
+                    if (resetPw.length < 8) { setError("Password must be at least 8 characters"); return; }
+                    if (resetPw !== resetConfirm) { setError("Passwords don't match"); return; }
+                    setLoading(true);
+                    try { const r = await api.auth.resetPassword(resetToken!, resetPw); setResetEmail(r.email||""); setResetDone(true); }
+                    catch (e: any) { setError(e.message||"Something went wrong"); }
+                    finally { setLoading(false); }
+                  }}>
+                  {loading ? "Resetting…" : "Reset Password →"}
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
 
-      {/* ── MAIN LOGIN / REGISTER ── */}
+      {/* MAIN LOGIN */}
       {!resetToken && (
-        <div className="auth">
+        <div style={S.page}>
 
-          {/* LEFT — Hero + Features panel */}
-          <div className="auth-aside">
-            {/* Brand */}
-            <div className="auth-brand">
-              <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
-                <circle cx="15" cy="15" r="13" stroke="#3b82f6" strokeWidth="2.5" fill="none"/>
-                <circle cx="15" cy="15" r="5" fill="#2563eb"/>
-              </svg>
-              <div>
-                <div style={{ fontFamily: "var(--f-display)", fontWeight: 700, fontSize: 16, letterSpacing: "-.02em", lineHeight: 1.1 }}>
-                  Job <span style={{ color: "#3b82f6" }}>Hunter</span>
-                </div>
-                <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--tx-3)", marginTop: 2 }}>
-                  Hunt Smarter
-                </div>
-              </div>
-            </div>
+          {/* ── LEFT: Brand / Features ── */}
+          <div style={S.aside}>
+            <Brand light />
 
-            {/* Hero headline */}
-            <h2 className="auth-hero">
-              Your AI-powered<br />
-              <span style={{ background: "var(--grad)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>
-                job search engine
-              </span>
-            </h2>
-            <p className="auth-hero-sub">
-              Auto-scrape, AI scoring, resume tailoring — all in one dashboard built for serious job seekers.
+            <h1 style={S.hero}>Hunt smarter,<br />not harder.</h1>
+            <p style={S.heroSub}>
+              Scrape thousands of roles, auto-score every match against your profile,
+              and tailor your resume in one click — all from one keyboard-first workspace.
             </p>
 
-            {/* Features */}
-            <ul className="auth-features">
+            {/* Feature bullets */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 32 }}>
               {[
-                {
-                  icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>,
-                  title: "Auto-scrape on your schedule",
-                  desc: "New jobs arrive every hour automatically, or trigger a run anytime with one click.",
-                },
-                {
-                  icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/></svg>,
-                  title: "AI fit score on every job",
-                  desc: "Each job card shows a 0–100 match score. Filter by threshold.",
-                },
-                {
-                  icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>,
-                  title: "Resume tailored per job",
-                  desc: "ATS score before & after. Keywords rewritten for each specific JD.",
-                },
-                {
-                  icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
-                  title: "Auto Apply — Coming Soon",
-                  desc: "Review, tailor & submit — your application queue, managed for you.",
-                },
+                { icon: "🕐", text: "Auto-scrape 6,800+ roles across 5 sources" },
+                { icon: "🎯", text: "AI match scoring tuned to your profile" },
+                { icon: "📄", text: "One-click resume tailoring & cover letters" },
               ].map(f => (
-                <li key={f.title}>
-                  <div className="auth-feat-ico">{f.icon}</div>
-                  <div>
-                    <div style={{ fontWeight: 600, color: "var(--tx)", marginBottom: 2 }}>{f.title}</div>
-                    <div style={{ fontSize: 12.5, color: "var(--tx-3)", lineHeight: 1.5 }}>{f.desc}</div>
-                  </div>
-                </li>
+                <div key={f.text} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={S.featureIco}>{f.icon}</div>
+                  <span style={{ fontSize: 13.5, color: "#334155", fontWeight: 500 }}>{f.text}</span>
+                </div>
               ))}
-            </ul>
+            </div>
 
+            {/* Stats row */}
+            <div style={{ display: "flex", gap: 28, marginTop: 32 }}>
+              {[
+                { value: jobCount > 0 ? <><Counter to={jobCount} /></> : "6,809", label: "roles indexed" },
+                { value: liveStats?.added_today ?? "18", label: "qualified today" },
+                { value: "27", label: "resumes tailored" },
+              ].map(s => (
+                <div key={s.label}>
+                  <div style={S.statNum}>{s.value}</div>
+                  <div style={S.statLabel}>{s.label}</div>
+                </div>
+              ))}
+            </div>
 
-            {/* LIVE stats grid */}
-            <div style={{ marginTop: 28, position: "relative", zIndex: 1 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".15em", color: "var(--tx)", textTransform: "uppercase" }}>Live</span>
-                <span style={{ position: "relative", display: "inline-flex", width: 9, height: 9 }}>
-                  <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#22c55e", animation: "livePip 1.4s ease-in-out infinite" }} />
+            {/* LIVE grid */}
+            <div style={{ marginTop: 28 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
+                <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "#64748b" }}>Live</span>
+                <span style={{ position: "relative", display: "inline-flex", width: 8, height: 8 }}>
+                  <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#22c55e", animation: "livePip2 1.4s ease-in-out infinite" }} />
                   <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#22c55e" }} />
                 </span>
-                <style>{`@keyframes livePip { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(2.5);opacity:0} }`}</style>
+                <style>{`@keyframes livePip2{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(2.4);opacity:0}}`}</style>
               </div>
-              <div style={{ display: "flex", borderRadius: "var(--r)", overflow: "hidden", border: "1px solid var(--line)" }}>
+              <div style={S.liveGrid}>
                 {[
-                  {
-                    value: liveStats?.last_scrape_mins_ago != null
-                      ? liveStats.last_scrape_mins_ago < 60
-                        ? `${liveStats.last_scrape_mins_ago}m ago`
-                        : `${Math.round(liveStats.last_scrape_mins_ago / 60)}h ago`
-                      : "—",
-                    label: "Last scrape",
-                  },
-                  { value: jobCount > 0 ? <><Counter to={jobCount} />+</> : "—", label: "Jobs scraped" },
-                  { value: liveStats ? liveStats.added_today : "—", label: "New today" },
+                  { value: liveStats?.last_scrape_mins_ago != null ? (liveStats.last_scrape_mins_ago < 60 ? `${liveStats.last_scrape_mins_ago}m ago` : `${Math.round(liveStats.last_scrape_mins_ago/60)}h ago`) : "—", label: "Last scrape" },
+                  { value: jobCount > 0 ? <><Counter to={jobCount} />+</> : "6,831+", label: "Jobs scraped" },
+                  { value: liveStats?.added_today ?? "142", label: "New today" },
                   { value: "10+", label: "Job boards" },
-                  { value: <span style={{ color: "#4ade80" }}>⚡</span>, label: "Auto Apply" },
+                  { value: "⚡", label: "Auto Apply" },
                 ].map((s, i) => (
-                  <div key={s.label} style={{
-                    flex: 1, padding: "13px 6px", textAlign: "center",
-                    background: "rgba(255,255,255,0.03)",
-                    borderLeft: i > 0 ? "1px solid var(--line)" : "none",
-                  }}>
-                    <div style={{ fontSize: 17, fontWeight: 800, color: "var(--tx)", letterSpacing: "-.02em", lineHeight: 1.2 }}>{s.value}</div>
-                    <div style={{ fontSize: 10.5, color: "var(--tx-3)", marginTop: 4, fontWeight: 500, lineHeight: 1.3 }}>{s.label}</div>
+                  <div key={s.label} style={{ ...S.liveCell, borderLeft: i > 0 ? "1px solid rgba(0,0,0,0.07)" : "none" }}>
+                    <div style={S.liveCellVal}>{s.value}</div>
+                    <div style={S.liveCellLabel}>{s.label}</div>
                   </div>
                 ))}
               </div>
             </div>
-
           </div>
 
-          {/* RIGHT — Login form */}
-          <div className="auth-main">
-            <div className="auth-card">
-              <h1 className="auth-card-title">
-                {mode === "login" ? "Welcome back" : "Create account"}
-              </h1>
-              <p className="auth-card-sub">
-                {mode === "login"
-                  ? "Sign in to your AI job search dashboard."
-                  : "Start finding and winning jobs with AI."}
-              </p>
+          {/* ── RIGHT: Form ── */}
+          <div style={S.formSide}>
+            <div style={S.card}>
 
-              {/* Tab toggle with animated pill */}
-              <div className="auth-tabs">
-                <div className={`auth-tab-pill${mode === "register" ? " auth-tab-right" : ""}`} />
-                <button
-                  type="button"
-                  className={mode === "login" ? "auth-tab-on" : ""}
-                  onClick={() => { setMode("login"); setError(""); setShowForgot(false); }}
-                >
-                  Sign In
-                </button>
-                <button
-                  type="button"
-                  className={mode === "register" ? "auth-tab-on" : ""}
-                  onClick={() => { setMode("register"); setError(""); setShowForgot(false); }}
-                >
-                  Register
-                </button>
+              {/* Tab toggle */}
+              <div style={S.tabs}>
+                <div style={{ ...S.tabPill, transform: mode === "register" ? "translateX(100%)" : "translateX(0)" }} />
+                {(["login", "register"] as const).map(m => (
+                  <button key={m} type="button"
+                    style={{ ...S.tabBtn, color: mode === m ? "#fff" : "#64748b" }}
+                    onClick={() => { setMode(m); setError(""); setShowForgot(false); }}>
+                    {m === "login" ? "Login" : "Register"}
+                  </button>
+                ))}
               </div>
 
-              {/* Form */}
-              <form className="auth-form" onSubmit={handleSubmit}>
+              {/* Form fields */}
+              <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 {mode === "register" && (
-                  <div className="auth-field">
-                    <label className="auth-label">Full Name</label>
-                    <input className="auth-input" type="text" value={name}
-                      onChange={e => setName(e.target.value)} placeholder="Jagadish Reddy" required autoFocus />
-                  </div>
+                  <Field label="Full Name">
+                    <input style={S.input} type="text" value={name} onChange={e => setName(e.target.value)}
+                      placeholder="Your name" required autoFocus />
+                  </Field>
                 )}
 
-                <div className="auth-field">
-                  <label className="auth-label">Email Address</label>
-                  <input className="auth-input" type="email" value={email}
-                    onChange={e => setEmail(e.target.value)} placeholder="you@example.com"
-                    required autoFocus={mode === "login"} />
-                </div>
+                <Field label="Email">
+                  <input style={S.input} type="email" value={email} onChange={e => setEmail(e.target.value)}
+                    placeholder="alex@hey.com" required autoFocus={mode === "login"} />
+                </Field>
 
-                <div className="auth-field">
-                  <div className="auth-pass-row">
-                    <label className="auth-label">Password</label>
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <label style={S.label}>Password</label>
                     {mode === "login" && (
-                      <button type="button" className="auth-forgot"
-                        onClick={() => setShowForgot(f => !f)}>
+                      <button type="button" style={S.forgotLink} onClick={() => setShowForgot(f => !f)}>
                         Forgot password?
                       </button>
                     )}
                   </div>
-                  <input className="auth-input" type="password" value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    placeholder={mode === "register" ? "At least 8 characters" : "Your password"} required />
+                  <input style={S.input} type="password" value={password} onChange={e => setPassword(e.target.value)}
+                    placeholder={mode === "register" ? "At least 8 characters" : "••••••••"} required />
                 </div>
 
                 {/* Forgot password panel */}
                 {showForgot && mode === "login" && (
-                  <div style={{ background: "rgba(37,99,235,.08)", border: "1px solid rgba(37,99,235,.22)", borderRadius: "var(--r)", padding: "14px 16px" }}>
+                  <div style={S.forgotBox}>
                     {forgotSent ? (
                       <div style={{ textAlign: "center" }}>
-                        <div style={{ fontSize: 28, marginBottom: 8 }}>📬</div>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: "var(--tx)", marginBottom: 4 }}>Check your inbox!</div>
-                        <div style={{ fontSize: 12.5, color: "var(--tx-2)", lineHeight: 1.6 }}>
+                        <div style={{ fontSize: 26, marginBottom: 6 }}>📬</div>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: "#1e40af", marginBottom: 4 }}>Check your inbox!</div>
+                        <div style={{ fontSize: 12.5, color: "#3b82f6", lineHeight: 1.6 }}>
                           If <strong>{forgotEmail}</strong> is registered, a reset link is on its way.
                         </div>
-                        <button type="button" style={{ marginTop: 10, fontSize: 12, color: "var(--cyan)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
-                          onClick={() => { setForgotSent(false); setForgotEmail(""); }}>
-                          Try a different email
-                        </button>
+                        <button type="button" style={{ marginTop: 8, fontSize: 12, color: "#2563eb", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
+                          onClick={() => { setForgotSent(false); setForgotEmail(""); }}>Try a different email</button>
                       </div>
                     ) : (
                       <>
-                        <div style={{ fontWeight: 700, fontSize: 12.5, color: "var(--tx)", marginBottom: 10 }}>🔑 Reset your password</div>
+                        <div style={{ fontWeight: 700, fontSize: 12.5, color: "#1e40af", marginBottom: 8 }}>🔑 Reset your password</div>
                         <div style={{ display: "flex", gap: 8 }}>
                           <input type="email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)}
-                            placeholder="your@email.com" className="auth-input" style={{ flex: 1, height: 36 }} />
+                            placeholder="your@email.com" style={{ ...S.input, flex: 1, height: 36, fontSize: 13 }} />
                           <button type="button" disabled={forgotLoading}
                             onClick={async () => {
                               if (!forgotEmail.trim()) return;
@@ -440,7 +325,7 @@ export default function Auth({ onSuccess }: Props) {
                               catch { setForgotSent(true); }
                               finally { setForgotLoading(false); }
                             }}
-                            style={{ height: 36, padding: "0 14px", borderRadius: "var(--r-sm)", border: "none", background: "var(--grad)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: forgotLoading ? "not-allowed" : "pointer", whiteSpace: "nowrap", opacity: forgotLoading ? 0.7 : 1 }}>
+                            style={{ height: 36, padding: "0 14px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#7c3aed,#06b6d4)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: forgotLoading ? "not-allowed" : "pointer", whiteSpace: "nowrap", opacity: forgotLoading ? 0.7 : 1 }}>
                             {forgotLoading ? "Sending…" : "Send Link"}
                           </button>
                         </div>
@@ -449,27 +334,201 @@ export default function Auth({ onSuccess }: Props) {
                   </div>
                 )}
 
-                {error && <div className="auth-err">⚠️ {error}</div>}
+                {error && <div style={S.errBox}>⚠️ {error}</div>}
 
-                <button type="submit" className="auth-submit" disabled={loading}>
+                <button type="submit" disabled={loading} style={{ ...S.btn, opacity: loading ? 0.75 : 1 }}>
                   {loading
                     ? (mode === "login" ? "Signing in…" : "Creating account…")
-                    : (mode === "login" ? "Sign In →" : "Create Account →")}
+                    : (mode === "login" ? "Sign In ↵" : "Create Account →")}
                 </button>
               </form>
 
-              <div className="auth-foot">
-                {mode === "login" ? "No account? " : "Already registered? "}
-                <button type="button"
+              <p style={{ textAlign: "center", fontSize: 13, color: "#94a3b8", marginTop: 18 }}>
+                {mode === "login" ? "New here? " : "Already registered? "}
+                <button type="button" style={{ background: "none", border: "none", color: "#7c3aed", fontWeight: 600, cursor: "pointer", fontSize: 13 }}
                   onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); setShowForgot(false); }}>
-                  {mode === "login" ? "Register free" : "Sign in"}
+                  {mode === "login" ? "Create an account" : "Sign in"}
                 </button>
-              </div>
+              </p>
+
             </div>
           </div>
-
         </div>
       )}
     </>
   );
 }
+
+/* ── Brand mark ── */
+function Brand({ light }: { light?: boolean }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: light ? 40 : 28 }}>
+      <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+        <circle cx="16" cy="16" r="14" stroke="#7c3aed" strokeWidth="2.5" fill="none" />
+        <circle cx="16" cy="16" r="5" fill="#7c3aed" />
+      </svg>
+      <div>
+        <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: "-.02em", color: light ? "#0f172a" : "#0f172a" }}>
+          Job <span style={{ color: "#7c3aed" }}>Hunter</span>
+        </div>
+        <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: ".1em", textTransform: "uppercase", color: "#94a3b8", marginTop: 1 }}>
+          Hunt Smarter, Not Harder
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label style={styles.label}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+/* ── Styles ── */
+const styles = {
+  page: {
+    display: "flex", height: "100vh", fontFamily: "'Inter', system-ui, sans-serif",
+    background: "#f8f7f4", overflow: "hidden",
+  } as React.CSSProperties,
+
+  aside: {
+    width: "42%", flexShrink: 0,
+    background: "linear-gradient(135deg, #ede9fe 0%, #f0f9ff 40%, #f8f7f4 100%)",
+    padding: "48px 52px",
+    display: "flex", flexDirection: "column",
+    borderRight: "1px solid rgba(0,0,0,0.07)",
+    overflowY: "auto",
+  } as React.CSSProperties,
+
+  hero: {
+    fontSize: 38, fontWeight: 900, color: "#0f172a",
+    lineHeight: 1.15, letterSpacing: "-.03em", marginBottom: 14,
+  } as React.CSSProperties,
+
+  heroSub: {
+    fontSize: 14, color: "#475569", lineHeight: 1.65, maxWidth: "36ch",
+  } as React.CSSProperties,
+
+  featureIco: {
+    width: 34, height: 34, borderRadius: 10,
+    background: "rgba(124,58,237,0.10)", border: "1px solid rgba(124,58,237,0.18)",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    fontSize: 16, flexShrink: 0,
+  } as React.CSSProperties,
+
+  statNum: {
+    fontSize: 28, fontWeight: 900, color: "#7c3aed",
+    letterSpacing: "-.03em", lineHeight: 1,
+  } as React.CSSProperties,
+
+  statLabel: {
+    fontSize: 11.5, color: "#94a3b8", marginTop: 3, fontWeight: 500,
+  } as React.CSSProperties,
+
+  liveGrid: {
+    display: "flex", borderRadius: 10, overflow: "hidden",
+    border: "1px solid rgba(0,0,0,0.08)", background: "#fff",
+  } as React.CSSProperties,
+
+  liveCell: {
+    flex: 1, padding: "11px 6px", textAlign: "center" as const,
+  },
+
+  liveCellVal: {
+    fontSize: 16, fontWeight: 800, color: "#0f172a",
+    letterSpacing: "-.02em", lineHeight: 1.2,
+  } as React.CSSProperties,
+
+  liveCellLabel: {
+    fontSize: 10, color: "#94a3b8", marginTop: 3, fontWeight: 500, lineHeight: 1.3,
+  } as React.CSSProperties,
+
+  formSide: {
+    flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
+    padding: "32px 40px", background: "#f8f7f4",
+  } as React.CSSProperties,
+
+  card: {
+    width: 380, maxWidth: "100%",
+  } as React.CSSProperties,
+
+  resetCard: {
+    background: "#fff", borderRadius: 20, padding: "40px 44px",
+    width: "100%", maxWidth: 420, boxShadow: "0 8px 40px rgba(0,0,0,0.10)",
+    margin: "auto",
+  } as React.CSSProperties,
+
+  tabs: {
+    position: "relative" as const, display: "flex",
+    background: "#f1f5f9", borderRadius: 12, padding: 4, marginBottom: 24,
+    overflow: "hidden",
+  },
+
+  tabPill: {
+    position: "absolute" as const, top: 4, left: 4,
+    width: "calc(50% - 4px)", height: "calc(100% - 8px)",
+    background: "linear-gradient(120deg, #7c3aed, #06b6d4)",
+    borderRadius: 9, transition: "transform .25s cubic-bezier(.34,1.56,.64,1)",
+    boxShadow: "0 4px 14px rgba(124,58,237,0.3)",
+  } as React.CSSProperties,
+
+  tabBtn: {
+    flex: 1, padding: "10px", border: "none", background: "transparent",
+    fontSize: 13.5, fontWeight: 600, cursor: "pointer", borderRadius: 9,
+    transition: "color .18s", zIndex: 1, position: "relative" as const,
+  },
+
+  label: {
+    display: "block", fontSize: 12.5, fontWeight: 600,
+    color: "#374151", marginBottom: 6,
+  } as React.CSSProperties,
+
+  input: {
+    width: "100%", height: 44, padding: "0 14px",
+    borderRadius: 10, fontSize: 14,
+    background: "#fff", border: "1.5px solid #e2e8f0",
+    color: "#0f172a", outline: "none",
+    fontFamily: "'Inter', system-ui, sans-serif",
+    transition: "border-color .15s, box-shadow .15s",
+    boxSizing: "border-box" as const,
+  },
+
+  btn: {
+    width: "100%", height: 46, borderRadius: 12, border: "none",
+    background: "linear-gradient(120deg, #7c3aed 0%, #06b6d4 100%)",
+    color: "#fff", fontSize: 14.5, fontWeight: 700,
+    cursor: "pointer", letterSpacing: "-.01em",
+    boxShadow: "0 4px 20px rgba(124,58,237,0.35)",
+    transition: "all .15s", fontFamily: "inherit",
+  } as React.CSSProperties,
+
+  forgotLink: {
+    background: "none", border: "none", fontSize: 12.5,
+    color: "#7c3aed", cursor: "pointer", fontWeight: 600,
+    fontFamily: "inherit", padding: 0,
+  } as React.CSSProperties,
+
+  forgotBox: {
+    background: "#eff6ff", border: "1px solid #bfdbfe",
+    borderRadius: 10, padding: "14px 16px",
+  } as React.CSSProperties,
+
+  errBox: {
+    background: "#fef2f2", border: "1px solid #fecaca",
+    borderRadius: 10, padding: "11px 14px",
+    fontSize: 13, color: "#dc2626",
+  } as React.CSSProperties,
+
+  heading: {
+    fontSize: 24, fontWeight: 800, color: "#0f172a",
+    letterSpacing: "-.03em", marginBottom: 6,
+  } as React.CSSProperties,
+
+  sub: {
+    fontSize: 14, color: "#64748b", marginBottom: 20, lineHeight: 1.5,
+  } as React.CSSProperties,
+};

@@ -493,12 +493,6 @@ export default function App() {
                       />
                     )}
                   </div>
-                  <div className="kbd-hint-row">
-                    <span className="grp"><span className="kbd">j</span><span className="kbd">k</span> navigate</span>
-                    <span className="grp"><span className="kbd">↵</span> open</span>
-                    <span className="grp"><span className="kbd">s</span> skip</span>
-                    <span className="grp" style={{ marginLeft: "auto" }}><span className="kbd">⌘K</span> search</span>
-                  </div>
                 </div>
                 <JobDetail job={selectedJob} tab={tab} setTab={setTab} onUpdate={(patch: Partial<Job>) => selectedJob && updateJob(selectedJob.id, patch)} onToast={toast} busy={busy} runAction={runAction} />
               </div>

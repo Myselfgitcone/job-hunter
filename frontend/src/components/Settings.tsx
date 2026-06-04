@@ -200,7 +200,7 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
           <div className="field-grid">
             <label className="field">
               <span className="field-label">Model</span>
-              <select value={model} onChange={e => setModel(e.target.value)}>
+              <select value={model || AI_PROVIDERS[provider]?.models[0]} onChange={e => setModel(e.target.value)}>
                 {AI_PROVIDERS[provider]?.models.map(m => <option key={m}>{m}</option>)}
               </select>
             </label>

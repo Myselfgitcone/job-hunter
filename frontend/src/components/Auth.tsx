@@ -290,15 +290,38 @@ export default function Auth({ onSuccess }: Props) {
           <div style={S.formSide}>
             <div style={S.card}>
 
-              {/* Heading */}
-              <div style={{ marginBottom: 24 }}>
-                <h1 style={{ fontSize: 28, fontWeight: 800, color: "#0f172a", letterSpacing: "-.03em", margin: "0 0 6px" }}>
-                  {mode === "login" ? "Welcome" : "Create Account"}
+              {/* Premium heading block */}
+              <div style={{ marginBottom: 28 }}>
+
+                {/* Tagline */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                  <span style={{
+                    width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+                    background: "#6366f1", boxShadow: "0 0 8px rgba(99,102,241,0.7)",
+                  }} />
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, letterSpacing: ".16em",
+                    textTransform: "uppercase", color: "#6366f1",
+                  }}>Welcome</span>
+                </div>
+
+                {/* Main title */}
+                <h1 style={{
+                  fontSize: 26, fontWeight: 800, letterSpacing: "-.03em",
+                  color: "#0f172a", margin: "0 0 12px", lineHeight: 1.25,
+                }}>
+                  Your digital career agent is<br />
+                  <em style={{
+                    fontFamily: "Georgia, 'Times New Roman', serif",
+                    fontStyle: "italic", fontWeight: 400,
+                    color: "#6366f1", letterSpacing: "-.01em",
+                  }}>fully prepared.</em>
                 </h1>
-                <p style={{ fontSize: 14, color: "#64748b", margin: 0, lineHeight: 1.5 }}>
-                  {mode === "login"
-                    ? "Sign in to your AI job search dashboard."
-                    : "Start finding and winning jobs with AI."}
+
+                {/* Subtext */}
+                <p style={{ fontSize: 13.5, color: "#64748b", margin: 0, lineHeight: 1.65 }}>
+                  Access your current dashboard or register in under 30 seconds
+                  to begin your automated outreach campaign immediately.
                 </p>
               </div>
 

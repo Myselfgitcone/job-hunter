@@ -174,7 +174,7 @@ export function Auth({ onSuccess }: Props) {
               {mode === "register" && (
                 <FormField label="Full Name">
                   <Input type="text" value={name} onChange={e => setName(e.target.value)}
-                    placeholder="Jane Smith" required autoFocus />
+                    placeholder="Jagadish Reddy" required autoFocus />
                 </FormField>
               )}
 

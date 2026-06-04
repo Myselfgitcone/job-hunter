@@ -140,7 +140,7 @@ export function Auth({ onSuccess }: Props) {
 
             {/* Heading */}
             <h1 style={{ fontSize: 28, fontWeight: 800, color: "#0f172a", margin: "0 0 6px", letterSpacing: "-0.03em" }}>
-              {mode === "login" ? "Welcome back" : "Create your account"}
+              {mode === "login" ? "Welcome" : "Create your account"}
             </h1>
             <p style={{ fontSize: 14, color: "#64748b", margin: "0 0 28px", lineHeight: 1.5 }}>
               {mode === "login"

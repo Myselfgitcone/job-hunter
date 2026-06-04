@@ -143,8 +143,14 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
         <div style={{ fontSize: 64, fontWeight: 900, color: "#fff", letterSpacing: "-0.04em", lineHeight: 1 }}>
           Welcome
         </div>
-        <div style={{ fontSize: 16, color: "rgba(255,255,255,0.45)", marginTop: 14, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 600 }}>
-          Job Hunter &nbsp;·&nbsp; Hunt Smarter, Not Harder
+        <div style={{ fontSize: 28, fontWeight: 600, color: "rgba(255,255,255,0.6)", marginTop: 8, letterSpacing: "0.02em" }}>
+          To
+        </div>
+        <div style={{ fontSize: 36, fontWeight: 800, color: "#3b82f6", marginTop: 6, letterSpacing: "-0.02em" }}>
+          Job Hunter
+        </div>
+        <div style={{ fontSize: 14, color: "rgba(255,255,255,0.35)", marginTop: 10, letterSpacing: "0.15em", textTransform: "uppercase", fontWeight: 600 }}>
+          Hunt Smarter, Not Harder
         </div>
       </div>
     </div>

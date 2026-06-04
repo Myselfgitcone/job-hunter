@@ -77,7 +77,18 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
           <p className="splash-tagline">Hunt Smarter, Not Harder</p>
         </div>
         <div className="splash-progress"><i className="splash-progress-bar" /></div>
+
+        {/* Built by Jay badge */}
+        <div style={{
+          marginTop: 20, display: "inline-flex", alignItems: "center", gap: 6,
+          background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)",
+          borderRadius: 20, padding: "5px 14px",
+        }}>
+          <span style={{ color: "#a78bfa", fontSize: 12 }}>✦</span>
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: "rgba(255,255,255,0.65)", letterSpacing: ".06em" }}>Built by Jay</span>
+        </div>
       </div>
+
       <div className="splash-skip">Click anywhere to skip</div>
     </div>
   );
@@ -287,7 +298,16 @@ export default function Auth({ onSuccess }: Props) {
           </div>
 
           {/* ── RIGHT: Form ── */}
-          <div style={S.formSide}>
+          <div style={{ ...S.formSide, position: "relative" }}>
+            {/* Bottom-left credit */}
+            <div style={{
+              position: "absolute", bottom: 20, left: 24,
+              display: "flex", alignItems: "center", gap: 5,
+            }}>
+              <span style={{ color: "#7c3aed", fontSize: 13 }}>✦</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "#94a3b8", letterSpacing: ".05em" }}>Built by Jay</span>
+            </div>
+
             <div style={S.card}>
 
               {/* Premium heading block */}

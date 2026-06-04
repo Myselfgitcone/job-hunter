@@ -90,6 +90,16 @@ class User(Base):
     last_seen_at  = Column(String, default="")
 
 
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+    id         = Column(String, primary_key=True)
+    user_id    = Column(String, nullable=False)
+    token      = Column(String, unique=True, nullable=False)
+    expires_at = Column(String, nullable=False)
+    used       = Column(Boolean, default=False)
+    created_at = Column(String, default="")
+
+
 class UserSettings(Base):
     __tablename__ = "user_settings"
     user_id              = Column(String, primary_key=True)  # references users.id

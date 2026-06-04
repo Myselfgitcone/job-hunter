@@ -165,6 +165,16 @@ export function Auth({ onSuccess }: Props) {
   const [error, setError]           = useState("");
   const [loading, setLoading]       = useState(false);
   const [showForgot, setShowForgot] = useState(false);
+  // Forgot password state
+  const [forgotEmail, setForgotEmail]   = useState("");
+  const [forgotSent, setForgotSent]     = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
+  // Reset password state (triggered by ?reset_token= in URL)
+  const [resetToken, setResetToken]     = useState<string | null>(null);
+  const [resetPw, setResetPw]           = useState("");
+  const [resetConfirm, setResetConfirm] = useState("");
+  const [resetDone, setResetDone]       = useState(false);
+  const [resetEmail, setResetEmail]     = useState("");
   const [jobCount, setJobCount]     = useState<number>(
     parseInt(localStorage.getItem("jh_job_count") || "0", 10)
   );
@@ -173,6 +183,17 @@ export function Auth({ onSuccess }: Props) {
     last_scrape_mins_ago: number | null;
     best_match_score: number | null;
   } | null>(null);
+
+  // Detect reset_token in URL on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("reset_token");
+    if (token) {
+      setResetToken(token);
+      // Clean URL without reload
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
 
   useEffect(() => {
     const BASE = (import.meta.env.VITE_API_URL || "");
@@ -210,7 +231,68 @@ export function Auth({ onSuccess }: Props) {
   return (
     <>
       {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
-      <div style={{ display: "flex", height: "100vh", fontFamily: "'Inter', system-ui, sans-serif", overflow: "hidden" }}>
+
+      {/* ── RESET PASSWORD PAGE (from email link) ── */}
+      {resetToken && (
+        <div style={{ display: "flex", height: "100vh", fontFamily: "'Inter', system-ui, sans-serif", alignItems: "center", justifyContent: "center", background: "#f8fafc" }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: "40px 44px", width: "100%", maxWidth: 420, boxShadow: "0 8px 40px rgba(0,0,0,0.10)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
+              <svg width="32" height="32" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" stroke="#2563eb" strokeWidth="2.5" fill="none"/><circle cx="16" cy="16" r="5" fill="#2563eb"/></svg>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: "-0.03em", color: "#0f172a" }}>Job <span style={{ color: "#2563eb" }}>Hunter</span></div>
+                <div style={{ fontSize: 10, color: "#94a3b8", letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 600 }}>Hunt Smarter</div>
+              </div>
+            </div>
+
+            {resetDone ? (
+              <div style={{ textAlign: "center", padding: "16px 0" }}>
+                <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", marginBottom: 8 }}>Password reset!</div>
+                <div style={{ fontSize: 14, color: "#64748b", marginBottom: 24, lineHeight: 1.6 }}>
+                  You can now sign in with your new password{resetEmail ? ` (${resetEmail})` : ""}.
+                </div>
+                <button onClick={() => setResetToken(null)}
+                  style={{ height: 44, width: "100%", borderRadius: 12, border: "none", background: "linear-gradient(135deg,#1d4ed8,#2563eb)", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+                  Go to Sign In →
+                </button>
+              </div>
+            ) : (
+              <>
+                <h1 style={{ fontSize: 24, fontWeight: 800, color: "#0f172a", margin: "0 0 6px", letterSpacing: "-0.03em" }}>Set new password</h1>
+                <p style={{ fontSize: 14, color: "#64748b", margin: "0 0 24px", lineHeight: 1.5 }}>Enter a new password for your account.</p>
+                {error && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "11px 14px", fontSize: 13, color: "#dc2626", marginBottom: 16 }}>⚠️ {error}</div>}
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>New Password</label>
+                  <input type="password" value={resetPw} onChange={e => setResetPw(e.target.value)} placeholder="At least 8 characters" autoFocus
+                    style={{ width: "100%", height: 44, border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "0 14px", fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
+                </div>
+                <div style={{ marginBottom: 24 }}>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Confirm Password</label>
+                  <input type="password" value={resetConfirm} onChange={e => setResetConfirm(e.target.value)} placeholder="Repeat new password"
+                    style={{ width: "100%", height: 44, border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "0 14px", fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
+                </div>
+                <button disabled={loading} onClick={async () => {
+                  setError("");
+                  if (resetPw.length < 8) { setError("Password must be at least 8 characters"); return; }
+                  if (resetPw !== resetConfirm) { setError("Passwords don't match"); return; }
+                  setLoading(true);
+                  try {
+                    const r = await api.auth.resetPassword(resetToken!, resetPw);
+                    setResetEmail(r.email || "");
+                    setResetDone(true);
+                  } catch (e: any) { setError(e.message || "Something went wrong"); }
+                  finally { setLoading(false); }
+                }} style={{ height: 48, width: "100%", borderRadius: 12, border: "none", background: "linear-gradient(135deg,#1d4ed8,#2563eb)", color: "#fff", fontSize: 15, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.75 : 1, boxShadow: "0 4px 20px rgba(37,99,235,0.35)" }}>
+                  {loading ? "Resetting…" : "Reset Password →"}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── NORMAL LOGIN/REGISTER UI ── */}
+      {!resetToken && <div style={{ display: "flex", height: "100vh", fontFamily: "'Inter', system-ui, sans-serif", overflow: "hidden" }}>
 
       {/* ══════════════════════════════════════════
           LEFT — Clean white form panel
@@ -295,14 +377,40 @@ export function Auth({ onSuccess }: Props) {
               </FormField>
 
               {showForgot && mode === "login" && (
-                <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "12px 14px", fontSize: 12.5, color: "#1e40af", lineHeight: 1.65 }}>
-                  <div style={{ fontWeight: 700, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
-                    🔑 Reset your password
-                  </div>
-                  <div style={{ color: "#3b82f6", marginBottom: 8 }}>Run in your terminal (backend folder):</div>
-                  <code style={{ display: "block", background: "#dbeafe", padding: "7px 10px", borderRadius: 7, fontSize: 11, color: "#1e3a8a", fontFamily: "monospace", letterSpacing: "0.01em" }}>
-                    python reset_password.py
-                  </code>
+                <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 12, padding: "14px 16px" }}>
+                  {forgotSent ? (
+                    <div style={{ textAlign: "center", padding: "4px 0" }}>
+                      <div style={{ fontSize: 28, marginBottom: 8 }}>📬</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "#1e40af", marginBottom: 4 }}>Check your inbox!</div>
+                      <div style={{ fontSize: 12.5, color: "#3b82f6", lineHeight: 1.6 }}>
+                        If <strong>{forgotEmail}</strong> is registered, a reset link is on its way. Check your spam folder too.
+                      </div>
+                      <button type="button" onClick={() => { setForgotSent(false); setForgotEmail(""); }}
+                        style={{ marginTop: 10, fontSize: 12, color: "#2563eb", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
+                        Try a different email
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: "#1e40af", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                        🔑 Reset your password
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <input type="email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)}
+                          placeholder="your@email.com"
+                          style={{ flex: 1, height: 36, border: "1.5px solid #bfdbfe", borderRadius: 8, padding: "0 10px", fontSize: 13, outline: "none", fontFamily: "inherit", background: "#fff" }} />
+                        <button type="button" disabled={forgotLoading} onClick={async () => {
+                          if (!forgotEmail.trim()) return;
+                          setForgotLoading(true);
+                          try { await api.auth.forgotPassword(forgotEmail.trim()); setForgotSent(true); }
+                          catch { setForgotSent(true); } // always show success (security)
+                          finally { setForgotLoading(false); }
+                        }} style={{ height: 36, padding: "0 14px", borderRadius: 8, border: "none", background: "#2563eb", color: "#fff", fontSize: 13, fontWeight: 600, cursor: forgotLoading ? "not-allowed" : "pointer", opacity: forgotLoading ? 0.7 : 1, whiteSpace: "nowrap" }}>
+                          {forgotLoading ? "Sending…" : "Send Link"}
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -471,7 +579,7 @@ export function Auth({ onSuccess }: Props) {
 
         </div>
       </div>
-    </div>
+    </div>}
     </>
   );
 }

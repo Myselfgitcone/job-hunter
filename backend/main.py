@@ -286,6 +286,154 @@ async def get_me(user_id: str = Depends(get_current_user_id)):
         return {"id": user.id, "email": user.email, "name": user.name, "created_at": user.created_at}
 
 
+# ── Change Password (logged-in users) ───────────────────────────────────────────────────────
+
+class ChangePasswordBody(BaseModel):
+    current_password: str
+    new_password: str
+
+@app.post("/api/auth/change-password")
+async def change_password(body: ChangePasswordBody, user_id: str = Depends(get_current_user_id)):
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+    async with SessionLocal() as db:
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if not verify_password(body.current_password, user.password_hash):
+            raise HTTPException(status_code=400, detail="Current password is incorrect")
+        user.password_hash = hash_password(body.new_password)
+        await db.commit()
+    return {"ok": True, "message": "Password changed successfully"}
+
+
+# ── Forgot Password — sends reset email via Resend ──────────────────────────────────────────
+
+import secrets as _secrets
+import os as _os
+from database import PasswordResetToken as _PRT
+
+class ForgotPasswordBody(BaseModel):
+    email: str
+
+@app.post("/api/auth/forgot-password")
+async def forgot_password(body: ForgotPasswordBody):
+    _SAFE_RESPONSE = {"ok": True, "message": "If that email is registered, you'll receive a reset link shortly."}
+    async with SessionLocal() as db:
+        result = await db.execute(select(User).where(User.email == body.email.lower().strip()))
+        user = result.scalar_one_or_none()
+        if not user:
+            return _SAFE_RESPONSE  # don't reveal whether email exists
+
+        # Expire any existing unused tokens for this user
+        existing = await db.execute(
+            select(_PRT).where(_PRT.user_id == user.id, _PRT.used == False)
+        )
+        for t in existing.scalars().all():
+            t.used = True
+
+        # Generate fresh token (valid 1 hour)
+        token = _secrets.token_urlsafe(40)
+        from datetime import timezone, timedelta
+        expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        db.add(_PRT(
+            id=str(uuid.uuid4()),
+            user_id=user.id,
+            token=token,
+            expires_at=expires_at,
+            used=False,
+            created_at=now_iso,
+        ))
+        await db.commit()
+
+    # Build reset link
+    frontend_url = _os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
+    reset_link = f"{frontend_url}?reset_token={token}"
+    user_name = user.name or "there"
+
+    # Send email via Resend
+    try:
+        import resend
+        resend.api_key = _os.getenv("RESEND_API_KEY", "")
+        resend.Emails.send({
+            "from": _os.getenv("EMAIL_FROM", "noreply@jobhunter.app"),
+            "to": [user.email],
+            "subject": "Reset your Job Hunter password",
+            "html": f"""
+<!DOCTYPE html>
+<html>
+<body style="font-family:Inter,sans-serif;background:#f8fafc;margin:0;padding:32px;">
+  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+    <div style="background:linear-gradient(135deg,#1d4ed8,#0284c7);padding:32px 36px;">
+      <div style="font-size:22px;font-weight:800;color:#fff;letter-spacing:-0.03em;">🎯 Job Hunter</div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:4px;">Hunt Smarter, Not Harder</div>
+    </div>
+    <div style="padding:36px;">
+      <h2 style="font-size:20px;font-weight:700;color:#0f172a;margin:0 0 12px;">Hi {user_name},</h2>
+      <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 24px;">
+        We received a request to reset your Job Hunter password. Click the button below to choose a new password.
+        This link expires in <strong>1 hour</strong>.
+      </p>
+      <a href="{reset_link}"
+         style="display:inline-block;background:linear-gradient(135deg,#1d4ed8,#2563eb);color:#fff;text-decoration:none;font-size:15px;font-weight:700;padding:14px 28px;border-radius:10px;letter-spacing:-0.01em;">
+        Reset Password →
+      </a>
+      <p style="font-size:12px;color:#94a3b8;margin-top:28px;line-height:1.6;">
+        If you didn't request this, you can safely ignore this email. Your password won't change.<br/>
+        Link not working? Copy this: <span style="color:#2563eb;">{reset_link}</span>
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+""",
+        })
+        print(f"[Auth] Reset email sent to {user.email}")
+    except Exception as e:
+        print(f"[Auth] Failed to send reset email: {e}")
+
+    return _SAFE_RESPONSE
+
+
+# ── Reset Password with token ────────────────────────────────────────────────────────────────
+
+class ResetPasswordBody(BaseModel):
+    token: str
+    new_password: str
+
+@app.post("/api/auth/reset-password")
+async def reset_password_with_token(body: ResetPasswordBody):
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    from datetime import timezone
+    async with SessionLocal() as db:
+        result = await db.execute(select(_PRT).where(_PRT.token == body.token))
+        token_record = result.scalar_one_or_none()
+        if not token_record:
+            raise HTTPException(status_code=400, detail="Invalid or expired reset link. Please request a new one.")
+        if token_record.used:
+            raise HTTPException(status_code=400, detail="This reset link has already been used. Please request a new one.")
+        try:
+            expires_at = datetime.fromisoformat(token_record.expires_at)
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid token data.")
+        if datetime.now(timezone.utc) > expires_at:
+            raise HTTPException(status_code=400, detail="Reset link has expired. Please request a new one.")
+
+        result2 = await db.execute(select(User).where(User.id == token_record.user_id))
+        user = result2.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=400, detail="User not found.")
+        user.password_hash = hash_password(body.new_password)
+        token_record.used = True
+        await db.commit()
+        return {"ok": True, "message": "Password reset successfully. You can now log in.", "email": user.email}
+
+
 import telegram_bot
 
 # ── Settings ────────────────────────────────────────────────────────────────────────────────

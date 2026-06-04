@@ -18,3 +18,4 @@ python-multipart==0.0.9
 pypdf>=4.0.0
 python-telegram-bot==21.6
 asyncpg>=0.29.0
+resend>=2.0.0

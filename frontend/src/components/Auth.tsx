@@ -194,18 +194,26 @@ export default function Auth({ onSuccess }: Props) {
           <div style={S.aside}>
             <Brand light />
 
-            <h1 style={S.hero}>Hunt smarter,<br />not harder.</h1>
-            <p style={S.heroSub}>
+            <h1 style={{
+              fontSize: 48, fontWeight: 900, lineHeight: 1.08,
+              letterSpacing: "-.04em", marginBottom: 16,
+              background: "linear-gradient(135deg, #0f172a 0%, #7c3aed 60%, #06b6d4 100%)",
+              WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
+            }}>Hunt smarter,<br />not harder.</h1>
+            <p style={{
+              fontSize: 15, color: "#475569", lineHeight: 1.7,
+              maxWidth: "38ch", marginBottom: 0,
+            }}>
               Scrape thousands of roles, auto-score every match against your profile,
               and tailor your resume in one click — all from one keyboard-first workspace.
             </p>
 
             {/* What's waiting for you */}
-            <div style={{ marginTop: 32 }}>
-              <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "#94a3b8", marginBottom: 16 }}>
+            <div style={{ marginTop: 28 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".14em", textTransform: "uppercase", color: "#94a3b8", marginBottom: 18 }}>
                 What's waiting for you
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
                 {[
                   {
                     icon: "🕐",
@@ -232,18 +240,18 @@ export default function Auth({ onSuccess }: Props) {
                     badge: "Coming Soon",
                   },
                 ].map(f => (
-                  <div key={f.title} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-                    <div style={S.featureIco}>{f.icon}</div>
+                  <div key={f.title} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                    <div style={{ ...S.featureIco, width: 38, height: 38, fontSize: 18, flexShrink: 0 }}>{f.icon}</div>
                     <div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                        <span style={{ fontSize: 13.5, fontWeight: 700, color: "#0f172a" }}>{f.title}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontSize: 15, fontWeight: 700, color: "#0f172a" }}>{f.title}</span>
                         {f.badge && (
-                          <span style={{ fontSize: 10, fontWeight: 700, background: "rgba(124,58,237,0.1)", color: "#7c3aed", border: "1px solid rgba(124,58,237,0.25)", borderRadius: 5, padding: "1px 7px", letterSpacing: ".04em", textTransform: "uppercase" }}>
+                          <span style={{ fontSize: 10.5, fontWeight: 700, background: "rgba(124,58,237,0.12)", color: "#7c3aed", border: "1px solid rgba(124,58,237,0.28)", borderRadius: 5, padding: "2px 8px", letterSpacing: ".04em", textTransform: "uppercase" }}>
                             {f.badge}
                           </span>
                         )}
                       </div>
-                      <div style={{ fontSize: 12.5, color: "#64748b", lineHeight: 1.55 }}>{f.desc}</div>
+                      <div style={{ fontSize: 13.5, color: "#64748b", lineHeight: 1.6 }}>{f.desc}</div>
                     </div>
                   </div>
                 ))}
@@ -251,25 +259,11 @@ export default function Auth({ onSuccess }: Props) {
             </div>
 
 
-            {/* Stats row */}
-            <div style={{ display: "flex", gap: 28, marginTop: 32 }}>
-              {[
-                { value: jobCount > 0 ? <><Counter to={jobCount} /></> : "6,809", label: "roles indexed" },
-                { value: liveStats?.added_today ?? "18", label: "qualified today" },
-                { value: "27", label: "resumes tailored" },
-              ].map(s => (
-                <div key={s.label}>
-                  <div style={S.statNum}>{s.value}</div>
-                  <div style={S.statLabel}>{s.label}</div>
-                </div>
-              ))}
-            </div>
-
             {/* LIVE grid */}
             <div style={{ marginTop: 28 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
-                <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "#64748b" }}>Live</span>
-                <span style={{ position: "relative", display: "inline-flex", width: 8, height: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 12 }}>
+                <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "#64748b" }}>Live</span>
+                <span style={{ position: "relative", display: "inline-flex", width: 9, height: 9 }}>
                   <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#22c55e", animation: "livePip2 1.4s ease-in-out infinite" }} />
                   <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#22c55e" }} />
                 </span>
@@ -277,14 +271,14 @@ export default function Auth({ onSuccess }: Props) {
               </div>
               <div style={S.liveGrid}>
                 {[
-                  { value: liveStats?.last_scrape_mins_ago != null ? (liveStats.last_scrape_mins_ago < 60 ? `${liveStats.last_scrape_mins_ago}m ago` : `${Math.round(liveStats.last_scrape_mins_ago/60)}h ago`) : "—", label: "Last scrape" },
-                  { value: jobCount > 0 ? <><Counter to={jobCount} />+</> : "6,831+", label: "Jobs scraped" },
-                  { value: liveStats?.added_today ?? "142", label: "New today" },
-                  { value: "10+", label: "Job boards" },
-                  { value: "⚡", label: "Auto Apply" },
+                  { value: liveStats?.last_scrape_mins_ago != null ? (liveStats.last_scrape_mins_ago < 60 ? `${liveStats.last_scrape_mins_ago}m ago` : `${Math.round(liveStats.last_scrape_mins_ago/60)}h ago`) : "—", label: "Last scrape", color: "#64748b" },
+                  { value: jobCount > 0 ? <><Counter to={jobCount} />+</> : "6,831+", label: "Jobs scraped", color: "#7c3aed" },
+                  { value: liveStats?.added_today ?? "0", label: "New today", color: "#06b6d4" },
+                  { value: "10+", label: "Job boards", color: "#f59e0b" },
+                  { value: "⚡", label: "Auto Apply", color: "#10b981" },
                 ].map((s, i) => (
                   <div key={s.label} style={{ ...S.liveCell, borderLeft: i > 0 ? "1px solid rgba(0,0,0,0.07)" : "none" }}>
-                    <div style={S.liveCellVal}>{s.value}</div>
+                    <div style={{ ...S.liveCellVal, fontSize: 20, color: s.color, fontWeight: 900 }}>{s.value}</div>
                     <div style={S.liveCellLabel}>{s.label}</div>
                   </div>
                 ))}

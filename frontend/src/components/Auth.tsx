@@ -504,7 +504,7 @@ const styles = {
     padding: "52px 60px 52px 100px",
     display: "flex", flexDirection: "column", justifyContent: "center",
     borderRight: "1px solid rgba(0,0,0,0.07)",
-    height: "100%", overflowY: "auto",
+    height: "100%", overflowY: "auto", minHeight: 0,
     boxSizing: "border-box" as const,
   } as React.CSSProperties,
 
@@ -554,7 +554,7 @@ const styles = {
   formSide: {
     flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
     padding: "60px 64px", background: "#f8f7f4",
-    height: "100%", overflowY: "auto",
+    height: "100%", overflowY: "auto", minHeight: 0,
     boxSizing: "border-box" as const,
   } as React.CSSProperties,
 

@@ -307,8 +307,8 @@ export default function Auth({ onSuccess }: Props) {
 
                 {/* Main title — very big */}
                 <h1 style={{
-                  fontSize: 42, fontWeight: 800, letterSpacing: "-.03em",
-                  color: "#0f172a", margin: "0 0 16px", lineHeight: 1.15,
+                  fontSize: 52, fontWeight: 800, letterSpacing: "-.03em",
+                  color: "#0f172a", margin: "0 0 16px", lineHeight: 1.12,
                 }}>
                   Your digital career agent is
                   <br />
@@ -525,11 +525,11 @@ const styles = {
 
   formSide: {
     flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-    padding: "32px 40px", background: "#f8f7f4",
+    padding: "60px 64px", background: "#f8f7f4",
   } as React.CSSProperties,
 
   card: {
-    width: 380, maxWidth: "100%",
+    width: "100%", maxWidth: "100%",
   } as React.CSSProperties,
 
   resetCard: {
@@ -553,19 +553,19 @@ const styles = {
   } as React.CSSProperties,
 
   tabBtn: {
-    flex: 1, padding: "10px", border: "none", background: "transparent",
-    fontSize: 13.5, fontWeight: 600, cursor: "pointer", borderRadius: 9,
+    flex: 1, padding: "13px", border: "none", background: "transparent",
+    fontSize: 15, fontWeight: 600, cursor: "pointer", borderRadius: 9,
     transition: "color .18s", zIndex: 1, position: "relative" as const,
   },
 
   label: {
-    display: "block", fontSize: 12.5, fontWeight: 600,
-    color: "#374151", marginBottom: 6,
+    display: "block", fontSize: 14, fontWeight: 600,
+    color: "#374151", marginBottom: 8,
   } as React.CSSProperties,
 
   input: {
-    width: "100%", height: 44, padding: "0 14px",
-    borderRadius: 10, fontSize: 14,
+    width: "100%", height: 54, padding: "0 18px",
+    borderRadius: 12, fontSize: 15.5,
     background: "#fff", border: "1.5px solid #e2e8f0",
     color: "#0f172a", outline: "none",
     fontFamily: "'Inter', system-ui, sans-serif",
@@ -574,11 +574,11 @@ const styles = {
   },
 
   btn: {
-    width: "100%", height: 46, borderRadius: 12, border: "none",
+    width: "100%", height: 54, borderRadius: 14, border: "none",
     background: "linear-gradient(120deg, #7c3aed 0%, #06b6d4 100%)",
-    color: "#fff", fontSize: 14.5, fontWeight: 700,
+    color: "#fff", fontSize: 16, fontWeight: 700,
     cursor: "pointer", letterSpacing: "-.01em",
-    boxShadow: "0 4px 20px rgba(124,58,237,0.35)",
+    boxShadow: "0 4px 24px rgba(124,58,237,0.4)",
     transition: "all .15s", fontFamily: "inherit",
   } as React.CSSProperties,
 

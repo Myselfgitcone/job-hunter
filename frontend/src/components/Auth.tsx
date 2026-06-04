@@ -202,7 +202,7 @@ export default function Auth({ onSuccess }: Props) {
         <div style={S.page}>
 
           {/* ── LEFT: Brand / Features ── */}
-          <div style={S.aside}>
+          <div style={S.aside} className="auth-panel">
             <Brand light />
 
             <h1 style={{
@@ -278,7 +278,11 @@ export default function Auth({ onSuccess }: Props) {
                   <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#22c55e", animation: "livePip2 1.4s ease-in-out infinite" }} />
                   <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#22c55e" }} />
                 </span>
-                <style>{`@keyframes livePip2{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(2.4);opacity:0}}`}</style>
+                <style>{`
+                  @keyframes livePip2{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(2.4);opacity:0}}
+                  .auth-panel::-webkit-scrollbar { display: none; }
+                  .auth-panel { scrollbar-width: none; -ms-overflow-style: none; }
+                `}</style>
               </div>
               <div style={S.liveGrid}>
                 {[
@@ -298,7 +302,7 @@ export default function Auth({ onSuccess }: Props) {
           </div>
 
           {/* ── RIGHT: Form ── */}
-          <div style={{ ...S.formSide, position: "relative" }}>
+          <div style={{ ...S.formSide, position: "relative" }} className="auth-panel">
             {/* Bottom-right credit */}
             <div style={{
               position: "absolute", bottom: 20, right: 24,
@@ -490,8 +494,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 /* ── Styles ── */
 const styles = {
   page: {
-    display: "flex", height: "100vh", fontFamily: "'Inter', system-ui, sans-serif",
-    background: "#f8f7f4", overflow: "hidden",
+    display: "flex", minHeight: "100vh", fontFamily: "'Inter', system-ui, sans-serif",
+    background: "#f8f7f4",
   } as React.CSSProperties,
 
   aside: {
@@ -500,7 +504,7 @@ const styles = {
     padding: "52px 60px 52px 100px",
     display: "flex", flexDirection: "column", justifyContent: "center",
     borderRight: "1px solid rgba(0,0,0,0.07)",
-    overflow: "hidden",
+    overflowY: "auto",
   } as React.CSSProperties,
 
   hero: {

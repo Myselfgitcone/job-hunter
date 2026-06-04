@@ -494,8 +494,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 /* ── Styles ── */
 const styles = {
   page: {
-    display: "flex", minHeight: "100vh", fontFamily: "'Inter', system-ui, sans-serif",
-    background: "#f8f7f4",
+    display: "flex", height: "100vh", fontFamily: "'Inter', system-ui, sans-serif",
+    background: "#f8f7f4", overflow: "hidden",
   } as React.CSSProperties,
 
   aside: {
@@ -504,7 +504,8 @@ const styles = {
     padding: "52px 60px 52px 100px",
     display: "flex", flexDirection: "column", justifyContent: "center",
     borderRight: "1px solid rgba(0,0,0,0.07)",
-    overflowY: "auto",
+    height: "100%", overflowY: "auto",
+    boxSizing: "border-box" as const,
   } as React.CSSProperties,
 
   hero: {
@@ -553,6 +554,8 @@ const styles = {
   formSide: {
     flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
     padding: "60px 64px", background: "#f8f7f4",
+    height: "100%", overflowY: "auto",
+    boxSizing: "border-box" as const,
   } as React.CSSProperties,
 
   card: {

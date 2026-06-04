@@ -447,10 +447,8 @@ function Brand({ light }: { light?: boolean }) {
         <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: "-.02em", color: light ? "#0f172a" : "#0f172a" }}>
           Job <span style={{ color: "#7c3aed" }}>Hunter</span>
         </div>
-        <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: ".1em", textTransform: "uppercase", color: "#94a3b8", marginTop: 1 }}>
-          Hunt Smarter, Not Harder
-        </div>
       </div>
+
     </div>
   );
 }

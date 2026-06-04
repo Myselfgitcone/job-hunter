@@ -195,13 +195,13 @@ export default function Auth({ onSuccess }: Props) {
             <Brand light />
 
             <h1 style={{
-              fontSize: 48, fontWeight: 900, lineHeight: 1.08,
-              letterSpacing: "-.04em", marginBottom: 16,
+              fontSize: 60, fontWeight: 900, lineHeight: 1.06,
+              letterSpacing: "-.04em", marginBottom: 20,
               background: "linear-gradient(135deg, #0f172a 0%, #7c3aed 60%, #06b6d4 100%)",
               WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
             }}>Hunt smarter,<br />not harder.</h1>
             <p style={{
-              fontSize: 15, color: "#475569", lineHeight: 1.7,
+              fontSize: 17, color: "#475569", lineHeight: 1.7,
               maxWidth: "38ch", marginBottom: 0,
             }}>
               Scrape thousands of roles, auto-score every match against your profile,
@@ -209,11 +209,11 @@ export default function Auth({ onSuccess }: Props) {
             </p>
 
             {/* What's waiting for you */}
-            <div style={{ marginTop: 28 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".14em", textTransform: "uppercase", color: "#94a3b8", marginBottom: 18 }}>
+            <div style={{ marginTop: 32 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "#94a3b8", marginBottom: 22 }}>
                 What's waiting for you
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 26 }}>
                 {[
                   {
                     icon: "🕐",
@@ -240,18 +240,18 @@ export default function Auth({ onSuccess }: Props) {
                     badge: "Coming Soon",
                   },
                 ].map(f => (
-                  <div key={f.title} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-                    <div style={{ ...S.featureIco, width: 38, height: 38, fontSize: 18, flexShrink: 0 }}>{f.icon}</div>
+                  <div key={f.title} style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+                    <div style={{ ...S.featureIco, width: 48, height: 48, fontSize: 22, flexShrink: 0 }}>{f.icon}</div>
                     <div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                        <span style={{ fontSize: 15, fontWeight: 700, color: "#0f172a" }}>{f.title}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 5 }}>
+                        <span style={{ fontSize: 18, fontWeight: 700, color: "#0f172a" }}>{f.title}</span>
                         {f.badge && (
-                          <span style={{ fontSize: 10.5, fontWeight: 700, background: "rgba(124,58,237,0.12)", color: "#7c3aed", border: "1px solid rgba(124,58,237,0.28)", borderRadius: 5, padding: "2px 8px", letterSpacing: ".04em", textTransform: "uppercase" }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, background: "rgba(124,58,237,0.12)", color: "#7c3aed", border: "1px solid rgba(124,58,237,0.28)", borderRadius: 6, padding: "3px 10px", letterSpacing: ".04em", textTransform: "uppercase" }}>
                             {f.badge}
                           </span>
                         )}
                       </div>
-                      <div style={{ fontSize: 13.5, color: "#64748b", lineHeight: 1.6 }}>{f.desc}</div>
+                      <div style={{ fontSize: 15.5, color: "#64748b", lineHeight: 1.65 }}>{f.desc}</div>
                     </div>
                   </div>
                 ))}
@@ -260,10 +260,10 @@ export default function Auth({ onSuccess }: Props) {
 
 
             {/* LIVE grid */}
-            <div style={{ marginTop: 28 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 12 }}>
-                <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "#64748b" }}>Live</span>
-                <span style={{ position: "relative", display: "inline-flex", width: 9, height: 9 }}>
+            <div style={{ marginTop: 36 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "#64748b" }}>Live</span>
+                <span style={{ position: "relative", display: "inline-flex", width: 10, height: 10 }}>
                   <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#22c55e", animation: "livePip2 1.4s ease-in-out infinite" }} />
                   <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#22c55e" }} />
                 </span>
@@ -277,9 +277,9 @@ export default function Auth({ onSuccess }: Props) {
                   { value: "10+", label: "Job boards", color: "#f59e0b" },
                   { value: "⚡", label: "Auto Apply", color: "#10b981" },
                 ].map((s, i) => (
-                  <div key={s.label} style={{ ...S.liveCell, borderLeft: i > 0 ? "1px solid rgba(0,0,0,0.07)" : "none" }}>
-                    <div style={{ ...S.liveCellVal, fontSize: 20, color: s.color, fontWeight: 900 }}>{s.value}</div>
-                    <div style={S.liveCellLabel}>{s.label}</div>
+                  <div key={s.label} style={{ ...S.liveCell, borderLeft: i > 0 ? "1px solid rgba(0,0,0,0.07)" : "none", padding: "16px 8px" }}>
+                    <div style={{ ...S.liveCellVal, fontSize: 26, color: s.color, fontWeight: 900 }}>{s.value}</div>
+                    <div style={{ ...S.liveCellLabel, fontSize: 12 }}>{s.label}</div>
                   </div>
                 ))}
               </div>
@@ -427,9 +427,9 @@ const styles = {
   } as React.CSSProperties,
 
   aside: {
-    width: "42%", flexShrink: 0,
+    width: "52%", flexShrink: 0,
     background: "linear-gradient(135deg, #ede9fe 0%, #f0f9ff 40%, #f8f7f4 100%)",
-    padding: "48px 52px 48px 120px",
+    padding: "52px 60px 52px 100px",
     display: "flex", flexDirection: "column",
     borderRight: "1px solid rgba(0,0,0,0.07)",
     overflowY: "auto",

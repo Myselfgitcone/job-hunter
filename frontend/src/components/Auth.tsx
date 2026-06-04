@@ -1,48 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { api } from "../api";
 
+const BASE = (import.meta as any).env?.VITE_API_URL || "";
+
 interface Props {
   onSuccess: (user: { id: string; email: string; name: string }) => void;
 }
 
-/* ── Real Job Hunter logo: bullseye target ── */
-function BullseyeLogo({ size = 40, color = "#2563eb" }: { size?: number; color?: string }) {
-  const r = size / 2;
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} fill="none">
-      {/* Outer ring */}
-      <circle cx={r} cy={r} r={r - 2} stroke={color} strokeWidth={size * 0.065} fill="none" />
-      {/* Inner dot */}
-      <circle cx={r} cy={r} r={r * 0.28} fill={color} />
-    </svg>
-  );
-}
-
-/* ── Animated pulse rings (right panel decoration) ── */
-function PulseRings() {
-  return (
-    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", overflow: "hidden" }}>
-      {[1, 2, 3, 4].map(i => (
-        <div key={i} style={{
-          position: "absolute",
-          width: i * 140, height: i * 140,
-          borderRadius: "50%",
-          border: "1px solid rgba(255,255,255,0.12)",
-          animation: `ringPulse 4s ease-in-out ${i * 0.6}s infinite`,
-        }} />
-      ))}
-      <style>{`
-        @keyframes ringPulse {
-          0%, 100% { opacity: 0.3; transform: scale(1); }
-          50% { opacity: 1; transform: scale(1.08); }
-        }
-      `}</style>
-    </div>
-  );
-}
-
 /* ── Animated number counter ── */
-function Counter({ to, duration = 1600 }: { to: number; duration?: number }) {
+function Counter({ to, duration = 1400 }: { to: number; duration?: number }) {
   const [val, setVal] = useState(0);
   const raf = useRef<number | null>(null);
   useEffect(() => {
@@ -60,143 +26,115 @@ function Counter({ to, duration = 1600 }: { to: number; duration?: number }) {
   return <>{val.toLocaleString()}</>;
 }
 
-/* ── Splash Screen ── */
+/* ── New Splash Screen ── */
 function SplashScreen({ onDone }: { onDone: () => void }) {
-  const [fade, setFade] = useState(false);
-  useEffect(() => {
-    const t1 = setTimeout(() => setFade(true), 2500);
-    const t2 = setTimeout(onDone, 3200);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [onDone]);
+  const [ready, setReady] = useState(false);
+  const [exit, setExit] = useState(false);
 
-  const icons = [
-    { tx: "-55vw", ty: "-55vh", delay: "0s"    },
-    { tx:  "55vw", ty: "-55vh", delay: "0.06s" },
-    { tx: "-55vw", ty:  "55vh", delay: "0.12s" },
-    { tx:  "55vw", ty:  "55vh", delay: "0.06s" },
-    { tx:     "0", ty: "-60vh", delay: "0.03s" },
-    { tx:     "0", ty:  "60vh", delay: "0.09s" },
-    { tx: "-60vw", ty:     "0", delay: "0.09s" },
-    { tx:  "60vw", ty:     "0", delay: "0.03s" },
-  ];
+  const finish = () => {
+    setExit(true);
+    setTimeout(onDone, 520);
+  };
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setReady(true), 60);
+    const t2 = setTimeout(finish, 3200);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, []);
+
+  const PARTICLE_COUNT = 22;
+  const particles = Array.from({ length: PARTICLE_COUNT }, (_, i) => {
+    const angle = (i / PARTICLE_COUNT) * 360;
+    const dist = 130 + (i % 6) * 30;
+    return { angle, dist, i };
+  });
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 9999,
-      background: "linear-gradient(155deg, #0c1a3a 0%, #0f2051 45%, #081020 100%)",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      opacity: fade ? 0 : 1, transition: "opacity 0.7s ease",
-      pointerEvents: fade ? "none" : "all",
-    }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Space+Grotesk:wght@400;500;700&display=swap');
-        @keyframes toCenter {
-          0%   { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0.25); }
-          55%  { opacity: 1; }
-          80%  { opacity: 0.8; transform: translate(0, 0) scale(1.05); }
-          100% { opacity: 0; transform: translate(0, 0) scale(0.6); }
-        }
-        @keyframes centerPop {
-          0%   { opacity: 0; transform: scale(0.4); }
-          55%  { opacity: 1; transform: scale(1.06); }
-          75%  { transform: scale(0.97); }
-          100% { opacity: 1; transform: scale(1); }
-        }
-        @keyframes glowPulse {
-          0%, 100% { box-shadow: 0 0 60px rgba(37,99,235,0.4), 0 0 120px rgba(37,99,235,0.15); }
-          50%       { box-shadow: 0 0 100px rgba(37,99,235,0.7), 0 0 200px rgba(37,99,235,0.3); }
-        }
-      `}</style>
+    <div
+      className={`splash${ready ? " splash-ready" : ""}${exit ? " exit" : ""}`}
+      onClick={finish}
+    >
+      <div className="splash-glow" />
+      <div className="splash-grid-bg" />
 
-      {/* 8 icons flying from all directions — fade OUT at center */}
-      {icons.map((c, i) => (
-        <div key={i} style={{
-          position: "absolute",
-          top: "50%", left: "50%",
-          marginTop: -35, marginLeft: -35,
-          ["--tx" as any]: c.tx,
-          ["--ty" as any]: c.ty,
-          animation: `toCenter 1.2s cubic-bezier(0.22,1,0.36,1) ${c.delay} forwards`,
-          opacity: 0,
-        }}>
-          <BullseyeLogo size={70} color="rgba(59,130,246,0.8)" />
-        </div>
-      ))}
+      <div className="splash-particles">
+        {particles.map(p => (
+          <span
+            key={p.i}
+            className="splash-particle"
+            style={{
+              ["--sp-a" as any]: `${p.angle}deg`,
+              ["--sp-d" as any]: `${p.dist}px`,
+              ["--sp-delay" as any]: `${p.i * 0.03}s`,
+              ["--sp-drift-delay" as any]: `${p.i * 0.05}s`,
+            }}
+          />
+        ))}
+      </div>
 
-      {/* Center content — pops in after icons fade */}
-      <div style={{
-        position: "relative", zIndex: 10, textAlign: "center",
-        animation: "centerPop 0.8s cubic-bezier(0.34,1.56,0.64,1) 1.1s forwards",
-        opacity: 0,
-      }}>
-        <div style={{
-          width: 160, height: 160, borderRadius: "50%",
-          background: "rgba(37,99,235,0.1)",
-          border: "1px solid rgba(37,99,235,0.3)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          margin: "0 auto 28px",
-          animation: "glowPulse 2s ease-in-out 1.5s infinite",
-        }}>
-          <BullseyeLogo size={100} color="#3b82f6" />
+      <div className="splash-center">
+        <div className="splash-target">
+          <svg viewBox="0 0 120 120">
+            <circle className="splash-ring" cx="60" cy="60" r="46" />
+            <circle className="splash-bull" cx="60" cy="60" r="15" />
+          </svg>
+          <span className="splash-lock-ring" />
+          <span className="splash-lock-ring splash-lock-ring-2" />
         </div>
-        <div style={{ fontSize: 68, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1, fontFamily: "'Playfair Display', Georgia, serif" }}>
-          Welcome
+
+        <div className="splash-word">
+          <h1 className="splash-brand">
+            Job <span className="splash-hl">Hunter</span>
+          </h1>
+          <p className="splash-tagline">Hunt Smarter, Not Harder</p>
         </div>
-        <div style={{ fontSize: 22, fontWeight: 400, color: "rgba(255,255,255,0.5)", marginTop: 10, fontFamily: "'Space Grotesk', sans-serif", fontStyle: "italic", letterSpacing: "0.04em" }}>
-          to
-        </div>
-        <div style={{ fontSize: 38, fontWeight: 700, color: "#3b82f6", marginTop: 6, fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-0.01em" }}>
-          Job Hunter
-        </div>
-        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", marginTop: 12, letterSpacing: "0.2em", textTransform: "uppercase", fontWeight: 500, fontFamily: "'Space Grotesk', sans-serif" }}>
-          Hunt Smarter, Not Harder
+
+        <div className="splash-progress">
+          <i className="splash-progress-bar" />
         </div>
       </div>
+
+      <div className="splash-skip">Click anywhere to skip</div>
     </div>
   );
 }
 
-export function Auth({ onSuccess }: Props) {
-  const [mode, setMode]             = useState<"login" | "register">("login");
-  const [showSplash, setShowSplash] = useState(true);
-  const [email, setEmail]           = useState("");
-  const [password, setPassword]     = useState("");
-  const [name, setName]             = useState("");
-  const [error, setError]           = useState("");
-  const [loading, setLoading]       = useState(false);
-  const [showForgot, setShowForgot] = useState(false);
-  // Forgot password state
-  const [forgotEmail, setForgotEmail]   = useState("");
-  const [forgotSent, setForgotSent]     = useState(false);
+/* ── Main Auth component ── */
+export default function Auth({ onSuccess }: Props) {
+  const [showSplash, setShowSplash] = useState(() => !localStorage.getItem("jh_splash_done"));
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [name, setName]       = useState("");
+  const [email, setEmail]     = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError]     = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // forgot password
+  const [showForgot, setShowForgot]   = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
-  // Reset password state (triggered by ?reset_token= in URL)
+  const [forgotSent, setForgotSent]   = useState(false);
+
+  // reset password (from email link)
   const [resetToken, setResetToken]     = useState<string | null>(null);
   const [resetPw, setResetPw]           = useState("");
   const [resetConfirm, setResetConfirm] = useState("");
   const [resetDone, setResetDone]       = useState(false);
   const [resetEmail, setResetEmail]     = useState("");
-  const [jobCount, setJobCount]     = useState<number>(
-    parseInt(localStorage.getItem("jh_job_count") || "0", 10)
-  );
-  const [liveStats, setLiveStats]   = useState<{
-    added_today: number;
-    last_scrape_mins_ago: number | null;
-    best_match_score: number | null;
-  } | null>(null);
 
-  // Detect reset_token in URL on mount
+  // live stats
+  const [jobCount, setJobCount]   = useState(() => parseInt(localStorage.getItem("jh_job_count") || "0") || 0);
+  const [liveStats, setLiveStats] = useState<any>(null);
+
+  // parse reset token from URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const token = params.get("reset_token");
-    if (token) {
-      setResetToken(token);
-      // Clean URL without reload
-      window.history.replaceState({}, "", window.location.pathname);
-    }
+    const tok = params.get("reset_token");
+    if (tok) { setResetToken(tok); window.history.replaceState({}, "", "/"); }
   }, []);
 
+  // fetch live stats
   useEffect(() => {
-    const BASE = (import.meta.env.VITE_API_URL || "");
     fetch(`${BASE}/api/jobs/count`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.count) { setJobCount(d.count); localStorage.setItem("jh_job_count", String(d.count)); } })
@@ -228,395 +166,287 @@ export function Auth({ onSuccess }: Props) {
     }
   };
 
+  const handleSplashDone = () => {
+    localStorage.setItem("jh_splash_done", "1");
+    setShowSplash(false);
+  };
+
   return (
     <>
-      {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
+      {showSplash && <SplashScreen onDone={handleSplashDone} />}
 
-      {/* ── RESET PASSWORD PAGE (from email link) ── */}
+      {/* ── RESET PASSWORD PAGE ── */}
       {resetToken && (
-        <div style={{ display: "flex", height: "100vh", fontFamily: "'Inter', system-ui, sans-serif", alignItems: "center", justifyContent: "center", background: "#f8fafc" }}>
-          <div style={{ background: "#fff", borderRadius: 20, padding: "40px 44px", width: "100%", maxWidth: 420, boxShadow: "0 8px 40px rgba(0,0,0,0.10)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
-              <svg width="32" height="32" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" stroke="#2563eb" strokeWidth="2.5" fill="none"/><circle cx="16" cy="16" r="5" fill="#2563eb"/></svg>
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: "-0.03em", color: "#0f172a" }}>Job <span style={{ color: "#2563eb" }}>Hunter</span></div>
-                <div style={{ fontSize: 10, color: "#94a3b8", letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 600 }}>Hunt Smarter</div>
+        <div className="auth">
+          <div className="auth-main" style={{ flex: 1 }}>
+            <div className="auth-card">
+              <div className="auth-brand" style={{ marginBottom: 28 }}>
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                  <circle cx="14" cy="14" r="12" stroke="#2563eb" strokeWidth="2.5" fill="none"/>
+                  <circle cx="14" cy="14" r="4.5" fill="#2563eb"/>
+                </svg>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-.02em" }}>
+                    Job <span style={{ color: "#3b82f6" }}>Hunter</span>
+                  </div>
+                </div>
               </div>
-            </div>
 
-            {resetDone ? (
-              <div style={{ textAlign: "center", padding: "16px 0" }}>
-                <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
-                <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", marginBottom: 8 }}>Password reset!</div>
-                <div style={{ fontSize: 14, color: "#64748b", marginBottom: 24, lineHeight: 1.6 }}>
-                  You can now sign in with your new password{resetEmail ? ` (${resetEmail})` : ""}.
+              {resetDone ? (
+                <div style={{ textAlign: "center", padding: "16px 0" }}>
+                  <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
+                  <div className="auth-card-title">Password reset!</div>
+                  <p className="auth-card-sub">
+                    You can now sign in with your new password{resetEmail ? ` (${resetEmail})` : ""}.
+                  </p>
+                  <button className="auth-submit" onClick={() => setResetToken(null)}>
+                    Go to Sign In →
+                  </button>
                 </div>
-                <button onClick={() => setResetToken(null)}
-                  style={{ height: 44, width: "100%", borderRadius: 12, border: "none", background: "linear-gradient(135deg,#1d4ed8,#2563eb)", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
-                  Go to Sign In →
-                </button>
-              </div>
-            ) : (
-              <>
-                <h1 style={{ fontSize: 24, fontWeight: 800, color: "#0f172a", margin: "0 0 6px", letterSpacing: "-0.03em" }}>Set new password</h1>
-                <p style={{ fontSize: 14, color: "#64748b", margin: "0 0 24px", lineHeight: 1.5 }}>Enter a new password for your account.</p>
-                {error && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "11px 14px", fontSize: 13, color: "#dc2626", marginBottom: 16 }}>⚠️ {error}</div>}
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>New Password</label>
-                  <input type="password" value={resetPw} onChange={e => setResetPw(e.target.value)} placeholder="At least 8 characters" autoFocus
-                    style={{ width: "100%", height: 44, border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "0 14px", fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
-                </div>
-                <div style={{ marginBottom: 24 }}>
-                  <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Confirm Password</label>
-                  <input type="password" value={resetConfirm} onChange={e => setResetConfirm(e.target.value)} placeholder="Repeat new password"
-                    style={{ width: "100%", height: 44, border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "0 14px", fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
-                </div>
-                <button disabled={loading} onClick={async () => {
-                  setError("");
-                  if (resetPw.length < 8) { setError("Password must be at least 8 characters"); return; }
-                  if (resetPw !== resetConfirm) { setError("Passwords don't match"); return; }
-                  setLoading(true);
-                  try {
-                    const r = await api.auth.resetPassword(resetToken!, resetPw);
-                    setResetEmail(r.email || "");
-                    setResetDone(true);
-                  } catch (e: any) { setError(e.message || "Something went wrong"); }
-                  finally { setLoading(false); }
-                }} style={{ height: 48, width: "100%", borderRadius: 12, border: "none", background: "linear-gradient(135deg,#1d4ed8,#2563eb)", color: "#fff", fontSize: 15, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.75 : 1, boxShadow: "0 4px 20px rgba(37,99,235,0.35)" }}>
-                  {loading ? "Resetting…" : "Reset Password →"}
-                </button>
-              </>
-            )}
+              ) : (
+                <>
+                  <h1 className="auth-card-title">Set new password</h1>
+                  <p className="auth-card-sub">Enter a new password for your account.</p>
+                  {error && <div className="auth-err" style={{ marginBottom: 16 }}>⚠️ {error}</div>}
+                  <div className="auth-form">
+                    <div className="auth-field">
+                      <label className="auth-label">New Password</label>
+                      <input className="auth-input" type="password" value={resetPw}
+                        onChange={e => setResetPw(e.target.value)} placeholder="At least 8 characters" autoFocus />
+                    </div>
+                    <div className="auth-field">
+                      <label className="auth-label">Confirm Password</label>
+                      <input className="auth-input" type="password" value={resetConfirm}
+                        onChange={e => setResetConfirm(e.target.value)} placeholder="Repeat new password" />
+                    </div>
+                    <button className="auth-submit" disabled={loading} onClick={async () => {
+                      setError("");
+                      if (resetPw.length < 8) { setError("Password must be at least 8 characters"); return; }
+                      if (resetPw !== resetConfirm) { setError("Passwords don't match"); return; }
+                      setLoading(true);
+                      try {
+                        const r = await api.auth.resetPassword(resetToken!, resetPw);
+                        setResetEmail(r.email || "");
+                        setResetDone(true);
+                      } catch (e: any) { setError(e.message || "Something went wrong"); }
+                      finally { setLoading(false); }
+                    }}>
+                      {loading ? "Resetting…" : "Reset Password →"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {/* ── NORMAL LOGIN/REGISTER UI ── */}
-      {!resetToken && <div style={{ display: "flex", height: "100vh", fontFamily: "'Inter', system-ui, sans-serif", overflow: "hidden" }}>
+      {/* ── MAIN LOGIN / REGISTER ── */}
+      {!resetToken && (
+        <div className="auth">
 
-      {/* ══════════════════════════════════════════
-          LEFT — Clean white form panel
-      ══════════════════════════════════════════ */}
-      <div style={{
-        flex: 1, background: "#fff",
-        display: "flex", flexDirection: "column",
-        padding: "0 0 0 0", overflowY: "auto",
-      }}>
-        {/* Top bar with logo */}
-        <div style={{ padding: "28px 40px 0", display: "flex", alignItems: "center", gap: 12 }}>
-          <BullseyeLogo size={36} color="#2563eb" />
-          <div>
-            <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-0.03em", color: "#0f172a", lineHeight: 1 }}>
-              Job <span style={{ color: "#2563eb" }}>Hunter</span>
-            </div>
-            <div style={{ fontSize: 9, letterSpacing: "0.15em", color: "#94a3b8", textTransform: "uppercase", marginTop: 2, fontWeight: 600 }}>
-              Hunt Smarter, Not Harder
-            </div>
-          </div>
-        </div>
-
-        {/* Form area — centered vertically */}
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "32px 40px" }}>
-          <div style={{ width: "100%", maxWidth: 380 }}>
-
-            {/* Heading — centered */}
-            <h1 style={{ fontSize: 28, fontWeight: 800, color: "#0f172a", margin: "0 0 6px", letterSpacing: "-0.03em", textAlign: "center" }}>
-              {mode === "login" ? "Welcome" : "Create your account"}
-            </h1>
-            <p style={{ fontSize: 14, color: "#64748b", margin: "0 0 28px", lineHeight: 1.5, textAlign: "center" }}>
-              {mode === "login"
-                ? "Sign in to your AI job search dashboard."
-                : "Start finding and winning jobs with AI."}
-            </p>
-
-            {/* Tab toggle */}
-            <div style={{
-              display: "flex", background: "#f1f5f9",
-              borderRadius: 12, padding: 4, marginBottom: 28,
-            }}>
-              {(["login", "register"] as const).map(m => (
-                <button key={m} type="button"
-                  onClick={() => { setMode(m); setError(""); setShowForgot(false); }}
-                  style={{
-                    flex: 1, height: 38, borderRadius: 9, border: "none",
-                    fontSize: 13.5, fontWeight: 600, cursor: "pointer",
-                    transition: "all .2s cubic-bezier(0.34,1.56,0.64,1)",
-                    background: mode === m ? "#fff" : "transparent",
-                    color: mode === m ? "#0f172a" : "#94a3b8",
-                    boxShadow: mode === m ? "0 2px 8px rgba(0,0,0,0.1)" : "none",
-                  }}>
-                  {m === "login" ? "Sign In" : "Register"}
-                </button>
-              ))}
-            </div>
-
-            {/* Form */}
-            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-              {mode === "register" && (
-                <FormField label="Full Name">
-                  <Input type="text" value={name} onChange={e => setName(e.target.value)}
-                    placeholder="Jagadish Reddy" required autoFocus />
-                </FormField>
-              )}
-
-              <FormField label="Email Address">
-                <Input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                  placeholder="you@example.com" required autoFocus={mode === "login"} />
-              </FormField>
-
-              <FormField label="Password" right={
-                mode === "login" ? (
-                  <button type="button" onClick={() => setShowForgot(f => !f)}
-                    style={{ background: "none", border: "none", fontSize: 12.5, color: "#2563eb", cursor: "pointer", padding: 0, fontFamily: "inherit", fontWeight: 500 }}>
-                    Forgot password?
-                  </button>
-                ) : undefined
-              }>
-                <Input type="password" value={password} onChange={e => setPassword(e.target.value)}
-                  placeholder={mode === "register" ? "At least 8 characters" : "Your password"} required />
-              </FormField>
-
-              {showForgot && mode === "login" && (
-                <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 12, padding: "14px 16px" }}>
-                  {forgotSent ? (
-                    <div style={{ textAlign: "center", padding: "4px 0" }}>
-                      <div style={{ fontSize: 28, marginBottom: 8 }}>📬</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: "#1e40af", marginBottom: 4 }}>Check your inbox!</div>
-                      <div style={{ fontSize: 12.5, color: "#3b82f6", lineHeight: 1.6 }}>
-                        If <strong>{forgotEmail}</strong> is registered, a reset link is on its way. Check your spam folder too.
-                      </div>
-                      <button type="button" onClick={() => { setForgotSent(false); setForgotEmail(""); }}
-                        style={{ marginTop: 10, fontSize: 12, color: "#2563eb", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
-                        Try a different email
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: "#1e40af", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                        🔑 Reset your password
-                      </div>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <input type="email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)}
-                          placeholder="your@email.com"
-                          style={{ flex: 1, height: 36, border: "1.5px solid #bfdbfe", borderRadius: 8, padding: "0 10px", fontSize: 13, outline: "none", fontFamily: "inherit", background: "#fff" }} />
-                        <button type="button" disabled={forgotLoading} onClick={async () => {
-                          if (!forgotEmail.trim()) return;
-                          setForgotLoading(true);
-                          try { await api.auth.forgotPassword(forgotEmail.trim()); setForgotSent(true); }
-                          catch { setForgotSent(true); } // always show success (security)
-                          finally { setForgotLoading(false); }
-                        }} style={{ height: 36, padding: "0 14px", borderRadius: 8, border: "none", background: "#2563eb", color: "#fff", fontSize: 13, fontWeight: 600, cursor: forgotLoading ? "not-allowed" : "pointer", opacity: forgotLoading ? 0.7 : 1, whiteSpace: "nowrap" }}>
-                          {forgotLoading ? "Sending…" : "Send Link"}
-                        </button>
-                      </div>
-                    </>
-                  )}
+          {/* LEFT — Hero + Features panel */}
+          <div className="auth-aside">
+            {/* Brand */}
+            <div className="auth-brand">
+              <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
+                <circle cx="15" cy="15" r="13" stroke="#3b82f6" strokeWidth="2.5" fill="none"/>
+                <circle cx="15" cy="15" r="5" fill="#2563eb"/>
+              </svg>
+              <div>
+                <div style={{ fontFamily: "var(--f-display)", fontWeight: 700, fontSize: 16, letterSpacing: "-.02em", lineHeight: 1.1 }}>
+                  Job <span style={{ color: "#3b82f6" }}>Hunter</span>
                 </div>
-              )}
-
-              {error && (
-                <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "11px 14px", fontSize: 13, color: "#dc2626", display: "flex", alignItems: "center", gap: 8 }}>
-                  ⚠️ {error}
+                <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--tx-3)", marginTop: 2 }}>
+                  Hunt Smarter
                 </div>
-              )}
-
-              <button type="submit" disabled={loading} style={{
-                height: 48, borderRadius: 12, border: "none",
-                background: "linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #0284c7 100%)",
-                color: "#fff", fontSize: 15, fontWeight: 700,
-                cursor: loading ? "not-allowed" : "pointer",
-                opacity: loading ? 0.75 : 1,
-                boxShadow: "0 4px 20px rgba(37,99,235,0.4)",
-                transition: "all .15s", letterSpacing: "-0.01em",
-                fontFamily: "inherit", marginTop: 4,
-              }}>
-                {loading
-                  ? (mode === "login" ? "Signing in…" : "Creating account…")
-                  : (mode === "login" ? "Sign In →" : "Create Account →")}
-              </button>
-            </form>
-
-            <p style={{ textAlign: "center", fontSize: 13, color: "#94a3b8", marginTop: 22, marginBottom: 0 }}>
-              {mode === "login" ? "No account? " : "Already registered? "}
-              <button type="button"
-                onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}
-                style={{ background: "none", border: "none", color: "#2563eb", fontWeight: 600, cursor: "pointer", fontSize: 13, padding: 0, fontFamily: "inherit" }}>
-                {mode === "login" ? "Register free" : "Sign in"}
-              </button>
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* RIGHT — Brand panel */}
-      <div style={{
-        width: "50%", flexShrink: 0,
-        background: "linear-gradient(155deg, #0c1a3a 0%, #0f2051 45%, #081020 100%)",
-        display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center",
-        position: "relative", overflowY: "auto",
-        padding: "44px 60px",
-      }}>
-        <PulseRings />
-        <style>{`
-          @keyframes liveBlink {
-            0%, 100% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(2.8); opacity: 0; }
-          }
-        `}</style>
-
-        <div style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: 460 }}>
-
-          {/* Tagline + Headline */}
-          <div style={{ marginBottom: 32 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.2em", color: "#3b82f6", textTransform: "uppercase", marginBottom: 12 }}>
-              Hunt Smarter, Not Harder
+              </div>
             </div>
-            <h2 style={{ fontSize: 40, fontWeight: 800, color: "#fff", lineHeight: 1.2, letterSpacing: "-0.03em", margin: 0 }}>
-              Your AI-powered<br />job search engine
+
+            {/* Hero headline */}
+            <h2 className="auth-hero">
+              Your AI-powered<br />
+              <span style={{ background: "var(--grad)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>
+                job search engine
+              </span>
             </h2>
+            <p className="auth-hero-sub">
+              Auto-scrape, AI scoring, resume tailoring — all in one dashboard built for serious job seekers.
+            </p>
+
+            {/* Features */}
+            <ul className="auth-features">
+              {[
+                {
+                  icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>,
+                  title: "Auto-scrape on your schedule",
+                  desc: "New jobs arrive every hour automatically, or trigger a run anytime with one click.",
+                },
+                {
+                  icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/></svg>,
+                  title: "AI fit score on every job",
+                  desc: "Each job card shows a 0–100 match score. Filter by threshold.",
+                },
+                {
+                  icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>,
+                  title: "Resume tailored per job",
+                  desc: "ATS score before & after. Keywords rewritten for each specific JD.",
+                },
+                {
+                  icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+                  title: "Auto Apply — Coming Soon",
+                  desc: "Review, tailor & submit — your application queue, managed for you.",
+                },
+              ].map(f => (
+                <li key={f.title}>
+                  <div className="auth-feat-ico">{f.icon}</div>
+                  <div>
+                    <div style={{ fontWeight: 600, color: "var(--tx)", marginBottom: 2 }}>{f.title}</div>
+                    <div style={{ fontSize: 12.5, color: "var(--tx-3)", lineHeight: 1.5 }}>{f.desc}</div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            {/* Live stats */}
+            <div className="auth-stats">
+              <div className="auth-stat">
+                <b>{jobCount > 0 ? <><Counter to={jobCount} />+</> : "—"}</b>
+                <span>Jobs scraped</span>
+              </div>
+              <div className="auth-stat">
+                <b>{liveStats ? liveStats.added_today : "—"}</b>
+                <span>Added today</span>
+              </div>
+              <div className="auth-stat">
+                <b>10+</b>
+                <span>Job boards</span>
+              </div>
+            </div>
           </div>
 
-          {/* Divider */}
-          <div style={{ height: 1, background: "rgba(255,255,255,0.1)", marginBottom: 28 }} />
+          {/* RIGHT — Login form */}
+          <div className="auth-main">
+            <div className="auth-card">
+              <h1 className="auth-card-title">
+                {mode === "login" ? "Welcome back" : "Create account"}
+              </h1>
+              <p className="auth-card-sub">
+                {mode === "login"
+                  ? "Sign in to your AI job search dashboard."
+                  : "Start finding and winning jobs with AI."}
+              </p>
 
-          {/* WHAT'S WAITING FOR YOU */}
-          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.18em", color: "rgba(255,255,255,0.3)", textTransform: "uppercase", marginBottom: 22 }}>
-            What's waiting for you
-          </div>
+              {/* Tab toggle with animated pill */}
+              <div className="auth-tabs">
+                <div className={`auth-tab-pill${mode === "register" ? " auth-tab-right" : ""}`} />
+                <button
+                  type="button"
+                  className={mode === "login" ? "auth-tab-on" : ""}
+                  onClick={() => { setMode("login"); setError(""); setShowForgot(false); }}
+                >
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  className={mode === "register" ? "auth-tab-on" : ""}
+                  onClick={() => { setMode("register"); setError(""); setShowForgot(false); }}
+                >
+                  Register
+                </button>
+              </div>
 
-          {/* 4 Feature rows */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 24, marginBottom: 32 }}>
-            {[
-              {
-                icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>,
-                title: "Auto-scrape on your schedule",
-                desc: "New jobs arrive every hour automatically, or trigger a run anytime with one click.",
-                badge: null,
-              },
-              {
-                icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="1.5" fill="#34d399" stroke="none"/></svg>,
-                title: "AI fit score on every job",
-                desc: "Each job card shows a 0–100 match score. Filter by threshold — only open what's worth it.",
-                badge: null,
-              },
-              {
-                icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>,
-                title: "Resume tailored per job",
-                desc: "ATS score before & after. Keywords rewritten for each specific JD.",
-                badge: null,
-              },
-              {
-                icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
-                title: "Auto Apply",
-                desc: "Review, tailor & submit — your application queue, managed for you.",
-                badge: "Coming Soon",
-              },
-            ].map(f => (
-              <div key={f.title} style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-                <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
-                  {f.icon}
+              {/* Form */}
+              <form className="auth-form" onSubmit={handleSubmit}>
+                {mode === "register" && (
+                  <div className="auth-field">
+                    <label className="auth-label">Full Name</label>
+                    <input className="auth-input" type="text" value={name}
+                      onChange={e => setName(e.target.value)} placeholder="Jagadish Reddy" required autoFocus />
+                  </div>
+                )}
+
+                <div className="auth-field">
+                  <label className="auth-label">Email Address</label>
+                  <input className="auth-input" type="email" value={email}
+                    onChange={e => setEmail(e.target.value)} placeholder="you@example.com"
+                    required autoFocus={mode === "login"} />
                 </div>
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-                    <span style={{ fontSize: 16, fontWeight: 700, color: "#e2e8f0" }}>{f.title}</span>
-                    {f.badge && (
-                      <span style={{ fontSize: 11, fontWeight: 700, background: "rgba(251,191,36,0.15)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.3)", borderRadius: 6, padding: "2px 8px", letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                        {f.badge}
-                      </span>
+
+                <div className="auth-field">
+                  <div className="auth-pass-row">
+                    <label className="auth-label">Password</label>
+                    {mode === "login" && (
+                      <button type="button" className="auth-forgot"
+                        onClick={() => setShowForgot(f => !f)}>
+                        Forgot password?
+                      </button>
                     )}
                   </div>
-                  <div style={{ fontSize: 14, color: "rgba(255,255,255,0.45)", lineHeight: 1.65 }}>{f.desc}</div>
+                  <input className="auth-input" type="password" value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder={mode === "register" ? "At least 8 characters" : "Your password"} required />
                 </div>
+
+                {/* Forgot password panel */}
+                {showForgot && mode === "login" && (
+                  <div style={{ background: "rgba(37,99,235,.08)", border: "1px solid rgba(37,99,235,.22)", borderRadius: "var(--r)", padding: "14px 16px" }}>
+                    {forgotSent ? (
+                      <div style={{ textAlign: "center" }}>
+                        <div style={{ fontSize: 28, marginBottom: 8 }}>📬</div>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: "var(--tx)", marginBottom: 4 }}>Check your inbox!</div>
+                        <div style={{ fontSize: 12.5, color: "var(--tx-2)", lineHeight: 1.6 }}>
+                          If <strong>{forgotEmail}</strong> is registered, a reset link is on its way.
+                        </div>
+                        <button type="button" style={{ marginTop: 10, fontSize: 12, color: "var(--cyan)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
+                          onClick={() => { setForgotSent(false); setForgotEmail(""); }}>
+                          Try a different email
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ fontWeight: 700, fontSize: 12.5, color: "var(--tx)", marginBottom: 10 }}>🔑 Reset your password</div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <input type="email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)}
+                            placeholder="your@email.com" className="auth-input" style={{ flex: 1, height: 36 }} />
+                          <button type="button" disabled={forgotLoading}
+                            onClick={async () => {
+                              if (!forgotEmail.trim()) return;
+                              setForgotLoading(true);
+                              try { await api.auth.forgotPassword(forgotEmail.trim()); setForgotSent(true); }
+                              catch { setForgotSent(true); }
+                              finally { setForgotLoading(false); }
+                            }}
+                            style={{ height: 36, padding: "0 14px", borderRadius: "var(--r-sm)", border: "none", background: "var(--grad)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: forgotLoading ? "not-allowed" : "pointer", whiteSpace: "nowrap", opacity: forgotLoading ? 0.7 : 1 }}>
+                            {forgotLoading ? "Sending…" : "Send Link"}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {error && <div className="auth-err">⚠️ {error}</div>}
+
+                <button type="submit" className="auth-submit" disabled={loading}>
+                  {loading
+                    ? (mode === "login" ? "Signing in…" : "Creating account…")
+                    : (mode === "login" ? "Sign In →" : "Create Account →")}
+                </button>
+              </form>
+
+              <div className="auth-foot">
+                {mode === "login" ? "No account? " : "Already registered? "}
+                <button type="button"
+                  onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); setShowForgot(false); }}>
+                  {mode === "login" ? "Register free" : "Sign in"}
+                </button>
               </div>
-            ))}
-          </div>
-
-          {/* Divider */}
-          <div style={{ height: 1, background: "rgba(255,255,255,0.1)", marginBottom: 22 }} />
-
-          {/* LIVE heading */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-            <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.15em", color: "#fff", textTransform: "uppercase" }}>Live</span>
-            <span style={{ position: "relative", display: "inline-flex", width: 10, height: 10 }}>
-              <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#22c55e", animation: "liveBlink 1.4s ease-in-out infinite" }} />
-              <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#22c55e" }} />
-            </span>
-          </div>
-
-          {/* 5-cell stats row */}
-          <div style={{ display: "flex", borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.1)" }}>
-            {[
-              {
-                value: liveStats?.last_scrape_mins_ago != null
-                  ? liveStats.last_scrape_mins_ago < 60
-                    ? `${liveStats.last_scrape_mins_ago}m ago`
-                    : `${Math.round(liveStats.last_scrape_mins_ago / 60)}h ago`
-                  : "—",
-                label: "Last scrape",
-              },
-              {
-                value: jobCount > 0 ? <><Counter to={jobCount} />+</> : "—",
-                label: "Jobs scraped",
-              },
-              {
-                value: liveStats ? liveStats.added_today.toLocaleString() : "—",
-                label: "New today",
-              },
-              { value: "10+", label: "Job boards" },
-              { value: <span style={{ color: "#4ade80" }}>⚡</span>, label: "Auto Apply" },
-            ].map((s, i) => (
-              <div key={s.label} style={{
-                flex: 1, padding: "16px 8px", textAlign: "center",
-                background: "rgba(255,255,255,0.04)",
-                borderLeft: i > 0 ? "1px solid rgba(255,255,255,0.08)" : "none",
-              }}>
-                <div style={{ fontSize: 19, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", lineHeight: 1.2 }}>{s.value}</div>
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.38)", marginTop: 5, fontWeight: 500, lineHeight: 1.3 }}>{s.label}</div>
-              </div>
-            ))}
+            </div>
           </div>
 
         </div>
-      </div>
-    </div>}
+      )}
     </>
-  );
-}
-
-
-
-/* ── Helpers ── */
-function FormField({ label, children, right }: { label: string; children: React.ReactNode; right?: React.ReactNode }) {
-  return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}>
-        <label style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>{label}</label>
-        {right}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  const [focused, setFocused] = useState(false);
-  return (
-    <input
-      {...props}
-      onFocus={e => { setFocused(true); props.onFocus?.(e); }}
-      onBlur={e => { setFocused(false); props.onBlur?.(e); }}
-      style={{
-        width: "100%", height: 46, padding: "0 14px",
-        borderRadius: 10, fontSize: 14,
-        background: focused ? "#fff" : "#f8fafc",
-        border: focused ? "1.5px solid #2563eb" : "1.5px solid #e2e8f0",
-        boxShadow: focused ? "0 0 0 3px rgba(37,99,235,0.1)" : "none",
-        color: "#0f172a", outline: "none",
-        fontFamily: "'Inter', system-ui, sans-serif",
-        transition: "all .15s",
-        boxSizing: "border-box",
-      }}
-    />
   );
 }

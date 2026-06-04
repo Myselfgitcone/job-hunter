@@ -169,20 +169,6 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
             <TagInput tags={roles} setTags={setRoles} placeholder="Add a target role…"
               suggestions={["Data Engineer","Analytics Engineer","ML Engineer","Data Platform Engineer","Backend Engineer"]} />
           </label>
-          <div className="setting-row">
-            <div>
-              <div className="setting-name">Visa filter</div>
-              <div className="setting-desc">Only show roles matching your visa status</div>
-            </div>
-            <Toggle on={visaFilter} onClick={() => setVisaFilter(v => !v)} />
-          </div>
-          <div className="setting-row">
-            <div>
-              <div className="setting-name">Experience level filter</div>
-              <div className="setting-desc">Hide roles outside your seniority range</div>
-            </div>
-            <Toggle on={expFilter} onClick={() => setExpFilter(v => !v)} />
-          </div>
         </section>
 
         {/* AI Configuration */}

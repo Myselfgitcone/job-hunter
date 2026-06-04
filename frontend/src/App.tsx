@@ -97,14 +97,24 @@ export default function App() {
     return () => clearInterval(iv);
   }, [lastScrapedTs]);
 
+  const [visaFilter, setVisaFilter] = useState(false);
+  const [expFilter,  setExpFilter]  = useState(false);
+
   // Load user settings on auth
   useEffect(() => {
     if (!isAuthenticated) return;
     api.getSettings().then((s: any) => {
       setUserSettings(s);
       if (s.last_scraped_at) setLastScrapedTs(s.last_scraped_at);
+      setVisaFilter(!!s.visa_filter);
+      setExpFilter(!!s.level_filter);
     }).catch(() => {});
   }, [isAuthenticated]);
+
+  // Persist visa/exp filter toggles to settings whenever they change
+  const saveFilterToggle = useCallback((visa: boolean, exp: boolean) => {
+    api.saveSettings({ visa_filter: visa, level_filter: exp } as any).catch(() => {});
+  }, []);
 
   const [tailorOpen, setTailorOpen] = useState(false);
   const [busy, setBusy]             = useState<string | null>(null);
@@ -156,12 +166,12 @@ export default function App() {
     return () => document.removeEventListener("keydown", h);
   }, []);
 
-  // Visa / level filters — opt-in based on user's own settings
+  // Visa / level filters — live toggles from filter panel
   const filterJob = useCallback((j: Job) => {
-    if (userSettings?.visa_filter  && !checkVisa(j.title + " " + (j.description || "")).eligible) return false;
-    if (userSettings?.level_filter && !isLevelMatch(j.title)) return false;
+    if (visaFilter && !checkVisa(j.title + " " + (j.description || "")).eligible) return false;
+    if (expFilter  && !isLevelMatch(j.title)) return false;
     return true;
-  }, [userSettings]);
+  }, [visaFilter, expFilter]);
 
   const loadJobs = useCallback(async () => {
     if (!isAuthenticated) return;
@@ -452,6 +462,8 @@ export default function App() {
               role={userRole} roleOn={myRolesOnly} setRoleOn={setMyRolesOnly}
               searchRef={searchRef}
               COUNTRIES={COUNTRIES}
+              visaFilter={visaFilter} setVisaFilter={(v) => { setVisaFilter(v); saveFilterToggle(v, expFilter); }}
+              expFilter={expFilter}   setExpFilter={(v)  => { setExpFilter(v);  saveFilterToggle(visaFilter, v); }}
             />
               {scraping && (
               <div className="scrape-banner">
@@ -595,10 +607,12 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
 }
 
 // ── FilterBar (exact match to shell.jsx FilterBar) ──────────────────────────────
-function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, COUNTRIES }: {
+function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, COUNTRIES, visaFilter, setVisaFilter, expFilter, setExpFilter }: {
   filters: Filters; setFilters: React.Dispatch<React.SetStateAction<Filters>>;
   role: string; roleOn: boolean; setRoleOn: (v: boolean) => void;
   searchRef: React.RefObject<HTMLInputElement>; COUNTRIES: string[];
+  visaFilter: boolean; setVisaFilter: (v: boolean) => void;
+  expFilter: boolean; setExpFilter: (v: boolean) => void;
 }) {
   const set = (k: keyof Filters, v: any) => setFilters(f => ({ ...f, [k]: v }));
   const [open, setOpen] = React.useState(false);
@@ -699,6 +713,26 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, CO
                     </label>
                   ))}
                 </div>
+              </div>
+            </div>
+            <div className="fp-toggles">
+              <div className="fp-toggle-row">
+                <div>
+                  <div className="fp-toggle-name">Visa filter</div>
+                  <div className="fp-toggle-desc">Only show roles matching your visa status</div>
+                </div>
+                <button className={`toggle${visaFilter ? " on" : ""}`} onClick={() => setVisaFilter(!visaFilter)}>
+                  <span className="toggle-knob" />
+                </button>
+              </div>
+              <div className="fp-toggle-row">
+                <div>
+                  <div className="fp-toggle-name">Experience level</div>
+                  <div className="fp-toggle-desc">Hide roles outside your seniority range</div>
+                </div>
+                <button className={`toggle${expFilter ? " on" : ""}`} onClick={() => setExpFilter(!expFilter)}>
+                  <span className="toggle-knob" />
+                </button>
               </div>
             </div>
             <div className="fp-foot">

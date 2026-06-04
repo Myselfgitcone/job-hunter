@@ -1,445 +1,283 @@
 import { useState, useEffect } from "react";
 import { api } from "../api";
-import type { Settings as SettingsType } from "../types";
-import { Save, Loader2, Eye, EyeOff, CheckCircle2, Send, BotMessageSquare } from "lucide-react";
 
-const PROVIDERS = [
-  {
-    value: "openrouter",
-    label: "OpenRouter",
-    url: "https://openrouter.ai/keys",
-    placeholder: "sk-or-...",
-    hint: "One key → Claude, Gemini, Llama, DeepSeek. Free models available.",
-    models: [
-      "anthropic/claude-sonnet-4-5",
-      "anthropic/claude-3-haiku",
-      "google/gemini-flash-1.5",
-      "meta-llama/llama-3.3-70b-instruct",
-      "mistralai/mistral-7b-instruct:free",
-      "deepseek/deepseek-chat",
-    ],
-  },
-  {
-    value: "nvidia",
-    label: "Nvidia NIM",
-    url: "https://integrate.api.nvidia.com",
-    placeholder: "nvapi-...",
-    hint: "Nvidia-hosted models. High quality, free tier available.",
-    models: [
-      "nvidia/llama-3.1-nemotron-70b-instruct",
-      "meta/llama-3.1-70b-instruct",
-      "mistralai/mistral-large",
-    ],
-  },
-  {
-    value: "anthropic",
-    label: "Anthropic",
-    url: "https://console.anthropic.com/settings/keys",
-    placeholder: "sk-ant-...",
-    hint: "Direct Claude API. Best quality, paid only.",
-    models: [
-      "claude-sonnet-4-6",
-      "claude-haiku-4-5-20251001",
-      "claude-opus-4-7",
-    ],
-  },
-];
+// ── SVG icon helper ───────────────────────────────────────────────────────────
+function Ic({ d, size = 16, color }: { d: string; size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke={color || "currentColor"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+      style={{ flexShrink: 0 }} dangerouslySetInnerHTML={{ __html: d }} />
+  );
+}
+const I = {
+  target:   '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+  sparkles: '<path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/>',
+  bell:     '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+  clock:    '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  check:    '<path d="M20 6 9 17l-5-5"/>',
+  x:        '<path d="M18 6 6 18M6 6l12 12"/>',
+  enter:    '<path d="M9 10l-5 5 5 5"/><path d="M4 15h12a4 4 0 0 0 4-4V4"/>',
+  skip:     '<path d="M5 4l10 8-10 8z"/><path d="M19 5v14"/>',
+  eye:      '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff:   '<path d="M17.9 17.9A10 10 0 0 1 2 12 10 10 0 0 1 12 2"/><path d="M3 3l18 18"/><path d="M9.9 4.2A10 10 0 0 1 22 12a10 10 0 0 1-1.2 4.8"/>',
+};
 
-export function Settings() {
-  const [form, setForm] = useState<SettingsType>({
-    resume: "", ai_provider: "openrouter", ai_api_key: "",
-    ai_model: "anthropic/claude-sonnet-4-5",
-    adzuna_app_id: "", adzuna_app_key: "", jobo_api_key: "",
-  });
-  const [loading, setLoading]   = useState(true);
-  const [saving, setSaving]     = useState(false);
-  const [saved, setSaved]       = useState(false);
-  const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
-  const [tgToken,   setTgToken]   = useState("");
-  const [tgChatId,  setTgChatId]  = useState("");
-  const [tgTesting, setTgTesting] = useState(false);
-  const [tgStatus,  setTgStatus]  = useState<{ok:boolean;msg:string}|null>(null);
-  const [tgConfigured, setTgConfigured] = useState(false);
-  const [showTgToken, setShowTgToken] = useState(false);
-  const [cronExpr, setCronExpr] = useState("0 * * * *");
-  const [cronMsg, setCronMsg]   = useState("");
-  const [scraping, setScraping] = useState(false);
-  const [scrapeResult, setScrapeResult] = useState<string>("");
-  const [schedulerStatus, setSchedulerStatus] = useState<any>(null);
-  // Change password
-  const [pwCurrent, setPwCurrent]   = useState("");
-  const [pwNew, setPwNew]           = useState("");
-  const [pwConfirm, setPwConfirm]   = useState("");
-  const [pwSaving, setPwSaving]     = useState(false);
-  const [pwMsg, setPwMsg]           = useState<{ok: boolean; text: string} | null>(null);
+// ── Toggle ────────────────────────────────────────────────────────────────────
+function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+  return (
+    <button className={`toggle${on ? " on" : ""}`} onClick={onClick}>
+      <span className="toggle-knob" />
+    </button>
+  );
+}
 
-  useEffect(() => {
-    api.getSettings().then(data => {
-      setForm(data);
-      if ((data as any).auto_scrape_cron) setCronExpr((data as any).auto_scrape_cron);
-      setTgConfigured(!!(data as any).telegram_configured);
-      if ((data as any).telegram_chat_id) setTgChatId((data as any).telegram_chat_id);
-      setLoading(false);
-    });
-    api.getSchedulerStatus().then(setSchedulerStatus).catch(() => {});
-  }, []);
-
-  const handleRunNow = async () => {
-    setScraping(true); setScrapeResult("");
-    try {
-      await api.runScraperNow();
-      setScrapeResult("✅ Scraper triggered! Check Railway logs — takes 3–5 min.");
-    } catch (e: any) {
-      setScrapeResult(`❌ ${e.message}`);
-    } finally {
-      setScraping(false);
-    }
-  };
-
-  const handleTgTest = async () => {
-    if (!tgToken || !tgChatId) { setTgStatus({ok:false, msg:"Enter both token and chat ID first"}); return; }
-    setTgTesting(true); setTgStatus(null);
-    try {
-      const res = await api.testTelegram(tgToken, tgChatId);
-      setTgStatus({ok: res.ok, msg: res.message});
-      if (res.ok) setTgConfigured(true);
-    } catch(e: any) {
-      setTgStatus({ok: false, msg: e.message});
-    } finally {
-      setTgTesting(false);
-    }
-  };
-
-
-  const handleSave = async () => {
-    setSaving(true); setSaved(false);
-    try {
-      await api.saveSettings(form);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch (e: any) { alert(e.message); }
-    finally { setSaving(false); }
-  };
-
-  const handleCronSave = async () => {
-    setCronMsg("");
-    try {
-      await api.updateSchedulerCron(cronExpr);
-      setCronMsg("✓ Updated");
-      api.getSchedulerStatus().then(setSchedulerStatus).catch(() => {});
-    } catch (e: any) { setCronMsg(e.message); }
-  };
-
-  if (loading) return (
-    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height: 160, color: "var(--tx-3)", fontSize: 14, gap: 8 }}>
-      <Loader2 size={18} className="animate-spin" /> Loading…
+// ── TagInput ──────────────────────────────────────────────────────────────────
+function TagInput({ tags, setTags, placeholder, suggestions }: {
+  tags: string[]; setTags: (t: string[]) => void; placeholder?: string; suggestions?: string[];
+}) {
+  const [val, setVal] = useState("");
+  const add = (t: string) => { t = t.trim(); if (t && !tags.includes(t)) setTags([...tags, t]); setVal(""); };
+  return (
+    <div>
+      <div className="taginput" onClick={e => (e.currentTarget.querySelector("input") as HTMLInputElement)?.focus()}>
+        {tags.map(t => (
+          <span className="tag-pill" key={t}>
+            {t}
+            <button onClick={() => setTags(tags.filter(x => x !== t))}><Ic d={I.x} size={11} /></button>
+          </span>
+        ))}
+        <input value={val} onChange={e => setVal(e.target.value)} placeholder={tags.length ? "" : placeholder}
+          onKeyDown={e => {
+            if (e.key === "Enter") { e.preventDefault(); add(val); }
+            else if (e.key === "Backspace" && !val && tags.length) setTags(tags.slice(0, -1));
+          }} />
+      </div>
+      {suggestions && (
+        <div className="tag-suggest">
+          {suggestions.filter(s => !tags.includes(s)).map(s => (
+            <button key={s} className="tag-sg" onClick={() => add(s)}>+ {s}</button>
+          ))}
+        </div>
+      )}
     </div>
   );
+}
 
-  const activeP = PROVIDERS.find(p => p.value === form.ai_provider) ?? PROVIDERS[0];
+const AI_PROVIDERS: Record<string, { models: string[]; keyUrl: string }> = {
+  "OpenRouter":  { models: ["anthropic/claude-3.5-sonnet","openai/gpt-4o","google/gemini-pro-1.5","meta-llama/llama-3.1-70b"], keyUrl: "openrouter.ai/keys" },
+  "Nvidia NIM":  { models: ["nvidia/llama-3.1-nemotron-70b","meta/llama-3.1-405b","mistralai/mixtral-8x22b"], keyUrl: "build.nvidia.com" },
+  "Anthropic":   { models: ["claude-3-5-sonnet-latest","claude-3-5-haiku-latest","claude-3-opus-latest"], keyUrl: "console.anthropic.com/settings/keys" },
+};
+
+const CRON_PRESETS: Record<string, string> = {
+  "0 * * * *":   "Every 1 hour",
+  "0 */6 * * *": "Every 6 hours",
+  "0 9 * * *":   "Every day at 9:00 AM",
+  "0 9 * * 1":   "Every Monday at 9:00 AM",
+};
+
+export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }) {
+  const toast = onToast || ((m: string) => console.log(m));
+
+  const [roles, setRoles]           = useState<string[]>([]);
+  const [visaFilter, setVisaFilter] = useState(false);
+  const [expFilter, setExpFilter]   = useState(false);
+
+  const [provider, setProvider] = useState("OpenRouter");
+  const [model, setModel]       = useState(AI_PROVIDERS["OpenRouter"].models[0]);
+  const [apiKey, setApiKey]     = useState("");
+  const [showKey, setShowKey]   = useState(false);
+
+  const [botToken, setBotToken]   = useState("");
+  const [chatId, setChatId]       = useState("");
+  const [showToken, setShowToken] = useState(false);
+  const [testState, setTestState] = useState<null | "loading" | "ok" | "fail">(null);
+
+  const [cron, setCron]       = useState("0 * * * *");
+  const [scraping, setScraping] = useState(false);
+
+  useEffect(() => {
+    api.getSettings().then((s: any) => {
+      if (!s) return;
+      const r = Array.isArray(s.job_roles) ? s.job_roles : JSON.parse(s.job_roles || "[]");
+      setRoles(r);
+      setVisaFilter(!!s.visa_filter);
+      setExpFilter(!!s.level_filter);
+      setProvider(s.ai_provider || "OpenRouter");
+      setModel(s.ai_model || AI_PROVIDERS[s.ai_provider || "OpenRouter"]?.models[0] || "");
+      setApiKey(s.ai_api_key || "");
+      setBotToken(s.telegram_bot_token || "");
+      setChatId(s.telegram_chat_id || "");
+      setCron(s.auto_scrape_cron || "0 * * * *");
+    }).catch(() => {});
+  }, []);
+
+  const saveSettings = async () => {
+    try {
+      await api.saveSettings({
+        visa_filter: visaFilter, level_filter: expFilter,
+        ai_provider: provider, ai_model: model, ai_api_key: apiKey,
+        telegram_bot_token: botToken, telegram_chat_id: chatId,
+        auto_scrape_cron: cron,
+        job_roles: roles,
+      } as any);
+      toast("Settings saved", "success");
+    } catch { toast("Save failed", "error"); }
+  };
+
+  const testTelegram = async () => {
+    setTestState("loading");
+    try {
+      await (api as any).testTelegram(botToken, chatId);
+      setTestState("ok");
+      toast("Test message sent to Telegram", "success");
+    } catch {
+      setTestState("fail");
+      toast("Telegram test failed — check token & chat ID", "error");
+    }
+  };
+
+  const runNow = async () => {
+    if (scraping) return;
+    setScraping(true);
+    toast("Manual scrape started", "info" as any);
+    try { await (api as any).runScraperNow(); toast("+jobs found", "success"); }
+    catch { toast("Scrape failed", "error"); }
+    finally { setScraping(false); }
+  };
+
+  const cronDesc = CRON_PRESETS[cron] || "Custom schedule";
 
   return (
     <div className="form-scroll">
-      <div className="form-inner" style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-
-      {/* ── Security — Change Password ── */}
-      <section style={{ background: "var(--glass-hi,rgba(255,255,255,0.04))", border: "1px solid var(--glass-border,rgba(255,255,255,0.08))", borderRadius: 16, padding: "24px 28px", marginBottom: 24 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
-          <span style={{ fontSize: 18 }}>🔐</span>
+      <div className="form-inner">
+        <div className="form-head">
           <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--tx)" }}>Security</div>
-            <div style={{ fontSize: 12, color: "var(--tx-3)", marginTop: 1 }}>Change your account password</div>
+            <h1 className="dash-title">Settings</h1>
+            <p className="dash-sub">Targeting, AI, notifications and scheduling</p>
           </div>
+          <button className="save-btn" onClick={saveSettings}>
+            <Ic d={I.check} size={15} /> Save Settings
+          </button>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <div style={{ gridColumn: "1/-1" }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--tx-2)", display: "block", marginBottom: 5 }}>Current Password</label>
-            <input type="password" value={pwCurrent} onChange={e => setPwCurrent(e.target.value)} placeholder="Your current password"
-              style={{ width: "100%", height: 40, border: "1.5px solid var(--glass-border)", borderRadius: 9, padding: "0 12px", fontSize: 13, outline: "none", background: "var(--surface)", boxSizing: "border-box", fontFamily: "inherit", color: "var(--tx)" }} />
-          </div>
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--tx-2)", display: "block", marginBottom: 5 }}>New Password</label>
-            <input type="password" value={pwNew} onChange={e => setPwNew(e.target.value)} placeholder="Min 8 characters"
-              style={{ width: "100%", height: 40, border: "1.5px solid var(--glass-border)", borderRadius: 9, padding: "0 12px", fontSize: 13, outline: "none", background: "var(--surface)", boxSizing: "border-box", fontFamily: "inherit", color: "var(--tx)" }} />
-          </div>
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--tx-2)", display: "block", marginBottom: 5 }}>Confirm New Password</label>
-            <input type="password" value={pwConfirm} onChange={e => setPwConfirm(e.target.value)} placeholder="Repeat new password"
-              style={{ width: "100%", height: 40, border: "1.5px solid var(--glass-border)", borderRadius: 9, padding: "0 12px", fontSize: 13, outline: "none", background: "var(--surface)", boxSizing: "border-box", fontFamily: "inherit", color: "var(--tx)" }} />
-          </div>
-        </div>
-        {pwMsg && (
-          <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 9, fontSize: 13, fontWeight: 500,
-            background: pwMsg.ok ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)",
-            color: pwMsg.ok ? "#16a34a" : "#dc2626",
-            border: `1px solid ${pwMsg.ok ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}` }}>
-            {pwMsg.ok ? "✅" : "⚠️"} {pwMsg.text}
-          </div>
-        )}
-        <button disabled={pwSaving} onClick={async () => {
-          setPwMsg(null);
-          if (!pwCurrent) { setPwMsg({ok:false, text:"Enter your current password"}); return; }
-          if (pwNew.length < 8) { setPwMsg({ok:false, text:"New password must be at least 8 characters"}); return; }
-          if (pwNew !== pwConfirm) { setPwMsg({ok:false, text:"New passwords don't match"}); return; }
-          setPwSaving(true);
-          try {
-            await api.auth.changePassword(pwCurrent, pwNew);
-            setPwMsg({ok:true, text:"Password changed successfully!"});
-            setPwCurrent(""); setPwNew(""); setPwConfirm("");
-          } catch(e:any) { setPwMsg({ok:false, text: e.message || "Failed to change password"}); }
-          finally { setPwSaving(false); }
-        }} style={{ marginTop: 16, height: 40, padding: "0 20px", borderRadius: 9, border: "none",
-          background: "var(--grad)", color: "#fff", fontSize: 13, fontWeight: 700,
-          cursor: pwSaving ? "not-allowed" : "pointer", opacity: pwSaving ? 0.7 : 1,
-          boxShadow: "0 4px 14px -4px var(--violet-glow)" }}>
-          {pwSaving ? "Saving…" : "Update Password"}
-        </button>
-      </section>
 
-      {/* Header + Save */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
-        <div>
-          <h2 style={{ fontFamily: "var(--f-display)", fontSize: 18, fontWeight: 700, color: "var(--tx)", margin: 0, letterSpacing: "-0.02em" }}>Settings</h2>
-          <p style={{ fontSize: 13, color: "var(--tx-3)", marginTop: 4, marginBottom: 0 }}>AI provider · job sources · schedule</p>
-        </div>
-        <button onClick={handleSave} disabled={saving}
-          style={{
-            display:"inline-flex", alignItems:"center", gap:7,
-            height:36, padding:"0 20px",
-            borderRadius:"var(--r-sm)",
-            background: saving ? "rgba(124,58,237,0.5)" : "var(--grad)",
-            color:"#fff", fontSize:13, fontWeight:600, border:"none",
-            opacity: saving ? 0.7 : 1, cursor: saving ? "not-allowed" : "pointer",
-            boxShadow: saving ? "none" : "0 4px 14px -4px var(--violet-glow)",
-            transition: "all .14s",
-          }}>
-          {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <CheckCircle2 size={14} /> : <Save size={14} />}
-          {saved ? "Saved!" : "Save Settings"}
-        </button>
-      </div>
+        {/* Job Preferences */}
+        <section className="form-section">
+          <div className="section-label"><Ic d={I.target} size={16} /> Job Preferences</div>
+          <label className="field full">
+            <span className="field-label">Job Roles</span>
+            <TagInput tags={roles} setTags={setRoles} placeholder="Add a target role…"
+              suggestions={["Data Engineer","Analytics Engineer","ML Engineer","Data Platform Engineer","Backend Engineer"]} />
+          </label>
+          <div className="setting-row">
+            <div>
+              <div className="setting-name">Visa filter</div>
+              <div className="setting-desc">Only show roles matching your visa status</div>
+            </div>
+            <Toggle on={visaFilter} onClick={() => setVisaFilter(v => !v)} />
+          </div>
+          <div className="setting-row">
+            <div>
+              <div className="setting-name">Experience level filter</div>
+              <div className="setting-desc">Hide roles outside your seniority range</div>
+            </div>
+            <Toggle on={expFilter} onClick={() => setExpFilter(v => !v)} />
+          </div>
+        </section>
 
-      {/* AI Providers */}
-      <section style={{
-        background: "var(--bg-surface)", border: "1px solid var(--line)",
-        borderRadius: "var(--r-lg)", padding: 20, marginBottom: 16,
-      }}>
-        <h3 style={{ fontFamily: "var(--f-display)", fontSize: 14, fontWeight: 600, color: "var(--tx)", marginBottom: 6, marginTop: 0 }}>AI Provider</h3>
-        <p style={{ fontSize: 12.5, color: "var(--tx-3)", marginBottom: 14, marginTop: 0 }}>Select which provider to use. Enter its API key. Only one is active at a time.</p>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {PROVIDERS.map(p => {
-            const isActive = form.ai_provider === p.value;
-            return (
-            <div key={p.value}
-                style={{
-                  border: `1px solid ${isActive ? "var(--violet)" : "var(--line)"}`,
-                  borderRadius: "var(--r-sm)",
-                  padding: 14, transition: "all .13s", cursor: "pointer",
-                  background: isActive ? "rgba(124,58,237,0.08)" : "var(--bg-elevated)",
-                }}
-                onClick={() => setForm(f => ({ ...f, ai_provider: p.value, ai_model: p.models[0] }))}
-            >
-                {/* Row 1: radio + name + hint */}
-                <div className="flex items-start gap-3">
-                  <div className={`mt-0.5 w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center`}
-                    style={{borderColor: isActive ? 'var(--accent)' : 'var(--border-default)'}}>
-                    {isActive && <div className="w-2 h-2 rounded-full" style={{background:'var(--accent)'}} />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold" style={{color:'var(--text-primary)'}}>{p.label}</span>
-                      <a href={p.url} target="_blank" rel="noopener noreferrer"
-                        onClick={e => e.stopPropagation()}
-                        className="text-[10px] hover:underline" style={{color:'var(--accent)'}}>Get key →</a>
-                    </div>
-                    <p className="text-xs mt-0.5" style={{color:'var(--text-muted)'}}>{p.hint}</p>
-                  </div>
-                </div>
-
-                {/* Row 2: API key + model (only when active) */}
-                {isActive && (
-                  <div className="mt-3 space-y-2 pl-7" onClick={e => e.stopPropagation()}>
-                    {/* API Key */}
-                    <div className="relative">
-                      <input
-                        type={showKeys[p.value] ? "text" : "password"}
-                        value={form.ai_api_key}
-                        onChange={e => setForm(f => ({ ...f, ai_api_key: e.target.value }))}
-                        placeholder={p.placeholder}
-                        className="field"
-                        style={{width:'100%'}}
-                      />
-                      <button
-                        onClick={() => setShowKeys(s => ({ ...s, [p.value]: !s[p.value] }))}
-                        className="absolute right-2.5 top-2.5"
-                        style={{color:'var(--text-muted)'}}
-                      >
-                        {showKeys[p.value] ? <EyeOff size={14} /> : <Eye size={14} />}
-                      </button>
-                    </div>
-                    {/* Model selector */}
-                    <div className="flex gap-2 items-center">
-                      <select
-                        value={form.ai_model}
-                        onChange={e => setForm(f => ({ ...f, ai_model: e.target.value }))}
-                        className="field"
-                        style={{flex:1}}
-                      >
-                        {p.models.map(m => <option key={m} value={m}>{m}</option>)}
-                      </select>
-                      <input
-                        type="text"
-                        value={form.ai_model}
-                        onChange={e => setForm(f => ({ ...f, ai_model: e.target.value }))}
-                        placeholder="or type custom model ID"
-                        className="field"
-                        style={{flex:1}}
-                      />
-                    </div>
-                  </div>
-                )}
+        {/* AI Configuration */}
+        <section className="form-section">
+          <div className="section-label"><Ic d={I.sparkles} size={16} /> AI Configuration</div>
+          <label className="field">
+            <span className="field-label">Provider</span>
+            <div className="seg-tabs">
+              {Object.keys(AI_PROVIDERS).map(p => (
+                <button key={p} className={provider === p ? "on" : ""}
+                  onClick={() => { setProvider(p); setModel(AI_PROVIDERS[p].models[0]); }}>{p}</button>
+              ))}
+            </div>
+          </label>
+          <div className="field-grid">
+            <label className="field">
+              <span className="field-label">Model</span>
+              <select value={model} onChange={e => setModel(e.target.value)}>
+                {AI_PROVIDERS[provider]?.models.map(m => <option key={m}>{m}</option>)}
+              </select>
+            </label>
+            <label className="field">
+              <span className="field-label">API Key</span>
+              <div className="input-reveal">
+                <input type={showKey ? "text" : "password"} value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-…" />
+                <button onClick={() => setShowKey(s => !s)}>{showKey ? "Hide" : "Show"}</button>
               </div>
-            );
-          })}
-        </div>
-      </section>
-
-
-      {/* ── Telegram Notifications ───────────────────────────────────── */}
-      <section style={{
-        background: "var(--bg-surface)", border: "1px solid var(--line)",
-        borderRadius: "var(--r-lg)", padding: 20, marginBottom: 16,
-      }}>
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <BotMessageSquare size={15} style={{color:'#2CA5E0'}} />
-            <h3 style={{ fontFamily: "var(--f-display)", fontSize: 14, fontWeight: 600, color: "var(--tx)", margin: 0 }}>Telegram Notifications</h3>
+              <a className="field-link" href={`https://${AI_PROVIDERS[provider]?.keyUrl}`} target="_blank" rel="noreferrer">
+                Get your API key →
+              </a>
+            </label>
           </div>
-          {tgConfigured && (
-            <span className="flex items-center gap-1 text-[10px] font-semibold px-2.5 py-1 rounded-full"
-              style={{background:'rgba(52,211,153,0.12)', border:'1px solid rgba(52,211,153,0.3)', color:'#34d399'}}>
-              <CheckCircle2 size={10}/> Connected
-            </span>
-          )}
-        </div>
+        </section>
 
-        {/* Setup steps */}
-        <div className="rounded-xl p-4 space-y-3" style={{background:'var(--bg-elevated)', border:'1px solid var(--border-default)'}}>
-          <p className="text-[11px] font-semibold uppercase tracking-wider" style={{color:'var(--text-muted)'}}>Setup — 2 steps</p>
-          {[
-            { n:1, text: <>Search <code style={{background:'var(--bg-surface)',padding:'1px 5px',borderRadius:4}}>@BotFather</code> on Telegram → send <code style={{background:'var(--bg-surface)',padding:'1px 5px',borderRadius:4}}>/newbot</code> → copy the <strong>token</strong></> },
-            { n:2, text: <>Search <code style={{background:'var(--bg-surface)',padding:'1px 5px',borderRadius:4}}>@userinfobot</code> → send any message → copy your <strong>Chat ID</strong></> },
-          ].map(s => (
-            <div key={s.n} className="flex items-start gap-3">
-              <span className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
-                style={{background:'rgba(42,165,224,0.15)', border:'1px solid rgba(42,165,224,0.3)', color:'#2CA5E0'}}>
-                {s.n}
-              </span>
-              <p className="text-xs leading-relaxed" style={{color:'var(--text-secondary)'}}>{s.text}</p>
-            </div>
-          ))}
-        </div>
+        {/* Telegram */}
+        <section className="form-section">
+          <div className="section-label"><Ic d={I.bell} size={16} /> Telegram Notifications</div>
+          <div className="field-grid">
+            <label className="field">
+              <span className="field-label">Bot Token</span>
+              <div className="input-reveal">
+                <input type={showToken ? "text" : "password"} value={botToken} onChange={e => setBotToken(e.target.value)} placeholder="123456:ABC-DEF…" />
+                <button onClick={() => setShowToken(s => !s)}>{showToken ? "Hide" : "Show"}</button>
+              </div>
+            </label>
+            <label className="field">
+              <span className="field-label">Chat ID</span>
+              <input type="text" value={chatId} onChange={e => setChatId(e.target.value)} placeholder="-1001234567890" />
+            </label>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
+            <button className="act ai" onClick={testTelegram} disabled={testState === "loading"}>
+              {testState === "loading" ? <span className="mini-spin" /> : <Ic d={I.enter} size={14} />}
+              Send Test Message
+            </button>
+            {testState === "ok"   && <span className="test-res ok"><Ic d={I.check} size={13} /> Delivered</span>}
+            {testState === "fail" && <span className="test-res fail"><Ic d={I.x} size={13} /> Failed</span>}
+          </div>
+        </section>
 
-        {/* Inputs */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12, marginTop: 12 }}>
-          <div>
-            <label style={{ display: "block", fontSize: 11.5, fontWeight: 500, color: "var(--tx-2)", marginBottom: 6 }}>Bot Token</label>
-            <div style={{ position: "relative" }}>
-              <input
-                type={showTgToken ? "text" : "password"}
-                value={tgToken}
-                onChange={e => setTgToken(e.target.value)}
-                placeholder={tgConfigured ? "••••••• (saved)" : "1234567890:ABCDEFabcdef..."}
-                className="field"
-                style={{width:'100%', paddingRight:36}}
-              />
-              <button onClick={() => setShowTgToken(s => !s)}
-                style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", color: "var(--tx-3)" }}>
-                {showTgToken ? <EyeOff size={14}/> : <Eye size={14}/>}
-              </button>
+        {/* Scheduler */}
+        <section className="form-section">
+          <div className="section-label"><Ic d={I.clock} size={16} /> Auto-Scrape Scheduler</div>
+          <div className="field-grid">
+            <label className="field">
+              <span className="field-label">Cron Expression</span>
+              <input type="text" value={cron} onChange={e => setCron(e.target.value)} style={{ fontFamily: "var(--f-mono)" }} placeholder="0 * * * *" />
+            </label>
+            <div className="field">
+              <span className="field-label">Schedule</span>
+              <div className="cron-info">
+                <span className="cron-desc">{cronDesc}</span>
+                <span className="cron-next">Next run <b>soon</b></span>
+              </div>
             </div>
           </div>
-          <div>
-            <label style={{ display: "block", fontSize: 11.5, fontWeight: 500, color: "var(--tx-2)", marginBottom: 6 }}>Chat ID</label>
-            <input type="text" value={tgChatId} onChange={e => setTgChatId(e.target.value)}
-              placeholder="123456789" className="field" style={{width:'100%'}} />
+          <div className="cron-presets">
+            {Object.entries(CRON_PRESETS).map(([c, d]) => (
+              <button key={c} className={`cron-chip${cron === c ? " on" : ""}`} onClick={() => setCron(c)}>{d}</button>
+            ))}
           </div>
-        </div>
-
-        {/* Test button + status */}
-        <div className="flex items-center gap-3">
-          <button onClick={handleTgTest} disabled={tgTesting}
-            className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all"
-            style={{
-              background: tgConfigured ? 'rgba(52,211,153,0.12)' : 'rgba(42,165,224,0.12)',
-              border: `1px solid ${tgConfigured ? 'rgba(52,211,153,0.35)' : 'rgba(42,165,224,0.35)'}`,
-              color: tgConfigured ? '#34d399' : '#2CA5E0',
-              opacity: tgTesting ? 0.7 : 1,
-            }}>
-            {tgTesting
-              ? <><Loader2 size={13} className="animate-spin"/> Testing…</>
-              : <><Send size={13}/> {tgConfigured ? "Re-test" : "Test & Connect"}</>}
-          </button>
-          {tgStatus && (
-            <span className="text-xs font-medium flex items-center gap-1.5"
-              style={{color: tgStatus.ok ? '#34d399' : '#f87171'}}>
-              {tgStatus.ok ? <CheckCircle2 size={12}/> : '⚠️'} {tgStatus.msg}
-            </span>
-          )}
-        </div>
-      </section>
-
-      {/* ── Schedule ─────────────────────────────────────────────────── */}
-      <section style={{
-        background: "var(--bg-surface)", border: "1px solid var(--line)",
-        borderRadius: "var(--r-lg)", padding: 20, marginBottom: 16,
-      }}>
-        <h3 style={{ fontFamily: "var(--f-display)", fontSize: 14, fontWeight: 600, color: "var(--tx)", marginBottom: 14, marginTop: 0 }}>Auto-Scrape Schedule</h3>
-        {schedulerStatus && (
-          <div className="flex items-center gap-2 text-xs mb-3">
-            <span className={`w-1.5 h-1.5 rounded-full ${schedulerStatus.running ? "bg-green-400" : "bg-red-400"}`} />
-            <span className="text-slate-400">{schedulerStatus.running ? "Running" : "Stopped"}</span>
-            {schedulerStatus.jobs?.[0]?.next_run && (
-              <span className="text-slate-500">· Next: {new Date(schedulerStatus.jobs[0].next_run).toLocaleString()}</span>
-            )}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+            <button className="act" onClick={saveSettings}><Ic d={I.check} size={14} /> Update Schedule</button>
+            <button className={`act primary${scraping ? " running" : ""}`} onClick={runNow} style={scraping ? { animation: "pulseBtn 1.4s ease-in-out infinite" } : {}}>
+              <Ic d={I.skip} size={14} /> {scraping ? "Running…" : "Run Now"}
+            </button>
+            {scraping && <span className="test-res" style={{ color: "var(--tx-3)" }}><span className="mini-spin" /> scraping sources…</span>}
           </div>
-        )}
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            type="text"
-            value={cronExpr}
-            onChange={e => setCronExpr(e.target.value)}
-            placeholder="0 * * * *"
-            className="field"
-            style={{flex:1, fontFamily:'var(--f-mono)'}}
-          />
-          <button onClick={handleCronSave}
-            style={{
-              height: 38, padding: "0 16px",
-              borderRadius: "var(--r-sm)", fontSize: 13, fontWeight: 500,
-              background: "var(--bg-elevated)", border: "1px solid var(--line)",
-              color: "var(--tx-2)", cursor: "pointer", transition: "all .13s", whiteSpace: "nowrap",
-            }}>
-            Update
-          </button>
-          <button onClick={handleRunNow} disabled={scraping}
-            style={{
-              height: 38, padding: "0 16px",
-              borderRadius: "var(--r-sm)", fontSize: 13, fontWeight: 600,
-              background: "var(--grad)", color: "#fff", border: "none",
-              opacity: scraping ? 0.7 : 1, cursor: scraping ? "wait" : "pointer",
-              boxShadow: "0 4px 14px -4px var(--violet-glow)", whiteSpace: "nowrap",
-              transition: "all .13s",
-            }}>
-            {scraping ? <><Loader2 size={13} className="animate-spin inline mr-1"/>Running…</> : '▶ Run Now'}
+        </section>
+
+        <div className="form-foot">
+          <button className="save-btn" onClick={saveSettings}>
+            <Ic d={I.check} size={15} /> Save Settings
           </button>
         </div>
-        {cronMsg && <p className="text-xs text-green-400">{cronMsg}</p>}
-        {scrapeResult && <p className="text-xs" style={{color: scrapeResult.startsWith('✅') ? '#34d399' : '#f87171'}}>{scrapeResult}</p>}
-        <p className="text-[11px]" style={{color:'var(--text-muted)'}}>
-          <code>0 * * * *</code> = every 1h · <code>0 */6 * * *</code> = every 6h · <code>0 8 * * *</code> = daily 8am
-        </p>
-      </section>
       </div>
     </div>
   );

@@ -1,384 +1,287 @@
 import { useState, useEffect, useRef } from "react";
 import { api } from "../api";
-import type { ProfileData, ProfileExperience, ProfileEducation, ProfileProject } from "../types";
-import { Plus, Trash2, Save, Loader2, CheckCircle2, User, Briefcase, GraduationCap, FolderOpen, Zap, Award, Upload, ChevronDown, ChevronRight } from "lucide-react";
 
-const MONTHS: Record<string, number> = {
-  jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11,
-  january:0,february:1,march:2,april:3,june:5,july:6,august:7,september:8,october:9,november:10,december:11,
+// ── SVG icon helper ───────────────────────────────────────────────────────────
+function Ic({ d, size = 16, color }: { d: string; size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke={color || "currentColor"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+      style={{ flexShrink: 0 }} dangerouslySetInnerHTML={{ __html: d }} />
+  );
+}
+const I = {
+  user:     '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0 1 14 0v1"/>',
+  briefcase:'<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/>',
+  doc:      '<path d="M14 3v5h5"/><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M8 13h8M8 17h6"/>',
+  bolt:     '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+  target:   '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+  check:    '<path d="M20 6 9 17l-5-5"/>',
+  x:        '<path d="M18 6 6 18M6 6l12 12"/>',
+  upload:   '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
 };
 
-function parseDate(s: string): Date | null {
-  if (!s) return null;
-  const low = s.trim().toLowerCase();
-  if (low === "present" || low === "current" || low === "now") return new Date();
-  // "Sep 2023" or "09/2023" or "2023-09"
-  const m1 = low.match(/([a-z]+)\s+(\d{4})/);
-  if (m1 && MONTHS[m1[1]] !== undefined) return new Date(+m1[2], MONTHS[m1[1]], 1);
-  const m2 = low.match(/(\d{1,2})[\/\-](\d{4})/);
-  if (m2) return new Date(+m2[2], +m2[1] - 1, 1);
-  const m3 = low.match(/(\d{4})[\/\-](\d{1,2})/);
-  if (m3) return new Date(+m3[1], +m3[2] - 1, 1);
-  return null;
+// ── Field primitive ───────────────────────────────────────────────────────────
+function Field({ label, value, onChange, type, placeholder, full }: {
+  label: string; value: string; onChange: (v: string) => void;
+  type?: string; placeholder?: string; full?: boolean;
+}) {
+  return (
+    <label className={`field${full ? " full" : ""}`}>
+      <span className="field-label">{label}</span>
+      <input type={type || "text"} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} />
+    </label>
+  );
 }
 
-function calcYears(start: string, end: string): number | null {
-  const s = parseDate(start);
-  const e = parseDate(end);
-  if (!s || !e) return null;
-  const months = (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth());
-  return Math.round((months / 12) * 10) / 10;
+// ── RepeatCard ────────────────────────────────────────────────────────────────
+function RepeatCard({ children, onRemove, index }: { children: React.ReactNode; onRemove: () => void; index: number }) {
+  return (
+    <div className="repeat-card">
+      <span className="repeat-num">{String(index + 1).padStart(2, "0")}</span>
+      <div className="repeat-body">{children}</div>
+      <button className="repeat-del" onClick={onRemove} title="Remove"><Ic d={I.x} size={14} /></button>
+    </div>
+  );
 }
 
-const EMPTY_PROFILE: ProfileData = {
-  name: "", email: "", phone: "", location: "", address: "",
-  linkedin: "", github: "", website: "", visa_status: "",
-  experience: [], education: [], projects: [],
-  skills: [], certifications: [],
-};
+// ── TagInput ──────────────────────────────────────────────────────────────────
+function TagInput({ tags, setTags, placeholder, suggestions }: {
+  tags: string[]; setTags: (t: string[]) => void; placeholder?: string; suggestions?: string[];
+}) {
+  const [val, setVal] = useState("");
+  const add = (t: string) => { t = t.trim(); if (t && !tags.includes(t)) setTags([...tags, t]); setVal(""); };
+  return (
+    <div>
+      <div className="taginput" onClick={e => (e.currentTarget.querySelector("input") as HTMLInputElement)?.focus()}>
+        {tags.map(t => (
+          <span className="tag-pill" key={t}>
+            {t}
+            <button onClick={() => setTags(tags.filter(x => x !== t))}><Ic d={I.x} size={11} /></button>
+          </span>
+        ))}
+        <input value={val} onChange={e => setVal(e.target.value)} placeholder={tags.length ? "" : placeholder}
+          onKeyDown={e => {
+            if (e.key === "Enter") { e.preventDefault(); add(val); }
+            else if (e.key === "Backspace" && !val && tags.length) setTags(tags.slice(0, -1));
+          }} />
+      </div>
+      {suggestions && (
+        <div className="tag-suggest">
+          {suggestions.filter(s => !tags.includes(s)).map(s => (
+            <button key={s} className="tag-sg" onClick={() => add(s)}>+ {s}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
-const EMPTY_EXP: ProfileExperience = { role: "", company: "", start_date: "", end_date: "", years: 0, bullets: [""] };
-const EMPTY_EDU: ProfileEducation = { degree: "", school: "", year: "" };
-const EMPTY_PRJ: ProfileProject = { name: "", description: "" };
-
-const INPUT = { width: '100%' } as React.CSSProperties;
-const LABEL: React.CSSProperties = { display:'block', fontSize:10, fontWeight:600, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 };
-const CARD: React.CSSProperties = { background:'var(--bg-elevated)', border:'1px solid var(--border-default)', borderRadius:12, padding:20 };
+const VISA_OPTIONS = ["US Citizen", "Green Card", "H1B", "OPT / CPT", "TN Visa", "Need Sponsorship"];
 
 export function Profile() {
-  const [profile, setProfile] = useState<ProfileData>(EMPTY_PROFILE);
-  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<any>({
+    personal: { fullName: "", email: "", phone: "", address: "", linkedin: "", github: "", visa: "US Citizen" },
+    experience: [] as any[],
+    education: [] as any[],
+    projects: [] as any[],
+    skills: [] as string[],
+  });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [parsing, setParsing] = useState(false);
-  const [skillInput, setSkillInput] = useState("");
-  const [certInput, setCertInput] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const toggleCollapse = (key: string) =>
-    setCollapsed(s => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
   useEffect(() => {
-    api.getProfile()
-      .then(p => { if (p && Object.keys(p).length) setProfile(p); })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    api.getProfile().then((p: any) => {
+      if (p) {
+        // Map API profile format to design format
+        const exp = (p.experience || []).map((e: any) => ({
+          title: e.role || e.title || "", company: e.company || "",
+          start: e.start_date || e.start || "", end: e.end_date || e.end || "Present",
+          desc: (e.bullets || []).join("\n") || e.desc || "",
+        }));
+        const edu = (p.education || []).map((e: any) => ({
+          degree: e.degree || "", school: e.school || "", year: e.year || "", gpa: e.gpa || "",
+        }));
+        const proj = (p.projects || []).map((pr: any) => ({
+          name: pr.name || "", stack: pr.stack || pr.description || "", desc: pr.description || "", url: pr.url || "",
+        }));
+        setProfile({
+          personal: {
+            fullName: p.name || "", email: p.email || "", phone: p.phone || "",
+            address: p.address || p.location || "", linkedin: p.linkedin || "", github: p.github || "",
+            visa: p.visa_status || "US Citizen",
+          },
+          experience: exp, education: edu, projects: proj,
+          skills: p.skills || [],
+        });
+      }
+    }).catch(() => {});
   }, []);
 
+  const pset = (k: string, v: string) => setProfile((p: any) => ({ ...p, personal: { ...p.personal, [k]: v } }));
+  const updateAt = (key: "experience" | "education" | "projects", i: number, k: string, v: string) =>
+    setProfile((p: any) => ({ ...p, [key]: p[key].map((x: any, j: number) => j === i ? { ...x, [k]: v } : x) }));
+
   const save = async () => {
-    setSaving(true); setSaved(false);
+    setSaving(true);
     try {
-      await api.saveProfile(profile);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch (e: any) { alert(e.message); }
-    finally { setSaving(false); }
+      // Map back to API format
+      const payload = {
+        name: profile.personal.fullName, email: profile.personal.email,
+        phone: profile.personal.phone, address: profile.personal.address,
+        linkedin: profile.personal.linkedin, github: profile.personal.github,
+        visa_status: profile.personal.visa,
+        experience: profile.experience.map((e: any) => ({
+          role: e.title, company: e.company, start_date: e.start, end_date: e.end,
+          bullets: e.desc ? e.desc.split("\n").filter(Boolean) : [], years: 0,
+        })),
+        education: profile.education,
+        projects: profile.projects.map((pr: any) => ({ name: pr.name, description: pr.stack || pr.desc, url: pr.url })),
+        skills: profile.skills,
+      };
+      await api.saveProfile(payload as any);
+      setSaved(true); setTimeout(() => setSaved(false), 2000);
+    } catch {} finally { setSaving(false); }
   };
 
-  const uploadResume = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = "";
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
     setParsing(true);
     try {
       const parsed = await api.parseResume(file);
-      // Recalculate years from dates — AI often miscalculates
-      const experience = (parsed.experience || []).map(e => {
-        const computed = calcYears(e.start_date || "", e.end_date || "");
-        return { ...e, years: computed ?? e.years ?? 0 };
-      });
-      setProfile(p => ({
-        name:           parsed.name           || p.name,
-        email:          parsed.email          || p.email,
-        phone:          parsed.phone          || p.phone,
-        location:       parsed.location       || p.location,
-        address:        p.address,
-        linkedin:       p.linkedin,
-        github:         p.github,
-        website:        p.website,
-        visa_status:    p.visa_status,
-        experience:     experience.length          ? experience        : p.experience,
-        education:      parsed.education?.length   ? parsed.education  : p.education,
-        projects:       parsed.projects?.length    ? parsed.projects   : p.projects,
-        skills:         parsed.skills?.length      ? parsed.skills     : p.skills,
-        certifications: parsed.certifications?.length ? parsed.certifications : p.certifications,
+      if (parsed) setProfile((prev: any) => ({
+        ...prev,
+        personal: { ...prev.personal, fullName: parsed.name || prev.personal.fullName, email: parsed.email || prev.personal.email },
+        experience: parsed.experience || prev.experience,
+        education: parsed.education || prev.education,
+        skills: parsed.skills || prev.skills,
       }));
-    } catch (err: any) {
-      alert(err.message || "Failed to parse resume");
-    } finally {
-      setParsing(false);
-    }
+    } catch {} finally { setParsing(false); }
+    e.target.value = "";
   };
 
-  const set = (key: keyof ProfileData, val: unknown) =>
-    setProfile(p => ({ ...p, [key]: val }));
-
-  // ── Experience ──
-  const addExp = () => set("experience", [...profile.experience, { ...EMPTY_EXP, bullets: [""] }]);
-  const rmExp = (i: number) => set("experience", profile.experience.filter((_, j) => j !== i));
-  const setExp = (i: number, patch: Partial<ProfileExperience>) =>
-    set("experience", profile.experience.map((e, j) => j === i ? { ...e, ...patch } : e));
-  const addBullet = (i: number) =>
-    setExp(i, { bullets: [...(profile.experience[i].bullets || []), ""] });
-  const setBullet = (i: number, bi: number, val: string) =>
-    setExp(i, { bullets: profile.experience[i].bullets.map((b, bj) => bj === bi ? val : b) });
-  const rmBullet = (i: number, bi: number) =>
-    setExp(i, { bullets: profile.experience[i].bullets.filter((_, bj) => bj !== bi) });
-
-  // ── Education ──
-  const addEdu = () => set("education", [...profile.education, { ...EMPTY_EDU }]);
-  const rmEdu = (i: number) => set("education", profile.education.filter((_, j) => j !== i));
-  const setEdu = (i: number, patch: Partial<ProfileEducation>) =>
-    set("education", profile.education.map((e, j) => j === i ? { ...e, ...patch } : e));
-
-  // ── Projects ──
-  const addPrj = () => set("projects", [...profile.projects, { ...EMPTY_PRJ }]);
-  const rmPrj = (i: number) => set("projects", profile.projects.filter((_, j) => j !== i));
-  const setPrj = (i: number, patch: Partial<ProfileProject>) =>
-    set("projects", profile.projects.map((e, j) => j === i ? { ...e, ...patch } : e));
-
-  // ── Skills ──
-  const addSkill = (val: string) => {
-    const s = val.trim();
-    if (s && !profile.skills.includes(s)) set("skills", [...profile.skills, s]);
-    setSkillInput("");
-  };
-  const rmSkill = (s: string) => set("skills", profile.skills.filter(x => x !== s));
-
-  // ── Certs ──
-  const addCert = (val: string) => {
-    const s = val.trim();
-    if (s && !profile.certifications.includes(s)) set("certifications", [...profile.certifications, s]);
-    setCertInput("");
-  };
-  const rmCert = (s: string) => set("certifications", profile.certifications.filter(x => x !== s));
-
-  if (loading) return (
-    <div className="flex items-center justify-center h-40 text-slate-500 text-sm">
-      <Loader2 size={18} className="animate-spin mr-2" /> Loading…
-    </div>
-  );
-
-  const totalYears = profile.experience.reduce((s, e) => s + (e.years || 0), 0);
+  const P = profile;
 
   return (
-    <div className="form-scroll"><div className="form-inner" style={{display:'flex', flexDirection:'column', gap:24}}>
-      {/* Header */}
-      <div style={{display:'flex', alignItems:'center', justifyContent:'space-between'}}>
-        <div>
-          <h2 style={{fontSize:18, fontWeight:600, color:'var(--text-primary)', margin:0}}>Your Profile</h2>
-          {totalYears > 0 && <p style={{fontSize:12, color:'var(--text-muted)', marginTop:2}}>{totalYears} yrs total experience</p>}
-        </div>
-        <div style={{display:'flex', alignItems:'center', gap:8}}>
-          <input ref={fileRef} type="file" accept=".pdf,.docx,.txt" style={{display:'none'}} onChange={uploadResume} />
-          <button onClick={() => fileRef.current?.click()} disabled={parsing}
-            style={{display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, fontSize:13, fontWeight:500,
-              background:'var(--bg-elevated)', border:'1px solid var(--border-default)', color:'var(--text-primary)', cursor:'pointer', opacity:parsing?0.6:1}}>
-            {parsing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-            {parsing ? "Parsing…" : "Upload Resume"}
-          </button>
-          <button onClick={save} disabled={saving}
-            style={{display:'flex', alignItems:'center', gap:6, padding:'7px 16px', borderRadius:8, fontSize:13, fontWeight:500,
-              background:'var(--accent)', color:'#fff', border:'none', cursor:'pointer', opacity:saving?0.6:1}}>
-            {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <CheckCircle2 size={14} /> : <Save size={14} />}
-            {saved ? "Saved!" : "Save Profile"}
-          </button>
-        </div>
-      </div>
-
-      {/* Personal Info */}
-      <div style={CARD}>
-        <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:12}}>
-          <User size={14} style={{color:'var(--accent)'}} />
-          <span style={{fontSize:13, fontWeight:600, color:'var(--text-primary)'}}>Personal Info</span>
-        </div>
-        {/* Row 1: name, email, phone */}
-        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:10}}>
-          {([['name','Full Name','Jagad...'], ['email','Email','you@email.com'], ['phone','Phone','+1 (555) 000-0000']] as const).map(([k, label, ph]) => (
-            <div key={k}>
-              <label style={LABEL}>{label}</label>
-              <input value={(profile as any)[k]} onChange={e => set(k as any, e.target.value)} placeholder={ph} style={INPUT} />
-            </div>
-          ))}
-        </div>
-        {/* Row 2: location, address */}
-        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10}}>
+    <div className="form-scroll">
+      <div className="form-inner">
+        <div className="form-head">
           <div>
-            <label style={LABEL}>City / Location</label>
-            <input value={profile.location} onChange={e => set('location', e.target.value)} placeholder="New York, NY" style={INPUT} />
+            <h1 className="dash-title">My Profile</h1>
+            <p className="dash-sub">The source your AI tailoring and scoring pull from</p>
           </div>
-          <div>
-            <label style={LABEL}>Full Address</label>
-            <input value={profile.address} onChange={e => set('address', e.target.value)} placeholder="123 Main St, New York, NY 10001" style={INPUT} />
-          </div>
-        </div>
-        {/* Row 3: LinkedIn, GitHub, Visa */}
-        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10}}>
-          <div>
-            <label style={LABEL}>LinkedIn URL</label>
-            <input value={profile.linkedin} onChange={e => set('linkedin', e.target.value)} placeholder="linkedin.com/in/yourname" style={INPUT} />
-          </div>
-          <div>
-            <label style={LABEL}>GitHub URL</label>
-            <input value={profile.github} onChange={e => set('github', e.target.value)} placeholder="github.com/yourname" style={INPUT} />
-          </div>
-          <div>
-            <label style={LABEL}>Visa / Work Status</label>
-            <input value={profile.visa_status} onChange={e => set('visa_status', e.target.value)} placeholder="F1/OPT, H1B, US Citizen…" style={INPUT} />
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="act" onClick={() => fileRef.current?.click()} disabled={parsing} style={{ height: 38 }}>
+              {parsing ? "Parsing…" : <><Ic d={I.upload} size={15} /> Upload Resume</>}
+            </button>
+            <input ref={fileRef} type="file" accept=".pdf,.docx,.txt" style={{ display: "none" }} onChange={handleUpload} />
+            <button className="save-btn" onClick={save} disabled={saving}>
+              <Ic d={saved ? I.check : I.check} size={15} /> {saved ? "Saved!" : saving ? "Saving…" : "Save Profile"}
+            </button>
           </div>
         </div>
 
-      </div>
+        {/* Personal Info */}
+        <section className="form-section">
+          <div className="section-label"><Ic d={I.user} size={16} /> Personal Info</div>
+          <div className="field-grid">
+            <Field label="Full Name"    value={P.personal.fullName}  onChange={v => pset("fullName", v)} />
+            <Field label="Email"        type="email" value={P.personal.email} onChange={v => pset("email", v)} />
+            <Field label="Phone"        value={P.personal.phone}     onChange={v => pset("phone", v)} />
+            <Field label="Address"      value={P.personal.address}   onChange={v => pset("address", v)} placeholder="City, State, Country" />
+            <Field label="LinkedIn URL" value={P.personal.linkedin}  onChange={v => pset("linkedin", v)} />
+            <Field label="GitHub URL"   value={P.personal.github}    onChange={v => pset("github", v)} />
+            <label className="field">
+              <span className="field-label">Visa Status</span>
+              <select value={P.personal.visa} onChange={e => pset("visa", e.target.value)}>
+                {VISA_OPTIONS.map(o => <option key={o}>{o}</option>)}
+              </select>
+            </label>
+          </div>
+        </section>
 
-      {/* Experience */}
-      <div style={CARD}>
-        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12}}>
-          <button onClick={() => toggleCollapse('exp')} style={{display:'flex', alignItems:'center', gap:8, background:'none', border:'none', cursor:'pointer', padding:0}}>
-            {collapsed.has('exp') ? <ChevronRight size={14} style={{color:'var(--text-muted)'}} /> : <ChevronDown size={14} style={{color:'var(--text-muted)'}} />}
-            <Briefcase size={14} style={{color:'#a78bfa'}} />
-            <span style={{fontSize:13, fontWeight:600, color:'var(--text-primary)'}}>Experience</span>
-            <span style={{fontSize:12, color:'var(--text-muted)'}}>({profile.experience.length})</span>
-          </button>
-          {!collapsed.has('exp') && <button onClick={addExp} style={{fontSize:12, color:'var(--accent)', background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:4}}><Plus size={12} /> Add Role</button>}
-        </div>
-        {!collapsed.has('exp') && profile.experience.length === 0 && <p style={{fontSize:12, color:'var(--text-muted)', textAlign:'center', padding:'16px 0'}}>No experience added yet</p>}
-        {!collapsed.has('exp') && profile.experience.map((exp, i) => (
-          <div key={i} style={{border:'1px solid var(--border-default)', borderRadius:10, padding:14, marginBottom:10}}>
-            <div style={{display:'grid', gridTemplateColumns:'2fr 2fr 1fr', gap:8, marginBottom:8}}>
-              <div><label style={LABEL}>Role / Title</label><input value={exp.role} onChange={e => setExp(i, { role: e.target.value })} placeholder="Senior Data Engineer" style={INPUT} /></div>
-              <div><label style={LABEL}>Company</label><input value={exp.company} onChange={e => setExp(i, { company: e.target.value })} placeholder="Cargill" style={INPUT} /></div>
-              <div />
-            </div>
-            <div style={{display:'grid', gridTemplateColumns:'2fr 2fr 1fr', gap:8, marginBottom:8}}>
-              <div><label style={LABEL}>Start Date</label>
-                <input value={exp.start_date} onChange={e => { const start_date=e.target.value; const computed=calcYears(start_date,exp.end_date); setExp(i,{start_date,...(computed!==null?{years:computed}:{})}); }} placeholder="Sep 2023" style={INPUT} /></div>
-              <div><label style={LABEL}>End Date</label>
-                <input value={exp.end_date} onChange={e => { const end_date=e.target.value; const computed=calcYears(exp.start_date,end_date); setExp(i,{end_date,...(computed!==null?{years:computed}:{})}); }} placeholder="Present" style={INPUT} /></div>
-              <div><label style={LABEL}>Years (auto)</label>
-                <input type="number" step="0.5" min="0" value={exp.years} onChange={e => setExp(i, { years: parseFloat(e.target.value)||0 })} style={INPUT} /></div>
-            </div>
-            <div>
-              <div style={{display:'flex', justifyContent:'space-between', marginBottom:4}}>
-                <label style={LABEL}>Key Bullet Points</label>
-                <button onClick={() => addBullet(i)} style={{fontSize:11, color:'var(--accent)', background:'none', border:'none', cursor:'pointer'}}>+ Add</button>
+        {/* Work Experience */}
+        <section className="form-section">
+          <div className="section-label">
+            <Ic d={I.briefcase} size={16} /> Work Experience
+            <button className="add-btn" onClick={() => setProfile((p: any) => ({ ...p, experience: [...p.experience, { title: "", company: "", start: "", end: "Present", desc: "" }] }))}>
+              + Add Experience
+            </button>
+          </div>
+          {P.experience.map((e: any, i: number) => (
+            <RepeatCard key={i} index={i} onRemove={() => setProfile((p: any) => ({ ...p, experience: p.experience.filter((_: any, j: number) => j !== i) }))}>
+              <div className="field-grid">
+                <Field label="Job Title" value={e.title}   onChange={v => updateAt("experience", i, "title", v)} />
+                <Field label="Company"   value={e.company} onChange={v => updateAt("experience", i, "company", v)} />
+                <Field label="Start Date" value={e.start}  onChange={v => updateAt("experience", i, "start", v)} placeholder="Jan 2021" />
+                <Field label="End Date"   value={e.end}    onChange={v => updateAt("experience", i, "end", v)} placeholder="Present" />
               </div>
-              {(exp.bullets||[]).map((b,bi) => (
-                <div key={bi} style={{display:'flex', gap:6, marginBottom:6, alignItems:'flex-start'}}>
-                  <textarea value={b} onChange={e => { setBullet(i,bi,e.target.value); e.target.style.height='auto'; e.target.style.height=e.target.scrollHeight+'px'; }}
-                    ref={el => { if(el){el.style.height='auto';el.style.height=el.scrollHeight+'px';} }}
-                    rows={1} style={{...INPUT, flex:1, resize:'none', lineHeight:1.4, overflow:'hidden'}} placeholder="Led pipeline migration to Spark…" />
-                  <button onClick={() => rmBullet(i,bi)} style={{color:'var(--text-muted)', background:'none', border:'none', cursor:'pointer', marginTop:8}}><Trash2 size={13} /></button>
-                </div>
-              ))}
-            </div>
-            <button onClick={() => rmExp(i)} style={{fontSize:12, color:'#f87171', background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:4, marginTop:4}}><Trash2 size={11} /> Remove Role</button>
-          </div>
-        ))}
-      </div>
+              <label className="field full">
+                <span className="field-label">Description</span>
+                <textarea value={e.desc} onChange={ev => updateAt("experience", i, "desc", ev.target.value)} />
+              </label>
+            </RepeatCard>
+          ))}
+        </section>
 
-      {/* Education */}
-      <div style={CARD}>
-        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12}}>
-          <button onClick={() => toggleCollapse('edu')} style={{display:'flex', alignItems:'center', gap:8, background:'none', border:'none', cursor:'pointer', padding:0}}>
-            {collapsed.has('edu') ? <ChevronRight size={14} style={{color:'var(--text-muted)'}} /> : <ChevronDown size={14} style={{color:'var(--text-muted)'}} />}
-            <GraduationCap size={14} style={{color:'#34d399'}} />
-            <span style={{fontSize:13, fontWeight:600, color:'var(--text-primary)'}}>Education</span>
-            <span style={{fontSize:12, color:'var(--text-muted)'}}>({profile.education.length})</span>
+        {/* Education */}
+        <section className="form-section">
+          <div className="section-label">
+            <Ic d={I.doc} size={16} /> Education
+            <button className="add-btn" onClick={() => setProfile((p: any) => ({ ...p, education: [...p.education, { degree: "", school: "", year: "", gpa: "" }] }))}>
+              + Add Education
+            </button>
+          </div>
+          {P.education.map((e: any, i: number) => (
+            <RepeatCard key={i} index={i} onRemove={() => setProfile((p: any) => ({ ...p, education: p.education.filter((_: any, j: number) => j !== i) }))}>
+              <div className="field-grid">
+                <Field label="Degree"           value={e.degree} onChange={v => updateAt("education", i, "degree", v)} />
+                <Field label="School / University" value={e.school} onChange={v => updateAt("education", i, "school", v)} />
+                <Field label="Year" value={e.year} onChange={v => updateAt("education", i, "year", v)} />
+                <Field label="GPA"  value={e.gpa}  onChange={v => updateAt("education", i, "gpa", v)} />
+              </div>
+            </RepeatCard>
+          ))}
+        </section>
+
+        {/* Projects */}
+        <section className="form-section">
+          <div className="section-label">
+            <Ic d={I.bolt} size={16} /> Projects
+            <button className="add-btn" onClick={() => setProfile((p: any) => ({ ...p, projects: [...p.projects, { name: "", stack: "", desc: "", url: "" }] }))}>
+              + Add Project
+            </button>
+          </div>
+          {P.projects.map((e: any, i: number) => (
+            <RepeatCard key={i} index={i} onRemove={() => setProfile((p: any) => ({ ...p, projects: p.projects.filter((_: any, j: number) => j !== i) }))}>
+              <div className="field-grid">
+                <Field label="Project Name" value={e.name}  onChange={v => updateAt("projects", i, "name", v)} />
+                <Field label="Tech Stack"   value={e.stack} onChange={v => updateAt("projects", i, "stack", v)} />
+                <Field label="URL"          value={e.url}   onChange={v => updateAt("projects", i, "url", v)} full />
+              </div>
+              <label className="field full">
+                <span className="field-label">Description</span>
+                <textarea value={e.desc} onChange={ev => updateAt("projects", i, "desc", ev.target.value)} />
+              </label>
+            </RepeatCard>
+          ))}
+        </section>
+
+        {/* Skills */}
+        <section className="form-section">
+          <div className="section-label"><Ic d={I.target} size={16} /> Skills</div>
+          <TagInput tags={P.skills} setTags={t => setProfile((p: any) => ({ ...p, skills: t }))}
+            placeholder="Add a skill and press Enter…"
+            suggestions={["Python","SQL","dbt","Airflow","Spark","Kafka","Snowflake","Terraform"]} />
+        </section>
+
+        <div className="form-foot">
+          <button className="save-btn" onClick={save} disabled={saving}>
+            <Ic d={I.check} size={15} /> {saved ? "Saved!" : saving ? "Saving…" : "Save Profile"}
           </button>
-          {!collapsed.has('edu') && <button onClick={addEdu} style={{fontSize:12, color:'var(--accent)', background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:4}}><Plus size={12} /> Add</button>}
         </div>
-        {!collapsed.has('edu') && profile.education.map((edu,i) => (
-          <div key={i} style={{display:'grid', gridTemplateColumns:'1fr 1fr auto', gap:8, alignItems:'flex-end', marginBottom:8}}>
-            <div><label style={LABEL}>Degree</label><input value={edu.degree} onChange={e => setEdu(i,{degree:e.target.value})} placeholder="M.S. Information Systems" style={INPUT} /></div>
-            <div><label style={LABEL}>School</label><input value={edu.school} onChange={e => setEdu(i,{school:e.target.value})} placeholder="Saint Louis University" style={INPUT} /></div>
-            <div style={{display:'flex', gap:8, alignItems:'flex-end'}}>
-              <div><label style={LABEL}>Year</label><input value={edu.year} onChange={e => setEdu(i,{year:e.target.value})} placeholder="2025" style={{...INPUT, width:80}} /></div>
-              <button onClick={() => rmEdu(i)} style={{color:'var(--text-muted)', background:'none', border:'none', cursor:'pointer', marginBottom:2}}><Trash2 size={13} /></button>
-            </div>
-          </div>
-        ))}
-        {!collapsed.has('edu') && profile.education.length === 0 && <p style={{fontSize:12, color:'var(--text-muted)', textAlign:'center', padding:'10px 0'}}>No education added</p>}
       </div>
-
-      {/* Projects */}
-      <div style={CARD}>
-        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12}}>
-          <button onClick={() => toggleCollapse('prj')} style={{display:'flex', alignItems:'center', gap:8, background:'none', border:'none', cursor:'pointer', padding:0}}>
-            {collapsed.has('prj') ? <ChevronRight size={14} style={{color:'var(--text-muted)'}} /> : <ChevronDown size={14} style={{color:'var(--text-muted)'}} />}
-            <FolderOpen size={14} style={{color:'#fbbf24'}} />
-            <span style={{fontSize:13, fontWeight:600, color:'var(--text-primary)'}}>Projects</span>
-            <span style={{fontSize:12, color:'var(--text-muted)'}}>({profile.projects.length})</span>
-          </button>
-          {!collapsed.has('prj') && <button onClick={addPrj} style={{fontSize:12, color:'var(--accent)', background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:4}}><Plus size={12} /> Add</button>}
-        </div>
-        {!collapsed.has('prj') && profile.projects.map((prj,i) => (
-          <div key={i} style={{display:'flex', gap:8, marginBottom:8, alignItems:'flex-start'}}>
-            <div style={{display:'grid', gridTemplateColumns:'1fr 2fr', gap:8, flex:1}}>
-              <input value={prj.name} onChange={e => setPrj(i,{name:e.target.value})} placeholder="Real-time Pipeline" style={INPUT} />
-              <input value={prj.description} onChange={e => setPrj(i,{description:e.target.value})} placeholder="Kafka → Spark → Snowflake ingestion system" style={INPUT} />
-            </div>
-            <button onClick={() => rmPrj(i)} style={{color:'var(--text-muted)', background:'none', border:'none', cursor:'pointer', marginTop:6}}><Trash2 size={13} /></button>
-          </div>
-        ))}
-        {!collapsed.has('prj') && profile.projects.length === 0 && <p style={{fontSize:12, color:'var(--text-muted)', textAlign:'center', padding:'10px 0'}}>No projects added</p>}
-      </div>
-
-      {/* Skills */}
-      <div style={CARD}>
-
-        <button onClick={() => toggleCollapse('skills')} style={{display:'flex', alignItems:'center', gap:8, background:'none', border:'none', cursor:'pointer', padding:0, marginBottom:10, width:'100%', textAlign:'left'}}>
-          {collapsed.has('skills') ? <ChevronRight size={14} style={{color:'var(--text-muted)'}} /> : <ChevronDown size={14} style={{color:'var(--text-muted)'}} />}
-          <Zap size={14} style={{color:'#facc15'}} />
-          <span style={{fontSize:13, fontWeight:600, color:'var(--text-primary)'}}>Skills</span>
-          <span style={{fontSize:12, color:'var(--text-muted)'}}>({profile.skills.length})</span>
-        </button>
-        {!collapsed.has('skills') && <>
-          <div style={{display:'flex', flexWrap:'wrap', gap:6, minHeight:32, marginBottom:8}}>
-            {profile.skills.map(s => (
-              <span key={s} style={{display:'flex', alignItems:'center', gap:4, padding:'3px 10px', background:'var(--accent-tonal)', color:'var(--accent)', fontSize:12, borderRadius:999, border:'1px solid var(--accent)'}}>
-                {s}
-                <button onClick={() => rmSkill(s)} style={{color:'var(--text-muted)', background:'none', border:'none', cursor:'pointer', fontSize:14, lineHeight:1}}>×</button>
-              </span>
-            ))}
-          </div>
-          <input value={skillInput} onChange={e => setSkillInput(e.target.value)}
-            onKeyDown={e => { if (e.key==='Enter'||e.key===','){e.preventDefault();addSkill(skillInput);} }}
-            placeholder="Type skill + Enter (Python, Spark, AWS…)" style={INPUT} />
-          <p style={{fontSize:11, color:'var(--text-muted)', marginTop:4}}>Press Enter or comma to add</p>
-        </> }
-      </div>
-
-      {/* Certifications */}
-
-      <div style={CARD}>
-        <button onClick={() => toggleCollapse('certs')} style={{display:'flex', alignItems:'center', gap:8, background:'none', border:'none', cursor:'pointer', padding:0, marginBottom:10, width:'100%', textAlign:'left'}}>
-          {collapsed.has('certs') ? <ChevronRight size={14} style={{color:'var(--text-muted)'}} /> : <ChevronDown size={14} style={{color:'var(--text-muted)'}} />}
-          <Award size={14} style={{color:'#22d3ee'}} />
-          <span style={{fontSize:13, fontWeight:600, color:'var(--text-primary)'}}>Certifications</span>
-          <span style={{fontSize:12, color:'var(--text-muted)'}}>({profile.certifications.length})</span>
-        </button>
-        {!collapsed.has('certs') && <>
-          <div style={{display:'flex', flexWrap:'wrap', gap:6, minHeight:32, marginBottom:8}}>
-            {profile.certifications.map(c => (
-              <span key={c} style={{display:'flex', alignItems:'center', gap:4, padding:'3px 10px', background:'var(--bg-surface)', color:'var(--text-primary)', fontSize:12, borderRadius:999, border:'1px solid var(--border-default)'}}>
-                {c}
-                <button onClick={() => rmCert(c)} style={{color:'var(--text-muted)', background:'none', border:'none', cursor:'pointer', fontSize:14, lineHeight:1}}>×</button>
-              </span>
-            ))}
-          </div>
-          <input value={certInput} onChange={e => setCertInput(e.target.value)}
-            onKeyDown={e => { if (e.key==='Enter'||e.key===','){e.preventDefault();addCert(certInput);} }}
-            placeholder="AWS Solutions Architect, Databricks DE…" style={INPUT} />
-        </> }
-      </div>
-
-      <button onClick={save} disabled={saving}
-        style={{width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:8,
-          padding:'10px 0', background:'var(--accent)', color:'#fff', border:'none',
-          borderRadius:10, fontSize:13, fontWeight:500, cursor:'pointer', opacity:saving?0.6:1}}>
-        {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <CheckCircle2 size={14} /> : <Save size={14} />}
-        {saved ? "Saved!" : "Save Profile"}
-      </button>
-    </div></div>
+    </div>
   );
 }

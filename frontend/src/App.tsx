@@ -17,17 +17,17 @@ import { Onboarding } from "./components/Onboarding";
 
 type View = "jobs" | "dashboard" | "profile" | "settings";
 type ViewMode = "list" | "kanban";
-type Filters = { posted: string; countries: string[]; locTypes: string[]; sources: string[]; status: string; role: string; exps: string[]; categories: string[]; minScore: number; };
-
-// SOURCES and COUNTRIES are now dynamic — built from actual jobs (see useMemo below)
-// SOURCES is now dynamic — built from actual jobs (see useMemo below)
-const STATUS_ROWS = [
-  { id: "all",       label: "All",       color: "var(--st-new)" },
-  { id: "new",       label: "New",       color: "var(--st-new)" },
-  { id: "applied",   label: "Applied",   color: "var(--st-applied)" },
-  { id: "interview", label: "Interview", color: "var(--st-interview)" },
-  { id: "skipped",   label: "Skipped",   color: "#5b6377" },
-];
+// Matches design's filter shape exactly (INTERACTIONS.md)
+type Filters = {
+  q: string;
+  category: string[];
+  level: string[];
+  type: string[];
+  country: string[];
+  source: string[];
+  score: "any" | "60" | "70" | "80" | "90";
+  time: "any" | "24" | "48" | "72" | "168";
+};
 
 function Ic({ d, size = 16, color, style }: { d: string; size?: number; color?: string; style?: React.CSSProperties }) {
   return (
@@ -82,7 +82,6 @@ export default function App() {
   const [allJobs, setAllJobs]       = useState<Job[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab]               = useState("description");
-  const [search, setSearch]         = useState("");
   const [loading, setLoading]       = useState(false);
   const [scraping, setScraping]     = useState(false);
   const [scrapeMsg, setScrapeMsg]   = useState("");
@@ -115,6 +114,10 @@ export default function App() {
 
   // Dynamic user display from auth
   const profileName = currentUser?.name || userSettings?.profile_name || "";
+  const userRole = (() => {
+    const roles = Array.isArray(userSettings?.job_roles) ? userSettings.job_roles : JSON.parse(userSettings?.job_roles || "[]");
+    return roles[0] || "My Role";
+  })();
   const initials    = profileName
     ? profileName.split(" ").map((w: string) => w[0]).slice(0, 2).join("").toUpperCase()
     : "?";
@@ -128,19 +131,9 @@ export default function App() {
     setJobs([]); setAllJobs([]);
   };
 
-  const [filters, setFilters] = useState<Filters>({
-    posted: "72h", countries: [], locTypes: [], sources: [], status: "all", role: "", exps: [], categories: [], minScore: 0,
-  });
+  const DEFAULT_FILTERS: Filters = { q: "", category: [], level: [], type: [], country: [], source: [], score: "any", time: "any" };
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [myRolesOnly, setMyRolesOnly] = useState(true);
-
-  const setF = (k: "posted" | "status" | "role", v: string) => setFilters(f => ({ ...f, [k]: v }));
-  const toggleArr = (k: "categories"|"exps"|"locTypes"|"countries"|"sources", val: string) =>
-    setFilters(f => ({
-      ...f,
-      [k]: (f[k] as string[]).includes(val)
-        ? (f[k] as string[]).filter(v => v !== val)
-        : [...(f[k] as string[]), val],
-    }));
 
   // ── Theme toggle ──────────────────────────────────────────────────────────
   const [isDark, setIsDark] = useState<boolean>(() => {
@@ -212,63 +205,69 @@ export default function App() {
 
   const filteredJobs = useMemo(() => {
     const now = Date.now();
-    const GRACE = 6 * 3600000;
-    const postedCutoff: Record<string, number> = {
-      "24h": 24*3600000 + GRACE, "48h": 48*3600000 + GRACE,
-      "72h": 72*3600000 + GRACE, "7d":  7*24*3600000 + GRACE,
-    };
-    const cutoffMs = postedCutoff[filters.posted] ?? Infinity;
     const parseMs = (s: string): number | null => {
       if (!s) return null;
       const t = new Date(s.replace(/(\.\d{3})\d+/, "$1")).getTime();
       return isNaN(t) ? null : t;
     };
-
-    const CAT_TERMS: Record<string, string[]> = {
-      Engineering: ["engineer","developer","devops","sre","platform","infrastructure","backend","frontend","fullstack"],
-      Data:        ["data","analytics","analyst","scientist","ml","machine learning","ai","etl","pipeline","bi"],
-      Product:     ["product manager","pm","product owner","program manager"],
-      Design:      ["design","ux","ui","figma","creative"],
-    };
-
     return jobs.filter(j => {
+      // myRoles filter (role chip)
       if (myRolesOnly && userSettings?.job_roles?.length) {
         const roles: string[] = Array.isArray(userSettings.job_roles)
-          ? userSettings.job_roles : JSON.parse(userSettings.job_roles || '[]');
+          ? userSettings.job_roles : JSON.parse(userSettings.job_roles || "[]");
         if (roles.length > 0) {
           const title = j.title.toLowerCase();
-          if (!roles.some((r: string) => title.includes(r.toLowerCase().split(' ')[0]) || title.includes(r.toLowerCase()))) return false;
+          if (!roles.some((r: string) => title.includes(r.toLowerCase()))) return false;
         }
       }
-      if (filters.categories.length > 0) {
-        const terms = filters.categories.flatMap(c => CAT_TERMS[c] || []);
+      // q — free text (design: title + company)
+      if (filters.q && !(j.title + " " + j.company).toLowerCase().includes(filters.q.toLowerCase())) return false;
+      // category
+      if (filters.category.length) {
+        const CAT: Record<string, string[]> = {
+          Engineering: ["engineer","developer","devops","sre","platform","infrastructure","backend","frontend","fullstack"],
+          Data:        ["data","analytics","analyst","scientist","ml","machine learning","ai","etl","pipeline","bi"],
+          Product:     ["product","pm ","product owner","program manager"],
+          Design:      ["design","ux","ui","figma","creative"],
+        };
+        const terms = filters.category.flatMap(c => CAT[c] || []);
         if (!terms.some(t => j.title.toLowerCase().includes(t))) return false;
       }
-      if (filters.role.trim() && !j.title.toLowerCase().includes(filters.role.toLowerCase())) return false;
-      if (filters.exps.length > 0) {
+      // level
+      if (filters.level.length) {
         const t = j.title.toLowerCase();
-        const EXP: Record<string,RegExp> = { Entry:/(entry|junior|jr\.?|associate|intern)/i, Mid:/(mid|\bii\b|\b2\b|intermediate)/i, Senior:/(senior|sr\.?|lead|principal|staff)/i, Lead:/(lead|principal|staff|director)/i };
-        if (!filters.exps.some(e => EXP[e]?.test(t))) return false;
+        const EXP: Record<string, RegExp> = {
+          Entry: /(entry|junior|jr\.?|associate|intern)/i,
+          Mid: /(mid|\bii\b|\b2\b|intermediate)/i,
+          Senior: /(senior|sr\.?)/i,
+          Lead: /(lead|principal|staff|director)/i,
+        };
+        if (!filters.level.some(e => EXP[e]?.test(t))) return false;
       }
-      if (filters.minScore > 0) {
-        const score = (j.qualify_result as any)?.score ?? null;
-        if (score === null || score < filters.minScore) return false;
-      }
-      if (filters.status !== "all" && j.status !== filters.status) return false;
-      if (filters.countries.length > 0 && !filters.countries.includes(j.country || "")) return false;
-      if (filters.locTypes.length > 0) {
+      // type: Remote→job.remote, Onsite→!remote, Hybrid→type===Hybrid
+      if (filters.type.length) {
         const isRemote = j.remote || (j.location || "").toLowerCase().includes("remote");
-        if (!((filters.locTypes.includes("Remote") && isRemote) || (filters.locTypes.includes("Onsite") && !isRemote) || (filters.locTypes.includes("Hybrid") && (j.location || "").toLowerCase().includes("hybrid")))) return false;
+        const ok = filters.type.some(t =>
+          (t === "Remote" && isRemote) || (t === "Onsite" && !isRemote) || (t === "Hybrid" && (j.location || "").toLowerCase().includes("hybrid")));
+        if (!ok) return false;
       }
-      if (filters.sources.length > 0 && !filters.sources.includes(j.source)) return false;
-      if (cutoffMs !== Infinity) {
+      // country
+      if (filters.country.length && !filters.country.includes(j.country || "")) return false;
+      // source
+      if (filters.source.length && !filters.source.includes(j.source)) return false;
+      // score
+      if (filters.score !== "any") {
+        const sc = (j.qualify_result as any)?.score ?? null;
+        if (sc === null || sc < parseInt(filters.score)) return false;
+      }
+      // time (posted within N hours)
+      if (filters.time !== "any") {
         const t = parseMs(j.posted_at) ?? parseMs(j.scraped_at);
-        if (t !== null && now - t > cutoffMs) return false;
+        if (t !== null && now - t > parseInt(filters.time) * 3600000 + 6 * 3600000) return false;
       }
-      if (search.trim()) { const q = search.toLowerCase(); if (!j.title.toLowerCase().includes(q) && !j.company.toLowerCase().includes(q)) return false; }
       return true;
     });
-  }, [jobs, filters, search, myRolesOnly, userSettings]);
+  }, [jobs, filters, myRolesOnly, userSettings]);
 
   const selectedJob = jobs.find(j => j.id === selectedId) || null;
 
@@ -296,12 +295,7 @@ export default function App() {
     catch (e: any) { toast(e.message, "error"); }
   };
 
-  // Resets only filters — does NOT delete any jobs
-  const handleResetFilters = () => {
-    setFilters({ posted: "72h", countries: [], locTypes: [], sources: [], status: "all", role: "", exps: [], categories: [], minScore: 0 });
-    setSearch("");
-    setMyRolesOnly(true);
-  };
+  const handleResetFilters = () => { setFilters(DEFAULT_FILTERS); setMyRolesOnly(true); };
 
   const handleStatusChange = async (id: string, status: JobStatus) => {
     await api.setStatus(id, status); updateJob(id, { status }); toast("Moved to " + status, "success");
@@ -346,13 +340,13 @@ export default function App() {
   // Expose nav to Settings component for "Go to Profile" link
   useEffect(() => { (window as any).__navToProfile = () => setView("profile"); }, []);
   const handleNav = (v: string) => { if (v === "tailor") { setTailorOpen(true); return; } setView(v as View); };
-  const filtersActive = filters.posted !== "72h" || filters.countries.length > 0 || filters.locTypes.length > 0 || filters.sources.length > 0 || filters.status !== "all" || filters.role !== "" || filters.exps.length > 0 || filters.categories.length > 0 || filters.minScore > 0 || search.trim() !== "";
+  const activeFilterCount = filters.category.length + filters.level.length + filters.type.length + filters.country.length + filters.source.length + (filters.score !== "any" ? 1 : 0);
+  const filtersActive = activeFilterCount > 0 || filters.q !== "" || !myRolesOnly;
   const navItems = [
     { id: "jobs",      label: "Jobs",       ic: IC.search   },
     { id: "dashboard", label: "Dashboard",  ic: IC.dash     },
     { id: "profile",   label: "My Profile", ic: IC.user     },
     { id: "settings",  label: "Settings",   ic: IC.settings },
-    { id: "tailor",    label: "Quick Tailor", ic: IC.sparkles },
   ];
 
   // ── Auth gate ────────────────────────────────────────────────────────────
@@ -411,8 +405,8 @@ export default function App() {
         <div className="sidebar-spacer" />
 
         {/* Quick actions hint */}
-        <div className="cmd-hint" onClick={() => { setView("jobs"); setTimeout(() => searchRef.current?.focus(), 0); }}>
-          <Ic d={IC.search} size={14} />
+        <div className="cmd-hint" onClick={() => setTailorOpen(true)}>
+          <Ic d={IC.sparkles} size={14} />
           Quick actions
           <span className="kbd" style={{ marginLeft: "auto" }}>⌘K</span>
         </div>
@@ -448,24 +442,21 @@ export default function App() {
       <div className="main">
         {view === "dashboard" && <Dashboard />}
         {view === "profile"   && <Profile />}
-        {view === "settings"  && <Settings />}
+        {view === "settings"  && <Settings onToast={toast} />}
 
         {view === "jobs" && (
           <>
             <Topbar
-              totalJobs={allJobs.length}
-              scraping={scraping} scrapeMsg={scrapeMsg} lastScraped={lastScrapedDisplay}
+              scraping={scraping} lastScraped={lastScrapedDisplay}
               onScrape={handleScrape} count={filteredJobs.length}
+              totalJobs={allJobs.length}
               viewMode={viewMode} setViewMode={setViewMode} IC={IC}
-              filters={filters} setF={setF} toggleArr={toggleArr}
-              SOURCES={SOURCES.filter(s => s !== "All Sources")}
-              COUNTRIES={COUNTRIES.filter(c => c !== "All Countries")}
-              setMinScore={(v: number) => setFilters(f => ({ ...f, minScore: v }))}
-              allJobs={allJobs} sourceCounts={sourceCounts}
-              filtersActive={filtersActive} search={search} setSearch={setSearch}
-              searchRef={searchRef} onClearAll={handleResetFilters}
-              myRolesOnly={myRolesOnly} setMyRolesOnly={setMyRolesOnly}
-              userRoles={Array.isArray(userSettings?.job_roles) ? userSettings.job_roles : JSON.parse(userSettings?.job_roles || '[]')}
+            />
+            <FilterBar
+              filters={filters} setFilters={setFilters}
+              role={userRole} roleOn={myRolesOnly} setRoleOn={setMyRolesOnly}
+              searchRef={searchRef}
+              COUNTRIES={COUNTRIES}
             />
               {scraping && (
               <div className="scrape-banner">
@@ -577,137 +568,168 @@ export default function App() {
   );
 }
 
-// ── FilterDropdown ─────────────────────────────────────────────────────────────
-function FilterDropdown({ label, options, selected, onToggle, countMap }: {
-  label: string; options: string[]; selected: string[];
-  onToggle: (val: string) => void; countMap?: Record<string, number>;
+function countPanelFilters(f: { category: string[]; level: string[]; type: string[]; country: string[]; source: string[]; score: string }) {
+  return f.category.length + f.level.length + f.type.length + f.country.length + f.source.length + (f.score !== "any" ? 1 : 0);
+}
+
+// ── Topbar (exact match to shell.jsx TopBar) ────────────────────────────────────
+function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, setViewMode, IC }: {
+  scraping: boolean; lastScraped: string; onScrape: () => void;
+  count: number; totalJobs: number; viewMode: string; setViewMode: (m: ViewMode) => void;
+  IC: Record<string, string>;
 }) {
-  const [open, setOpen] = React.useState(false);
-  const ref = React.useRef<HTMLDivElement>(null);
-  React.useEffect(() => {
-    if (!open) return;
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, [open]);
-  const isActive = selected.length > 0;
-  const displayLabel = isActive ? (selected.length === 1 ? selected[0] : `${selected[0]} +${selected.length - 1}`) : label;
   return (
-    <div ref={ref} style={{ position: "relative" }}>
-      <button className={`chip${isActive ? " on" : ""}`} onClick={() => setOpen(o => !o)}>
-        {displayLabel}
-        {isActive && <span className="fb-count">{selected.length}</span>}
-        <svg className="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 9l6 6 6-6"/></svg>
+    <div className="topbar">
+      <button className={`scrape-btn${scraping ? " running" : ""}`} onClick={onScrape} disabled={scraping}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.refresh }} />
+        {scraping ? "Scraping…" : "Scrape Now"}
       </button>
-      {open && (
-        <div className="menu" style={{ minWidth: 190, maxHeight: 280, overflowY: "auto" }}>
-          {options.map(opt => {
-            const checked = selected.includes(opt);
-            return (
-              <label key={opt} className={`menu-item${checked ? " sel" : ""}`}>
-                <input type="checkbox" checked={checked} onChange={() => onToggle(opt)} style={{ display: "none" }} />
-                <svg className="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
-                <span style={{ flex: 1 }}>{opt}</span>
-                {countMap?.[opt] != null && <span style={{ fontSize: 10.5, color: "var(--tx-3)", fontFamily: "var(--f-mono)" }}>{countMap[opt]}</span>}
-              </label>
-            );
-          })}
+      <div className="meta">
+        <div className="live-pip" />
+        Last scraped <b>{lastScraped || "never"}</b>
+        <span className="dot-sep" />
+        <span className="job-count"><b>{totalJobs.toLocaleString()}</b> jobs indexed</span>
+      </div>
+      <div className="topbar-right">
+        <div className="job-count"><b>{count}</b> shown</div>
+        <div className="seg">
+          <button className={viewMode === "list" ? "on" : ""} onClick={() => setViewMode("list")} title="List view">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.list }} />
+          </button>
+          <button className={viewMode === "kanban" ? "on" : ""} onClick={() => setViewMode("kanban")} title="Kanban view">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.kanban }} />
+          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
-// ── Topbar + FilterBar ─────────────────────────────────────────────────────────
-function Topbar({ scraping, scrapeMsg, lastScraped, onScrape, count, totalJobs, viewMode, setViewMode, IC,
-  filters, setF, toggleArr, SOURCES, COUNTRIES, allJobs, sourceCounts,
-  filtersActive, search, setSearch, searchRef, onClearAll,
-  myRolesOnly, setMyRolesOnly, userRoles, setMinScore }: {
-  scraping: boolean; scrapeMsg: string; lastScraped: string; onScrape: () => void;
-  count: number; totalJobs?: number; viewMode: string; setViewMode: (m: ViewMode) => void; IC: Record<string,string>;
-  filters: Filters; setF: (k: "posted"|"status"|"role", v: string) => void;
-  toggleArr: (k: "categories"|"exps"|"locTypes"|"countries"|"sources", val: string) => void;
-  SOURCES: string[]; COUNTRIES: string[]; allJobs: Job[]; sourceCounts: Record<string,number>;
-  filtersActive: boolean; search: string; setSearch: (v: string) => void;
-  searchRef: React.RefObject<HTMLInputElement>; onClearAll: () => void;
-  myRolesOnly: boolean; setMyRolesOnly: (v: boolean) => void; userRoles: string[];
-  setMinScore: (v: number) => void;
+// ── FilterBar (exact match to shell.jsx FilterBar) ──────────────────────────────
+function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, COUNTRIES }: {
+  filters: Filters; setFilters: React.Dispatch<React.SetStateAction<Filters>>;
+  role: string; roleOn: boolean; setRoleOn: (v: boolean) => void;
+  searchRef: React.RefObject<HTMLInputElement>; COUNTRIES: string[];
 }) {
-  const countryCounts = React.useMemo(() => {
-    const m: Record<string,number> = {};
-    allJobs.forEach(j => { if (j.country) m[j.country] = (m[j.country] || 0) + 1; });
-    return m;
-  }, [allJobs]);
+  const set = (k: keyof Filters, v: any) => setFilters(f => ({ ...f, [k]: v }));
+  const [open, setOpen] = React.useState(false);
+  const [draft, setDraft] = React.useState({ category: [] as string[], level: [] as string[], type: [] as string[], country: [] as string[], source: [] as string[], score: "any" as string });
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (open) setDraft({ category: filters.category, level: filters.level, type: filters.type, country: filters.country, source: filters.source, score: filters.score });
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const fn = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+  }, [open]);
+
+  const toggle = (key: keyof typeof draft, val: string) => setDraft(d => {
+    const arr = d[key] as string[];
+    return { ...d, [key]: arr.includes(val) ? arr.filter((x: string) => x !== val) : [...arr, val] };
+  });
+  const resetAll = () => setDraft({ category: [], level: [], type: [], country: [], source: [], score: "any" });
+  const apply = () => { setFilters(f => ({ ...f, ...draft, score: draft.score as Filters["score"] })); setOpen(false); };
+
+  const committed = countPanelFilters(filters);
+  const draftCount = countPanelFilters(draft);
+  const timeOpts: [Filters["time"], string][] = [["any","Any"],["24","24h"],["48","48h"],["72","72h"],["168","7d"]];
+  const groups: [keyof typeof draft, string, string[]][] = [
+    ["category", "Category", ["Engineering","Data","Product","Design"]],
+    ["level",    "Level",    ["Entry","Mid","Senior","Lead"]],
+    ["type",     "Work Type",["Remote","Onsite","Hybrid"]],
+    ["source",   "Source",   ["Greenhouse","Lever","Ashby","Workday","HiringCafe"]],
+    ["country",  "Country",  COUNTRIES.length ? COUNTRIES : ["USA","Canada","United Kingdom","Germany","France","India","Remote"]],
+  ];
+  const scoreOpts: [string, string][] = [["any","Any"],["60","≥60%"],["70","≥70%"],["80","≥80%"],["90","≥90%"]];
 
   return (
-    <>
-      {/* ── TOP BAR ── */}
-      <div className="topbar">
-        <button className={`scrape-btn${scraping ? " running" : ""}`} onClick={onScrape} disabled={scraping}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.refresh }} />
-          {scraping ? "Scraping…" : "Scrape Now"}
-        </button>
-        {scrapeMsg && !scraping && <span style={{ fontSize: 12, fontWeight: 600, color: "var(--st-applied)" }}>{scrapeMsg}</span>}
-        <div className="meta">
-          <div className="live-pip" />
-          {lastScraped ? <><span>Last scraped</span><b>{lastScraped}</b></> : <span>Never scraped</span>}
-          {totalJobs != null && totalJobs > 0 && <><span className="dot-sep" /><span><b className="mono">{totalJobs.toLocaleString()}</b> jobs indexed</span></>}
-        </div>
-        <div className="topbar-right">
-          <div className="job-count"><b>{count}</b> jobs</div>
-          <div className="seg">
-            {([["list", IC.list], ["kanban", IC.kanban]] as [string,string][]).map(([m, d]) => (
-              <button key={m} className={viewMode === m ? "on" : ""} onClick={() => setViewMode(m as ViewMode)} title={m}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: d }} />
-              </button>
-            ))}
-          </div>
-        </div>
+    <div className="filterbar">
+      {/* Role chip */}
+      <button className={`chip role`} onClick={() => setRoleOn(!roleOn)} style={{ opacity: roleOn ? 1 : 0.5 }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--violet)" }}>
+          <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>
+        </svg>
+        My Role: <b style={{ color: "var(--violet)", fontWeight: 600 }}>{role}</b>
+      </button>
+
+      {/* Search */}
+      <div className="search-wrap">
+        <svg className="s-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
+        </svg>
+        <input ref={searchRef} className="search-input" type="text" value={filters.q} onChange={e => set("q", e.target.value)} placeholder="Search titles, companies…" />
+        {!filters.q && <span className="kbd s-kbd">⌘K</span>}
       </div>
 
-      {/* ── FILTER BAR ── */}
-      <div className="filterbar">
-        {userRoles.length > 0 && (
-          <button className={`chip${myRolesOnly ? " on" : ""}`} onClick={() => setMyRolesOnly(!myRolesOnly)}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.target }} />
-            {myRolesOnly ? userRoles[0] : "All Roles"}
-          </button>
+      {/* Single Filters button + panel */}
+      <div ref={ref} style={{ position: "relative" }}>
+        <button className={`filters-btn${committed > 0 ? " has" : ""}`} onClick={() => setOpen(o => !o)}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 4h18l-7 8v6l-4 2v-8z"/>
+          </svg>
+          Filters
+          {committed > 0 && <span className="fb-count">{committed}</span>}
+          <svg className="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        {open && (
+          <div className="filter-panel">
+            <div className="fp-head">
+              <span className="fp-title">Filters</span>
+              <button className="fp-reset" onClick={resetAll}>Reset all</button>
+            </div>
+            <div className="fp-grid">
+              {groups.map(([key, label, opts]) => (
+                <div className="fp-group" key={key}>
+                  <div className="fp-group-label">{label}</div>
+                  <div className="fp-opts">
+                    {opts.map(o => {
+                      const arr = draft[key] as string[];
+                      return (
+                        <label key={o} className={`fp-check${arr.includes(o) ? " on" : ""}`} onClick={() => toggle(key, o)}>
+                          <span className="fp-box">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
+                          </span>
+                          {o}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+              <div className="fp-group span">
+                <div className="fp-group-label">Match Score</div>
+                <div className="fp-opts">
+                  {scoreOpts.map(([v, l]) => (
+                    <label key={v} className={`fp-radio${draft.score === v ? " on" : ""}`} onClick={() => setDraft(d => ({ ...d, score: v }))}>
+                      <span className="fp-dot" />
+                      {l}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="fp-foot">
+              <span className="fp-summary"><b>{draftCount}</b> filter{draftCount === 1 ? "" : "s"} selected</span>
+              <button className="fp-apply" onClick={apply}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
+                Apply filters
+              </button>
+            </div>
+          </div>
         )}
-        <div className="fb-divider" />
-        <div className="search-wrap">
-          <svg className="s-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.search }} />
-          <input ref={searchRef} className="search-input" type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search jobs, companies…" />
-          {!search && <span className="kbd s-kbd">⌘K</span>}
-        </div>
-        <div className="fb-divider" />
-        <FilterDropdown label="Category" options={["Engineering","Data","Product","Design"]} selected={filters.categories} onToggle={v => toggleArr("categories", v)} />
-        <FilterDropdown label="Level"    options={["Entry","Mid","Senior","Lead"]}           selected={filters.exps}       onToggle={v => toggleArr("exps", v)} />
-        <FilterDropdown label="Type"     options={["Remote","Onsite","Hybrid"]}              selected={filters.locTypes}   onToggle={v => toggleArr("locTypes", v)} />
-        <FilterDropdown label="Country"  options={COUNTRIES} selected={filters.countries}    onToggle={v => toggleArr("countries", v)} countMap={countryCounts} />
-        <FilterDropdown label="Source"   options={SOURCES}   selected={filters.sources}      onToggle={v => toggleArr("sources", v)} countMap={sourceCounts} />
-        <div className="fb-divider" />
-        <div className="segchips score">
-          {([0, 60, 70, 80, 90] as const).map(v => (
-            <button key={v} className={filters.minScore === v ? "on" : ""} onClick={() => setMinScore(v)}>
-              {v === 0 ? "Any" : `≥${v}%`}
-            </button>
-          ))}
-        </div>
-        <div className="segchips">
-          {(["24h","48h","72h","7d"] as const).map(o => (
-            <button key={o} className={filters.posted === o ? "on" : ""} onClick={() => setF("posted", o)}>{o}</button>
-          ))}
-        </div>
-        {filtersActive && (() => {
-          const n = [filters.categories.length, filters.exps.length, filters.locTypes.length,
-            filters.countries.length, filters.sources.length, search.trim() ? 1 : 0].reduce((a,b) => a+b, 0);
-          return (
-            <button className="clear-btn" onClick={onClearAll}>
-              <span className="n">{n}</span> Clear
-            </button>
-          );
-        })()}
       </div>
-    </>
+
+      <div className="fb-divider" />
+      <span className="fb-time-label">Posted</span>
+      <div className="segchips">
+        {timeOpts.map(([v, l]) => (
+          <button key={v} className={filters.time === v ? "on" : ""} onClick={() => set("time", v)}>{l}</button>
+        ))}
+      </div>
+    </div>
   );
 }

@@ -1,16 +1,175 @@
 import { useEffect, useState } from "react";
-import {
-  AreaChart, Area, BarChart, Bar, LineChart, Line,
-  XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend, Cell, PieChart, Pie,
-} from "recharts";
 import { api } from "../api";
-import {
-  Briefcase, CheckCircle2, Trophy, Sparkles,
-  FileText, Clock, MapPin, TrendingUp, Zap, SkipForward,
-} from "lucide-react";
 
-// ── utils ─────────────────────────────────────────────────────────────────────
+// ── StatCard with count-up animation ─────────────────────────────────────────
+function StatCard({ stat }: { stat: { label: string; value: number; delta: string; grad: [string, string] } }) {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    let raf: number;
+    const start = performance.now(); const dur = 900;
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - start) / dur);
+      const e = 1 - Math.pow(1 - p, 3);
+      setN(Math.round(stat.value * e));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [stat.value]);
+  return (
+    <div className="stat-card">
+      <div className="stat-glow" style={{ background: `linear-gradient(135deg, ${stat.grad[0]}, ${stat.grad[1]})` }} />
+      <div className="stat-label">{stat.label}</div>
+      <div className="stat-value">{n.toLocaleString()}</div>
+      <div className="stat-delta">{stat.delta}</div>
+    </div>
+  );
+}
+
+// ── Donut chart (SVG) ─────────────────────────────────────────────────────────
+function Donut({ data }: { data: Array<{ label: string; value: number; color: string }> }) {
+  const total = data.reduce((s, d) => s + d.value, 0);
+  const R = 52, C = 2 * Math.PI * R, gap = 2;
+  let offset = 0;
+  const [show, setShow] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setShow(true), 100); return () => clearTimeout(t); }, []);
+  return (
+    <div className="donut-wrap">
+      <svg width="140" height="140" viewBox="0 0 140 140">
+        <g transform="rotate(-90 70 70)">
+          {data.map((d, i) => {
+            const frac = d.value / total;
+            const len = show ? frac * C - gap : 0;
+            const dash = `${len} ${C - len}`;
+            const el = (
+              <circle key={i} cx="70" cy="70" r={R} fill="none" stroke={d.color} strokeWidth="14"
+                strokeDasharray={dash} strokeDashoffset={-offset}
+                style={{ transition: "stroke-dasharray .9s var(--ease), stroke-dashoffset .9s var(--ease)" }} />
+            );
+            offset += show ? frac * C : 0;
+            return el;
+          })}
+        </g>
+      </svg>
+      <div className="donut-center">
+        <b>{total}</b><span>tracked</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Monthly bars (CSS animated) ───────────────────────────────────────────────
+function MonthlyBars({ data }: { data: Array<{ m: string; scraped: number; applied: number; tailored: number }> }) {
+  const max = Math.max(...data.map(d => d.scraped), 1);
+  const series: [string, string][] = [["scraped","#6366f1"],["applied","#3b82f6"],["tailored","#7c3aed"]];
+  return (
+    <div className="mbars">
+      {data.map((d, i) => (
+        <div className="mbar-col" key={i}>
+          <div className="mbar-stack">
+            {series.map(([k, c]) => {
+              const v = k === "scraped" ? (d as any)[k] / max : ((d as any)[k] / 40);
+              return <div key={k} className="mbar" style={{ height: Math.max(3, v * 100) + "%", background: c, "--d": (i * 60) + "ms" } as React.CSSProperties} title={`${k}: ${(d as any)[k]}`} />;
+            })}
+          </div>
+          <span className="mbar-label">{d.m}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Area chart (SVG) ─────────────────────────────────────────────────────────
+function AreaChart({ scrape, applied }: { scrape: number[]; applied: number[] }) {
+  const w = 520, h = 120, max = Math.max(...scrape, 1);
+  const pts = (arr: number[], scale: number) =>
+    arr.map((v, i) => `${(i / (arr.length - 1)) * w},${h - (v / max) * h * scale}`);
+  const line = pts(scrape, 0.92);
+  const area = `0,${h} ${line.join(" ")} ${w},${h}`;
+  const appLine = pts(applied.map(v => v * 3), 0.92);
+  return (
+    <svg className="area-chart" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="rgba(124,58,237,.4)" />
+          <stop offset="100%" stopColor="rgba(124,58,237,0)" />
+        </linearGradient>
+      </defs>
+      <polygon points={area} fill="url(#areaGrad)" />
+      <polyline points={line.join(" ")} fill="none" stroke="#7c3aed" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+      <polyline points={appLine.join(" ")} fill="none" stroke="#22d3ee" strokeWidth="2" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+// ── Horizontal bars ───────────────────────────────────────────────────────────
+function HBars({ data }: { data: Array<{ country: string; count: number }> }) {
+  const max = Math.max(...data.map(d => d.count), 1);
+  return (
+    <div className="hbars">
+      {data.map((d, i) => (
+        <div className="hbar-row" key={i}>
+          <span className="hbar-label">{d.country}</span>
+          <div className="hbar-track">
+            <div className="hbar-fill" style={{ width: (d.count / max * 100) + "%", transitionDelay: (i * 70) + "ms" }} />
+          </div>
+          <span className="hbar-val">{d.count.toLocaleString()}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Vertical bars ─────────────────────────────────────────────────────────────
+function VBars({ data }: { data: Array<{ source: string; count: number; color: string }> }) {
+  const max = Math.max(...data.map(d => d.count), 1);
+  return (
+    <div className="vbars">
+      {data.map((d, i) => (
+        <div className="vbar-col" key={i}>
+          <div className="vbar-track">
+            <div className="vbar-fill" style={{ height: (d.count / max * 100) + "%", background: `var(${d.color})`, transitionDelay: (i * 70) + "ms" }} />
+          </div>
+          <span className="vbar-val">{(d.count / 1000).toFixed(1)}k</span>
+          <span className="vbar-label">{d.source}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Resume history list ───────────────────────────────────────────────────────
+function ResumeList({ title, accent, items, icon }: {
+  title: string; accent: string;
+  items: Array<{ company: string; title: string; when: string; location: string }>;
+  icon: string;
+}) {
+  const PATH: Record<string, string> = {
+    applied:   '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+    sparkles:  '<path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/>',
+  };
+  return (
+    <div className="rh-col">
+      <div className="rh-head" style={{ color: accent }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: PATH[icon] || PATH.applied }} />
+        {title}
+        <span className="rh-count">{items.length}</span>
+      </div>
+      <div className="rh-list">
+        {items.map((it, i) => (
+          <div className="rh-item" key={i}>
+            <span className="rh-num" style={{ color: accent, borderColor: accent + "55", background: accent + "18" }}>{i + 1}</span>
+            <div className="rh-main">
+              <div className="rh-title">{it.title}</div>
+              <div className="rh-sub">{it.company} · {it.location}</div>
+            </div>
+            <span className="rh-when">{it.when}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function timeAgo(iso: string) {
   if (!iso) return "";
@@ -20,112 +179,15 @@ function timeAgo(iso: string) {
     if (m < 60) return `${m}m ago`;
     const h = Math.floor(m / 60);
     if (h < 24) return `${h}h ago`;
-    const d = Math.floor(h / 24);
-    if (d < 7)  return `${d}d ago`;
-    return new Date(iso).toLocaleDateString("en-US",{month:"short",day:"numeric"});
+    return `${Math.floor(h / 24)}d ago`;
   } catch { return ""; }
 }
 
-const PALETTE = [
-  "#8b5cf6","#22d3ee","#10b981","#f59e0b",
-  "#ec4899","#6366f1","#06b6d4","#f97316","#84cc16","#ef4444",
-];
-
-const TT = ({ active, payload, label }: any) =>
-  active && payload?.length ? (
-    <div style={{background:"var(--bg-elevated)",border:"1px solid var(--border-default)",borderRadius:10,padding:"10px 14px",boxShadow:"var(--card-shadow)",fontSize:12}}>
-      <p style={{color:"var(--text-muted)",marginBottom:6,fontWeight:600}}>{label}</p>
-      {payload.map((p: any) => (
-        <p key={p.name} className="flex items-center gap-2 mb-0.5" style={{color:p.color}}>
-          <span className="w-1.5 h-1.5 rounded-full inline-block" style={{background:p.color}}/>
-          {p.name}: <span className="font-mono font-bold ml-auto pl-3">{p.value}</span>
-        </p>
-      ))}
-    </div>
-  ) : null;
-
-// ── Stat Card ─────────────────────────────────────────────────────────────────
-
-function Stat({ label, value, icon, gradient, delta }: {
-  label: string; value: number; icon: React.ReactNode;
-  gradient: string; delta?: string;
-}) {
-  return (
-    <div className={`relative overflow-hidden rounded-2xl p-5 ${gradient} border border-white/5`}>
-      {/* background glow */}
-      <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-white/5 blur-xl"/>
-      <div className="relative">
-        <div className="flex items-start justify-between">
-          <div className="w-10 h-10 rounded-xl bg-white/10 backdrop-blur flex items-center justify-center">
-            {icon}
-          </div>
-          {delta && (
-            <span className="text-[10px] font-semibold text-white/60 bg-white/10 px-2 py-0.5 rounded-full">
-              {delta}
-            </span>
-          )}
-        </div>
-        <p className="text-3xl font-black text-white mt-3 tabular-nums tracking-tight">{value}</p>
-        <p className="text-[11px] text-white/60 mt-0.5 font-medium">{label}</p>
-      </div>
-    </div>
-  );
-}
-
-// ── History Card ──────────────────────────────────────────────────────────────
-
-function HistCard({ job, rank, kind }: { job: any; rank: number; kind: "applied"|"tailored" }) {
-  const isApplied = kind === "applied";
-  return (
-    <div className="group flex items-start gap-3 p-3 rounded-xl bg-slate-800/40 border border-slate-700/30 hover:border-slate-600/60 hover:bg-slate-800/70 transition-all cursor-default">
-      <div className="relative shrink-0">
-        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-          isApplied ? "bg-blue-600/20 border border-blue-500/30" : "bg-violet-600/20 border border-violet-500/30"
-        }`}>
-          <FileText size={14} className={isApplied ? "text-blue-400" : "text-violet-400"}/>
-        </div>
-        <span className="absolute -top-1.5 -left-1.5 text-[9px] font-bold text-slate-500 bg-slate-900 rounded px-0.5">
-          #{rank}
-        </span>
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-2">
-          <p className="text-xs font-semibold text-slate-100 leading-snug truncate">
-            {job.company} — <span className="font-normal text-slate-300">{job.title}</span>
-          </p>
-          <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-            isApplied
-              ? "bg-green-500/15 text-green-400 border border-green-500/25"
-              : "bg-violet-500/15 text-violet-400 border border-violet-500/25"
-          }`}>
-            {isApplied ? "✓ Applied" : "⚡ Tailored"}
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-x-3 mt-1 text-[10px] text-slate-500">
-          {job.scraped_at && (
-            <span className="flex items-center gap-1"><Clock size={8}/>{timeAgo(job.scraped_at)}</span>
-          )}
-          {job.location && (
-            <span className="flex items-center gap-1 truncate max-w-[120px]">
-              <MapPin size={8}/>{job.location}
-            </span>
-          )}
-          {job.country && (
-            <span className="text-slate-600">{job.country}</span>
-          )}
-          {job.salary && <span className="text-green-400 font-medium">{job.salary}</span>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Main ──────────────────────────────────────────────────────────────────────
-
+// ── Main Dashboard ────────────────────────────────────────────────────────────
 export function Dashboard() {
-  const [data, setData]         = useState<any>(null);
-  const [loading, setLoading]   = useState(true);
+  const [data, setData]       = useState<any>(null);
   const [reminders, setReminders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     api.getAnalytics().then(setData).catch(console.error).finally(() => setLoading(false));
@@ -133,337 +195,191 @@ export function Dashboard() {
   }, []);
 
   if (loading) return (
-    <div className="flex items-center justify-center h-full">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"/>
-        <p className="text-slate-500 text-sm">Loading dashboard…</p>
+    <div className="dash-scroll"><div className="dash-inner" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 300 }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, color: "var(--tx-3)" }}>
+        <div className="tm-spinner" />
+        <span style={{ fontSize: 13 }}>Loading dashboard…</span>
       </div>
-    </div>
+    </div></div>
   );
-
   if (!data) return null;
 
-  const st       = data.by_status   || {};
-  const total    = data.total       || 0;
-  const applied  = st["applied"]    || 0;
-  const interview= st["interview"]  || 0;
-  const skipped  = st["skipped"]    || 0;
+  // Map API data to design shape
+  const st      = data.by_status || {};
+  const total   = data.total || 0;
+  const applied = st["applied"]   || 0;
+  const interview = st["interview"] || 0;
+  const skipped = st["skipped"]   || 0;
+  const newJobs = st["new"]       || 0;
   const tailored = (data.tailored_jobs || []).length;
-  const newJobs  = st["new"]        || 0;
 
-  const timeline    = data.timeline    || [];
-  const monthly     = data.monthly     || [];
-  const countryData = (data.by_country || []).map(([c,n]:[string,number]) => ({name:c,count:n}));
-  const sourceData  = (data.by_source  || []).map(([s,n]:[string,number]) => ({name:s,count:n}));
+  const stats = [
+    { label: "Total Scraped", value: total,     delta: "+scraping", grad: ["#475569","#64748b"] as [string,string] },
+    { label: "New Jobs",      value: newJobs,   delta: "pending",   grad: ["#6366f1","#818cf8"] as [string,string] },
+    { label: "Applied",       value: applied,   delta: "+this week", grad: ["#3b82f6","#60a5fa"] as [string,string] },
+    { label: "Interviews",    value: interview, delta: "upcoming",   grad: ["#10b981","#34d399"] as [string,string] },
+    { label: "AI Tailored",   value: tailored,  delta: "+this week", grad: ["#7c3aed","#a78bfa"] as [string,string] },
+  ];
 
-  const hasTimeline = timeline.some((d:any) => d.scraped > 0 || d.applied > 0);
-  const hasMonthly  = monthly.some((d:any)  => d.scraped > 0 || d.applied > 0);
-
-  const appliedJobs  = data.applied_jobs  || [];
-  const tailoredJobs = data.tailored_jobs || [];
-
-  // Pie data for status
-  const pieData = [
-    { name:"New",       value:newJobs,   color:"#64748b" },
-    { name:"Applied",   value:applied,   color:"#3b82f6" },
-    { name:"Interview", value:interview, color:"#10b981" },
-    { name:"Tailored",  value:tailored,  color:"#8b5cf6" },
-    { name:"Skipped",   value:skipped,   color:"#374151" },
+  const statusData = [
+    { label: "New",       value: newJobs,   color: "#3b82f6" },
+    { label: "Applied",   value: applied,   color: "#10b981" },
+    { label: "Interview", value: interview, color: "#f59e0b" },
+    { label: "Tailored",  value: tailored,  color: "#7c3aed" },
+    { label: "Skipped",   value: skipped,   color: "#64748b" },
   ].filter(d => d.value > 0);
+
+  // Monthly data
+  const monthly = (data.monthly || []).map((d: any) => ({
+    m: d.month || d.m || "",
+    scraped: d.scraped || 0,
+    applied: d.applied || 0,
+    tailored: d.tailored || 0,
+  }));
+
+  // 30-day activity
+  const timeline = data.timeline || [];
+  const activity = timeline.map((d: any) => d.scraped || 0);
+  const activityApplied = timeline.map((d: any) => d.applied || 0);
+
+  // Country/source bars
+  const byCountry = (data.by_country || []).map(([country, count]: [string, number]) => ({ country, count }));
+  const bySource  = (data.by_source  || []).map(([source, count]: [string, number]) => ({
+    source, count,
+    color: `--src-${source.toLowerCase().replace(/\s/g,"")}`,
+  }));
+
+  // Resume history
+  const appliedJobs  = (data.applied_jobs  || []).map((j: any) => ({ company: j.company, title: j.title, when: timeAgo(j.applied_at || j.scraped_at), location: j.location || "" }));
+  const tailoredJobs = (data.tailored_jobs || []).map((j: any) => ({ company: j.company, title: j.title, when: timeAgo(j.tailored_at || j.scraped_at), location: j.location || "" }));
+
+  // Reminders mapped
+  const remList = (reminders || []).map((r: any) => ({
+    kind: r.kind || "followup",
+    title: r.title, detail: r.detail,
+    when: r.when, tag: r.tag, urgent: !!r.urgent,
+  }));
+
+  const REMINDER_ICON: Record<string, string> = {
+    interview: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/>',
+    deadline:  '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    followup:  '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+  };
 
   return (
     <div className="dash-scroll">
       <div className="dash-inner">
 
-        {/* ── Header ── */}
+        {/* Header */}
         <div className="dash-head">
           <div>
             <h1 className="dash-title">Dashboard</h1>
             <p className="dash-sub">Your job search at a glance</p>
           </div>
-          <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-800/60 border border-slate-700/50 rounded-xl px-4 py-2">
-            <Zap size={12} className="text-yellow-400"/>
-            Last updated: {new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}
-          </div>
+          <div className="dash-updated"><span className="live-pip" />Updated {timeAgo(data.last_scraped_at || "")} ago</div>
         </div>
 
-        {/* ── Stat cards ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-          <Stat label="Total Scraped" value={total}
-            icon={<Briefcase size={16} className="text-white"/>}
-            gradient="bg-gradient-to-br from-slate-700 to-slate-800"
-            delta="All time"/>
-          <Stat label="New Jobs" value={newJobs}
-            icon={<FileText size={16} className="text-white"/>}
-            gradient="bg-gradient-to-br from-indigo-600 to-indigo-800"
-            delta="Pending"/>
-          <Stat label="Applied" value={applied}
-            icon={<CheckCircle2 size={16} className="text-white"/>}
-            gradient="bg-gradient-to-br from-blue-600 to-blue-800"
-            delta="All time"/>
-          <Stat label="Interviews" value={interview}
-            icon={<Trophy size={16} className="text-white"/>}
-            gradient="bg-gradient-to-br from-green-600 to-green-800"
-            delta="🎉"/>
-          <Stat label="AI Tailored" value={tailored}
-            icon={<Sparkles size={16} className="text-white"/>}
-            gradient="bg-gradient-to-br from-violet-600 to-violet-800"
-            delta="Resumes"/>
+        {/* Stat cards */}
+        <div className="stat-row">
+          {stats.map(s => <StatCard key={s.label} stat={s} />)}
         </div>
 
-        {/* ── Reminders ── */}
-        {reminders.length > 0 && (
-          <div className="bg-amber-950/30 border border-amber-700/40 rounded-2xl p-5">
-            <div className="flex items-center gap-2 mb-3">
-              <Clock size={15} className="text-amber-400"/>
-              <span className="text-sm font-semibold text-amber-300">Upcoming Deadlines & Interviews</span>
-              <span className="ml-auto text-xs text-amber-600 bg-amber-900/40 px-2 py-0.5 rounded-full">{reminders.length}</span>
+        {/* Reminders */}
+        {remList.length > 0 && (
+          <div className="reminders">
+            <div className="rem-head">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>
+              </svg>
+              Reminders
             </div>
-            <div className="space-y-2">
-              {reminders.map((r: any) => (
-                <div key={r.id} className="flex items-center gap-3 text-xs">
-                  <div className="flex-1 min-w-0">
-                    <span className="font-medium text-slate-200 truncate block">{r.title}</span>
-                    <span className="text-slate-500">{r.company}</span>
+            <div className="rem-list">
+              {remList.map((r, i) => (
+                <div className={`rem-card${r.urgent ? " urgent" : ""}`} key={i}>
+                  <div className={`rem-ico ${r.kind}`}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: REMINDER_ICON[r.kind] || REMINDER_ICON.followup }} />
                   </div>
-                  {r.days_until_interview !== null && (
-                    <span className={`px-2 py-0.5 rounded-full font-mono ${r.days_until_interview <= 1 ? "bg-red-900/60 text-red-300" : "bg-green-900/40 text-green-300"}`}>
-                      Interview {r.days_until_interview === 0 ? "today" : r.days_until_interview === 1 ? "tomorrow" : `in ${r.days_until_interview}d`}
-                    </span>
-                  )}
-                  {r.days_until_deadline !== null && (
-                    <span className={`px-2 py-0.5 rounded-full font-mono ${r.days_until_deadline <= 1 ? "bg-red-900/60 text-red-300" : "bg-amber-900/40 text-amber-300"}`}>
-                      Deadline {r.days_until_deadline === 0 ? "today" : r.days_until_deadline === 1 ? "tomorrow" : `in ${r.days_until_deadline}d`}
-                    </span>
-                  )}
+                  <div className="rem-main">
+                    <div className="rem-title">{r.title}</div>
+                    <div className="rem-detail">{r.detail}</div>
+                  </div>
+                  <div className="rem-right">
+                    <span className="rem-when">{r.when}</span>
+                    <span className={`rem-tag${r.urgent ? " urgent" : ""}`}>{r.tag}</span>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* ── Charts row 1: Monthly + 30-day ── */}
-        <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
-
-          {/* Monthly trends — takes 3/5 */}
-          <div className="xl:col-span-3 rounded-2xl p-5" style={{background:"var(--bg-elevated)",border:"1px solid var(--line)"}}>
-
-            <div className="flex items-center justify-between mb-5">
-              <div>
-                <h3 className="text-sm font-bold text-white">Monthly Trends</h3>
-                <p className="text-[11px] text-slate-500 mt-0.5">Last 6 months activity</p>
-              </div>
-              <div className="flex items-center gap-3 text-[10px] text-slate-500">
-                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>Scraped</span>
-                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-blue-500 inline-block"/>Applied</span>
-                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-violet-500 inline-block"/>Tailored</span>
-              </div>
-            </div>
-            {hasMonthly ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={monthly} barGap={4} margin={{top:4,right:4,left:-20,bottom:0}}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false}/>
-                  <XAxis dataKey="month" tick={{fill:"var(--tx-3)",fontSize:11,fontFamily:"var(--f-ui)"}} axisLine={false} tickLine={false}/>
-                  <YAxis tick={{fill:"var(--tx-3)",fontSize:10,fontFamily:"var(--f-ui)"}} axisLine={false} tickLine={false} allowDecimals={false}/>
-                  <Tooltip content={<TT/>} cursor={{fill:"rgba(255,255,255,0.03)"}}/>
-                  <Bar dataKey="scraped"  name="Scraped"  fill="#6366f1" radius={[4,4,0,0]} maxBarSize={22}/>
-                  <Bar dataKey="applied"  name="Applied"  fill="#3b82f6" radius={[4,4,0,0]} maxBarSize={22}/>
-                  <Bar dataKey="tailored" name="Tailored" fill="#8b5cf6" radius={[4,4,0,0]} maxBarSize={22}/>
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <EmptyChart h={200} msg="Scrape jobs to see monthly trends"/>
-            )}
-          </div>
-
-          {/* Pie status — takes 2/5 */}
-          <div className="xl:col-span-2 rounded-2xl p-5 bg-bg-elevated border border-line">
-            <div className="mb-5">
-              <h3 className="text-sm font-bold text-white">Status Breakdown</h3>
-              <p className="text-[11px] text-slate-500 mt-0.5">{total} total jobs</p>
-            </div>
-            {pieData.length > 0 ? (
-              <div className="flex flex-col items-center">
-                <ResponsiveContainer width="100%" height={150}>
-                  <PieChart>
-                    <Pie data={pieData} dataKey="value" cx="50%" cy="50%"
-                         innerRadius={40} outerRadius={68}
-                         paddingAngle={3} strokeWidth={0}>
-                      {pieData.map((d,i) => <Cell key={i} fill={d.color}/>)}
-                    </Pie>
-                    <Tooltip content={<TT/>}/>
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 mt-2 w-full">
-                  {pieData.map(d => (
-                    <div key={d.name} className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{background:d.color}}/>
-                      <span className="text-[10px] text-slate-400">{d.name}</span>
-                      <span className="text-[10px] font-mono text-white ml-auto">{d.value}</span>
-                    </div>
-                  ))}
+        {/* Chart grid */}
+        <div className="chart-grid">
+          {monthly.length > 0 && (
+            <div className="chart-card span2">
+              <div className="chart-head">
+                <span className="chart-title">Monthly Trends</span>
+                <div className="legend">
+                  <span><i style={{ background: "#6366f1" }} />Scraped</span>
+                  <span><i style={{ background: "#3b82f6" }} />Applied</span>
+                  <span><i style={{ background: "#7c3aed" }} />Tailored</span>
                 </div>
               </div>
-            ) : (
-              <EmptyChart h={150} msg="No data yet"/>
-            )}
-          </div>
-        </div>
-
-        {/* ── 30-day line chart ── */}
-        <div className="rounded-2xl p-5 bg-bg-elevated border border-line">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h3 className="text-sm font-bold text-white">30-Day Activity</h3>
-              <p className="text-[11px] text-slate-500 mt-0.5">Daily scraping and application activity</p>
+              <MonthlyBars data={monthly} />
             </div>
-          </div>
-          {hasTimeline ? (
-            <ResponsiveContainer width="100%" height={180}>
-              <AreaChart data={timeline} margin={{top:4,right:4,left:-20,bottom:0}}>
-                <defs>
-                  {[["gS","#6366f1"],["gA","#3b82f6"],["gT","#8b5cf6"]].map(([id,c]) => (
-                    <linearGradient key={id} id={id} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor={c} stopOpacity={0.25}/>
-                      <stop offset="95%" stopColor={c} stopOpacity={0}/>
-                    </linearGradient>
-                  ))}
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" vertical={false}/>
-                <XAxis dataKey="label" tick={{fill:"var(--tx-3)",fontSize:9,fontFamily:"var(--f-ui)"}} axisLine={false} tickLine={false} interval={4}/>
-                <YAxis tick={{fill:"var(--tx-3)",fontSize:9,fontFamily:"var(--f-ui)"}} axisLine={false} tickLine={false} allowDecimals={false}/>
-                <Tooltip content={<TT/>}/>
-                <Area type="monotone" dataKey="scraped"  name="Scraped"
-                      stroke="#6366f1" strokeWidth={2} fill="url(#gS)"
-                      dot={{r:2,fill:"#6366f1",strokeWidth:0}} activeDot={{r:4}}/>
-                <Area type="monotone" dataKey="applied"  name="Applied"
-                      stroke="#3b82f6" strokeWidth={2} fill="url(#gA)"
-                      dot={{r:2,fill:"#3b82f6",strokeWidth:0}} activeDot={{r:4}}/>
-                <Area type="monotone" dataKey="tailored" name="Tailored"
-                      stroke="#8b5cf6" strokeWidth={2} fill="url(#gT)"
-                      dot={{r:2,fill:"#8b5cf6",strokeWidth:0}} activeDot={{r:4}}/>
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <EmptyChart h={180} msg="No activity yet — start scraping!"/>
+          )}
+
+          {statusData.length > 0 && (
+            <div className="chart-card">
+              <div className="chart-head"><span className="chart-title">Status Breakdown</span></div>
+              <Donut data={statusData} />
+              <div className="donut-legend">
+                {statusData.map(s => (
+                  <span key={s.label}><i style={{ background: s.color }} />{s.label} <b>{s.value}</b></span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activity.length > 1 && (
+            <div className="chart-card span3">
+              <div className="chart-head">
+                <span className="chart-title">30-Day Activity</span>
+                <div className="legend">
+                  <span><i style={{ background: "#7c3aed" }} />Scraped</span>
+                  <span><i style={{ background: "#22d3ee" }} />Applications</span>
+                </div>
+              </div>
+              <AreaChart scrape={activity} applied={activityApplied} />
+            </div>
+          )}
+
+          {byCountry.length > 0 && (
+            <div className="chart-card span2">
+              <div className="chart-head"><span className="chart-title">Jobs by Country</span></div>
+              <HBars data={byCountry} />
+            </div>
+          )}
+
+          {bySource.length > 0 && (
+            <div className="chart-card">
+              <div className="chart-head"><span className="chart-title">Jobs by Source</span></div>
+              <VBars data={bySource} />
+            </div>
           )}
         </div>
 
-        {/* ── Country + Source ── */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-
-          <div className="rounded-2xl p-5 bg-bg-elevated border border-line">
-            <h3 className="text-sm font-bold text-white mb-1">🌍 Jobs by Country</h3>
-            <p className="text-[11px] text-slate-500 mb-4">Top markets</p>
-            {countryData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={countryData} layout="vertical"
-                          margin={{top:0,right:28,left:8,bottom:0}}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" horizontal={false}/>
-                  <XAxis type="number" tick={{fill:"var(--tx-3)",fontSize:10,fontFamily:"var(--f-ui)"}} axisLine={false} tickLine={false} allowDecimals={false}/>
-                  <YAxis type="category" dataKey="name" width={90}
-                         tick={{fill:"var(--tx-2)",fontSize:11,fontFamily:"var(--f-ui)"}} axisLine={false} tickLine={false}/>
-                  <Tooltip content={<TT/>} cursor={{fill:"rgba(255,255,255,0.03)"}}/>
-                  <Bar dataKey="count" name="Jobs" radius={[0,6,6,0]}>
-                    {countryData.map((_:any,i:number) => <Cell key={i} fill={PALETTE[i%PALETTE.length]}/>)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <EmptyChart h={220} msg="No country data yet"/>
-            )}
-          </div>
-
-          <div className="rounded-2xl p-5 bg-bg-elevated border border-line">
-            <h3 className="text-sm font-bold text-white mb-1">📡 Jobs by Source</h3>
-            <p className="text-[11px] text-slate-500 mb-4">Scraper performance</p>
-            {sourceData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={sourceData} margin={{top:0,right:8,left:-24,bottom:0}}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" vertical={false}/>
-                  <XAxis dataKey="name" tick={{fill:"var(--tx-3)",fontSize:10,fontFamily:"var(--f-ui)"}} axisLine={false} tickLine={false}/>
-                  <YAxis tick={{fill:"var(--tx-3)",fontSize:10,fontFamily:"var(--f-ui)"}} axisLine={false} tickLine={false} allowDecimals={false}/>
-                  <Tooltip content={<TT/>} cursor={{fill:"rgba(255,255,255,0.03)"}}/>
-                  <Bar dataKey="count" name="Jobs" radius={[6,6,0,0]}>
-                    {sourceData.map((_:any,i:number) => <Cell key={i} fill={PALETTE[i%PALETTE.length]}/>)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <EmptyChart h={220} msg="No source data yet"/>
-            )}
-          </div>
-        </div>
-
-        {/* ── Resume History ── */}
-        <div className="rounded-2xl p-5" style={{background:"var(--bg-elevated)",border:"1px solid var(--line)"}}>
-          <div className="flex items-center gap-2 mb-5">
-            <FileText size={15} className="text-blue-400"/>
-            <h3 className="text-sm font-bold text-white">Resume History</h3>
-          </div>
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-green-400"/>
-                  <span className="text-xs font-bold text-green-400">Applied Resumes</span>
-                </div>
-                <span className="text-xs text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full">
-                  {appliedJobs.length} total
-                </span>
-              </div>
-              {appliedJobs.length === 0 ? (
-                <div className="text-center py-8 text-slate-600 text-xs">
-                  <CheckCircle2 size={24} className="mx-auto mb-2 opacity-30"/>
-                  No applied jobs yet
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-80 overflow-y-auto pr-1 custom-scroll">
-                  {appliedJobs.map((job:any, i:number) => (
-                    <HistCard key={job.id} job={job} rank={i+1} kind="applied"/>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-violet-400"/>
-                  <span className="text-xs font-bold text-violet-400">Tailored Resumes</span>
-                </div>
-                <span className="text-xs text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full">
-                  {tailoredJobs.length} total
-                </span>
-              </div>
-              {tailoredJobs.length === 0 ? (
-                <div className="text-center py-8 text-slate-600 text-xs">
-                  <Sparkles size={24} className="mx-auto mb-2 opacity-30"/>
-                  No tailored resumes yet
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-80 overflow-y-auto pr-1 custom-scroll">
-                  {tailoredJobs.map((job:any, i:number) => (
-                    <HistCard key={job.id} job={job} rank={i+1} kind="tailored"/>
-                  ))}
-                </div>
-              )}
+        {/* Resume history */}
+        {(appliedJobs.length > 0 || tailoredJobs.length > 0) && (
+          <div className="resume-history">
+            <div className="rh-section-head">Resume History</div>
+            <div className="rh-cols">
+              <ResumeList title="Applied Resumes"  accent="#10b981" items={appliedJobs}  icon="applied"   />
+              <ResumeList title="Tailored Resumes" accent="#7c3aed" items={tailoredJobs} icon="sparkles"  />
             </div>
           </div>
-        </div>
+        )}
 
-      </div>
-    </div>
-  );
-}
-
-function EmptyChart({ h, msg }: { h: number; msg: string }) {
-  return (
-    <div className="flex items-center justify-center text-slate-600 text-xs" style={{height:h}}>
-      <div className="text-center">
-        <div className="text-2xl mb-2 opacity-30">📊</div>
-        {msg}
       </div>
     </div>
   );

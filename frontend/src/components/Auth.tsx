@@ -291,39 +291,41 @@ export default function Auth({ onSuccess }: Props) {
             <div style={S.card}>
 
               {/* Premium heading block */}
-              <div style={{ marginBottom: 28 }}>
+              <div style={{ marginBottom: 32 }}>
 
                 {/* Tagline */}
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
                   <span style={{
-                    width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
-                    background: "#6366f1", boxShadow: "0 0 8px rgba(99,102,241,0.7)",
+                    width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                    background: "#7c3aed", boxShadow: "0 0 10px rgba(124,58,237,0.7)",
                   }} />
                   <span style={{
-                    fontSize: 11, fontWeight: 700, letterSpacing: ".16em",
-                    textTransform: "uppercase", color: "#6366f1",
+                    fontSize: 11.5, fontWeight: 700, letterSpacing: ".18em",
+                    textTransform: "uppercase", color: "#7c3aed",
                   }}>Welcome</span>
                 </div>
 
-                {/* Main title */}
+                {/* Main title — very big */}
                 <h1 style={{
-                  fontSize: 26, fontWeight: 800, letterSpacing: "-.03em",
-                  color: "#0f172a", margin: "0 0 12px", lineHeight: 1.25,
+                  fontSize: 42, fontWeight: 800, letterSpacing: "-.03em",
+                  color: "#0f172a", margin: "0 0 16px", lineHeight: 1.15,
                 }}>
-                  Your digital career agent is<br />
+                  Your digital career agent is
+                  <br />
                   <em style={{
                     fontFamily: "Georgia, 'Times New Roman', serif",
                     fontStyle: "italic", fontWeight: 400,
-                    color: "#6366f1", letterSpacing: "-.01em",
+                    color: "#7c3aed", letterSpacing: "-.01em",
                   }}>fully prepared.</em>
                 </h1>
 
                 {/* Subtext */}
-                <p style={{ fontSize: 13.5, color: "#64748b", margin: 0, lineHeight: 1.65 }}>
+                <p style={{ fontSize: 15, color: "#64748b", margin: 0, lineHeight: 1.7 }}>
                   Access your current dashboard or register in under 30 seconds
                   to begin your automated outreach campaign immediately.
                 </p>
               </div>
+
 
               {/* Tab toggle */}
               <div style={S.tabs}>

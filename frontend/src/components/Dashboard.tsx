@@ -156,6 +156,7 @@ function ResumeList({ title, accent, items, icon }: {
         <span className="rh-count">{items.length}</span>
       </div>
       <div className="rh-list">
+        {items.length === 0 && <div style={{ padding: "16px 8px", fontSize: 12, color: "var(--tx-3)" }}>None yet</div>}
         {items.map((it, i) => (
           <div className="rh-item" key={i}>
             <span className="rh-num" style={{ color: accent, borderColor: accent + "55", background: accent + "18" }}>{i + 1}</span>
@@ -227,7 +228,7 @@ export function Dashboard() {
     { label: "Interview", value: interview, color: "#f59e0b" },
     { label: "Tailored",  value: tailored,  color: "#7c3aed" },
     { label: "Skipped",   value: skipped,   color: "#64748b" },
-  ].filter(d => d.value > 0);
+  ];
 
   // Monthly data
   const monthly = (data.monthly || []).map((d: any) => ({
@@ -315,70 +316,75 @@ export function Dashboard() {
 
         {/* Chart grid */}
         <div className="chart-grid">
-          {monthly.length > 0 && (
-            <div className="chart-card span2">
-              <div className="chart-head">
-                <span className="chart-title">Monthly Trends</span>
-                <div className="legend">
-                  <span><i style={{ background: "#6366f1" }} />Scraped</span>
-                  <span><i style={{ background: "#3b82f6" }} />Applied</span>
-                  <span><i style={{ background: "#7c3aed" }} />Tailored</span>
-                </div>
-              </div>
-              <MonthlyBars data={monthly} />
-            </div>
-          )}
-
-          {statusData.length > 0 && (
-            <div className="chart-card">
-              <div className="chart-head"><span className="chart-title">Status Breakdown</span></div>
-              <Donut data={statusData} />
-              <div className="donut-legend">
-                {statusData.map(s => (
-                  <span key={s.label}><i style={{ background: s.color }} />{s.label} <b>{s.value}</b></span>
-                ))}
+          <div className="chart-card span2">
+            <div className="chart-head">
+              <span className="chart-title">Monthly Trends</span>
+              <div className="legend">
+                <span><i style={{ background: "#6366f1" }} />Scraped</span>
+                <span><i style={{ background: "#3b82f6" }} />Applied</span>
+                <span><i style={{ background: "#7c3aed" }} />Tailored</span>
               </div>
             </div>
-          )}
+            {monthly.length > 0
+              ? <MonthlyBars data={monthly} />
+              : <div style={{ height: 150, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No data yet — scrape to populate</div>
+            }
+          </div>
 
-          {activity.length > 1 && (
-            <div className="chart-card span3">
-              <div className="chart-head">
-                <span className="chart-title">30-Day Activity</span>
-                <div className="legend">
-                  <span><i style={{ background: "#7c3aed" }} />Scraped</span>
-                  <span><i style={{ background: "#22d3ee" }} />Applications</span>
-                </div>
+          <div className="chart-card">
+            <div className="chart-head"><span className="chart-title">Status Breakdown</span></div>
+            {statusData.some(d => d.value > 0)
+              ? <>
+                  <Donut data={statusData.filter(d => d.value > 0)} />
+                  <div className="donut-legend">
+                    {statusData.map(s => (
+                      <span key={s.label}><i style={{ background: s.color }} />{s.label} <b>{s.value}</b></span>
+                    ))}
+                  </div>
+                </>
+              : <div style={{ height: 140, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No jobs tracked yet</div>
+            }
+          </div>
+
+          <div className="chart-card span3">
+            <div className="chart-head">
+              <span className="chart-title">30-Day Activity</span>
+              <div className="legend">
+                <span><i style={{ background: "#7c3aed" }} />Scraped</span>
+                <span><i style={{ background: "#22d3ee" }} />Applications</span>
               </div>
-              <AreaChart scrape={activity} applied={activityApplied} />
             </div>
-          )}
+            {activity.length > 1
+              ? <AreaChart scrape={activity} applied={activityApplied} />
+              : <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No activity data yet</div>
+            }
+          </div>
 
-          {byCountry.length > 0 && (
-            <div className="chart-card span2">
-              <div className="chart-head"><span className="chart-title">Jobs by Country</span></div>
-              <HBars data={byCountry} />
-            </div>
-          )}
+          <div className="chart-card span2">
+            <div className="chart-head"><span className="chart-title">Jobs by Country</span></div>
+            {byCountry.length > 0
+              ? <HBars data={byCountry} />
+              : <div style={{ height: 100, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No country data yet</div>
+            }
+          </div>
 
-          {bySource.length > 0 && (
-            <div className="chart-card">
-              <div className="chart-head"><span className="chart-title">Jobs by Source</span></div>
-              <VBars data={bySource} />
-            </div>
-          )}
+          <div className="chart-card">
+            <div className="chart-head"><span className="chart-title">Jobs by Source</span></div>
+            {bySource.length > 0
+              ? <VBars data={bySource} />
+              : <div style={{ height: 100, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No source data yet</div>
+            }
+          </div>
         </div>
 
-        {/* Resume history */}
-        {(appliedJobs.length > 0 || tailoredJobs.length > 0) && (
-          <div className="resume-history">
-            <div className="rh-section-head">Resume History</div>
-            <div className="rh-cols">
-              <ResumeList title="Applied Resumes"  accent="#10b981" items={appliedJobs}  icon="applied"   />
-              <ResumeList title="Tailored Resumes" accent="#7c3aed" items={tailoredJobs} icon="sparkles"  />
-            </div>
+        {/* Resume history — always show */}
+        <div className="resume-history">
+          <div className="rh-section-head">Resume History</div>
+          <div className="rh-cols">
+            <ResumeList title="Applied Resumes"  accent="#10b981" items={appliedJobs}  icon="applied"   />
+            <ResumeList title="Tailored Resumes" accent="#7c3aed" items={tailoredJobs} icon="sparkles"  />
           </div>
-        )}
+        </div>
 
       </div>
     </div>

@@ -305,7 +305,11 @@ export default function Auth({ onSuccess }: Props) {
               display: "flex", alignItems: "center", gap: 5,
             }}>
               <span style={{ color: "#7c3aed", fontSize: 13 }}>✦</span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: "#94a3b8", letterSpacing: ".05em" }}>Built by Jay</span>
+              <span style={{
+                fontSize: 12, fontWeight: 700, letterSpacing: ".05em",
+                background: "linear-gradient(120deg, #7c3aed, #06b6d4)",
+                WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
+              }}>Built by Jay</span>
             </div>
 
             <div style={S.card}>

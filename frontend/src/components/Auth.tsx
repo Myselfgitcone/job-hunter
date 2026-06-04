@@ -426,6 +426,7 @@ export function Auth({ onSuccess }: Props) {
 
         </div>
       </div>
+    </div>
     </>
   );
 }

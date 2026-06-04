@@ -290,6 +290,18 @@ export default function Auth({ onSuccess }: Props) {
           <div style={S.formSide}>
             <div style={S.card}>
 
+              {/* Heading */}
+              <div style={{ marginBottom: 24 }}>
+                <h1 style={{ fontSize: 28, fontWeight: 800, color: "#0f172a", letterSpacing: "-.03em", margin: "0 0 6px" }}>
+                  {mode === "login" ? "Welcome" : "Create Account"}
+                </h1>
+                <p style={{ fontSize: 14, color: "#64748b", margin: 0, lineHeight: 1.5 }}>
+                  {mode === "login"
+                    ? "Sign in to your AI job search dashboard."
+                    : "Start finding and winning jobs with AI."}
+                </p>
+              </div>
+
               {/* Tab toggle */}
               <div style={S.tabs}>
                 <div style={{ ...S.tabPill, transform: mode === "register" ? "translateX(100%)" : "translateX(0)" }} />
@@ -301,6 +313,7 @@ export default function Auth({ onSuccess }: Props) {
                   </button>
                 ))}
               </div>
+
 
               {/* Form fields */}
               <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>

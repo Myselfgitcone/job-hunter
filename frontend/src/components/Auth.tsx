@@ -292,7 +292,11 @@ export default function Auth({ onSuccess }: Props) {
 
               {/* Heading */}
               <div style={{ marginBottom: 24 }}>
-                <h1 style={{ fontSize: 28, fontWeight: 800, color: "#0f172a", letterSpacing: "-.03em", margin: "0 0 6px" }}>
+                <h1 style={{
+                  fontSize: 28, fontWeight: 800, letterSpacing: "-.03em", margin: "0 0 6px",
+                  background: "linear-gradient(135deg, #0f172a 0%, #7c3aed 60%, #06b6d4 100%)",
+                  WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
+                }}>
                   {mode === "login" ? "Welcome" : "Create Account"}
                 </h1>
                 <p style={{ fontSize: 14, color: "#64748b", margin: 0, lineHeight: 1.5 }}>

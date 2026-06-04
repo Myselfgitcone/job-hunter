@@ -85,7 +85,7 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
 
 /* ── Main Auth component ── */
 export default function Auth({ onSuccess }: Props) {
-  const [showSplash, setShowSplash] = useState(() => !localStorage.getItem("jh_splash_done"));
+  const [showSplash, setShowSplash] = useState(() => !sessionStorage.getItem("jh_splash_done"));
   const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName]         = useState("");
   const [email, setEmail]       = useState("");
@@ -143,7 +143,7 @@ export default function Auth({ onSuccess }: Props) {
 
   return (
     <>
-      {showSplash && <SplashScreen onDone={() => { localStorage.setItem("jh_splash_done","1"); setShowSplash(false); }} />}
+      {showSplash && <SplashScreen onDone={() => { sessionStorage.setItem("jh_splash_done","1"); setShowSplash(false); }} />}
 
       {/* RESET PASSWORD */}
       {resetToken && (

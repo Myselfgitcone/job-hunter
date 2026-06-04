@@ -139,33 +139,33 @@ export function Settings() {
   const activeP = PROVIDERS.find(p => p.value === form.ai_provider) ?? PROVIDERS[0];
 
   return (
-    <div style={{ padding: "32px 40px", maxWidth: 780, margin: "0 auto" }}>
-      <h2 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em", marginBottom: 28 }}>Settings</h2>
+    <div style={{ overflowY: "auto", padding: "24px", flex: 1 }}>
+      <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", flexDirection: "column", gap: 0 }}>
 
       {/* ── Security — Change Password ── */}
-      <section style={{ background: "var(--glass-hi,#fff)", border: "1px solid var(--glass-border,#e2e8f0)", borderRadius: 16, padding: "24px 28px", marginBottom: 24 }}>
+      <section style={{ background: "var(--glass-hi,rgba(255,255,255,0.04))", border: "1px solid var(--glass-border,rgba(255,255,255,0.08))", borderRadius: 16, padding: "24px 28px", marginBottom: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
           <span style={{ fontSize: 18 }}>🔐</span>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 700 }}>Security</div>
-            <div style={{ fontSize: 12, color: "var(--tx-3,#94a3b8)", marginTop: 1 }}>Change your account password</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--tx)" }}>Security</div>
+            <div style={{ fontSize: 12, color: "var(--tx-3)", marginTop: 1 }}>Change your account password</div>
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           <div style={{ gridColumn: "1/-1" }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--tx-2,#64748b)", display: "block", marginBottom: 5 }}>Current Password</label>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--tx-2)", display: "block", marginBottom: 5 }}>Current Password</label>
             <input type="password" value={pwCurrent} onChange={e => setPwCurrent(e.target.value)} placeholder="Your current password"
-              style={{ width: "100%", height: 40, border: "1.5px solid var(--glass-border,#e2e8f0)", borderRadius: 9, padding: "0 12px", fontSize: 13, outline: "none", background: "var(--surface,#f8fafc)", boxSizing: "border-box", fontFamily: "inherit", color: "var(--tx-1,#0f172a)" }} />
+              style={{ width: "100%", height: 40, border: "1.5px solid var(--glass-border)", borderRadius: 9, padding: "0 12px", fontSize: 13, outline: "none", background: "var(--surface)", boxSizing: "border-box", fontFamily: "inherit", color: "var(--tx)" }} />
           </div>
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--tx-2,#64748b)", display: "block", marginBottom: 5 }}>New Password</label>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--tx-2)", display: "block", marginBottom: 5 }}>New Password</label>
             <input type="password" value={pwNew} onChange={e => setPwNew(e.target.value)} placeholder="Min 8 characters"
-              style={{ width: "100%", height: 40, border: "1.5px solid var(--glass-border,#e2e8f0)", borderRadius: 9, padding: "0 12px", fontSize: 13, outline: "none", background: "var(--surface,#f8fafc)", boxSizing: "border-box", fontFamily: "inherit", color: "var(--tx-1,#0f172a)" }} />
+              style={{ width: "100%", height: 40, border: "1.5px solid var(--glass-border)", borderRadius: 9, padding: "0 12px", fontSize: 13, outline: "none", background: "var(--surface)", boxSizing: "border-box", fontFamily: "inherit", color: "var(--tx)" }} />
           </div>
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--tx-2,#64748b)", display: "block", marginBottom: 5 }}>Confirm New Password</label>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--tx-2)", display: "block", marginBottom: 5 }}>Confirm New Password</label>
             <input type="password" value={pwConfirm} onChange={e => setPwConfirm(e.target.value)} placeholder="Repeat new password"
-              style={{ width: "100%", height: 40, border: "1.5px solid var(--glass-border,#e2e8f0)", borderRadius: 9, padding: "0 12px", fontSize: 13, outline: "none", background: "var(--surface,#f8fafc)", boxSizing: "border-box", fontFamily: "inherit", color: "var(--tx-1,#0f172a)" }} />
+              style={{ width: "100%", height: 40, border: "1.5px solid var(--glass-border)", borderRadius: 9, padding: "0 12px", fontSize: 13, outline: "none", background: "var(--surface)", boxSizing: "border-box", fontFamily: "inherit", color: "var(--tx)" }} />
           </div>
         </div>
         {pwMsg && (
@@ -189,13 +189,13 @@ export function Settings() {
           } catch(e:any) { setPwMsg({ok:false, text: e.message || "Failed to change password"}); }
           finally { setPwSaving(false); }
         }} style={{ marginTop: 16, height: 40, padding: "0 20px", borderRadius: 9, border: "none",
-          background: "linear-gradient(135deg,#1d4ed8,#2563eb)", color: "#fff", fontSize: 13, fontWeight: 700,
-          cursor: pwSaving ? "not-allowed" : "pointer", opacity: pwSaving ? 0.7 : 1 }}>
+          background: "var(--grad)", color: "#fff", fontSize: 13, fontWeight: 700,
+          cursor: pwSaving ? "not-allowed" : "pointer", opacity: pwSaving ? 0.7 : 1,
+          boxShadow: "0 4px 14px -4px var(--violet-glow)" }}>
           {pwSaving ? "Saving…" : "Update Password"}
         </button>
       </section>
 
-      <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", flexDirection: "column", gap: 0 }}>
       {/* Header + Save */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
         <div>

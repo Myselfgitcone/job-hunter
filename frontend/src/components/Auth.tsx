@@ -439,15 +439,16 @@ export default function Auth({ onSuccess }: Props) {
 function Brand({ light }: { light?: boolean }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: light ? 40 : 28 }}>
-      <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+      <svg width="44" height="44" viewBox="0 0 32 32" fill="none">
         <circle cx="16" cy="16" r="14" stroke="#7c3aed" strokeWidth="2.5" fill="none" />
         <circle cx="16" cy="16" r="5" fill="#7c3aed" />
       </svg>
       <div>
-        <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: "-.02em", color: light ? "#0f172a" : "#0f172a" }}>
+        <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", color: "#0f172a" }}>
           Job <span style={{ color: "#7c3aed" }}>Hunter</span>
         </div>
       </div>
+
 
     </div>
   );

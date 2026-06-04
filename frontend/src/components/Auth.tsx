@@ -69,16 +69,15 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [onDone]);
 
-  /* 8 icons — 4 corners + 4 edges — all fly TO center */
   const icons = [
-    { tx: "-55vw", ty: "-55vh", delay: "0s"    },  // top-left
-    { tx:  "55vw", ty: "-55vh", delay: "0.06s" },  // top-right
-    { tx: "-55vw", ty:  "55vh", delay: "0.12s" },  // bottom-left
-    { tx:  "55vw", ty:  "55vh", delay: "0.06s" },  // bottom-right
-    { tx:     "0", ty: "-60vh", delay: "0.03s" },  // top-center
-    { tx:     "0", ty:  "60vh", delay: "0.09s" },  // bottom-center
-    { tx: "-60vw", ty:     "0", delay: "0.09s" },  // left-center
-    { tx:  "60vw", ty:     "0", delay: "0.03s" },  // right-center
+    { tx: "-55vw", ty: "-55vh", delay: "0s"    },
+    { tx:  "55vw", ty: "-55vh", delay: "0.06s" },
+    { tx: "-55vw", ty:  "55vh", delay: "0.12s" },
+    { tx:  "55vw", ty:  "55vh", delay: "0.06s" },
+    { tx:     "0", ty: "-60vh", delay: "0.03s" },
+    { tx:     "0", ty:  "60vh", delay: "0.09s" },
+    { tx: "-60vw", ty:     "0", delay: "0.09s" },
+    { tx:  "60vw", ty:     "0", delay: "0.03s" },
   ];
 
   return (
@@ -90,16 +89,17 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
       pointerEvents: fade ? "none" : "all",
     }}>
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Space+Grotesk:wght@400;500;700&display=swap');
         @keyframes toCenter {
           0%   { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0.25); }
-          60%  { opacity: 1; }
-          85%  { transform: translate(calc(var(--tx) * 0.04), calc(var(--ty) * 0.04)) scale(1.1); }
-          100% { opacity: 0.7; transform: translate(0, 0) scale(1); }
+          55%  { opacity: 1; }
+          80%  { opacity: 0.8; transform: translate(0, 0) scale(1.05); }
+          100% { opacity: 0; transform: translate(0, 0) scale(0.6); }
         }
         @keyframes centerPop {
           0%   { opacity: 0; transform: scale(0.4); }
-          55%  { opacity: 1; transform: scale(1.1); }
-          75%  { transform: scale(0.95); }
+          55%  { opacity: 1; transform: scale(1.06); }
+          75%  { transform: scale(0.97); }
           100% { opacity: 1; transform: scale(1); }
         }
         @keyframes glowPulse {
@@ -108,7 +108,7 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
         }
       `}</style>
 
-      {/* 8 icons flying from all directions to center */}
+      {/* 8 icons flying from all directions — fade OUT at center */}
       {icons.map((c, i) => (
         <div key={i} style={{
           position: "absolute",
@@ -116,40 +116,39 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
           marginTop: -35, marginLeft: -35,
           ["--tx" as any]: c.tx,
           ["--ty" as any]: c.ty,
-          animation: `toCenter 1.4s cubic-bezier(0.22,1,0.36,1) ${c.delay} forwards`,
+          animation: `toCenter 1.2s cubic-bezier(0.22,1,0.36,1) ${c.delay} forwards`,
           opacity: 0,
         }}>
-          <BullseyeLogo size={70} color="rgba(59,130,246,0.7)" />
+          <BullseyeLogo size={70} color="rgba(59,130,246,0.8)" />
         </div>
       ))}
 
-      {/* Center content — pops in AFTER icons converge (~1.1s) */}
+      {/* Center content — pops in after icons fade */}
       <div style={{
         position: "relative", zIndex: 10, textAlign: "center",
-        animation: "centerPop 0.7s cubic-bezier(0.34,1.56,0.64,1) 1.1s forwards",
+        animation: "centerPop 0.8s cubic-bezier(0.34,1.56,0.64,1) 1.1s forwards",
         opacity: 0,
       }}>
-        {/* Glowing ring behind logo */}
         <div style={{
           width: 160, height: 160, borderRadius: "50%",
           background: "rgba(37,99,235,0.1)",
           border: "1px solid rgba(37,99,235,0.3)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          margin: "0 auto 24px",
-          animation: "glowPulse 2s ease-in-out 1s infinite",
+          margin: "0 auto 28px",
+          animation: "glowPulse 2s ease-in-out 1.5s infinite",
         }}>
           <BullseyeLogo size={100} color="#3b82f6" />
         </div>
-        <div style={{ fontSize: 64, fontWeight: 900, color: "#fff", letterSpacing: "-0.04em", lineHeight: 1 }}>
+        <div style={{ fontSize: 68, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1, fontFamily: "'Playfair Display', Georgia, serif" }}>
           Welcome
         </div>
-        <div style={{ fontSize: 28, fontWeight: 600, color: "rgba(255,255,255,0.6)", marginTop: 8, letterSpacing: "0.02em" }}>
-          To
+        <div style={{ fontSize: 22, fontWeight: 400, color: "rgba(255,255,255,0.5)", marginTop: 10, fontFamily: "'Space Grotesk', sans-serif", fontStyle: "italic", letterSpacing: "0.04em" }}>
+          to
         </div>
-        <div style={{ fontSize: 36, fontWeight: 800, color: "#3b82f6", marginTop: 6, letterSpacing: "-0.02em" }}>
+        <div style={{ fontSize: 38, fontWeight: 700, color: "#3b82f6", marginTop: 6, fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-0.01em" }}>
           Job Hunter
         </div>
-        <div style={{ fontSize: 14, color: "rgba(255,255,255,0.35)", marginTop: 10, letterSpacing: "0.15em", textTransform: "uppercase", fontWeight: 600 }}>
+        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", marginTop: 12, letterSpacing: "0.2em", textTransform: "uppercase", fontWeight: 500, fontFamily: "'Space Grotesk', sans-serif" }}>
           Hunt Smarter, Not Harder
         </div>
       </div>

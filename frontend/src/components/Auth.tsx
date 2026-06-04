@@ -430,9 +430,9 @@ const styles = {
     width: "52%", flexShrink: 0,
     background: "linear-gradient(135deg, #ede9fe 0%, #f0f9ff 40%, #f8f7f4 100%)",
     padding: "52px 60px 52px 100px",
-    display: "flex", flexDirection: "column",
+    display: "flex", flexDirection: "column", justifyContent: "center",
     borderRight: "1px solid rgba(0,0,0,0.07)",
-    overflowY: "auto",
+    overflow: "hidden",
   } as React.CSSProperties,
 
   hero: {

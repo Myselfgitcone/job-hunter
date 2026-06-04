@@ -128,7 +128,7 @@ function VBars({ data }: { data: Array<{ source: string; count: number; color: s
       {data.map((d, i) => (
         <div className="vbar-col" key={i}>
           <div className="vbar-track">
-            <div className="vbar-fill" style={{ height: (d.count / max * 100) + "%", background: `var(${d.color})`, transitionDelay: (i * 70) + "ms" }} />
+            <div className="vbar-fill" style={{ height: (d.count / max * 100) + "%", background: d.color, transitionDelay: (i * 70) + "ms" }} />
           </div>
           <span className="vbar-val">{(d.count / 1000).toFixed(1)}k</span>
           <span className="vbar-label">{d.source}</span>
@@ -245,9 +245,19 @@ export function Dashboard() {
 
   // Country/source bars
   const byCountry = (data.by_country || []).map(([country, count]: [string, number]) => ({ country, count }));
+  const SRC_COLORS: Record<string, string> = {
+    greenhouse:  "#22c55e",
+    ashby:       "#ef4444",
+    lever:       "#8b5cf6",
+    workday:     "#f59e0b",
+    hiringcafe:  "#ec4899",
+    linkedin:    "#3b82f6",
+    indeed:      "#f97316",
+    greenhouse_job_board: "#22c55e",
+  };
   const bySource  = (data.by_source  || []).map(([source, count]: [string, number]) => ({
     source, count,
-    color: `--src-${source.toLowerCase().replace(/\s/g,"")}`,
+    color: SRC_COLORS[source.toLowerCase().replace(/\s/g,"")] || "#6366f1",
   }));
 
   // Resume history
@@ -277,7 +287,7 @@ export function Dashboard() {
             <h1 className="dash-title">Dashboard</h1>
             <p className="dash-sub">Your job search at a glance</p>
           </div>
-          <div className="dash-updated"><span className="live-pip" />Updated {timeAgo(data.last_scraped_at || "")} ago</div>
+          <div className="dash-updated"><span className="live-pip" />{data.last_scraped_at ? `Updated ${timeAgo(data.last_scraped_at)} ago` : "Not yet scraped"}</div>
         </div>
 
         {/* Stat cards */}

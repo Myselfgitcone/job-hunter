@@ -200,19 +200,56 @@ export default function Auth({ onSuccess }: Props) {
               and tailor your resume in one click — all from one keyboard-first workspace.
             </p>
 
-            {/* Feature bullets */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 32 }}>
-              {[
-                { icon: "🕐", text: "Auto-scrape 6,800+ roles across 5 sources" },
-                { icon: "🎯", text: "AI match scoring tuned to your profile" },
-                { icon: "📄", text: "One-click resume tailoring & cover letters" },
-              ].map(f => (
-                <div key={f.text} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={S.featureIco}>{f.icon}</div>
-                  <span style={{ fontSize: 13.5, color: "#334155", fontWeight: 500 }}>{f.text}</span>
-                </div>
-              ))}
+            {/* What's waiting for you */}
+            <div style={{ marginTop: 32 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "#94a3b8", marginBottom: 16 }}>
+                What's waiting for you
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                {[
+                  {
+                    icon: "🕐",
+                    title: "Auto-scrape on your schedule",
+                    desc: "New jobs arrive every hour automatically, or trigger a run anytime with one click.",
+                    badge: null,
+                  },
+                  {
+                    icon: "🎯",
+                    title: "AI fit score on every job",
+                    desc: "Each job card shows a 0–100 match score. Filter by threshold — only open what's worth it.",
+                    badge: null,
+                  },
+                  {
+                    icon: "📄",
+                    title: "Resume tailored per job",
+                    desc: "ATS score before & after. Keywords rewritten for each specific JD.",
+                    badge: null,
+                  },
+                  {
+                    icon: "⚡",
+                    title: "Auto Apply",
+                    desc: "Review, tailor & submit — your application queue, managed for you.",
+                    badge: "Coming Soon",
+                  },
+                ].map(f => (
+                  <div key={f.title} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                    <div style={S.featureIco}>{f.icon}</div>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                        <span style={{ fontSize: 13.5, fontWeight: 700, color: "#0f172a" }}>{f.title}</span>
+                        {f.badge && (
+                          <span style={{ fontSize: 10, fontWeight: 700, background: "rgba(124,58,237,0.1)", color: "#7c3aed", border: "1px solid rgba(124,58,237,0.25)", borderRadius: 5, padding: "1px 7px", letterSpacing: ".04em", textTransform: "uppercase" }}>
+                            {f.badge}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 12.5, color: "#64748b", lineHeight: 1.55 }}>{f.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
+
 
             {/* Stats row */}
             <div style={{ display: "flex", gap: 28, marginTop: 32 }}>

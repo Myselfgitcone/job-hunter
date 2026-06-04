@@ -51,10 +51,12 @@ export function JobList({ jobs, selectedId, onSelect, onQualifyUpdated, emptySta
   // Empty state
   if (jobs.length === 0) {
     return (
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, padding: 32, textAlign: "center", color: "var(--text-muted)" }}>
-        <div style={{ fontSize: 32, opacity: 0.3 }}>🔍</div>
-        <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>No jobs match filters</div>
-        {emptyState && <div style={{ fontSize: 11 }}>{emptyState}</div>}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "70%", gap: 12, padding: 24, textAlign: "center" }}>
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--text-disabled)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
+        </svg>
+        <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>No jobs match your filters</div>
+        {emptyState && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{emptyState}</div>}
       </div>
     );
   }

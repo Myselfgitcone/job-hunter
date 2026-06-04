@@ -21,20 +21,20 @@ function BullseyeLogo({ size = 40, color = "#2563eb" }: { size?: number; color?:
 /* ── Animated pulse rings (right panel decoration) ── */
 function PulseRings() {
   return (
-    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", overflow: "hidden" }}>
       {[1, 2, 3, 4].map(i => (
         <div key={i} style={{
           position: "absolute",
           width: i * 140, height: i * 140,
           borderRadius: "50%",
-          border: "1px solid rgba(255,255,255,0.07)",
+          border: "1px solid rgba(255,255,255,0.12)",
           animation: `ringPulse 4s ease-in-out ${i * 0.6}s infinite`,
         }} />
       ))}
       <style>{`
         @keyframes ringPulse {
-          0%, 100% { opacity: 0.4; transform: scale(1); }
-          50% { opacity: 1; transform: scale(1.04); }
+          0%, 100% { opacity: 0.3; transform: scale(1); }
+          50% { opacity: 1; transform: scale(1.08); }
         }
       `}</style>
     </div>
@@ -123,10 +123,10 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
         </div>
       ))}
 
-      {/* Center content — pops in after icons arrive */}
+      {/* Center content — pops in AFTER icons converge (~1.1s) */}
       <div style={{
         position: "relative", zIndex: 10, textAlign: "center",
-        animation: "centerPop 0.7s cubic-bezier(0.34,1.56,0.64,1) 0.5s forwards",
+        animation: "centerPop 0.7s cubic-bezier(0.34,1.56,0.64,1) 1.1s forwards",
         opacity: 0,
       }}>
         {/* Glowing ring behind logo */}

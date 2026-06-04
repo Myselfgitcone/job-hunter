@@ -342,12 +342,19 @@ export default function Auth({ onSuccess }: Props) {
 
               {/* Form fields */}
               <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {mode === "register" && (
+                {/* Full Name — always reserves space, hidden in login mode */}
+                <div style={{
+                  overflow: "hidden",
+                  maxHeight: mode === "register" ? "80px" : "0px",
+                  opacity: mode === "register" ? 1 : 0,
+                  transition: "max-height 0.25s ease, opacity 0.2s ease",
+                }}>
                   <Field label="Full Name">
                     <input style={S.input} type="text" value={name} onChange={e => setName(e.target.value)}
-                      placeholder="Your name" required autoFocus />
+                      placeholder="Your name" required={mode === "register"} autoFocus={mode === "register"} />
                   </Field>
-                )}
+                </div>
+
 
                 <Field label="Email">
                   <input style={S.input} type="email" value={email} onChange={e => setEmail(e.target.value)}

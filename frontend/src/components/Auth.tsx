@@ -60,8 +60,60 @@ function Counter({ to, duration = 1600 }: { to: number; duration?: number }) {
   return <>{val.toLocaleString()}</>;
 }
 
+/* ── Splash Screen ── */
+function SplashScreen({ onDone }: { onDone: () => void }) {
+  const [fade, setFade] = useState(false);
+  useEffect(() => {
+    const t1 = setTimeout(() => setFade(true), 2400);
+    const t2 = setTimeout(onDone, 3000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [onDone]);
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 9999,
+      background: "linear-gradient(155deg, #0c1a3a 0%, #0f2051 45%, #081020 100%)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      opacity: fade ? 0 : 1, transition: "opacity 0.6s ease",
+      pointerEvents: fade ? "none" : "all",
+    }}>
+      <style>{`
+        @keyframes fromTL { 0% { transform: translate(-70vw,-70vh) scale(0.2) rotate(-30deg); opacity:0; } 70% { opacity:1; } 100% { transform: translate(0,0) scale(1) rotate(0deg); opacity:1; } }
+        @keyframes fromTR { 0% { transform: translate(70vw,-70vh) scale(0.2) rotate(30deg); opacity:0; } 70% { opacity:1; } 100% { transform: translate(0,0) scale(1) rotate(0deg); opacity:1; } }
+        @keyframes fromBL { 0% { transform: translate(-70vw,70vh) scale(0.2) rotate(30deg); opacity:0; } 70% { opacity:1; } 100% { transform: translate(0,0) scale(1) rotate(0deg); opacity:1; } }
+        @keyframes fromBR { 0% { transform: translate(70vw,70vh) scale(0.2) rotate(-30deg); opacity:0; } 70% { opacity:1; } 100% { transform: translate(0,0) scale(1) rotate(0deg); opacity:1; } }
+        @keyframes splashCenter { 0% { opacity:0; transform:scale(0.7); } 40% { opacity:1; transform:scale(1.05); } 60% { transform:scale(1); } 100% { opacity:1; } }
+      `}</style>
+
+      {/* Corner icons */}
+      {[
+        { anim: "fromTL", top: "12%",    left: "12%" },
+        { anim: "fromTR", top: "12%",    right: "12%" },
+        { anim: "fromBL", bottom: "12%", left: "12%" },
+        { anim: "fromBR", bottom: "12%", right: "12%" },
+      ].map((c, i) => (
+        <div key={i} style={{
+          position: "absolute", ...(c as any),
+          animation: `${c.anim} 1.6s cubic-bezier(0.34,1.2,0.64,1) ${i * 0.08}s forwards`,
+          opacity: 0,
+        }}>
+          <BullseyeLogo size={36} color="rgba(59,130,246,0.55)" />
+        </div>
+      ))}
+
+      {/* Center content */}
+      <div style={{ textAlign: "center", animation: "splashCenter 0.8s 0.3s ease forwards", opacity: 0 }}>
+        <BullseyeLogo size={72} color="#3b82f6" />
+        <div style={{ fontSize: 36, fontWeight: 800, color: "#fff", marginTop: 20, letterSpacing: "-0.03em" }}>Welcome</div>
+        <div style={{ fontSize: 14, color: "rgba(255,255,255,0.45)", marginTop: 8, letterSpacing: "0.05em" }}>Job Hunter — Hunt Smarter, Not Harder</div>
+      </div>
+    </div>
+  );
+}
+
 export function Auth({ onSuccess }: Props) {
   const [mode, setMode]             = useState<"login" | "register">("login");
+  const [showSplash, setShowSplash] = useState(true);
   const [email, setEmail]           = useState("");
   const [password, setPassword]     = useState("");
   const [name, setName]             = useState("");
@@ -111,7 +163,9 @@ export function Auth({ onSuccess }: Props) {
   };
 
   return (
-    <div style={{ display: "flex", height: "100vh", fontFamily: "'Inter', system-ui, sans-serif", overflow: "hidden" }}>
+    <>
+      {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
+      <div style={{ display: "flex", height: "100vh", fontFamily: "'Inter', system-ui, sans-serif", overflow: "hidden" }}>
 
       {/* ══════════════════════════════════════════
           LEFT — Clean white form panel
@@ -138,11 +192,11 @@ export function Auth({ onSuccess }: Props) {
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "32px 40px" }}>
           <div style={{ width: "100%", maxWidth: 380 }}>
 
-            {/* Heading */}
-            <h1 style={{ fontSize: 28, fontWeight: 800, color: "#0f172a", margin: "0 0 6px", letterSpacing: "-0.03em" }}>
+            {/* Heading — centered */}
+            <h1 style={{ fontSize: 28, fontWeight: 800, color: "#0f172a", margin: "0 0 6px", letterSpacing: "-0.03em", textAlign: "center" }}>
               {mode === "login" ? "Welcome" : "Create your account"}
             </h1>
-            <p style={{ fontSize: 14, color: "#64748b", margin: "0 0 28px", lineHeight: 1.5 }}>
+            <p style={{ fontSize: 14, color: "#64748b", margin: "0 0 28px", lineHeight: 1.5, textAlign: "center" }}>
               {mode === "login"
                 ? "Sign in to your AI job search dashboard."
                 : "Start finding and winning jobs with AI."}
@@ -372,7 +426,7 @@ export function Auth({ onSuccess }: Props) {
 
         </div>
       </div>
-    </div>
+    </>
   );
 }
 

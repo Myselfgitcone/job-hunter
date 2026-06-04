@@ -49,6 +49,8 @@ const IC: Record<string,string> = {
   kanban:   "<rect x=\"3\" y=\"4\" width=\"5\" height=\"16\" rx=\"1\"/><rect x=\"10\" y=\"4\" width=\"5\" height=\"11\" rx=\"1\"/><rect x=\"17\" y=\"4\" width=\"4\" height=\"14\" rx=\"1\"/>",
   search:   "<circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"m21 21-4.3-4.3\"/>",
   trash:    "<path d=\"M4 7h16\"/><path d=\"M9 7V5h6v2\"/><path d=\"M6 7l1 13h10l1-13\"/>",
+  moon:     "<path d=\"M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z\"/>",
+  sun:      "<circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4\"/>",
 };
 
 function timeAgo(iso: string): string {
@@ -75,6 +77,7 @@ export default function App() {
 
   const [view, setView]             = useState<View>("jobs");
   const [viewMode, setViewMode]     = useState<ViewMode>("list");
+  const [listMode, setListMode]     = useState<"compact"|"cards">("compact");
   const [jobs, setJobs]             = useState<Job[]>([]);
   const [allJobs, setAllJobs]       = useState<Job[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -345,10 +348,11 @@ export default function App() {
   const handleNav = (v: string) => { if (v === "tailor") { setTailorOpen(true); return; } setView(v as View); };
   const filtersActive = filters.posted !== "72h" || filters.countries.length > 0 || filters.locTypes.length > 0 || filters.sources.length > 0 || filters.status !== "all" || filters.role !== "" || filters.exps.length > 0 || filters.categories.length > 0 || filters.minScore > 0 || search.trim() !== "";
   const navItems = [
-    { id: "jobs", label: "Jobs", ic: IC.search },
-    { id: "dashboard", label: "Dashboard", ic: IC.dash },
-    { id: "profile", label: "My Profile", ic: IC.user },
-    { id: "settings", label: "Settings", ic: IC.settings },
+    { id: "jobs",      label: "Jobs",       ic: IC.search   },
+    { id: "dashboard", label: "Dashboard",  ic: IC.dash     },
+    { id: "profile",   label: "My Profile", ic: IC.user     },
+    { id: "settings",  label: "Settings",   ic: IC.settings },
+    { id: "tailor",    label: "Quick Tailor", ic: IC.sparkles },
   ];
 
   // ── Auth gate ────────────────────────────────────────────────────────────
@@ -379,40 +383,48 @@ export default function App() {
     <div className="app">
       {/* ── SIDEBAR ── */}
       <aside className="sidebar">
+        {/* Brand */}
         <div className="brand">
-          <div className="brand-mark">
-            <div className="brand-dot" />
-          </div>
+          <div className="brand-mark"><span className="brand-dot" /></div>
           <div className="brand-text">
             <div className="brand-name">Job <span className="hl">Hunter</span></div>
             <div className="brand-sub">Hunt Smarter, Not Harder</div>
           </div>
         </div>
 
-        <div className="nav-group">
+        {/* Nav */}
+        <div className="nav-label">Workspace</div>
+        <nav className="nav-group">
           {navItems.map(n => {
             const active = view === n.id;
             return (
-              <button key={n.id} onClick={() => handleNav(n.id)}
-                className={`nav-item${active ? " active" : ""}`}>
+              <a key={n.id} onClick={() => handleNav(n.id)}
+                className={`nav-item${active ? " active" : ""}`} style={{ cursor: "pointer" }}>
                 <Ic d={n.ic} size={16} />
                 {n.label}
-              </button>
+                {n.id === "jobs" && <span className="nav-count">{filteredJobs.length}</span>}
+              </a>
             );
           })}
-          <button onClick={() => setTailorOpen(true)}
-            className="nav-item" style={{ color: "var(--violet)" }}>
-            <Ic d={IC.sparkles} size={16} color="var(--violet)" />
-            Quick Tailor
-          </button>
-        </div>
+        </nav>
 
         <div className="sidebar-spacer" />
 
+        {/* Quick actions hint */}
+        <div className="cmd-hint" onClick={() => { setView("jobs"); setTimeout(() => searchRef.current?.focus(), 0); }}>
+          <Ic d={IC.search} size={14} />
+          Quick actions
+          <span className="kbd" style={{ marginLeft: "auto" }}>⌘K</span>
+        </div>
+
         {/* Theme toggle */}
         <div className="theme-switch">
-          <button className={isDark ? "on" : ""} onClick={() => setIsDark(true)}>🌙 Dark</button>
-          <button className={!isDark ? "on" : ""} onClick={() => setIsDark(false)}>☀️ Light</button>
+          <button className={isDark ? "on" : ""} onClick={() => setIsDark(true)}>
+            <Ic d={IC.moon} size={14} /> Dark
+          </button>
+          <button className={!isDark ? "on" : ""} onClick={() => setIsDark(false)}>
+            <Ic d={IC.sun} size={14} /> Light
+          </button>
         </div>
 
         {/* User card */}
@@ -420,7 +432,7 @@ export default function App() {
           <div className="user-av">{initials}</div>
           <div className="user-meta">
             <div className="user-name">{profileName.split(" ")[0] || currentUser?.email?.split("@")[0] || "User"}</div>
-            <div className="user-mail">{userSettings?.profile_visa || "Job Hunter"}</div>
+            <div className="user-mail">{userSettings?.profile_visa || currentUser?.email || "Job Hunter"}</div>
           </div>
           <button className="user-logout" onClick={handleLogout} title="Sign out">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -441,6 +453,7 @@ export default function App() {
         {view === "jobs" && (
           <>
             <Topbar
+              totalJobs={allJobs.length}
               scraping={scraping} scrapeMsg={scrapeMsg} lastScraped={lastScrapedDisplay}
               onScrape={handleScrape} count={filteredJobs.length}
               viewMode={viewMode} setViewMode={setViewMode} IC={IC}
@@ -454,18 +467,32 @@ export default function App() {
               myRolesOnly={myRolesOnly} setMyRolesOnly={setMyRolesOnly}
               userRoles={Array.isArray(userSettings?.job_roles) ? userSettings.job_roles : JSON.parse(userSettings?.job_roles || '[]')}
             />
-            {viewMode === "kanban" ? (
+              {scraping && (
+              <div className="scrape-banner">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--violet)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: "spin .9s linear infinite", flexShrink: 0 }} dangerouslySetInnerHTML={{ __html: IC.refresh }} />
+                Scraping sources for new roles…
+                <div className="bar"><i /></div>
+              </div>
+            )}
+          {viewMode === "kanban" ? (
               <Kanban jobs={filteredJobs} onStatusChange={(id, s) => handleStatusChange(id, s as JobStatus)} onSelect={id => { setViewMode("list"); handleSelect(id); }} />
             ) : (
               <div className="jobs-body">
                 <div className="list-pane">
                   <div className="list-head">
-                    <span className="mono" style={{ fontSize: 11, color: "var(--tx-3)" }}>{filteredJobs.length} jobs</span>
-                    <button onClick={handleClearAll} className="btn btn-ghost btn-danger" style={{ height: 24, padding: "0 8px", fontSize: 11, border: "none" }}>
-                      <Ic d={IC.trash} size={12} /> Clear All
-                    </button>
+                    <span className="sort">
+                      Sorted by <b style={{ color: "var(--tx-2)" }}>match score</b>
+                    </span>
+                    <div className="seg" style={{ padding: 2 }}>
+                      <button className={listMode === "compact" ? "on" : ""} title="Compact rows" onClick={() => setListMode("compact")}>
+                        <Ic d={IC.list} size={15} />
+                      </button>
+                      <button className={listMode === "cards" ? "on" : ""} title="Padded cards" onClick={() => setListMode("cards")}>
+                        <Ic d='<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>' size={15} />
+                      </button>
+                    </div>
                   </div>
-                  <div className="list-scroll">
+                  <div className={`list-scroll${listMode === "cards" ? " cards" : ""}`}>
                     {loading ? (
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "40%", gap: 10, color: "var(--tx-3)" }}><Spinner size={18} /> Loading...</div>
                     ) : (
@@ -473,10 +500,18 @@ export default function App() {
                         jobs={filteredJobs}
                         selectedId={selectedId}
                         onSelect={handleSelect}
+                        onSkip={id => handleStatusChange(id, "skipped")}
                         onQualifyUpdated={(id, r) => updateJob(id, { qualify_result: r })}
                         emptyState={allJobs.length === 0 ? "Click Scrape Now to fetch jobs" : "Try clearing filters"}
+                        mode={listMode}
                       />
                     )}
+                  </div>
+                  <div className="kbd-hint-row">
+                    <span className="grp"><span className="kbd">j</span><span className="kbd">k</span> navigate</span>
+                    <span className="grp"><span className="kbd">↵</span> open</span>
+                    <span className="grp"><span className="kbd">s</span> skip</span>
+                    <span className="grp" style={{ marginLeft: "auto" }}><span className="kbd">⌘K</span> search</span>
                   </div>
                 </div>
                 <JobDetail job={selectedJob} tab={tab} setTab={setTab} onUpdate={(patch: Partial<Job>) => selectedJob && updateJob(selectedJob.id, patch)} onToast={toast} busy={busy} runAction={runAction} />
@@ -584,12 +619,12 @@ function FilterDropdown({ label, options, selected, onToggle, countMap }: {
 }
 
 // ── Topbar + FilterBar ─────────────────────────────────────────────────────────
-function Topbar({ scraping, scrapeMsg, lastScraped, onScrape, count, viewMode, setViewMode, IC,
+function Topbar({ scraping, scrapeMsg, lastScraped, onScrape, count, totalJobs, viewMode, setViewMode, IC,
   filters, setF, toggleArr, SOURCES, COUNTRIES, allJobs, sourceCounts,
   filtersActive, search, setSearch, searchRef, onClearAll,
   myRolesOnly, setMyRolesOnly, userRoles, setMinScore }: {
   scraping: boolean; scrapeMsg: string; lastScraped: string; onScrape: () => void;
-  count: number; viewMode: string; setViewMode: (m: ViewMode) => void; IC: Record<string,string>;
+  count: number; totalJobs?: number; viewMode: string; setViewMode: (m: ViewMode) => void; IC: Record<string,string>;
   filters: Filters; setF: (k: "posted"|"status"|"role", v: string) => void;
   toggleArr: (k: "categories"|"exps"|"locTypes"|"countries"|"sources", val: string) => void;
   SOURCES: string[]; COUNTRIES: string[]; allJobs: Job[]; sourceCounts: Record<string,number>;
@@ -613,13 +648,11 @@ function Topbar({ scraping, scrapeMsg, lastScraped, onScrape, count, viewMode, s
           {scraping ? "Scraping…" : "Scrape Now"}
         </button>
         {scrapeMsg && !scraping && <span style={{ fontSize: 12, fontWeight: 600, color: "var(--st-applied)" }}>{scrapeMsg}</span>}
-        {lastScraped && (
-          <div className="meta">
-            <div className="live-pip" />
-            <span>Last scraped</span>
-            <b>{lastScraped}</b>
-          </div>
-        )}
+        <div className="meta">
+          <div className="live-pip" />
+          {lastScraped ? <><span>Last scraped</span><b>{lastScraped}</b></> : <span>Never scraped</span>}
+          {totalJobs != null && totalJobs > 0 && <><span className="dot-sep" /><span><b className="mono">{totalJobs.toLocaleString()}</b> jobs indexed</span></>}
+        </div>
         <div className="topbar-right">
           <div className="job-count"><b>{count}</b> jobs</div>
           <div className="seg">

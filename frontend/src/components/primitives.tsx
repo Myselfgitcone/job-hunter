@@ -226,14 +226,24 @@ export function GaugeRing({ score, pass, size = 132 }: { score: number; pass: bo
 }
 
 // ── Toast system ──────────────────────────────────────────────────────────────
-export interface ToastItem { id: number; msg: string; type: "success" | "error"; }
+export interface ToastItem { id: number; msg: string; type: "success" | "error" | "info"; out?: boolean; }
+
+const TOAST_ICON: Record<string, string> = {
+  success: '<path d="M20 6 9 17l-5-5"/>',
+  error:   '<path d="M18 6 6 18M6 6l12 12"/>',
+  info:    '<path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/>',
+};
 
 export function Toasts({ toasts }: { toasts: ToastItem[] }) {
   return (
-    <div className="toast-container">
+    <div className="toast-wrap">
       {toasts.map((t) => (
-        <div key={t.id} className={`toast toast-${t.type}`}>
-          {t.type === "success" ? "✓" : "✕"} {t.msg}
+        <div key={t.id} className={`toast ${t.type}${t.out ? " out" : ""}`}>
+          <div className="toast-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              dangerouslySetInnerHTML={{ __html: TOAST_ICON[t.type] || TOAST_ICON.info }} />
+          </div>
+          <div className="toast-msg">{t.msg}</div>
         </div>
       ))}
     </div>
@@ -242,10 +252,11 @@ export function Toasts({ toasts }: { toasts: ToastItem[] }) {
 
 export function useToasts() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const toast = (msg: string, type: "success" | "error" = "success") => {
+  const toast = (msg: string, type: "success" | "error" | "info" = "info") => {
     const id = Date.now() + Math.random();
-    setToasts((t) => [...t, { id, msg, type }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3000);
+    setToasts(t => [...t, { id, msg, type }]);
+    setTimeout(() => setToasts(t => t.map(x => x.id === id ? { ...x, out: true } : x)), 2600);
+    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 2900);
   };
   return { toasts, toast };
 }

@@ -1,7 +1,47 @@
 import { useState, useEffect, useRef } from "react";
-import type { Job, JobStatus, QualifyResult } from "../types";
+import type { Job, JobStatus } from "../types";
 import { api } from "../api";
-import { GaugeRing, ATSBar, Spinner, CompanyLogo } from "./primitives";
+import { ATSBar, Spinner, CompanyLogo } from "./primitives";
+
+function relTimeDetail(iso: string): string {
+  if (!iso) return "";
+  const diff = Date.now() - new Date(iso.replace(/(\.\d{3})\d+/, "$1")).getTime();
+  if (isNaN(diff)) return "";
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+// Animated ScoreRing matching design spec
+function ScoreRingDetail({ value = 0, size = 64, stroke = 6 }: { value?: number; size?: number; stroke?: number }) {
+  const r    = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const [off, setOff] = useState(circ);
+  useEffect(() => {
+    const t = setTimeout(() => setOff(circ * (1 - value / 100)), 80);
+    return () => clearTimeout(t);
+  }, [value, circ]);
+  return (
+    <div className="score-ring" style={{ width: size, height: size }}>
+      <svg width={size} height={size}>
+        <defs>
+          <linearGradient id="ringGradDetail" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#7c3aed" />
+            <stop offset="100%" stopColor="#06b6d4" />
+          </linearGradient>
+        </defs>
+        <circle className="ring-bg" cx={size/2} cy={size/2} r={r} fill="none" strokeWidth={stroke} />
+        <circle className="ring-fg" cx={size/2} cy={size/2} r={r} fill="none" strokeWidth={stroke}
+          stroke="url(#ringGradDetail)"
+          strokeDasharray={circ} strokeDashoffset={off} />
+      </svg>
+      <div className="ring-val">{value}<small>%</small></div>
+    </div>
+  );
+}
 
 // ── SVG icon helper ───────────────────────────────────────────────────────────
 function Ic({ d, size = 16, color, style }: { d: string; size?: number; color?: string; style?: React.CSSProperties }) {
@@ -219,33 +259,54 @@ function QualifyTab({ job, running, onRun }: { job: Job; running: boolean; onRun
       </div>
     );
   }
-  const criteriaMap = Object.entries(qr.criteria || {}).map(([key, val]) => ({
-    name: key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
-    pass: val.pass, note: val.note,
-  }));
+  // Handle both array-of-tuples format and object format
+  const criteriaList: Array<{ state: string; name: string; detail: string; weight?: string }> = [];
+  if (Array.isArray(qr.criteria)) {
+    qr.criteria.forEach((c: any) => {
+      if (Array.isArray(c)) criteriaList.push({ state: c[0], name: c[1], detail: c[2], weight: c[3] });
+      else criteriaList.push({ state: c.pass ? "pass" : "fail", name: c.name || c.key, detail: c.note, weight: c.weight });
+    });
+  } else if (qr.criteria && typeof qr.criteria === "object") {
+    Object.entries(qr.criteria).forEach(([key, val]: [string, any]) => {
+      criteriaList.push({ state: val.pass ? "pass" : "fail", name: key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()), detail: val.note });
+    });
+  }
+
   return (
-    <div style={{ maxWidth: 760 }}>
-      <div style={{ display: "flex", gap: 24, alignItems: "center", marginBottom: 22 }}>
-        <GaugeRing score={qr.score} pass={qr.qualified} />
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 6 }}>Summary</div>
-          <p style={{ fontSize: 14, fontStyle: "italic", color: "var(--text-secondary)", lineHeight: 1.6 }}>{qr.summary}</p>
-          <button onClick={onRun} disabled={running} className="btn btn-ghost" style={{ marginTop: 14, height: 30 }}>
+    <div>
+      <div className="qual-hero">
+        <div className="qual-score">
+          <div className="qual-num">{qr.score}<small>/100</small></div>
+          <div className={`qual-flag ${qr.qualified ? "yes" : "no"}`}>
+            <Ic d={qr.qualified ? I.check : I.xCircle} size={12} />
+            {qr.qualified ? "Qualified" : "Not qualified"}
+          </div>
+        </div>
+        <div className="qual-meta">
+          <div className="qual-verdict">{(qr as any).verdict || (qr.qualified ? "Good Match" : "Partial Match")}</div>
+          <p className="qual-summary">{qr.summary}</p>
+          <button onClick={onRun} disabled={running} className="act ghost" style={{ marginTop: 14, height: 30 }}>
             {running ? <><Spinner size={12} /> Re-analyzing…</> : <><Ic d={I.refresh} size={13} /> Re-run</>}
           </button>
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        {criteriaMap.map((c, i) => (
-          <div key={i} style={{ padding: "12px 14px", borderRadius: 10, background: c.pass ? "rgba(34,197,94,0.06)" : "rgba(239,68,68,0.06)", border: `1px solid ${c.pass ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}` }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-              <Ic d={c.pass ? I.checkCircle : I.xCircle} size={16} color={c.pass ? "#4ade80" : "#f87171"} />
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)" }}>{c.name}</span>
+      {criteriaList.length > 0 && (
+        <>
+          <div className="crit-list-label">Criteria breakdown</div>
+          {criteriaList.map((c, i) => (
+            <div key={i} className="crit">
+              <div className={`crit-ico ${c.state === "pass" ? "pass" : c.state === "partial" ? "partial" : "fail"}`}>
+                <Ic d={c.state === "pass" ? I.check : c.state === "partial" ? I.chevDown : I.xCircle} size={12} />
+              </div>
+              <div className="crit-main">
+                <div className="crit-name">{c.name}</div>
+                <div className="crit-detail">{c.detail}</div>
+              </div>
+              {c.weight && <div className="crit-weight">{c.weight}</div>}
             </div>
-            <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5, paddingLeft: 24 }}>{c.note}</div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }
@@ -419,12 +480,22 @@ function CoverTab({ job, generating, onGenerate, onChange, onToast }: {
   if (generating) return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 0", gap: 12, color: "var(--text-muted)" }}><Spinner size={24} color="var(--accent)" /> Writing…</div>;
 
   return (
-    <div style={{ maxWidth: 720, display: "flex", flexDirection: "column" }}>
-      <textarea value={job.cover_letter || ""} onChange={e => onChange(e.target.value)}
-        style={{ minHeight: 320, lineHeight: 1.7, fontSize: 13.5, padding: 18, borderRadius: 12 }} />
-      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-        <button className="btn btn-ghost" onClick={() => { navigator.clipboard.writeText(job.cover_letter || ""); onToast("Copied!", "success"); }}><Ic d={I.copy} size={14} /> Copy</button>
-        <button className="btn btn-ghost" onClick={onGenerate}><Ic d={I.refresh} size={14} /> Regenerate</button>
+    <div>
+      <div className="tailor-note">
+        <Ic d={I.sparkles} size={15} />
+        AI-drafted cover letter for {job.company}. Edit freely or copy as-is.
+      </div>
+      <div className="cover-card">
+        <textarea className="cover-text" value={job.cover_letter || ""} onChange={e => onChange(e.target.value)}
+          style={{ width: "100%", minHeight: 280, fontSize: 13.5, lineHeight: 1.7, background: "transparent", border: "none", color: "var(--tx-2)", fontFamily: "var(--f-ui)", resize: "vertical" }} />
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+        <button className="act ai" onClick={() => { navigator.clipboard.writeText(job.cover_letter || ""); onToast("Cover letter copied", "success"); }}>
+          <Ic d={I.copy} size={14} /> Copy letter
+        </button>
+        <button className="act ghost" onClick={onGenerate}>
+          <Ic d={I.sparkles} size={14} /> Regenerate
+        </button>
       </div>
     </div>
   );
@@ -447,30 +518,15 @@ function NotesTab({ job, onUpdate, onToast }: {
   };
 
   return (
-    <div style={{ maxWidth: 720, display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-          <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)" }}>Deadline</span>
-          <input type="date" defaultValue={job.deadline || ""} onChange={e => onUpdate({ deadline: e.target.value })} />
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-          <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)" }}>Interview Date</span>
-          <input type="date" defaultValue={job.interview_date || ""} onChange={e => onUpdate({ interview_date: e.target.value })} />
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-          <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)" }}>Priority</span>
-          <select defaultValue={job.priority ?? 0} onChange={e => onUpdate({ priority: Number(e.target.value) })}>
-            <option value={0}>Normal</option>
-            <option value={1}>High</option>
-            <option value={2}>Urgent</option>
-          </select>
-        </label>
-      </div>
-      <div>
-        <textarea value={notes} onChange={e => handleNotes(e.target.value)}
-          placeholder="Add notes about this role — recruiter contacts, prep, questions to ask…"
-          style={{ minHeight: 240, fontSize: 13.5, lineHeight: 1.6, padding: 16, borderRadius: 12 }} />
-        <div style={{ textAlign: "right", fontSize: 10, color: "var(--text-muted)", marginTop: 6 }}>Auto-saves</div>
+    <div>
+      <textarea
+        className="notes-area"
+        value={notes}
+        onChange={e => handleNotes(e.target.value)}
+        placeholder="Add private notes — recruiter name, referral, salary expectations…"
+      />
+      <div style={{ fontSize: 11.5, color: "var(--tx-faint)", marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
+        <Ic d={I.briefcase} size={13} /> Notes auto-save locally and stay private to you.
       </div>
     </div>
   );
@@ -520,8 +576,8 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
         {/* Header */}
         <div className="detail-head">
           <div className="dh-top">
-            <div className="dh-logo" style={{ background: "linear-gradient(135deg,#7c3aed,#06b6d4)" }}>
-              {job.company.charAt(0).toUpperCase()}
+            <div className="dh-logo">
+              <CompanyLogo url={job.url} company={job.company} size={50} />
             </div>
             <div className="dh-info">
               <h1 className="dh-title">{job.title}</h1>
@@ -531,54 +587,43 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
                   <span className="meta-i"><Ic d={I.map} size={13} />{job.location}</span>
                 )}
                 {(job.remote || (job.location || "").toLowerCase().includes("remote")) && (
-                  <span className="badge-remote" style={{ fontSize: 11 }}>Remote</span>
+                  <span className="badge-remote">Remote</span>
                 )}
                 {job.salary && (
-                  <span style={{ color: "var(--st-applied)", fontWeight: 600, fontSize: 12.5 }}>{job.salary}</span>
+                  <span className="meta-i"><Ic d={I.briefcase} size={13} />{job.salary}</span>
                 )}
-                <span className={`src-${job.source.toLowerCase()}`} style={{ fontSize: 11.5, fontWeight: 600 }}>{job.source}</span>
+                <span className="badge-src">
+                  <span className="sw" style={{ background: `var(--src-${job.source.toLowerCase()}, var(--tx-3))` }} />
+                  {job.source}
+                </span>
+                {job.posted_at && (
+                  <span className="meta-i"><Ic d={I.clock} size={13} />{relTimeDetail(job.posted_at)}</span>
+                )}
               </div>
             </div>
 
             {/* Score ring */}
-            {scoreNum != null && (
-              <div className="dh-score">
-                <div className="score-ring">
-                  <svg width="64" height="64" viewBox="0 0 64 64">
-                    <defs>
-                      <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" stopColor="#7c3aed" />
-                        <stop offset="100%" stopColor="#06b6d4" />
-                      </linearGradient>
-                    </defs>
-                    <circle className="ring-bg" cx="32" cy="32" r="26" fill="none" strokeWidth="5" />
-                    <circle className="ring-fg" cx="32" cy="32" r="26" fill="none" strokeWidth="5"
-                      strokeDasharray={circumference}
-                      strokeDashoffset={offset}
-                    />
-                  </svg>
-                  <div className="ring-val">{scoreNum}<small>%</small></div>
-                </div>
-                <span className="ring-label">Match</span>
-              </div>
-            )}
+            <div className="dh-score">
+              <ScoreRingDetail value={scoreNum ?? 0} />
+              <span className="ring-label">AI Match</span>
+            </div>
           </div>
 
           {/* Actions */}
           <div className="actions">
             <a href={job.url} target="_blank" rel="noreferrer" className="act primary" style={{ textDecoration: "none" }}>
-              <Ic d={I.link} size={14} /> Apply Now
+              <Ic d={I.link} size={14} /> Apply
             </a>
-            <button onClick={() => runAction("qualify")} disabled={!!busy} className={`act ai${busy === "qualify" ? " disabled" : ""}`}>
-              {busy === "qualify" ? <><Spinner size={13} /> Analyzing…</> : <><Ic d={I.target} size={14} /> Qualify</>}
-            </button>
             <button onClick={() => runAction("resume")} disabled={!!busy} className="act ai">
               {busy === "resume" ? <><Spinner size={13} /> Tailoring…</> : <><Ic d={I.sparkles} size={14} /> Tailor Resume</>}
             </button>
-            <StatusDropdown status={job.status} onChange={handleStatusChange} />
-            <button onClick={() => api.verifyJob(job.id).then(r => onToast(r.alive ? "Job is live ✓" : "Job may be closed", r.alive ? "success" : "error"))} className="act ghost">
-              <Ic d={I.eye} size={14} /> Verify
+            <button onClick={() => runAction("qualify")} disabled={!!busy} className="act ai">
+              {busy === "qualify" ? <><Spinner size={13} /> Analyzing…</> : <><Ic d={I.target} size={14} /> Qualify</>}
             </button>
+            <button className="act" onClick={() => handleStatusChange("applied")}>
+              <Ic d={I.checkCircle} size={14} /> Mark Applied
+            </button>
+            <StatusDropdown status={job.status} onChange={handleStatusChange} />
           </div>
         </div>
 

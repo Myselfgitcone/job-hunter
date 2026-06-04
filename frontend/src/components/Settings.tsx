@@ -139,8 +139,8 @@ export function Settings() {
   const activeP = PROVIDERS.find(p => p.value === form.ai_provider) ?? PROVIDERS[0];
 
   return (
-    <div style={{ overflowY: "auto", padding: "24px", flex: 1 }}>
-      <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", flexDirection: "column", gap: 0 }}>
+    <div className="form-scroll">
+      <div className="form-inner" style={{ display: "flex", flexDirection: "column", gap: 0 }}>
 
       {/* ── Security — Change Password ── */}
       <section style={{ background: "var(--glass-hi,rgba(255,255,255,0.04))", border: "1px solid var(--glass-border,rgba(255,255,255,0.08))", borderRadius: 16, padding: "24px 28px", marginBottom: 24 }}>

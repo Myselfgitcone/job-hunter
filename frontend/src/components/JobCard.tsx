@@ -1,126 +1,137 @@
-import React from "react";
-import type { Job, QualifyResult } from "../types";
-import { CompanyLogo, srcColor, ATSBar, Icon } from "./primitives";
+import React, { useEffect, useState } from "react";
+import type { Job } from "../types";
+import { CompanyLogo } from "./primitives";
 
-interface Props {
-  job: Job;
-  selected: boolean;
-  onClick: () => void;
-  index?: number;
-  isFresh?: boolean;
-  onQualifyUpdated?: (id: string, result: QualifyResult) => void;
-}
-
-const STATUS_PILL: Record<string, { bg: string; fg: string; label: string }> = {
-  new:       { bg: "rgba(100,116,139,0.18)", fg: "#94a3b8", label: "New" },
-  applied:   { bg: "rgba(59,130,246,0.18)",  fg: "#60a5fa", label: "Applied" },
-  interview: { bg: "rgba(16,185,129,0.18)",  fg: "#34d399", label: "Interview" },
-  skipped:   { bg: "rgba(255,255,255,0.05)", fg: "#5b6377", label: "Skipped" },
+// Status → CSS var for left border
+const STATUS_COLOR: Record<string, string> = {
+  new:       "var(--st-new)",
+  applied:   "var(--st-applied)",
+  interview: "var(--st-interview)",
+  skipped:   "var(--st-skipped)",
 };
 
-function timeAgo(iso: string): string {
+// Source → CSS var
+const SRC_VAR: Record<string, string> = {
+  Greenhouse: "--src-greenhouse", Lever: "--src-lever", Ashby: "--src-ashby",
+  Workday: "--src-workday", HiringCafe: "--src-hiringcafe",
+};
+
+function relTime(iso: string): string {
   if (!iso) return "";
   const diff = Date.now() - new Date(iso.replace(/(\.\d{3})\d+/, "$1")).getTime();
-  if (isNaN(diff)) return "";
+  if (isNaN(diff) || diff < 0) return "";
   const m = Math.floor(diff / 60000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m}m ago`;
+  if (m < 1) return "now";
+  if (m < 60) return `${m}h ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
 }
 
-export function JobCard({ job, selected, onClick, index = 0, isFresh = false }: Props) {
-  const qr     = job.qualify_result;
-  const posted = timeAgo(job.posted_at || job.scraped_at);
-  const sc     = srcColor(job.source);
+function scoreClass(s: number): string {
+  return s >= 80 ? "high" : s >= 65 ? "mid" : "low";
+}
+
+// Animated score ring (matches design ScoreRing)
+function ScoreRing({ value, size = 64, stroke = 6 }: { value: number; size?: number; stroke?: number }) {
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const [off, setOff] = useState(circ);
+  useEffect(() => {
+    const t = setTimeout(() => setOff(circ * (1 - value / 100)), 80);
+    return () => clearTimeout(t);
+  }, [value, circ]);
+  return (
+    <div className="score-ring" style={{ width: size, height: size }}>
+      <svg width={size} height={size}>
+        <defs>
+          <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#7c3aed" />
+            <stop offset="100%" stopColor="#06b6d4" />
+          </linearGradient>
+        </defs>
+        <circle className="ring-bg" cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} />
+        <circle className="ring-fg" cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke}
+          strokeDasharray={circ} strokeDashoffset={off} />
+      </svg>
+      <div className="ring-val">{value}<small>%</small></div>
+    </div>
+  );
+}
+
+interface Props {
+  job: Job;
+  selected: boolean;
+  onClick: () => void;
+  onSkip?: (id: string) => void;
+  mode?: "compact" | "cards";
+  index?: number;
+}
+
+export function JobCard({ job, selected, onClick, onSkip, mode = "compact", index = 0 }: Props) {
+  const qr      = job.qualify_result as any;
+  const score   = qr?.score ?? null;
+  const posted  = relTime(job.posted_at || job.scraped_at || "");
+  const stColor = STATUS_COLOR[job.status] || "var(--st-new)";
+  const srcVar  = SRC_VAR[job.source];
+  const isNew   = job.status === "new" && !!job.posted_at && (Date.now() - new Date(job.posted_at).getTime()) < 24 * 3600000;
   const isRemote = job.remote || (job.location || "").toLowerCase().includes("remote");
-  const sp     = STATUS_PILL[job.status] || STATUS_PILL.new;
-  const atsScore = qr?.score ?? job.ats_score_after ?? null;
 
   return (
     <div
+      className={`jobcard${selected ? " sel" : ""}`}
       onClick={onClick}
-      className={isFresh ? "fresh" : ""}
       style={{
-        position: "relative", padding: "13px 16px 14px", cursor: "pointer",
-        background: selected ? "var(--bg-selected)" : "transparent",
-        boxShadow: selected ? "var(--selected-glow)" : "none",
-        borderRadius: selected ? 10 : 0,
-        margin: selected ? "0 6px" : 0,
-        transition: "background 120ms ease",
-        animation: `cardIn 260ms ease both`,
-        animationDelay: `${Math.min(index, 12) * 30}ms`,
-      }}
+        "--st-color": stColor,
+        animationDelay: `${Math.min(index, 12) * 20}ms`,
+      } as React.CSSProperties}
     >
-      {selected && <span style={{ position: "absolute", left: 0, top: 12, bottom: 12, width: 2, borderRadius: 999, background: "var(--accent)" }} />}
-
-      <div style={{ display: "flex", gap: 11, alignItems: "flex-start" }}>
-        {/* Company logo */}
-        <div style={{ flexShrink: 0, marginTop: 1 }}>
-          <CompanyLogo url={job.url} company={job.company} size={28} />
-        </div>
-
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Title + status pill */}
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
-            <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", lineHeight: 1.35, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-              {job.title}
-            </div>
-            <span className="pill" style={{ background: sp.bg, color: sp.fg, flexShrink: 0 }}>{sp.label}</span>
-          </div>
-
-          {/* Company + source */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6, gap: 8 }}>
-            <span style={{ fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {job.company}
-            </span>
-            <span style={{ fontSize: 10, fontWeight: 600, color: sc, flexShrink: 0 }}>{job.source}</span>
-          </div>
-
-          {/* Location + remote + time */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
-            {job.location && (
-              <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: "var(--text-muted)" }}>
-                <Icon name="mapPin" size={11} /> {job.location}
-              </span>
-            )}
-            {isRemote && (
-              <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 10, color: "#2dd4bf", fontWeight: 500 }}>
-                <Icon name="waves" size={11} /> Remote
-              </span>
-            )}
-            {posted && (
-              <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 10, color: "var(--text-muted)", marginLeft: "auto" }}>
-                <Icon name="clock" size={10} /> {posted}
-              </span>
-            )}
-          </div>
-
-          {/* ATS bar */}
-          {atsScore != null && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-              <span style={{ fontSize: 9, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", width: 26 }}>ATS</span>
-              <ATSBar score={atsScore} height={3} showPct />
-            </div>
-          )}
-
-          {/* Qualify badge */}
-          {qr && (
-            <div style={{ marginTop: 8 }}>
-              {qr.qualified ? (
-                <span className="pill" style={{ background: "rgba(34,197,94,0.14)", color: "#4ade80" }}>
-                  <Icon name="check" size={10} /> Qualified {qr.score}%
-                </span>
-              ) : (
-                <span className="pill" style={{ background: "rgba(239,68,68,0.14)", color: "#f87171" }}>
-                  <Icon name="x" size={10} /> Not Qualified
-                </span>
-              )}
-            </div>
-          )}
-        </div>
+      {/* Company logo */}
+      <div className="logo" style={{ flexShrink: 0 }}>
+        <CompanyLogo url={job.url} company={job.company} size={34} />
       </div>
+
+      {/* Main content */}
+      <div className="jc-main">
+        <div className="jc-title-row">
+          <span className="jc-title">{job.title}</span>
+          {isNew && <span className="badge-new">new</span>}
+        </div>
+        <div className="jc-sub">
+          <span className="co">{job.company}</span>
+          <span className="sep" />
+          <span className="loc">{job.location || "Remote"}</span>
+          {isRemote && mode === "cards" && <span className="badge-remote">Remote</span>}
+        </div>
+        {mode === "cards" && (
+          <div className="jc-tags">
+            <span className="badge-src">
+              <span className="sw" style={{ background: srcVar ? `var(${srcVar})` : "var(--tx-3)" }} />
+              {job.source}
+            </span>
+            <span className="sep" style={{ background: "var(--tx-faint)" }} />
+            <span className="jc-time">{posted}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Right: score badge + time */}
+      <div className="jc-right">
+        {score !== null ? (
+          <span className={`score-badge ${scoreClass(score)}`}>{score}%</span>
+        ) : null}
+        {mode === "compact" && <span className="jc-time">{posted}</span>}
+      </div>
+
+      {/* Quick skip */}
+      {onSkip && (
+        <button className="skip-quick" title="Skip (s)"
+          onClick={e => { e.stopPropagation(); onSkip(job.id); }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }

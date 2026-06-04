@@ -172,14 +172,14 @@ export function Dashboard() {
   ].filter(d => d.value > 0);
 
   return (
-    <div style={{ flex: 1, overflow: "auto", background: "var(--bg-base)" }}>
-      <div className="p-6 space-y-6 max-w-6xl">
+    <div className="dash-scroll">
+      <div className="dash-inner">
 
         {/* ── Header ── */}
-        <div className="flex items-center justify-between">
+        <div className="dash-head">
           <div>
-            <h2 className="text-xl font-black text-white tracking-tight">Dashboard</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Jagadish Reddy Butukuri · Senior Data Engineer</p>
+            <h1 className="dash-title">Dashboard</h1>
+            <p className="dash-sub">Your job search at a glance</p>
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-800/60 border border-slate-700/50 rounded-xl px-4 py-2">
             <Zap size={12} className="text-yellow-400"/>

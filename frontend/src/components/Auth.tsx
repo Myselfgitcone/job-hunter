@@ -64,48 +64,88 @@ function Counter({ to, duration = 1600 }: { to: number; duration?: number }) {
 function SplashScreen({ onDone }: { onDone: () => void }) {
   const [fade, setFade] = useState(false);
   useEffect(() => {
-    const t1 = setTimeout(() => setFade(true), 2400);
-    const t2 = setTimeout(onDone, 3000);
+    const t1 = setTimeout(() => setFade(true), 2500);
+    const t2 = setTimeout(onDone, 3200);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [onDone]);
+
+  /* 8 icons — 4 corners + 4 edges — all fly TO center */
+  const icons = [
+    { tx: "-55vw", ty: "-55vh", delay: "0s"    },  // top-left
+    { tx:  "55vw", ty: "-55vh", delay: "0.06s" },  // top-right
+    { tx: "-55vw", ty:  "55vh", delay: "0.12s" },  // bottom-left
+    { tx:  "55vw", ty:  "55vh", delay: "0.06s" },  // bottom-right
+    { tx:     "0", ty: "-60vh", delay: "0.03s" },  // top-center
+    { tx:     "0", ty:  "60vh", delay: "0.09s" },  // bottom-center
+    { tx: "-60vw", ty:     "0", delay: "0.09s" },  // left-center
+    { tx:  "60vw", ty:     "0", delay: "0.03s" },  // right-center
+  ];
 
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 9999,
       background: "linear-gradient(155deg, #0c1a3a 0%, #0f2051 45%, #081020 100%)",
       display: "flex", alignItems: "center", justifyContent: "center",
-      opacity: fade ? 0 : 1, transition: "opacity 0.6s ease",
+      opacity: fade ? 0 : 1, transition: "opacity 0.7s ease",
       pointerEvents: fade ? "none" : "all",
     }}>
       <style>{`
-        @keyframes fromTL { 0% { transform: translate(-70vw,-70vh) scale(0.2) rotate(-30deg); opacity:0; } 70% { opacity:1; } 100% { transform: translate(0,0) scale(1) rotate(0deg); opacity:1; } }
-        @keyframes fromTR { 0% { transform: translate(70vw,-70vh) scale(0.2) rotate(30deg); opacity:0; } 70% { opacity:1; } 100% { transform: translate(0,0) scale(1) rotate(0deg); opacity:1; } }
-        @keyframes fromBL { 0% { transform: translate(-70vw,70vh) scale(0.2) rotate(30deg); opacity:0; } 70% { opacity:1; } 100% { transform: translate(0,0) scale(1) rotate(0deg); opacity:1; } }
-        @keyframes fromBR { 0% { transform: translate(70vw,70vh) scale(0.2) rotate(-30deg); opacity:0; } 70% { opacity:1; } 100% { transform: translate(0,0) scale(1) rotate(0deg); opacity:1; } }
-        @keyframes splashCenter { 0% { opacity:0; transform:scale(0.7); } 40% { opacity:1; transform:scale(1.05); } 60% { transform:scale(1); } 100% { opacity:1; } }
+        @keyframes toCenter {
+          0%   { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0.25); }
+          60%  { opacity: 1; }
+          85%  { transform: translate(calc(var(--tx) * 0.04), calc(var(--ty) * 0.04)) scale(1.1); }
+          100% { opacity: 0.7; transform: translate(0, 0) scale(1); }
+        }
+        @keyframes centerPop {
+          0%   { opacity: 0; transform: scale(0.4); }
+          55%  { opacity: 1; transform: scale(1.1); }
+          75%  { transform: scale(0.95); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+        @keyframes glowPulse {
+          0%, 100% { box-shadow: 0 0 60px rgba(37,99,235,0.4), 0 0 120px rgba(37,99,235,0.15); }
+          50%       { box-shadow: 0 0 100px rgba(37,99,235,0.7), 0 0 200px rgba(37,99,235,0.3); }
+        }
       `}</style>
 
-      {/* Corner icons */}
-      {[
-        { anim: "fromTL", top: "12%",    left: "12%" },
-        { anim: "fromTR", top: "12%",    right: "12%" },
-        { anim: "fromBL", bottom: "12%", left: "12%" },
-        { anim: "fromBR", bottom: "12%", right: "12%" },
-      ].map((c, i) => (
+      {/* 8 icons flying from all directions to center */}
+      {icons.map((c, i) => (
         <div key={i} style={{
-          position: "absolute", ...(c as any),
-          animation: `${c.anim} 1.6s cubic-bezier(0.34,1.2,0.64,1) ${i * 0.08}s forwards`,
+          position: "absolute",
+          top: "50%", left: "50%",
+          marginTop: -35, marginLeft: -35,
+          ["--tx" as any]: c.tx,
+          ["--ty" as any]: c.ty,
+          animation: `toCenter 1.4s cubic-bezier(0.22,1,0.36,1) ${c.delay} forwards`,
           opacity: 0,
         }}>
-          <BullseyeLogo size={36} color="rgba(59,130,246,0.55)" />
+          <BullseyeLogo size={70} color="rgba(59,130,246,0.7)" />
         </div>
       ))}
 
-      {/* Center content */}
-      <div style={{ textAlign: "center", animation: "splashCenter 0.8s 0.3s ease forwards", opacity: 0 }}>
-        <BullseyeLogo size={72} color="#3b82f6" />
-        <div style={{ fontSize: 36, fontWeight: 800, color: "#fff", marginTop: 20, letterSpacing: "-0.03em" }}>Welcome</div>
-        <div style={{ fontSize: 14, color: "rgba(255,255,255,0.45)", marginTop: 8, letterSpacing: "0.05em" }}>Job Hunter — Hunt Smarter, Not Harder</div>
+      {/* Center content — pops in after icons arrive */}
+      <div style={{
+        position: "relative", zIndex: 10, textAlign: "center",
+        animation: "centerPop 0.7s cubic-bezier(0.34,1.56,0.64,1) 0.5s forwards",
+        opacity: 0,
+      }}>
+        {/* Glowing ring behind logo */}
+        <div style={{
+          width: 160, height: 160, borderRadius: "50%",
+          background: "rgba(37,99,235,0.1)",
+          border: "1px solid rgba(37,99,235,0.3)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          margin: "0 auto 24px",
+          animation: "glowPulse 2s ease-in-out 1s infinite",
+        }}>
+          <BullseyeLogo size={100} color="#3b82f6" />
+        </div>
+        <div style={{ fontSize: 64, fontWeight: 900, color: "#fff", letterSpacing: "-0.04em", lineHeight: 1 }}>
+          Welcome
+        </div>
+        <div style={{ fontSize: 16, color: "rgba(255,255,255,0.45)", marginTop: 14, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 600 }}>
+          Job Hunter &nbsp;·&nbsp; Hunt Smarter, Not Harder
+        </div>
       </div>
     </div>
   );

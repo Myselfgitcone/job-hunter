@@ -66,9 +66,9 @@ function TagInput({ tags, setTags, placeholder, suggestions }: {
 const AI_PROVIDERS: Record<string, { models: {id: string, name: string}[]; keyUrl: string }> = {
   "OpenRouter":  { 
     models: [
-      { id: "google/gemini-2.0-flash-exp:free", name: "Google Gemini 2.0 Flash (Free)" },
-      { id: "anthropic/claude-sonnet-4.6", name: "Anthropic Claude 4.6 Sonnet" },
-      { id: "anthropic/claude-opus-4-8", name: "Anthropic Claude 4.8 Opus" },
+      { id: "google/gemini-2.0-flash-exp:free", name: "Google Gemini 2.0 Flash" },
+      { id: "anthropic/claude-sonnet-4.6", name: "Anthropic Claude 4.6 Sonnet (Balanced)" },
+      { id: "anthropic/claude-opus-4-8", name: "Anthropic Claude 4.8 Opus (Recommended)" },
       { id: "openai/gpt-5", name: "OpenAI GPT-5" }
     ], 
     keyUrl: "openrouter.ai/keys" 
@@ -214,28 +214,27 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
           <div className="field-grid" style={{ marginTop: 12 }}>
             <label className="field">
               <span className="field-label">Resume Parsing Model</span>
-              <select className="select-box" value={modelParse} onChange={e => setModelParse(e.target.value)}>
+              <select value={modelParse} onChange={e => setModelParse(e.target.value)}>
                 {AI_PROVIDERS[provider]?.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
             </label>
             <label className="field">
               <span className="field-label">Tailoring Model</span>
-              <select className="select-box" value={modelTailor} onChange={e => setModelTailor(e.target.value)}>
+              <select value={modelTailor} onChange={e => setModelTailor(e.target.value)}>
                 {AI_PROVIDERS[provider]?.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
             </label>
             <label className="field">
               <span className="field-label">Job Qualification Model</span>
-              <select className="select-box" value={modelQualify} onChange={e => setModelQualify(e.target.value)}>
+              <select value={modelQualify} onChange={e => setModelQualify(e.target.value)}>
                 {AI_PROVIDERS[provider]?.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
             </label>
             <label className="field">
               <span className="field-label">Cover Letter Model</span>
-              <select className="select-box" value={modelCoverLetter} onChange={e => setModelCoverLetter(e.target.value)}>
+              <select value={modelCoverLetter} onChange={e => setModelCoverLetter(e.target.value)}>
                 {AI_PROVIDERS[provider]?.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
-
             </label>
           </div>
         </section>

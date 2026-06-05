@@ -128,6 +128,7 @@ export function Profile() {
   const [parsing, setParsing] = useState(false);
   const [parseTime, setParseTime] = useState(0);
   const [parseError, setParseError] = useState("");
+  const [namePermutations, setNamePermutations] = useState<{first: string, last: string}[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<number | null>(null);
 
@@ -232,9 +233,19 @@ export function Profile() {
           url:   pr.url || "",
         }));
         
-        const nameParts = (parsed.name || "").split(" ");
+        const nameParts = (parsed.name || "").split(" ").filter(Boolean);
         const first = nameParts[0] || "";
         const last = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
+
+        if (nameParts.length >= 3) {
+          const perms = [];
+          for (let i = 1; i < nameParts.length; i++) {
+            perms.push({ first: nameParts.slice(0, i).join(" "), last: nameParts.slice(i).join(" ") });
+          }
+          setNamePermutations(perms);
+        } else {
+          setNamePermutations([]);
+        }
 
         setProfile((prev: any) => ({
           ...prev,
@@ -304,6 +315,25 @@ export function Profile() {
         {/* Personal Info */}
         <section className="form-section">
           <div className="section-label"><Ic d={I.user} size={16} /> Personal Info</div>
+          {namePermutations.length > 0 && (
+            <div style={{ background: "rgba(96, 165, 250, 0.08)", border: "1px solid rgba(96, 165, 250, 0.2)", borderRadius: 8, padding: 12, marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <span style={{ fontSize: 13, color: "#93c5fd", fontWeight: 500 }}>Multi-word name detected. How should we split it?</span>
+                <button onClick={() => setNamePermutations([])} style={{ background: "transparent", border: "none", color: "#60a5fa", cursor: "pointer", padding: 0 }}><Ic d={I.x} size={14} /></button>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {namePermutations.map((p, i) => (
+                  <button key={i} className="tag-sg" onClick={() => {
+                    setProfile((prev: any) => ({ ...prev, personal: { ...prev.personal, firstName: p.first, lastName: p.last } }));
+                    setNamePermutations([]);
+                  }} style={{ display: "flex", gap: 6, alignItems: "center", textAlign: "left", padding: "6px 12px" }}>
+                    <span style={{ color: "rgba(255,255,255,0.4)" }}>First:</span> <span style={{ color: "#fff" }}>{p.first}</span>
+                    <span style={{ color: "rgba(255,255,255,0.4)", marginLeft: 6 }}>Last:</span> <span style={{ color: "#fff" }}>{p.last}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="field-grid">
             <Field label="First name"   value={P.personal.firstName} onChange={v => pset("firstName", v)} />
             <Field label="Last name"    value={P.personal.lastName}  onChange={v => pset("lastName", v)} />

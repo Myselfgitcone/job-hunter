@@ -69,8 +69,11 @@ async def chat(
 
     async with httpx.AsyncClient(timeout=90) as client:
         resp = await client.post(url, headers=headers, json=payload)
-        resp.raise_for_status()
+        if not resp.is_success:
+            body = resp.text[:400]
+            raise ValueError(f"HTTP {resp.status_code} from {provider}: {body}")
         return resp.json()["choices"][0]["message"]["content"]
+
 
 
 async def _call_anthropic(system: str, user: str, api_key: str, model: str, max_tokens: int) -> str:

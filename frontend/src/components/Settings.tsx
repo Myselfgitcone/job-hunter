@@ -66,10 +66,10 @@ function TagInput({ tags, setTags, placeholder, suggestions }: {
 const AI_PROVIDERS: Record<string, { models: {id: string, name: string}[]; keyUrl: string }> = {
   "OpenRouter":  { 
     models: [
-      { id: "google/gemini-2.5-flash-lite", name: "Google Gemini 2.5 Lite" },
-      { id: "google/gemini-2.5-flash", name: "Google Gemini 2.5 Flash" },
-      { id: "anthropic/claude-haiku-4.5", name: "Claude Haiku 4.5" },
-      { id: "openai/gpt-5", name: "OpenAI GPT-5" }
+      { id: "anthropic/claude-opus-4-8", name: "Anthropic Claude 4.8 Opus (Recommended)" },
+      { id: "anthropic/claude-sonnet-4.6", name: "Anthropic Claude 4.6 Sonnet (Balanced)" },
+      { id: "openai/gpt-5", name: "OpenAI GPT-5" },
+      { id: "google/gemini-2.5-flash-lite", name: "Google Gemini 2.5 Lite" }
     ], 
     keyUrl: "openrouter.ai/keys" 
   },

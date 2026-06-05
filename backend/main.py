@@ -515,22 +515,28 @@ GOOGLE_CLIENT_SECRET = _os.getenv("GOOGLE_CLIENT_SECRET", "")
 GITHUB_CLIENT_ID = _os.getenv("GITHUB_CLIENT_ID", "")
 GITHUB_CLIENT_SECRET = _os.getenv("GITHUB_CLIENT_SECRET", "")
 FRONTEND_URL = _os.getenv("FRONTEND_URL", "http://localhost:5173")
-BACKEND_URL = _os.getenv("BACKEND_URL", "http://localhost:8000")
+
+from fastapi import Request
 
 @app.get("/api/auth/google/login")
-def google_login():
+def google_login(request: Request):
+    frontend = request.headers.get("origin") or FRONTEND_URL
     if not GOOGLE_CLIENT_ID:
-        return RedirectResponse(f"{FRONTEND_URL}?error=Google+OAuth+not+configured")
-    redirect_uri = f"{BACKEND_URL}/api/auth/google/callback"
+        return RedirectResponse(f"{frontend}?error=Google+OAuth+not+configured")
+    base_url = str(request.base_url).rstrip("/")
+    redirect_uri = f"{base_url}/api/auth/google/callback"
     scope = "openid email profile"
     url = f"https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id={GOOGLE_CLIENT_ID}&redirect_uri={urllib.parse.quote(redirect_uri)}&scope={urllib.parse.quote(scope)}"
     return RedirectResponse(url)
 
 @app.get("/api/auth/google/callback")
-async def google_callback(code: str = None, error: str = None):
+async def google_callback(request: Request, code: str = None, error: str = None):
+    # Origin won't be present on a callback redirect from Google, so use FRONTEND_URL env var
+    frontend = _os.getenv("FRONTEND_URL", "https://job-hunter-sigma.vercel.app" if "railway" in str(request.base_url) else "http://localhost:5173")
     if error or not code:
-        return RedirectResponse(f"{FRONTEND_URL}?error=Google+login+failed")
-    redirect_uri = f"{BACKEND_URL}/api/auth/google/callback"
+        return RedirectResponse(f"{frontend}?error=Google+login+failed")
+    base_url = str(request.base_url).rstrip("/")
+    redirect_uri = f"{base_url}/api/auth/google/callback"
     async with httpx.AsyncClient() as client:
         token_res = await client.post("https://oauth2.googleapis.com/token", data={
             "client_id": GOOGLE_CLIENT_ID, "client_secret": GOOGLE_CLIENT_SECRET,
@@ -557,22 +563,26 @@ async def google_callback(code: str = None, error: str = None):
             
             token = create_token(user.id)
             user_json = urllib.parse.quote(json.dumps({"id": user.id, "email": user.email, "name": user.name}))
-            return RedirectResponse(f"{FRONTEND_URL}?token={token}&user={user_json}#jobs")
+            return RedirectResponse(f"{frontend}?token={token}&user={user_json}#jobs")
 
 @app.get("/api/auth/github/login")
-def github_login():
+def github_login(request: Request):
+    frontend = request.headers.get("origin") or FRONTEND_URL
     if not GITHUB_CLIENT_ID:
-        return RedirectResponse(f"{FRONTEND_URL}?error=GitHub+OAuth+not+configured")
-    redirect_uri = f"{BACKEND_URL}/api/auth/github/callback"
+        return RedirectResponse(f"{frontend}?error=GitHub+OAuth+not+configured")
+    base_url = str(request.base_url).rstrip("/")
+    redirect_uri = f"{base_url}/api/auth/github/callback"
     scope = "user:email"
     url = f"https://github.com/login/oauth/authorize?client_id={GITHUB_CLIENT_ID}&redirect_uri={urllib.parse.quote(redirect_uri)}&scope={urllib.parse.quote(scope)}"
     return RedirectResponse(url)
 
 @app.get("/api/auth/github/callback")
-async def github_callback(code: str = None, error: str = None):
+async def github_callback(request: Request, code: str = None, error: str = None):
+    frontend = _os.getenv("FRONTEND_URL", "https://job-hunter-sigma.vercel.app" if "railway" in str(request.base_url) else "http://localhost:5173")
     if error or not code:
-        return RedirectResponse(f"{FRONTEND_URL}?error=GitHub+login+failed")
-    redirect_uri = f"{BACKEND_URL}/api/auth/github/callback"
+        return RedirectResponse(f"{frontend}?error=GitHub+login+failed")
+    base_url = str(request.base_url).rstrip("/")
+    redirect_uri = f"{base_url}/api/auth/github/callback"
     async with httpx.AsyncClient() as client:
         token_res = await client.post("https://github.com/login/oauth/access_token", data={
             "client_id": GITHUB_CLIENT_ID, "client_secret": GITHUB_CLIENT_SECRET,
@@ -609,7 +619,7 @@ async def github_callback(code: str = None, error: str = None):
             
             token = create_token(user.id)
             user_json = urllib.parse.quote(json.dumps({"id": user.id, "email": user.email, "name": user.name}))
-            return RedirectResponse(f"{FRONTEND_URL}?token={token}&user={user_json}#jobs")
+            return RedirectResponse(f"{frontend}?token={token}&user={user_json}#jobs")
 
 import telegram_bot
 

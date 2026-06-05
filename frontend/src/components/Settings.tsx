@@ -66,7 +66,7 @@ function TagInput({ tags, setTags, placeholder, suggestions }: {
 const AI_PROVIDERS: Record<string, { models: {id: string, name: string}[]; keyUrl: string }> = {
   "OpenRouter":  { 
     models: [
-      { id: "anthropic/claude-opus-4-8", name: "Anthropic Claude 4.8 Opus (Premium)" },
+      { id: "anthropic/claude-opus-4-8", name: "Anthropic Claude 4.8 Opus (Recommended)" },
       { id: "anthropic/claude-sonnet-4.6", name: "Anthropic Claude 4.6 Sonnet (Balanced)" },
       { id: "openai/gpt-5", name: "OpenAI GPT-5" },
       { id: "google/gemini-2.5-flash-lite", name: "Google Gemini 2.5 Lite" }

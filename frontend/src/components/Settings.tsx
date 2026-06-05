@@ -66,7 +66,7 @@ function TagInput({ tags, setTags, placeholder, suggestions }: {
 const AI_PROVIDERS: Record<string, { models: {id: string, name: string}[]; keyUrl: string }> = {
   "OpenRouter":  { 
     models: [
-      { id: "google/gemini-3.5-flash", name: "Google Gemini 3.5 Flash" },
+      { id: "nvidia/nemotron-3-ultra-550b-a55b:free", name: "Nvidia Nemotron 3" },
       { id: "anthropic/claude-sonnet-4.6", name: "Anthropic Claude 4.6 Sonnet (Balanced)" },
       { id: "anthropic/claude-opus-4-8", name: "Anthropic Claude 4.8 Opus (Recommended)" },
       { id: "openai/gpt-5", name: "OpenAI GPT-5" }
@@ -217,10 +217,10 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
               <select value={modelParse} onChange={e => setModelParse(e.target.value)}>
                 {provider === "OpenRouter" ? (
                   <>
-                    <option value="nvidia/nemotron-3-ultra:free">Nvidia Nemotron 3 (Recommended)</option>
+                    <option value="nvidia/nemotron-3-ultra-550b-a55b:free">Nvidia Nemotron 3 (Recommended)</option>
                     <option value="stepfun/step-3.7-flash">Stepfun 3.7 Flash</option>
                     <option value="minimax/minimax-m3">Minimax M3</option>
-                    <option value="anthropic/claude-haiku-4-5">Claude Haiku 4.5 (Balanced)</option>
+                    <option value="anthropic/claude-haiku-4.5">Claude Haiku 4.5 (Balanced)</option>
                   </>
                 ) : (
                   AI_PROVIDERS[provider]?.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)

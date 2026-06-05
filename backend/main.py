@@ -1650,15 +1650,18 @@ class ProfileExperience(BaseModel):
     end_date: str = ""
     years: float = 0
     bullets: List[str] = []
+    expanded: bool = True
 
 class ProfileEducation(BaseModel):
     degree: str = ""
     school: str = ""
     year: str = ""
+    expanded: bool = True
 
 class ProfileProject(BaseModel):
     name: str = ""
     description: str = ""
+    expanded: bool = True
 
 class ProfileData(BaseModel):
     name: str = ""

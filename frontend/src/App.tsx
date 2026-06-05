@@ -75,7 +75,25 @@ export default function App() {
   const [showOnboarding, setShowOnboarding]   = useState(false);
   const [userSettings, setUserSettings]       = useState<any>(null);
 
-  const [view, setView]             = useState<View>("jobs");
+  const getInitialView = (): View => {
+    const hash = window.location.hash.replace("#", "");
+    return ["jobs", "dashboard", "profile", "settings"].includes(hash) ? (hash as View) : "jobs";
+  };
+  const [view, setView]             = useState<View>(getInitialView);
+
+  useEffect(() => {
+    window.location.hash = view;
+  }, [view]);
+
+  useEffect(() => {
+    const handleHash = () => {
+      const hash = window.location.hash.replace("#", "");
+      if (["jobs", "dashboard", "profile", "settings"].includes(hash)) setView(hash as View);
+    };
+    window.addEventListener("hashchange", handleHash);
+    return () => window.removeEventListener("hashchange", handleHash);
+  }, []);
+
   const [viewMode, setViewMode]     = useState<ViewMode>("list");
   const [listMode, setListMode]     = useState<"compact"|"cards">("compact");
   const [jobs, setJobs]             = useState<Job[]>([]);

@@ -543,7 +543,7 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
             "level_filter": bool(s.level_filter),
             "ai_provider": s.ai_provider or "openrouter",
             "ai_api_key": s.ai_api_key or "",
-            "ai_model_parse": s.ai_model_parse or "google/gemini-3.5-flash",
+            "ai_model_parse": s.ai_model_parse or "nvidia/nemotron-3-ultra:free",
             "ai_model_tailor": s.ai_model_tailor or "anthropic/claude-opus-4-8",
             "ai_model_qualify": s.ai_model_qualify or "anthropic/claude-opus-4-8",
             "ai_model_cover_letter": s.ai_model_cover_letter or "anthropic/claude-sonnet-4.6",
@@ -1770,7 +1770,7 @@ async def parse_resume_file(file: UploadFile = File(...), user_id: str = Depends
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model = user_cfg.get("ai_model_parse", "google/gemini-3.5-flash")
+    model = user_cfg.get("ai_model_parse", "nvidia/nemotron-3-ultra:free")
 
 
     if not api_key:
@@ -1853,17 +1853,37 @@ Rules:
 - Use "" for missing text fields. Use [] for missing arrays.
 - Do NOT invent, paraphrase, or add anything not explicitly in the resume."""
 
-    try:
-        response = await chat(
-            system=PARSE_SYSTEM,
-            user=f"Resume:\n\n{text[:15000]}",
-            api_key=api_key,
-            provider=provider,
-            model=model,
-            max_tokens=4000,
-        )
-    except Exception as e:
-        raise HTTPException(502, f"AI call failed: {str(e)[:300]}. Check your API key and model in Settings.")
+    models_to_try = [model]
+    fallback_models = [
+        "nvidia/nemotron-3-ultra:free",
+        "stepfun/step-3.7-flash",
+        "minimax/minimax-m3",
+        "anthropic/claude-haiku-4-5"
+    ]
+    for fm in fallback_models:
+        if fm not in models_to_try:
+            models_to_try.append(fm)
+
+    response = None
+    last_error = None
+
+    for m in models_to_try:
+        try:
+            response = await chat(
+                system=PARSE_SYSTEM,
+                user=f"Resume:\n\n{text[:15000]}",
+                api_key=api_key,
+                provider=provider,
+                model=m,
+                max_tokens=4000,
+            )
+            break
+        except Exception as e:
+            last_error = e
+            continue
+            
+    if not response:
+        raise HTTPException(502, f"AI call failed on all fallback models. Last error: {str(last_error)[:300]}")
 
     try:
         import json_repair

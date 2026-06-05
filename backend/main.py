@@ -92,6 +92,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Global exception handlers — always include CORS headers ───────────────────
+from fastapi import Request as _Request
+from fastapi.responses import JSONResponse as _JSONResponse
+from fastapi.exception_handlers import http_exception_handler as _default_http_handler
+
+@app.exception_handler(Exception)
+async def _global_exc_handler(_req: _Request, exc: Exception):
+    return _JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)},
+        headers={"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*"},
+    )
+
+@app.exception_handler(HTTPException)
+async def _http_exc_handler(_req: _Request, exc: HTTPException):
+    return _JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers={"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*"},
+    )
+
 @app.get("/health")
 async def health_check():
     """Public health endpoint for Railway/Vercel healthchecks."""
@@ -1827,14 +1848,17 @@ Rules:
 - Use "" for missing text fields. Use [] for missing arrays.
 - Do NOT invent, paraphrase, or add anything not explicitly in the resume."""
 
-    response = await chat(
-        system=PARSE_SYSTEM,
-        user=f"Resume:\n\n{text[:15000]}",
-        api_key=api_key,
-        provider=provider,
-        model=model,
-        max_tokens=4000,
-    )
+    try:
+        response = await chat(
+            system=PARSE_SYSTEM,
+            user=f"Resume:\n\n{text[:15000]}",
+            api_key=api_key,
+            provider=provider,
+            model=model,
+            max_tokens=4000,
+        )
+    except Exception as e:
+        raise HTTPException(502, f"AI call failed: {str(e)[:300]}. Check your API key and model in Settings.")
 
     try:
         match = re.search(r'\{.*\}', response, re.DOTALL)
@@ -1843,7 +1867,7 @@ Rules:
     except Exception:
         pass
 
-    raise HTTPException(500, "AI could not parse resume. Try again or use TXT format.")
+    raise HTTPException(500, "AI could not parse resume JSON. Try again.")
 
 
 

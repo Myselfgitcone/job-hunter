@@ -1,6 +1,21 @@
 import { useState, useEffect, useRef } from "react";
 import { api } from "../api";
 
+function calcYears(start: string, end: string) {
+  if (!start) return "";
+  const parseDate = (d: string) => {
+    if (!d || d.toLowerCase() === "present") return new Date();
+    const parsed = new Date(d);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  };
+  const s = parseDate(start);
+  const e = parseDate(end);
+  if (!s || !e) return "";
+  const diffMonths = (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth());
+  if (diffMonths < 0) return "";
+  return `(${(diffMonths / 12).toFixed(1)} yrs)`;
+}
+
 // ── SVG icon helper ───────────────────────────────────────────────────────────
 function Ic({ d, size = 16, color }: { d: string; size?: number; color?: string }) {
   return (
@@ -22,7 +37,7 @@ const I = {
 
 // ── Field primitive ───────────────────────────────────────────────────────────
 function Field({ label, value, onChange, type, placeholder, full }: {
-  label: string; value: string; onChange: (v: string) => void;
+  label: React.ReactNode; value: string; onChange: (v: string) => void;
   type?: string; placeholder?: string; full?: boolean;
 }) {
   return (
@@ -80,11 +95,12 @@ const VISA_OPTIONS = ["US Citizen", "Green Card", "H1B", "OPT / CPT", "TN Visa",
 
 export function Profile() {
   const [profile, setProfile] = useState<any>({
-    personal: { fullName: "", email: "", phone: "", address: "", linkedin: "", github: "", visa: "US Citizen" },
+    personal: { firstName: "", middleName: "", lastName: "", email: "", phone: "", address: "", linkedin: "", github: "", visa: "" },
     experience: [] as any[],
     education: [] as any[],
     projects: [] as any[],
     skills: [] as string[],
+    certifications: [] as string[],
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -99,7 +115,7 @@ export function Profile() {
         const exp = (p.experience || []).map((e: any) => ({
           title: e.role || e.title || "", company: e.company || "",
           start: e.start_date || e.start || "", end: e.end_date || e.end || "Present",
-          desc: (e.bullets || []).join("\n") || e.desc || "",
+          desc: (e.bullets || []).map((b: string) => b.replace(/^[\s•\-\.]*/, "• ")).join("\n") || e.desc || "",
         }));
         const edu = (p.education || []).map((e: any) => ({
           degree: e.degree || "", school: e.school || "", year: e.year || "", gpa: e.gpa || "",
@@ -107,14 +123,22 @@ export function Profile() {
         const proj = (p.projects || []).map((pr: any) => ({
           name: pr.name || "", stack: pr.stack || pr.description || "", desc: pr.description || "", url: pr.url || "",
         }));
+        
+        const nameParts = (p.name || "").split(" ");
+        const first = nameParts[0] || "";
+        const last = nameParts.length > 1 ? nameParts[nameParts.length - 1] : "";
+        const middle = nameParts.length > 2 ? nameParts.slice(1, -1).join(" ") : "";
+
         setProfile({
           personal: {
-            fullName: p.name || "", email: p.email || "", phone: p.phone || "",
+            firstName: first, middleName: middle, lastName: last, 
+            email: p.email || "", phone: p.phone || "",
             address: p.address || p.location || "", linkedin: p.linkedin || "", github: p.github || "",
-            visa: p.visa_status || "US Citizen",
+            visa: p.visa_status || "",
           },
           experience: exp, education: edu, projects: proj,
           skills: p.skills || [],
+          certifications: p.certifications || [],
         });
       }
     }).catch(() => {});
@@ -129,17 +153,19 @@ export function Profile() {
     try {
       // Map back to API format
       const payload = {
-        name: profile.personal.fullName, email: profile.personal.email,
+        name: [profile.personal.firstName, profile.personal.middleName, profile.personal.lastName].filter(Boolean).join(" "),
+        email: profile.personal.email,
         phone: profile.personal.phone, address: profile.personal.address,
         linkedin: profile.personal.linkedin, github: profile.personal.github,
         visa_status: profile.personal.visa,
         experience: profile.experience.map((e: any) => ({
           role: e.title, company: e.company, start_date: e.start, end_date: e.end,
-          bullets: e.desc ? e.desc.split("\n").filter(Boolean) : [], years: 0,
+          bullets: e.desc ? e.desc.split("\n").map((b: string) => b.replace(/^[\s•\-\.]*/, "").trim()).filter(Boolean) : [], years: 0,
         })),
         education: profile.education,
         projects: profile.projects.map((pr: any) => ({ name: pr.name, description: pr.stack || pr.desc, url: pr.url })),
         skills: profile.skills,
+        certifications: profile.certifications,
       };
       await api.saveProfile(payload as any);
       setSaved(true); setTimeout(() => setSaved(false), 2000);
@@ -158,7 +184,7 @@ export function Profile() {
           company: e.company || "",
           start:   e.start_date || e.start || "",
           end:     e.end_date || e.end || "Present",
-          desc:    Array.isArray(e.bullets) ? e.bullets.join("\n") : (e.desc || ""),
+          desc:    Array.isArray(e.bullets) ? e.bullets.map((b: string) => b.replace(/^[\s•\-\.]*/, "• ")).join("\n") : (e.desc || ""),
         }));
         const edu = (parsed.education || []).map((e: any) => ({
           degree: e.degree || "",
@@ -172,15 +198,19 @@ export function Profile() {
           desc:  pr.description || "",
           url:   pr.url || "",
         }));
-        // Merge skills + certifications into one list
-        const certs = (parsed.certifications || []) as string[];
-        const mergedSkills = [...new Set([...(parsed.skills || []), ...certs])];
+        
+        const nameParts = (parsed.name || "").split(" ");
+        const first = nameParts[0] || "";
+        const last = nameParts.length > 1 ? nameParts[nameParts.length - 1] : "";
+        const middle = nameParts.length > 2 ? nameParts.slice(1, -1).join(" ") : "";
 
         setProfile((prev: any) => ({
           ...prev,
           personal: {
             ...prev.personal,
-            fullName: parsed.name      || prev.personal.fullName,
+            firstName: first           || prev.personal.firstName,
+            middleName: middle         || prev.personal.middleName,
+            lastName:  last            || prev.personal.lastName,
             email:    parsed.email     || prev.personal.email,
             phone:    parsed.phone     || prev.personal.phone,
             address:  parsed.location  || prev.personal.address,
@@ -191,7 +221,8 @@ export function Profile() {
           experience: exp.length   ? exp   : prev.experience,
           education:  edu.length   ? edu   : prev.education,
           projects:   proj.length  ? proj  : prev.projects,
-          skills:     mergedSkills.length ? mergedSkills : prev.skills,
+          skills:     parsed.skills?.length ? parsed.skills : prev.skills,
+          certifications: parsed.certifications?.length ? parsed.certifications : prev.certifications,
         }));
       }
     } catch (err: any) {
@@ -233,7 +264,9 @@ export function Profile() {
         <section className="form-section">
           <div className="section-label"><Ic d={I.user} size={16} /> Personal Info</div>
           <div className="field-grid">
-            <Field label="Full Name"    value={P.personal.fullName}  onChange={v => pset("fullName", v)} />
+            <Field label="First Name"   value={P.personal.firstName} onChange={v => pset("firstName", v)} />
+            <Field label="Middle Name"  value={P.personal.middleName} onChange={v => pset("middleName", v)} />
+            <Field label="Last Name"    value={P.personal.lastName}  onChange={v => pset("lastName", v)} />
             <Field label="Email"        type="email" value={P.personal.email} onChange={v => pset("email", v)} />
             <Field label="Phone"        value={P.personal.phone}     onChange={v => pset("phone", v)} />
             <Field label="Address"      value={P.personal.address}   onChange={v => pset("address", v)} placeholder="City, State, Country" />
@@ -242,6 +275,7 @@ export function Profile() {
             <label className="field">
               <span className="field-label">Visa Status</span>
               <select value={P.personal.visa} onChange={e => pset("visa", e.target.value)}>
+                <option value="" disabled>Select Visa Status</option>
                 {VISA_OPTIONS.map(o => <option key={o}>{o}</option>)}
               </select>
             </label>
@@ -262,7 +296,10 @@ export function Profile() {
                 <Field label="Job Title" value={e.title}   onChange={v => updateAt("experience", i, "title", v)} />
                 <Field label="Company"   value={e.company} onChange={v => updateAt("experience", i, "company", v)} />
                 <Field label="Start Date" value={e.start}  onChange={v => updateAt("experience", i, "start", v)} placeholder="Jan 2021" />
-                <Field label="End Date"   value={e.end}    onChange={v => updateAt("experience", i, "end", v)} placeholder="Present" />
+                <Field 
+                  label={<span>End Date <span style={{ color: "#60a5fa", marginLeft: 6, fontWeight: 500 }}>{calcYears(e.start, e.end)}</span></span>} 
+                  value={e.end} onChange={v => updateAt("experience", i, "end", v)} placeholder="Present" 
+                />
               </div>
               <label className="field full">
                 <span className="field-label">Description</span>
@@ -315,12 +352,19 @@ export function Profile() {
           ))}
         </section>
 
-        {/* Skills */}
         <section className="form-section">
           <div className="section-label"><Ic d={I.target} size={16} /> Skills</div>
           <TagInput tags={P.skills} setTags={t => setProfile((p: any) => ({ ...p, skills: t }))}
             placeholder="Add a skill and press Enter…"
-            suggestions={["Python","SQL","dbt","Airflow","Spark","Kafka","Snowflake","Terraform"]} />
+            suggestions={["Python","SQL","React","AWS","Docker"]} />
+        </section>
+
+        {/* Certifications */}
+        <section className="form-section">
+          <div className="section-label"><Ic d={I.doc} size={16} /> Certifications</div>
+          <TagInput tags={P.certifications} setTags={t => setProfile((p: any) => ({ ...p, certifications: t }))}
+            placeholder="Add a certification and press Enter…"
+            suggestions={["AWS Certified Solutions Architect", "Certified Kubernetes Administrator", "PMP"]} />
         </section>
 
         <div className="form-foot">

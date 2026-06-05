@@ -1839,7 +1839,7 @@ Rules:
 - name: full name from top of resume
 - email: extract email address
 - phone: extract phone number
-- location: city, state or city, country
+- location: ONLY extract the applicant's personal home city/state. Do NOT extract locations of client companies or work history. If missing, leave as "".
 - linkedin: full LinkedIn URL or just the handle (e.g. linkedin.com/in/username)
 - github: full GitHub URL or handle (e.g. github.com/username)
 - summary: professional summary or objective paragraph if present, else ""

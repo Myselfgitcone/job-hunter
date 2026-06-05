@@ -132,23 +132,39 @@ export default function Auth({ onSuccess }: Props) {
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(""); setLoading(true);
+    if (!email || !password || (mode === "register" && !name)) return;
+    setLoading(true); setError("");
+
     try {
-      if (mode === "register") {
-        if (!name.trim())        { setError("Full name is required"); setLoading(false); return; }
-        if (password.length < 8) { setError("Password must be at least 8 characters"); setLoading(false); return; }
-      }
       const result = mode === "login"
         ? await api.auth.login(email, password)
         : await api.auth.register(email, password, name);
-      localStorage.setItem("jh_token", result.token);
-      localStorage.setItem("jh_user", JSON.stringify(result.user));
-      onSuccess(result.user);
-    } catch (e: any) {
-      setError(e.message || "Something went wrong. Please try again.");
-    } finally { setLoading(false); }
+
+      if (result?.token && result?.user) {
+        localStorage.setItem("jh_token", result.token);
+        localStorage.setItem("jh_user", JSON.stringify(result.user));
+        onSuccess(result.user);
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Authentication failed. Please check your credentials.");
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const getPasswordStrength = (pass: string) => {
+    if (!pass) return 0;
+    let score = 0;
+    if (pass.length > 7) score++;
+    if (/[A-Z]/.test(pass) && /[a-z]/.test(pass)) score++;
+    if (/[0-9]/.test(pass)) score++;
+    if (/[^A-Za-z0-9]/.test(pass)) score++;
+    if (pass.length > 12) score++;
+    return score; // 0 to 5
+  };
+  const pwdScore = getPasswordStrength(password);
+  const pwdColors = ["#e2e8f0", "#ef4444", "#f59e0b", "#eab308", "#22c55e", "#10b981"];
+  const pwdLabels = ["", "Weak", "Fair", "Good", "Strong", "Excellent"];
 
   const S = styles;
 
@@ -369,6 +385,20 @@ export default function Auth({ onSuccess }: Props) {
 
 
               {/* Form fields */}
+              <div style={{ display: "flex", gap: 10, marginTop: 24, marginBottom: 16 }}>
+                <button type="button" onClick={() => window.location.href = `${BASE}/api/auth/google/login`} style={{ flex: 1, height: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, color: "#0f172a", fontSize: 14, fontWeight: 600, cursor: "pointer", boxShadow: "0 1px 2px rgba(0,0,0,0.05)", transition: "background 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "#f8fafc"} onMouseOut={e => e.currentTarget.style.background = "#fff"}>
+                  <img src="https://www.svgrepo.com/show/475656/google-color.svg" width={18} alt="Google" /> Google
+                </button>
+                <button type="button" onClick={() => window.location.href = `${BASE}/api/auth/github/login`} style={{ flex: 1, height: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, color: "#0f172a", fontSize: 14, fontWeight: 600, cursor: "pointer", boxShadow: "0 1px 2px rgba(0,0,0,0.05)", transition: "background 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "#f8fafc"} onMouseOut={e => e.currentTarget.style.background = "#fff"}>
+                  <svg width={18} viewBox="0 0 98 96" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" clipRule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.141-22.243-5.378-22.243-24.283 0-5.378 1.94-9.778 5.014-13.2-.485-1.222-2.184-6.275.486-13.038 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.763.97 11.816.485 13.038 3.155 3.422 5.015 7.822 5.015 13.2 0 18.905-11.404 23.06-22.324 24.283 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z" fill="#24292f"/></svg> GitHub
+                </button>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+                <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
+                <div style={{ fontSize: 12, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Or continue with email</div>
+                <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
+              </div>
+
               <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 {/* Full Name — always reserves space, hidden in login mode */}
                 <div style={{
@@ -400,6 +430,18 @@ export default function Auth({ onSuccess }: Props) {
                   </div>
                   <input style={S.input} type="password" value={password} onChange={e => setPassword(e.target.value)}
                     placeholder={mode === "register" ? "At least 8 characters" : "••••••••"} required />
+                  {mode === "register" && password.length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ display: "flex", gap: 4, height: 4, marginBottom: 6 }}>
+                        {[1, 2, 3, 4, 5].map(i => (
+                          <div key={i} style={{ flex: 1, borderRadius: 2, background: i <= pwdScore ? pwdColors[pwdScore] : "#e2e8f0", transition: "background 0.3s" }} />
+                        ))}
+                      </div>
+                      <div style={{ fontSize: 12, color: pwdColors[pwdScore], fontWeight: 500, textAlign: "right" }}>
+                        {pwdLabels[pwdScore]}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Forgot password panel */}

@@ -75,6 +75,24 @@ export default function App() {
   const [showOnboarding, setShowOnboarding]   = useState(false);
   const [userSettings, setUserSettings]       = useState<any>(null);
 
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    const userStr = urlParams.get('user');
+    if (token && userStr) {
+      try {
+        const parsedUser = JSON.parse(decodeURIComponent(userStr));
+        localStorage.setItem("jh_token", token);
+        localStorage.setItem("jh_user", JSON.stringify(parsedUser));
+        window.history.replaceState({}, document.title, window.location.pathname);
+        setCurrentUser(parsedUser);
+        setIsAuthenticated(true);
+      } catch (e) {
+        console.error("Failed to parse OAuth user data", e);
+      }
+    }
+  }, []);
+
   const getInitialView = (): View => {
     const hash = window.location.hash.replace("#", "");
     return ["jobs", "dashboard", "profile", "settings"].includes(hash) ? (hash as View) : "jobs";

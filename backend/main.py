@@ -502,6 +502,110 @@ async def reset_password_with_token(body: ResetPasswordBody):
         await db.commit()
         return {"ok": True, "message": "Password reset successfully. You can now log in.", "email": user.email}
 
+# ── OAuth (Google / GitHub) ───────────────────────────────────────────────────
+import urllib.parse
+from fastapi.responses import RedirectResponse
+
+GOOGLE_CLIENT_ID = _os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = _os.getenv("GOOGLE_CLIENT_SECRET", "")
+GITHUB_CLIENT_ID = _os.getenv("GITHUB_CLIENT_ID", "")
+GITHUB_CLIENT_SECRET = _os.getenv("GITHUB_CLIENT_SECRET", "")
+FRONTEND_URL = _os.getenv("FRONTEND_URL", "http://localhost:5173")
+BACKEND_URL = _os.getenv("BACKEND_URL", "http://localhost:8000")
+
+@app.get("/api/auth/google/login")
+def google_login():
+    if not GOOGLE_CLIENT_ID:
+        return RedirectResponse(f"{FRONTEND_URL}?error=Google+OAuth+not+configured")
+    redirect_uri = f"{BACKEND_URL}/api/auth/google/callback"
+    scope = "openid email profile"
+    url = f"https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id={GOOGLE_CLIENT_ID}&redirect_uri={urllib.parse.quote(redirect_uri)}&scope={urllib.parse.quote(scope)}"
+    return RedirectResponse(url)
+
+@app.get("/api/auth/google/callback")
+async def google_callback(code: str = None, error: str = None):
+    if error or not code:
+        return RedirectResponse(f"{FRONTEND_URL}?error=Google+login+failed")
+    redirect_uri = f"{BACKEND_URL}/api/auth/google/callback"
+    async with httpx.AsyncClient() as client:
+        token_res = await client.post("https://oauth2.googleapis.com/token", data={
+            "client_id": GOOGLE_CLIENT_ID, "client_secret": GOOGLE_CLIENT_SECRET,
+            "code": code, "grant_type": "authorization_code", "redirect_uri": redirect_uri
+        })
+        token_data = token_res.json()
+        if "access_token" not in token_data:
+            return RedirectResponse(f"{FRONTEND_URL}?error=Google+token+error")
+        user_res = await client.get("https://www.googleapis.com/oauth2/v2/userinfo", headers={"Authorization": f"Bearer {token_data['access_token']}"})
+        user_data = user_res.json()
+        email = user_data.get("email")
+        name = user_data.get("name")
+        if not email:
+            return RedirectResponse(f"{FRONTEND_URL}?error=Google+no+email")
+        
+        async with SessionLocal() as db:
+            result = await db.execute(select(User).where(User.email == email))
+            user = result.scalar_one_or_none()
+            if not user:
+                user = User(id=str(_uuid.uuid4()), email=email, name=name, password_hash="OAUTH_USER", created_at=datetime.utcnow().isoformat() + "Z")
+                db.add(user)
+                await db.commit()
+                await db.refresh(user)
+            
+            token = create_token(user.id)
+            user_json = urllib.parse.quote(json.dumps({"id": user.id, "email": user.email, "name": user.name}))
+            return RedirectResponse(f"{FRONTEND_URL}?token={token}&user={user_json}#jobs")
+
+@app.get("/api/auth/github/login")
+def github_login():
+    if not GITHUB_CLIENT_ID:
+        return RedirectResponse(f"{FRONTEND_URL}?error=GitHub+OAuth+not+configured")
+    redirect_uri = f"{BACKEND_URL}/api/auth/github/callback"
+    scope = "user:email"
+    url = f"https://github.com/login/oauth/authorize?client_id={GITHUB_CLIENT_ID}&redirect_uri={urllib.parse.quote(redirect_uri)}&scope={urllib.parse.quote(scope)}"
+    return RedirectResponse(url)
+
+@app.get("/api/auth/github/callback")
+async def github_callback(code: str = None, error: str = None):
+    if error or not code:
+        return RedirectResponse(f"{FRONTEND_URL}?error=GitHub+login+failed")
+    redirect_uri = f"{BACKEND_URL}/api/auth/github/callback"
+    async with httpx.AsyncClient() as client:
+        token_res = await client.post("https://github.com/login/oauth/access_token", data={
+            "client_id": GITHUB_CLIENT_ID, "client_secret": GITHUB_CLIENT_SECRET,
+            "code": code, "redirect_uri": redirect_uri
+        }, headers={"Accept": "application/json"})
+        token_data = token_res.json()
+        if "access_token" not in token_data:
+            return RedirectResponse(f"{FRONTEND_URL}?error=GitHub+token+error")
+        access_token = token_data["access_token"]
+        
+        user_res = await client.get("https://api.github.com/user", headers={"Authorization": f"Bearer {access_token}", "Accept": "application/vnd.github.v3+json"})
+        user_data = user_res.json()
+        
+        email = user_data.get("email")
+        if not email:
+            emails_res = await client.get("https://api.github.com/user/emails", headers={"Authorization": f"Bearer {access_token}", "Accept": "application/vnd.github.v3+json"})
+            emails_data = emails_res.json()
+            primary = next((e["email"] for e in emails_data if e.get("primary")), None)
+            email = primary if primary else (emails_data[0]["email"] if emails_data else None)
+
+        if not email:
+            return RedirectResponse(f"{FRONTEND_URL}?error=GitHub+no+email")
+            
+        name = user_data.get("name") or user_data.get("login") or email.split("@")[0]
+        
+        async with SessionLocal() as db:
+            result = await db.execute(select(User).where(User.email == email))
+            user = result.scalar_one_or_none()
+            if not user:
+                user = User(id=str(_uuid.uuid4()), email=email, name=name, password_hash="OAUTH_USER", created_at=datetime.utcnow().isoformat() + "Z")
+                db.add(user)
+                await db.commit()
+                await db.refresh(user)
+            
+            token = create_token(user.id)
+            user_json = urllib.parse.quote(json.dumps({"id": user.id, "email": user.email, "name": user.name}))
+            return RedirectResponse(f"{FRONTEND_URL}?token={token}&user={user_json}#jobs")
 
 import telegram_bot
 

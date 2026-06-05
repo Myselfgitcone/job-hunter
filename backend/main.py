@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Depends, Body
+﻿from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select, update, or_, text, func
@@ -44,7 +44,7 @@ _CORS_ORIGINS += [
 ]
 _CORS_ORIGINS = list(set(_CORS_ORIGINS))
 
-# ── Raw ASGI CORS — works with file uploads, streaming, and exceptions ──────────
+# â”€â”€ Raw ASGI CORS â€” works with file uploads, streaming, and exceptions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _CORS_HEADERS = [
     (b"access-control-allow-origin",  b"*"),
     (b"access-control-allow-methods", b"GET, POST, PUT, DELETE, OPTIONS, PATCH"),
@@ -61,7 +61,7 @@ class RawCORSMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Handle OPTIONS preflight immediately — no auth, no routing
+        # Handle OPTIONS preflight immediately â€” no auth, no routing
         if scope.get("method") == "OPTIONS":
             await send({
                 "type": "http.response.start",
@@ -71,7 +71,7 @@ class RawCORSMiddleware:
             await send({"type": "http.response.body", "body": b""})
             return
 
-        # For all other requests — inject CORS headers into the response
+        # For all other requests â€” inject CORS headers into the response
         async def send_with_cors(message):
             if message["type"] == "http.response.start":
                 # Merge existing headers with CORS headers
@@ -92,7 +92,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Global exception handlers — always include CORS headers ───────────────────
+# â”€â”€ Global exception handlers â€” always include CORS headers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 from fastapi import Request as _Request
 from fastapi.responses import JSONResponse as _JSONResponse
 from fastapi.exception_handlers import http_exception_handler as _default_http_handler
@@ -123,7 +123,7 @@ _scheduler = AsyncIOScheduler()
 
 
 async def _run_scrape() -> dict:
-    """Core scrape logic — shared by the scheduler and the /api/jobs/scrape endpoint."""
+    """Core scrape logic â€” shared by the scheduler and the /api/jobs/scrape endpoint."""
     from datetime import timezone, timedelta
 
     async with SessionLocal() as db:
@@ -187,7 +187,7 @@ async def _run_scrape() -> dict:
             db.add(Setting(key="last_scraped_at", value=now_iso))
         await db.commit()
 
-    print(f"[Scrape] Done — {new_count} new jobs saved.")
+    print(f"[Scrape] Done â€” {new_count} new jobs saved.")
 
     # Telegram digest
     try:
@@ -203,8 +203,8 @@ async def _run_scrape() -> dict:
 
 
 async def _auto_scrape():
-    """Background auto-scrape task — runs on schedule."""
-    print("[Scheduler] Auto-scrape starting…")
+    """Background auto-scrape task â€” runs on schedule."""
+    print("[Scheduler] Auto-scrape startingâ€¦")
     try:
         result = await asyncio.wait_for(_run_scrape(), timeout=300)  # 5 min max
         print(f"[Scheduler] Auto-scrape complete: {result}")
@@ -226,7 +226,7 @@ async def startup():
         print(f"[Startup] DB init error (will retry on requests): {e}")
 
 
-    # ── Auto-migrate: add any missing columns safely ──────────────────────
+    # â”€â”€ Auto-migrate: add any missing columns safely â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     new_columns = [
         ("user_settings", "profile_phone",     "VARCHAR"),
         ("user_settings", "profile_address",    "VARCHAR"),
@@ -244,12 +244,12 @@ async def startup():
                     # Works for both SQLite and PostgreSQL
                     await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {typedef}"))
                 except Exception:
-                    pass  # column already exists — safe to ignore
+                    pass  # column already exists â€” safe to ignore
         print("[Startup] DB migration complete")
     except Exception as e:
         print(f"[Startup] DB migration error: {e}")
 
-    # ── Init Telegram + Seed companies in background (non-blocking) ──────
+    # â”€â”€ Init Telegram + Seed companies in background (non-blocking) â”€â”€â”€â”€â”€â”€
     async def _background_init():
         try:
             async with SessionLocal() as db:
@@ -281,7 +281,7 @@ async def startup():
 
 
 
-# ── Auth ────────────────────────────────────────────────────────────────────────────────
+# â”€â”€ Auth â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class RegisterBody(BaseModel):
     email: str
@@ -355,7 +355,7 @@ async def get_me(user_id: str = Depends(get_current_user_id)):
         return {"id": user.id, "email": user.email, "name": user.name, "created_at": user.created_at}
 
 
-# ── Change Password (logged-in users) ───────────────────────────────────────────────────────
+# â”€â”€ Change Password (logged-in users) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class ChangePasswordBody(BaseModel):
     current_password: str
@@ -377,7 +377,7 @@ async def change_password(body: ChangePasswordBody, user_id: str = Depends(get_c
     return {"ok": True, "message": "Password changed successfully"}
 
 
-# ── Forgot Password — sends reset email via Resend ──────────────────────────────────────────
+# â”€â”€ Forgot Password â€” sends reset email via Resend â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import secrets as _secrets
 import os as _os
@@ -436,7 +436,7 @@ async def forgot_password(body: ForgotPasswordBody):
 <body style="font-family:Inter,sans-serif;background:#f8fafc;margin:0;padding:32px;">
   <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
     <div style="background:linear-gradient(135deg,#1d4ed8,#0284c7);padding:32px 36px;">
-      <div style="font-size:22px;font-weight:800;color:#fff;letter-spacing:-0.03em;">🎯 Job Hunter</div>
+      <div style="font-size:22px;font-weight:800;color:#fff;letter-spacing:-0.03em;">ðŸŽ¯ Job Hunter</div>
       <div style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:4px;">Hunt Smarter, Not Harder</div>
     </div>
     <div style="padding:36px;">
@@ -447,7 +447,7 @@ async def forgot_password(body: ForgotPasswordBody):
       </p>
       <a href="{reset_link}"
          style="display:inline-block;background:linear-gradient(135deg,#1d4ed8,#2563eb);color:#fff;text-decoration:none;font-size:15px;font-weight:700;padding:14px 28px;border-radius:10px;letter-spacing:-0.01em;">
-        Reset Password →
+        Reset Password â†’
       </a>
       <p style="font-size:12px;color:#94a3b8;margin-top:28px;line-height:1.6;">
         If you didn't request this, you can safely ignore this email. Your password won't change.<br/>
@@ -466,7 +466,7 @@ async def forgot_password(body: ForgotPasswordBody):
     return _SAFE_RESPONSE
 
 
-# ── Reset Password with token ────────────────────────────────────────────────────────────────
+# â”€â”€ Reset Password with token â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class ResetPasswordBody(BaseModel):
     token: str
@@ -505,7 +505,7 @@ async def reset_password_with_token(body: ResetPasswordBody):
 
 import telegram_bot
 
-# ── Settings ────────────────────────────────────────────────────────────────────────────────
+# â”€â”€ Settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async def _get_user_settings(user_id: str) -> dict:
     """Helper to fetch user's AI/resume settings from user_settings table."""
@@ -539,7 +539,7 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
             "visa_filter": bool(s.visa_filter),
             "level_filter": bool(s.level_filter),
             "ai_provider": s.ai_provider or "openrouter",
-            "ai_api_key": (s.ai_api_key or "")[:8] + "••••••••" if s.ai_api_key else "",
+            "ai_api_key": (s.ai_api_key or "")[:8] + "â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" if s.ai_api_key else "",
             "ai_model": s.ai_model or "anthropic/claude-sonnet-4-5",
             "profile_name": s.profile_name or "",
             "profile_visa": s.profile_visa or "",
@@ -549,7 +549,7 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
             "profile_github": s.profile_github or "",
             "profile_website": s.profile_website or "",
             "profile_summary": s.profile_summary or "",
-            "telegram_bot_token": "••••" if s.telegram_bot_token else "",
+            "telegram_bot_token": "â€¢â€¢â€¢â€¢" if s.telegram_bot_token else "",
             "telegram_chat_id": s.telegram_chat_id or "",
             "telegram_configured": bool(s.telegram_bot_token and s.telegram_chat_id),
             # Legacy fields for backward compat
@@ -573,9 +573,9 @@ async def update_settings(body: dict = Body(...), user_id: str = Depends(get_cur
                        "telegram_chat_id"]:
             if field in body:
                 setattr(s, field, body[field])
-        if "ai_api_key" in body and body["ai_api_key"] and "••" not in body["ai_api_key"]:
+        if "ai_api_key" in body and body["ai_api_key"] and "â€¢â€¢" not in body["ai_api_key"]:
             s.ai_api_key = body["ai_api_key"]
-        if "telegram_bot_token" in body and body["telegram_bot_token"] and "••" not in body["telegram_bot_token"]:
+        if "telegram_bot_token" in body and body["telegram_bot_token"] and "â€¢â€¢" not in body["telegram_bot_token"]:
             s.telegram_bot_token = body["telegram_bot_token"]
         if "job_roles" in body:
             s.job_roles = json.dumps(body["job_roles"] if isinstance(body["job_roles"], list) else [body["job_roles"]])
@@ -615,7 +615,7 @@ async def test_telegram(body: dict = Body(...), user_id: str = Depends(get_curre
         raise HTTPException(status_code=400, detail=f"Telegram error: {msg}")
 
 
-# ── Companies ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€ Companies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.get("/api/companies")
 async def list_companies(user_id: str = Depends(get_current_user_id)):
@@ -685,11 +685,11 @@ async def toggle_company(company_id: str, user_id: str = Depends(get_current_use
         return {"id": c.id, "active": c.active}
 
 
-# ── Jobs ────────────────────────────────────────────────────────────────────────────────
+# â”€â”€ Jobs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.get("/api/jobs/count")
 async def public_job_count():
-    """Public endpoint — no auth needed. Returns total job count for login page."""
+    """Public endpoint â€” no auth needed. Returns total job count for login page."""
     async with SessionLocal() as db:
         result = await db.execute(select(func.count()).select_from(Job))
         count = result.scalar() or 0
@@ -697,7 +697,7 @@ async def public_job_count():
 
 @app.get("/api/stats/today")
 async def public_today_stats():
-    """Public endpoint — live stats for login page (no auth needed)."""
+    """Public endpoint â€” live stats for login page (no auth needed)."""
     from datetime import datetime, timezone
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     async with SessionLocal() as db:
@@ -769,7 +769,7 @@ async def list_jobs(
     if status:
         jobs = [j for j in jobs if get_uj_status(j) == status]
 
-    # Time filter in Python — use posted_at when available, fallback to scraped_at
+    # Time filter in Python â€” use posted_at when available, fallback to scraped_at
     def parse_dt(s: str):
         try:
             dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
@@ -778,7 +778,7 @@ async def list_jobs(
             return None
 
     def effective_dt(j) -> datetime:
-        """Use scraped_at (when WE found it) — avoids old posted_at dates from jobspy filtering out fresh scrapes."""
+        """Use scraped_at (when WE found it) â€” avoids old posted_at dates from jobspy filtering out fresh scrapes."""
         return parse_dt(j.scraped_at or "") or parse_dt(j.posted_at or "") or now
 
     if time_range == "24h":
@@ -846,14 +846,14 @@ async def get_job(job_id: str, user_id: str = Depends(get_current_user_id)):
         return d
 
 
-# ── Live job verification ─────────────────────────────────────────────────────
+# â”€â”€ Live job verification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.get("/api/jobs/{job_id}/verify")
 async def verify_job_live(job_id: str, user_id: str = Depends(get_current_user_id)):
     """
     HEAD-ping the job URL to check if it still exists.
     Returns: {alive: bool|null, status_code: int|null}
-    null = couldn't reach (network error) — don't assume dead.
+    null = couldn't reach (network error) â€” don't assume dead.
     """
     async with SessionLocal() as db:
         job = await db.get(Job, job_id)
@@ -877,7 +877,7 @@ async def verify_job_live(job_id: str, user_id: str = Depends(get_current_user_i
             except Exception:
                 resp = None
 
-            # Some servers block HEAD — fall back to GET
+            # Some servers block HEAD â€” fall back to GET
             if resp is None or resp.status_code == 405:
                 resp = await client.get(url)
 
@@ -896,7 +896,7 @@ async def verify_job_live(job_id: str, user_id: str = Depends(get_current_user_i
             return {"alive": alive, "status_code": code}
 
     except Exception as e:
-        # Network error — unknown, don't flag as dead
+        # Network error â€” unknown, don't flag as dead
         return {"alive": None, "status_code": None, "error": str(e)[:120]}
 
 
@@ -930,7 +930,7 @@ async def set_status(job_id: str, body: StatusUpdate, user_id: str = Depends(get
     return {"ok": True}
 
 
-# ── Clear All Jobs ────────────────────────────────────────────────────────────
+# â”€â”€ Clear All Jobs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.delete("/api/jobs/all")
 async def clear_all_jobs(user_id: str = Depends(get_current_user_id)):
@@ -941,11 +941,11 @@ async def clear_all_jobs(user_id: str = Depends(get_current_user_id)):
         return {"deleted": result.rowcount}
 
 
-# ── Debug JobSpy ──────────────────────────────────────────────────────────────
+# â”€â”€ Debug JobSpy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.get("/api/debug/jobspy")
 async def debug_jobspy(user_id: str = Depends(get_current_user_id)):
-    """Test JobSpy directly — bypasses DB, shows raw counts."""
+    """Test JobSpy directly â€” bypasses DB, shows raw counts."""
     jobs = await jobspy_fetch({})
     by_source: dict = {}
     for j in jobs:
@@ -986,7 +986,7 @@ async def debug_google():
     return {"results": [r1, r2, r3]}
 
 
-# ── Scrape ────────────────────────────────────────────────────────────────────
+# â”€â”€ Scrape â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 @app.post("/api/jobs/scrape")
@@ -994,7 +994,7 @@ async def scrape_jobs(user_id: str = Depends(get_current_user_id)):
     return await _run_scrape()
 
 
-# ── Fetch Full JD ─────────────────────────────────────────────────────────────
+# â”€â”€ Fetch Full JD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 class DescriptionUpdate(BaseModel):
@@ -1036,7 +1036,7 @@ async def fetch_jd(job_id: str, user_id: str = Depends(get_current_user_id)):
     return {"description": full_desc}
 
 
-# ── Tailor ────────────────────────────────────────────────────────────────────
+# â”€â”€ Tailor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.post("/api/jobs/{job_id}/tailor")
 async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
@@ -1047,7 +1047,7 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
 
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
-    provider = user_cfg.get("ai_provider", "openrouter")
+    provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
     model = user_cfg.get("ai_model", "anthropic/claude-sonnet-4-5")
 
     if not api_key:
@@ -1091,7 +1091,7 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
     }
 
 
-# ── Cover Letter ─────────────────────────────────────────────────────────────
+# â”€â”€ Cover Letter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.post("/api/jobs/{job_id}/cover-letter")
 async def generate_cover_letter_endpoint(job_id: str, user_id: str = Depends(get_current_user_id)):
@@ -1102,7 +1102,7 @@ async def generate_cover_letter_endpoint(job_id: str, user_id: str = Depends(get
 
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
-    provider = user_cfg.get("ai_provider", "openrouter")
+    provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
     model = user_cfg.get("ai_model", "anthropic/claude-sonnet-4-5")
 
     if not api_key:
@@ -1152,7 +1152,7 @@ async def update_notes(job_id: str, body: NotesUpdate, user_id: str = Depends(ge
     return {"ok": True}
 
 
-# ── PDF Download ──────────────────────────────────────────────────────────────
+# â”€â”€ PDF Download â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.get("/api/jobs/{job_id}/resume/pdf")
 async def download_pdf(job_id: str, user_id: str = Depends(get_current_user_id)):
@@ -1179,7 +1179,7 @@ async def download_pdf(job_id: str, user_id: str = Depends(get_current_user_id))
     )
 
 
-# ── DOCX Download ─────────────────────────────────────────────────────────────
+# â”€â”€ DOCX Download â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.get("/api/jobs/{job_id}/resume/docx")
 async def download_docx(job_id: str, user_id: str = Depends(get_current_user_id)):
@@ -1206,7 +1206,7 @@ async def download_docx(job_id: str, user_id: str = Depends(get_current_user_id)
     )
 
 
-# ── Quick Tailor (paste any JD, no job record needed) ────────────────────────
+# â”€â”€ Quick Tailor (paste any JD, no job record needed) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class QuickTailorRequest(BaseModel):
     jd: str
@@ -1216,7 +1216,7 @@ class QuickTailorRequest(BaseModel):
 async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_current_user_id)):
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
-    provider = user_cfg.get("ai_provider", "openrouter")
+    provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
     model    = user_cfg.get("ai_model", "anthropic/claude-sonnet-4-5")
 
     if not api_key:
@@ -1234,7 +1234,7 @@ async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_curr
 async def quick_tailor_pdf(body: QuickTailorRequest, user_id: str = Depends(get_current_user_id)):
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
-    provider = user_cfg.get("ai_provider", "openrouter")
+    provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
     model    = user_cfg.get("ai_model", "anthropic/claude-sonnet-4-5")
 
     if not api_key:
@@ -1256,7 +1256,7 @@ async def quick_tailor_pdf(body: QuickTailorRequest, user_id: str = Depends(get_
 async def quick_tailor_docx(body: QuickTailorRequest, user_id: str = Depends(get_current_user_id)):
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
-    provider = user_cfg.get("ai_provider", "openrouter")
+    provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
     model    = user_cfg.get("ai_model", "anthropic/claude-sonnet-4-5")
 
     if not api_key:
@@ -1275,7 +1275,7 @@ async def quick_tailor_docx(body: QuickTailorRequest, user_id: str = Depends(get
     )
 
 
-# ── Save Package (create folder + write all files to disk) ───────────────────
+# â”€â”€ Save Package (create folder + write all files to disk) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _build_package_zip(company: str, jd: str, tailored_resume: str, cover_letter: str = "") -> bytes:
     """Build all package files into a ZIP in memory. Returns raw ZIP bytes."""
@@ -1334,7 +1334,7 @@ async def quick_save_package(body: QuickSaveRequest, user_id: str = Depends(get_
     )
 
 
-# ── Analytics ────────────────────────────────────────────────────────────────
+# â”€â”€ Analytics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.get("/api/analytics")
 async def get_analytics(user_id: str = Depends(get_current_user_id)):
@@ -1418,7 +1418,7 @@ async def get_analytics(user_id: str = Depends(get_current_user_id)):
     }
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _job_to_dict(job: Job) -> dict:
     return {
@@ -1452,7 +1452,7 @@ def _job_to_dict(job: Job) -> dict:
         "qualify_result": json.loads(job.qualify_result) if getattr(job, "qualify_result", None) else None,
     }
 
-# ── Deadline / Interview Date / Priority ─────────────────────────────────────
+# â”€â”€ Deadline / Interview Date / Priority â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class DeadlineUpdate(BaseModel):
     deadline: Optional[str] = None        # ISO date "2025-03-15"
@@ -1483,7 +1483,7 @@ async def update_job_meta(job_id: str, body: DeadlineUpdate, user_id: str = Depe
     return {"ok": True}
 
 
-# ── Search endpoint ───────────────────────────────────────────────────────────
+# â”€â”€ Search endpoint â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.get("/api/search")
 async def search_jobs(
@@ -1560,7 +1560,7 @@ async def search_jobs(
     }
 
 
-# ── Upcoming deadlines / reminders ───────────────────────────────────────────
+# â”€â”€ Upcoming deadlines / reminders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.get("/api/reminders")
 async def get_reminders(user_id: str = Depends(get_current_user_id)):
@@ -1603,7 +1603,7 @@ async def get_reminders(user_id: str = Depends(get_current_user_id)):
     return reminders
 
 
-# ── Scheduler control ─────────────────────────────────────────────────────────
+# â”€â”€ Scheduler control â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class SchedulerConfig(BaseModel):
     cron: str  # e.g. "0 */6 * * *"
@@ -1637,7 +1637,7 @@ async def run_scraper_now(user_id: str = Depends(get_current_user_id)):
 
 
 
-# ── Structured Profile ────────────────────────────────────────────────────────
+# â”€â”€ Structured Profile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class ProfileExperience(BaseModel):
     role: str = ""
@@ -1689,7 +1689,7 @@ def _profile_to_resume_text(p: dict) -> str:
     location = p.get("location", "")
     contact = " | ".join(filter(None, [phone, email, location]))
     if name:
-        lines.append(f"{name} — Senior Data Engineer")
+        lines.append(f"{name} â€” Senior Data Engineer")
     if contact:
         lines.append(contact)
     lines.append("")
@@ -1702,12 +1702,12 @@ def _profile_to_resume_text(p: dict) -> str:
             company = e.get("company", "")
             start = e.get("start_date", "")
             end = e.get("end_date", "")
-            date_range = f"{start} – {end}".strip(" –") if (start or end) else ""
+            date_range = f"{start} â€“ {end}".strip(" â€“") if (start or end) else ""
             header = " | ".join(filter(None, [f"{role} @ {company}" if role and company else (role or company), date_range]))
             lines.append(header)
             for b in e.get("bullets", []):
                 if b.strip():
-                    lines.append(f"• {b.strip()}")
+                    lines.append(f"â€¢ {b.strip()}")
             lines.append("")
 
     edu = p.get("education", [])
@@ -1757,7 +1757,7 @@ async def save_profile(body: ProfileData, user_id: str = Depends(get_current_use
     return {"ok": True}
 
 
-# ── Parse Resume File → structured profile ───────────────────────────────────
+# â”€â”€ Parse Resume File â†’ structured profile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.post("/api/profile/parse-resume")
 async def parse_resume_file(file: UploadFile = File(...), user_id: str = Depends(get_current_user_id)):
@@ -1765,8 +1765,9 @@ async def parse_resume_file(file: UploadFile = File(...), user_id: str = Depends
 
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
-    provider = user_cfg.get("ai_provider", "openrouter")
+    provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
     model = user_cfg.get("ai_model", "anthropic/claude-sonnet-4-5")
+
 
     if not api_key:
         raise HTTPException(400, "No AI API key set. Add one in Settings first.")
@@ -1817,7 +1818,7 @@ async def parse_resume_file(file: UploadFile = File(...), user_id: str = Depends
       "start_date": "Jan 2022",
       "end_date": "Present",
       "years": 2.5,
-      "bullets": ["All bullet points exactly as written in resume — do not skip, summarize, or truncate any"]
+      "bullets": ["All bullet points exactly as written in resume â€” do not skip, summarize, or truncate any"]
     }
   ],
   "education": [
@@ -1840,7 +1841,7 @@ Rules:
 - summary: professional summary or objective paragraph if present, else ""
 - start_date / end_date: exact date format from resume (e.g. "Sep 2023", "Jan 2021", "Present"). Use "" if not found.
 - years: calculate as decimal from start to end (2 years 6 months = 2.5). Estimate if dates missing.
-- bullets: extract EVERY bullet point for each role exactly as written — do NOT truncate, skip, or summarize any bullet.
+- bullets: extract EVERY bullet point for each role exactly as written â€” do NOT truncate, skip, or summarize any bullet.
 - skills: technical only (languages, frameworks, tools, platforms, databases, cloud services). No soft skills.
 - certifications: only actual certs/licenses. Empty array [] if none.
 - education: ALWAYS extract even if at the bottom. Include degree, university/school name, graduation year, GPA if present.
@@ -1871,7 +1872,7 @@ Rules:
 
 
 
-# ── Job Qualification ─────────────────────────────────────────────────────────
+# â”€â”€ Job Qualification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.post("/api/jobs/{job_id}/qualify")
 async def qualify_job_endpoint(job_id: str, user_id: str = Depends(get_current_user_id)):
@@ -1884,7 +1885,7 @@ async def qualify_job_endpoint(job_id: str, user_id: str = Depends(get_current_u
 
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
-    provider = user_cfg.get("ai_provider", "openrouter")
+    provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
     model = user_cfg.get("ai_model", "anthropic/claude-sonnet-4-5")
     # Profile still read from global Setting for now
     async with SessionLocal() as db:
@@ -1940,7 +1941,7 @@ async def qualify_all_jobs(background_tasks: BackgroundTasks, user_id: str = Dep
 
 
 async def _run_qualify_all():
-    """Standalone qualify-all — usable from scheduler and endpoint."""
+    """Standalone qualify-all â€” usable from scheduler and endpoint."""
     from ai.qualify import qualify_job
 
     async with SessionLocal() as db:
@@ -1957,7 +1958,7 @@ async def _run_qualify_all():
         profile = {}
 
     if not api_key or not profile:
-        print("[Qualify] No API key or profile — skipping auto-qualify")
+        print("[Qualify] No API key or profile â€” skipping auto-qualify")
         return
 
     async with SessionLocal() as db:
@@ -1966,7 +1967,7 @@ async def _run_qualify_all():
         )
         jobs = result.scalars().all()
 
-    print(f"[Qualify] Auto-qualifying {len(jobs)} new jobs…")
+    print(f"[Qualify] Auto-qualifying {len(jobs)} new jobsâ€¦")
     qualified = disqualified = 0
 
     for job in jobs:
@@ -2003,7 +2004,7 @@ async def _run_qualify_all():
 
 
 
-# ── Clean HTML descriptions ───────────────────────────────────────────────────
+# â”€â”€ Clean HTML descriptions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.post("/api/jobs/clean-descriptions")
 async def clean_html_descriptions(user_id: str = Depends(get_current_user_id)):
@@ -2023,7 +2024,7 @@ async def clean_html_descriptions(user_id: str = Depends(get_current_user_id)):
             desc = job.description or ""
             if _HTML_RE.search(desc):
                 clean = BeautifulSoup(desc, "lxml").get_text(separator="\n", strip=True)
-                # Collapse 3+ newlines → 2
+                # Collapse 3+ newlines â†’ 2
                 clean = re.sub(r'\n{3,}', '\n\n', clean).strip()
                 j = await db.get(Job, job.id)
                 j.description = clean[:10000]
@@ -2031,4 +2032,5 @@ async def clean_html_descriptions(user_id: str = Depends(get_current_user_id)):
         await db.commit()
 
     return {"cleaned": cleaned}
+
 

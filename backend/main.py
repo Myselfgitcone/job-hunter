@@ -30,6 +30,10 @@ from jd_fetcher import fetch_full_jd
 
 app = FastAPI(title="Job Hunter API")
 
+@app.get("/version")
+def version():
+    return {"version": "3", "cors": "wildcard-all"}
+
 import os as _os
 _cors_raw = _os.getenv("CORS_ORIGINS", "")
 _CORS_ORIGINS = [o.strip() for o in _cors_raw.split(",") if o.strip()] if _cors_raw else []

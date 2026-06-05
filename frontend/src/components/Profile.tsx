@@ -89,6 +89,7 @@ export function Profile() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [parsing, setParsing] = useState(false);
+  const [parseError, setParseError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -148,6 +149,7 @@ export function Profile() {
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     setParsing(true);
+    setParseError("");
     try {
       const parsed = await api.parseResume(file);
       if (parsed) {
@@ -182,7 +184,9 @@ export function Profile() {
           skills:     mergedSkills.length ? mergedSkills : prev.skills,
         }));
       }
-    } catch {} finally { setParsing(false); }
+    } catch (err: any) {
+      setParseError(err?.message || "Resume parse failed. Check AI key in Settings.");
+    } finally { setParsing(false); }
     e.target.value = "";
   };
 
@@ -196,14 +200,21 @@ export function Profile() {
             <h1 className="dash-title">My Profile</h1>
             <p className="dash-sub">The source your AI tailoring and scoring pull from</p>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="act" onClick={() => fileRef.current?.click()} disabled={parsing} style={{ height: 38 }}>
-              {parsing ? "Parsing…" : <><Ic d={I.upload} size={15} /> Upload Resume</>}
-            </button>
-            <input ref={fileRef} type="file" accept=".pdf,.docx,.txt" style={{ display: "none" }} onChange={handleUpload} />
-            <button className="save-btn" onClick={save} disabled={saving}>
-              <Ic d={saved ? I.check : I.check} size={15} /> {saved ? "Saved!" : saving ? "Saving…" : "Save Profile"}
-            </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="act" onClick={() => fileRef.current?.click()} disabled={parsing} style={{ height: 38 }}>
+                {parsing ? "Parsing…" : <><Ic d={I.upload} size={15} /> Upload Resume</>}
+              </button>
+              <input ref={fileRef} type="file" accept=".pdf,.docx,.txt" style={{ display: "none" }} onChange={handleUpload} />
+              <button className="save-btn" onClick={save} disabled={saving}>
+                <Ic d={I.check} size={15} /> {saved ? "Saved!" : saving ? "Saving…" : "Save Profile"}
+              </button>
+            </div>
+            {parseError && (
+              <div style={{ fontSize: 12, color: "#f87171", background: "rgba(248,113,113,.08)", border: "1px solid rgba(248,113,113,.2)", borderRadius: 7, padding: "6px 12px", maxWidth: 380, textAlign: "right" }}>
+                ⚠ {parseError}
+              </div>
+            )}
           </div>
         </div>
 

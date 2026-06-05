@@ -15,11 +15,13 @@ PROVIDER_URLS = {
 
 RECOMMENDED_MODELS = {
     "openrouter": [
-        "anthropic/claude-sonnet-4-5",
-        "anthropic/claude-3-haiku",
         "google/gemini-flash-1.5",
+        "google/gemini-2.0-flash-001",
         "meta-llama/llama-3.3-70b-instruct",
+        "anthropic/claude-3.5-sonnet",
+        "anthropic/claude-3-haiku",
         "mistralai/mistral-7b-instruct:free",
+        "meta-llama/llama-3.1-8b-instruct:free",
     ],
     "groq": [
         "llama-3.3-70b-versatile",

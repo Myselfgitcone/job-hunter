@@ -64,7 +64,7 @@ function TagInput({ tags, setTags, placeholder, suggestions }: {
 }
 
 const AI_PROVIDERS: Record<string, { models: string[]; keyUrl: string }> = {
-  "OpenRouter":  { models: ["anthropic/claude-3.5-sonnet","openai/gpt-4o","google/gemini-pro-1.5","meta-llama/llama-3.1-70b"], keyUrl: "openrouter.ai/keys" },
+  "OpenRouter":  { models: ["mistralai/mistral-7b-instruct:free", "google/gemini-2.0-flash-001", "meta-llama/llama-3.3-70b-instruct", "anthropic/claude-3.5-sonnet", "openai/gpt-4o"], keyUrl: "openrouter.ai/keys" },
   "Nvidia NIM":  { models: ["nvidia/llama-3.1-nemotron-70b","meta/llama-3.1-405b","mistralai/mixtral-8x22b"], keyUrl: "build.nvidia.com" },
   "Anthropic":   { models: ["claude-3-5-sonnet-latest","claude-3-5-haiku-latest","claude-3-opus-latest"], keyUrl: "console.anthropic.com/settings/keys" },
 };

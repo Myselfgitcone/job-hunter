@@ -543,7 +543,7 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
             "level_filter": bool(s.level_filter),
             "ai_provider": s.ai_provider or "openrouter",
             "ai_api_key": s.ai_api_key or "",
-            "ai_model_parse": s.ai_model_parse or "google/gemma-4-31b-it:free",
+            "ai_model_parse": s.ai_model_parse or "google/gemini-3.5-flash",
             "ai_model_tailor": s.ai_model_tailor or "anthropic/claude-opus-4-8",
             "ai_model_qualify": s.ai_model_qualify or "anthropic/claude-opus-4-8",
             "ai_model_cover_letter": s.ai_model_cover_letter or "anthropic/claude-sonnet-4.6",
@@ -1770,7 +1770,7 @@ async def parse_resume_file(file: UploadFile = File(...), user_id: str = Depends
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model = user_cfg.get("ai_model_parse", "google/gemma-4-31b-it:free")
+    model = user_cfg.get("ai_model_parse", "google/gemini-3.5-flash")
 
 
     if not api_key:

@@ -1866,9 +1866,10 @@ Rules:
         raise HTTPException(502, f"AI call failed: {str(e)[:300]}. Check your API key and model in Settings.")
 
     try:
+        import json_repair
         match = re.search(r'\{.*\}', response, re.DOTALL)
         if match:
-            return json.loads(match.group())
+            return json_repair.loads(match.group())
         else:
             raise Exception("No JSON brackets {} found in response")
     except Exception as e:

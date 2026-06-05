@@ -1,8 +1,10 @@
 import type { Job, Settings, TailorResult, ProfileData, QualifyResult, Company } from "./types";
 
 // In dev: VITE_API_URL is empty → Vite proxy forwards /api → localhost:8000
-// In prod: VITE_API_URL = https://your-backend.up.railway.app
-const BASE = (import.meta.env.VITE_API_URL || "");
+// In prod: VITE_API_URL = Railway backend URL
+const PROD_BACKEND = "https://job-hunter-production-927d.up.railway.app";
+const BASE = import.meta.env.VITE_API_URL
+  || (import.meta.env.DEV ? "" : PROD_BACKEND);
 
 async function req<T>(path: string, options?: RequestInit): Promise<T> {
   const token = localStorage.getItem("jh_token");

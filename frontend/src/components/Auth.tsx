@@ -132,6 +132,7 @@ export default function Auth({ onSuccess }: Props) {
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!email || !password || (mode === "register" && !name)) return;
     setLoading(true); setError("");
 

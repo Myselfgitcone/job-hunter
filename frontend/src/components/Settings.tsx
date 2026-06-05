@@ -64,7 +64,7 @@ function TagInput({ tags, setTags, placeholder, suggestions }: {
 }
 
 const AI_PROVIDERS: Record<string, { models: string[]; keyUrl: string }> = {
-  "OpenRouter":  { models: ["google/gemini-2.0-flash-exp:free", "meta-llama/llama-3.1-8b-instruct:free", "google/gemini-flash-1.5", "anthropic/claude-3-haiku", "openai/gpt-4o-mini"], keyUrl: "openrouter.ai/keys" },
+  "OpenRouter":  { models: ["google/gemini-2.0-flash-exp:free", "anthropic/claude-opus-4-8", "anthropic/claude-sonnet-4.6", "openai/gpt-5", "anthropic/claude-sonnet-4-20250514", "meta-llama/llama-3.1-8b-instruct:free", "google/gemini-flash-1.5", "openai/gpt-4o-mini"], keyUrl: "openrouter.ai/keys" },
   "Nvidia NIM":  { models: ["nvidia/llama-3.1-nemotron-70b","meta/llama-3.1-405b","mistralai/mixtral-8x22b"], keyUrl: "build.nvidia.com" },
   "Anthropic":   { models: ["claude-3-5-sonnet-latest","claude-3-5-haiku-latest","claude-3-opus-latest"], keyUrl: "console.anthropic.com/settings/keys" },
 };
@@ -84,7 +84,10 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
   const [expFilter, setExpFilter]   = useState(false);
 
   const [provider, setProvider] = useState("OpenRouter");
-  const [model, setModel]       = useState(AI_PROVIDERS["OpenRouter"].models[0]);
+  const [modelParse, setModelParse] = useState("google/gemini-2.0-flash-exp:free");
+  const [modelTailor, setModelTailor] = useState("anthropic/claude-opus-4-8");
+  const [modelQualify, setModelQualify] = useState("anthropic/claude-opus-4-8");
+  const [modelCoverLetter, setModelCoverLetter] = useState("anthropic/claude-sonnet-4.6");
   const [apiKey, setApiKey]     = useState("");
   const [showKey, setShowKey]   = useState(false);
 
@@ -104,7 +107,10 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
       setVisaFilter(!!s.visa_filter);
       setExpFilter(!!s.level_filter);
       setProvider(s.ai_provider || "OpenRouter");
-      setModel(s.ai_model || AI_PROVIDERS[s.ai_provider || "OpenRouter"]?.models[0] || "");
+      setModelParse(s.ai_model_parse || "google/gemini-2.0-flash-exp:free");
+      setModelTailor(s.ai_model_tailor || "anthropic/claude-opus-4-8");
+      setModelQualify(s.ai_model_qualify || "anthropic/claude-opus-4-8");
+      setModelCoverLetter(s.ai_model_cover_letter || "anthropic/claude-sonnet-4.6");
       setApiKey(s.ai_api_key || "");
       setBotToken(s.telegram_bot_token || "");
       setChatId(s.telegram_chat_id || "");
@@ -116,7 +122,9 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
     try {
       await api.saveSettings({
         visa_filter: visaFilter, level_filter: expFilter,
-        ai_provider: provider, ai_model: model, ai_api_key: apiKey,
+        ai_provider: provider, ai_api_key: apiKey,
+        ai_model_parse: modelParse, ai_model_tailor: modelTailor,
+        ai_model_qualify: modelQualify, ai_model_cover_letter: modelCoverLetter,
         telegram_bot_token: botToken, telegram_chat_id: chatId,
         auto_scrape_cron: cron,
         job_roles: roles,
@@ -179,17 +187,11 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
             <div className="seg-tabs">
               {Object.keys(AI_PROVIDERS).map(p => (
                 <button key={p} className={provider === p ? "on" : ""}
-                  onClick={() => { setProvider(p); setModel(AI_PROVIDERS[p].models[0]); }}>{p}</button>
+                  onClick={() => setProvider(p)}>{p}</button>
               ))}
             </div>
           </label>
           <div className="field-grid">
-            <label className="field">
-              <span className="field-label">Model</span>
-              <select value={model || AI_PROVIDERS[provider]?.models[0]} onChange={e => setModel(e.target.value)}>
-                {AI_PROVIDERS[provider]?.models.map(m => <option key={m}>{m}</option>)}
-              </select>
-            </label>
             <label className="field">
               <span className="field-label">API Key</span>
               <div className="input-reveal">
@@ -199,6 +201,32 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
               <a className="field-link" href={`https://${AI_PROVIDERS[provider]?.keyUrl}`} target="_blank" rel="noreferrer">
                 Get your API key →
               </a>
+            </label>
+          </div>
+          <div className="field-grid" style={{ marginTop: 12 }}>
+            <label className="field">
+              <span className="field-label">Resume Parsing Model</span>
+              <select value={modelParse} onChange={e => setModelParse(e.target.value)}>
+                {AI_PROVIDERS[provider]?.models.map(m => <option key={m}>{m}</option>)}
+              </select>
+            </label>
+            <label className="field">
+              <span className="field-label">Tailoring Model</span>
+              <select value={modelTailor} onChange={e => setModelTailor(e.target.value)}>
+                {AI_PROVIDERS[provider]?.models.map(m => <option key={m}>{m}</option>)}
+              </select>
+            </label>
+            <label className="field">
+              <span className="field-label">Job Qualification Model</span>
+              <select value={modelQualify} onChange={e => setModelQualify(e.target.value)}>
+                {AI_PROVIDERS[provider]?.models.map(m => <option key={m}>{m}</option>)}
+              </select>
+            </label>
+            <label className="field">
+              <span className="field-label">Cover Letter Model</span>
+              <select value={modelCoverLetter} onChange={e => setModelCoverLetter(e.target.value)}>
+                {AI_PROVIDERS[provider]?.models.map(m => <option key={m}>{m}</option>)}
+              </select>
             </label>
           </div>
         </section>

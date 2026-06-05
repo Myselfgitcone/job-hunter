@@ -1,4 +1,4 @@
-﻿from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Depends, Body
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select, update, or_, text, func
@@ -986,7 +986,7 @@ async def debug_google():
     return {"results": [r1, r2, r3]}
 
 
-# â”€â”€ Scrape â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ————————————————————————————————————————————————————————————————————————————————
 
 
 @app.post("/api/jobs/scrape")
@@ -994,7 +994,7 @@ async def scrape_jobs(user_id: str = Depends(get_current_user_id)):
     return await _run_scrape()
 
 
-# â”€â”€ Fetch Full JD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ————————————————————————————————————————————————————————————————————————————————
 
 
 class DescriptionUpdate(BaseModel):
@@ -1036,7 +1036,7 @@ async def fetch_jd(job_id: str, user_id: str = Depends(get_current_user_id)):
     return {"description": full_desc}
 
 
-# â”€â”€ Tailor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ————————————————————————————————————————————————————————————————————————————————
 
 @app.post("/api/jobs/{job_id}/tailor")
 async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
@@ -1048,7 +1048,7 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model = user_cfg.get("ai_model", "google/gemini-flash-1.5")
+    model = user_cfg.get("ai_model_tailor", "anthropic/claude-opus-4-8")
 
     if not api_key:
         raise HTTPException(400, "No AI API key set. Add one in Settings.")
@@ -1091,7 +1091,7 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
     }
 
 
-# â”€â”€ Cover Letter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ————————————————————————————————————————————————————————————————————————————————
 
 @app.post("/api/jobs/{job_id}/cover-letter")
 async def generate_cover_letter_endpoint(job_id: str, user_id: str = Depends(get_current_user_id)):
@@ -1103,7 +1103,7 @@ async def generate_cover_letter_endpoint(job_id: str, user_id: str = Depends(get
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model = user_cfg.get("ai_model", "google/gemini-flash-1.5")
+    model = user_cfg.get("ai_model_cover_letter", "anthropic/claude-sonnet-4.6")
 
     if not api_key:
         raise HTTPException(400, "No AI API key set. Add one in Settings.")
@@ -1766,7 +1766,7 @@ async def parse_resume_file(file: UploadFile = File(...), user_id: str = Depends
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model = user_cfg.get("ai_model", "google/gemini-flash-1.5")
+    model = user_cfg.get("ai_model_parse", "google/gemini-2.0-flash-exp:free")
 
 
     if not api_key:
@@ -1886,7 +1886,7 @@ async def qualify_job_endpoint(job_id: str, user_id: str = Depends(get_current_u
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model = user_cfg.get("ai_model", "google/gemini-flash-1.5")
+    model = user_cfg.get("ai_model_qualify", "anthropic/claude-opus-4-8")
     # Profile still read from global Setting for now
     async with SessionLocal() as db:
         profile_row = await db.get(Setting, "profile")

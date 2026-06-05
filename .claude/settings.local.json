@@ -64,7 +64,8 @@
       "mcp__Claude_in_Chrome__select_browser",
       "mcp__Claude_in_Chrome__read_page",
       "Bash(git checkout *)",
-      "WebFetch(domain:job-hunter-production-927d.up.railway.app)"
+      "WebFetch(domain:job-hunter-production-927d.up.railway.app)",
+      "Bash(curl -s -X OPTIONS \"https://job-hunter-production-927d.up.railway.app/api/profile/parse-resume\" -H \"Origin: https://job-hunter-sigma.vercel.app\" -H \"Access-Control-Request-Method: POST\" -H \"Access-Control-Request-Headers: authorization,content-type\" -v)"
     ]
   }
 }

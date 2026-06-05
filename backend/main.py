@@ -1741,12 +1741,15 @@ async def parse_resume_file(file: UploadFile = File(...), user_id: str = Depends
 
     from ai.llm import chat
 
-    PARSE_SYSTEM = """Extract structured information from this resume. Return ONLY valid JSON, no markdown:
+    PARSE_SYSTEM = """Extract ALL structured information from this resume. Return ONLY valid JSON, no markdown, no explanation:
 {
   "name": "",
   "email": "",
   "phone": "",
   "location": "",
+  "linkedin": "",
+  "github": "",
+  "summary": "",
   "experience": [
     {
       "role": "",
@@ -1754,36 +1757,44 @@ async def parse_resume_file(file: UploadFile = File(...), user_id: str = Depends
       "start_date": "Jan 2022",
       "end_date": "Present",
       "years": 2.5,
-      "bullets": ["All bullet points exactly as written in resume"]
+      "bullets": ["All bullet points exactly as written in resume — do not skip, summarize, or truncate any"]
     }
   ],
   "education": [
-    {"degree": "", "school": "", "year": ""}
+    {"degree": "", "school": "", "year": "", "gpa": ""}
   ],
   "projects": [
-    {"name": "", "description": ""}
+    {"name": "", "description": "", "stack": "", "url": ""}
   ],
   "skills": ["Python", "SQL"],
   "certifications": ["AWS Solutions Architect"]
 }
 
 Rules:
-- start_date / end_date: use the exact date format from the resume (e.g. "Sep 2023", "Jan 2021", "Present"). If no date found, use "".
-- years: calculate from start_date to end_date as decimal (e.g. 2 years 6 months = 2.5). If dates missing, estimate from context.
-- bullets: extract ALL bullet points for each role exactly as written — do not truncate, summarize, or skip any.
-- skills: technical only (languages, frameworks, tools, platforms, databases, cloud). No soft skills.
-- certifications: only actual certs/licenses. Empty array if none.
-- education: ALWAYS extract even if at the bottom. Look for degree, university/school name, graduation year.
+- name: full name from top of resume
+- email: extract email address
+- phone: extract phone number
+- location: city, state or city, country
+- linkedin: full LinkedIn URL or just the handle (e.g. linkedin.com/in/username)
+- github: full GitHub URL or handle (e.g. github.com/username)
+- summary: professional summary or objective paragraph if present, else ""
+- start_date / end_date: exact date format from resume (e.g. "Sep 2023", "Jan 2021", "Present"). Use "" if not found.
+- years: calculate as decimal from start to end (2 years 6 months = 2.5). Estimate if dates missing.
+- bullets: extract EVERY bullet point for each role exactly as written — do NOT truncate, skip, or summarize any bullet.
+- skills: technical only (languages, frameworks, tools, platforms, databases, cloud services). No soft skills.
+- certifications: only actual certs/licenses. Empty array [] if none.
+- education: ALWAYS extract even if at the bottom. Include degree, university/school name, graduation year, GPA if present.
+- projects: extract all personal/side projects with name, description, tech stack, and URL if present.
 - Use "" for missing text fields. Use [] for missing arrays.
-- Do NOT invent or paraphrase data not present in the resume."""
+- Do NOT invent, paraphrase, or add anything not explicitly in the resume."""
 
     response = await chat(
         system=PARSE_SYSTEM,
-        user=f"Resume:\n\n{text[:10000]}",
+        user=f"Resume:\n\n{text[:15000]}",
         api_key=api_key,
         provider=provider,
         model=model,
-        max_tokens=2000,
+        max_tokens=4000,
     )
 
     try:
@@ -1794,6 +1805,7 @@ Rules:
         pass
 
     raise HTTPException(500, "AI could not parse resume. Try again or use TXT format.")
+
 
 
 # ── Job Qualification ─────────────────────────────────────────────────────────

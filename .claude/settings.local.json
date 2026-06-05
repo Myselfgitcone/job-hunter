@@ -63,7 +63,8 @@
       "mcp__Claude_in_Chrome__list_connected_browsers",
       "mcp__Claude_in_Chrome__select_browser",
       "mcp__Claude_in_Chrome__read_page",
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "WebFetch(domain:job-hunter-production-927d.up.railway.app)"
     ]
   }
 }

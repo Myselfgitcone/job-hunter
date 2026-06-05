@@ -1,0 +1,6 @@
+tree 52de5bcb0e1968dd1d710fa4e3a21a3c99bccb94
+parent acc20b04c0c0bb95fdaa52974107279285070fae
+author butukurijagadishreddy <jagadishreddy091@gmail.com> 1780440167 -0500
+committer butukurijagadishreddy <jagadishreddy091@gmail.com> 1780440167 -0500
+
+fix welcome modal: API key first, then profile

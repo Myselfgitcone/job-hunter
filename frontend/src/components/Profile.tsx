@@ -79,7 +79,7 @@ function RepeatCard({ children, onRemove, index, title }: { children: React.Reac
       <span className="repeat-num">{String(index + 1).padStart(2, "0")}</span>
       <div className="repeat-body" style={{ display: expanded ? "flex" : "none" }}>{children}</div>
       {!expanded && (
-        <div style={{ flex: 1, padding: "9px 0", color: "#e5e7eb", fontWeight: 500, fontSize: 14 }}>
+        <div style={{ flex: 1, padding: "9px 0", color: "#4b5563", fontWeight: 500, fontSize: 14 }}>
           {title || "Untitled"}
         </div>
       )}

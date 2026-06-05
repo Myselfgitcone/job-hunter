@@ -31,10 +31,15 @@ from jd_fetcher import fetch_full_jd
 app = FastAPI(title="Job Hunter API")
 
 import os as _os
-_CORS_ORIGINS = _os.getenv(
-    "CORS_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173"
-).split(",")
+_cors_raw = _os.getenv("CORS_ORIGINS", "")
+_CORS_ORIGINS = [o.strip() for o in _cors_raw.split(",") if o.strip()] if _cors_raw else []
+# Always include localhost + vercel app
+_CORS_ORIGINS += [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://job-hunter-sigma.vercel.app",
+]
+_CORS_ORIGINS = list(set(_CORS_ORIGINS))
 
 app.add_middleware(
     CORSMiddleware,

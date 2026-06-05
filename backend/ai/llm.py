@@ -52,29 +52,52 @@ async def chat(
     if not url:
         raise ValueError(f"Unknown provider: {provider}. Use openrouter / groq / nvidia / anthropic")
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
+    models_to_try = [model]
     if provider == "openrouter":
-        headers["HTTP-Referer"] = "https://job-hunter-sigma.vercel.app"
-        headers["X-Title"] = "Job Hunter"
+        fallback_models = [
+            "google/gemini-2.5-flash-lite",
+            "google/gemini-2.5-flash",
+            "anthropic/claude-haiku-4.5",
+            "anthropic/claude-sonnet-4.6",
+            "anthropic/claude-opus-4-8",
+            "openai/gpt-5"
+        ]
+        for fm in fallback_models:
+            if fm not in models_to_try:
+                models_to_try.append(fm)
 
-    payload = {
-        "model": model,
-        "max_tokens": max_tokens,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-    }
+    last_error = None
+    for current_model in models_to_try:
+        try:
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+            if provider == "openrouter":
+                headers["HTTP-Referer"] = "https://job-hunter-sigma.vercel.app"
+                headers["X-Title"] = "Job Hunter"
 
-    async with httpx.AsyncClient(timeout=90) as client:
-        resp = await client.post(url, headers=headers, json=payload)
-        if not resp.is_success:
-            body = resp.text[:400]
-            raise ValueError(f"HTTP {resp.status_code} from {provider}: {body}")
-        return resp.json()["choices"][0]["message"]["content"]
+            payload = {
+                "model": current_model,
+                "max_tokens": max_tokens,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+            }
+
+            async with httpx.AsyncClient(timeout=90) as client:
+                resp = await client.post(url, headers=headers, json=payload)
+                if not resp.is_success:
+                    body = resp.text[:400]
+                    raise ValueError(f"HTTP {resp.status_code} from {provider} using {current_model}: {body}")
+                return resp.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            last_error = e
+            continue
+
+    if last_error:
+        raise last_error
 
 
 

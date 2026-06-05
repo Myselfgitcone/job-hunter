@@ -1853,36 +1853,17 @@ Rules:
 - Use "" for missing text fields. Use [] for missing arrays.
 - Do NOT invent, paraphrase, or add anything not explicitly in the resume."""
 
-    models_to_try = [model]
-    fallback_models = [
-        "google/gemini-2.5-flash-lite",
-        "google/gemini-2.5-flash",
-        "anthropic/claude-haiku-4.5"
-    ]
-    for fm in fallback_models:
-        if fm not in models_to_try:
-            models_to_try.append(fm)
-
-    response = None
-    last_error = None
-
-    for m in models_to_try:
-        try:
-            response = await chat(
-                system=PARSE_SYSTEM,
-                user=f"Resume:\n\n{text[:15000]}",
-                api_key=api_key,
-                provider=provider,
-                model=m,
-                max_tokens=4000,
-            )
-            break
-        except Exception as e:
-            last_error = e
-            continue
-            
-    if not response:
-        raise HTTPException(502, f"AI call failed on all fallback models. Last error: {str(last_error)[:300]}")
+    try:
+        response = await chat(
+            system=PARSE_SYSTEM,
+            user=f"Resume:\n\n{text[:15000]}",
+            api_key=api_key,
+            provider=provider,
+            model=model,
+            max_tokens=4000,
+        )
+    except Exception as e:
+        raise HTTPException(502, f"AI call failed on all fallback models. Last error: {str(e)[:300]}")
 
     try:
         import json_repair

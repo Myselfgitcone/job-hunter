@@ -20,6 +20,7 @@ export interface ProfileData {
   github: string;
   website: string;
   visa_status: string;
+  summary: string;
   experience: ProfileExperience[];
   education: ProfileEducation[];
   projects: ProfileProject[];

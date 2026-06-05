@@ -215,7 +215,14 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
             <label className="field">
               <span className="field-label">Resume Parsing Model</span>
               <select value={modelParse} onChange={e => setModelParse(e.target.value)}>
-                {AI_PROVIDERS[provider]?.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                {provider === "OpenRouter" ? (
+                  <>
+                    <option value="google/gemini-2.0-flash-exp:free">Google Gemini 2.0 Flash (Recommended)</option>
+                    <option value="openai/gpt-5">OpenAI GPT-5 (Balanced)</option>
+                  </>
+                ) : (
+                  AI_PROVIDERS[provider]?.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
+                )}
               </select>
             </label>
             <label className="field">

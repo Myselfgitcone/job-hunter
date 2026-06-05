@@ -1077,7 +1077,7 @@ select {
 .field input, .field select, .field textarea, .input-reveal input,
 input.field, select.field, textarea.field {
   width: 100%; height: 38px; padding: 0 12px; border-radius: var(--r-sm);
-  background: var(--bg-elevated); border: 1px solid var(--line); color: var(--tx); font-size: 13px;
+  background-color: var(--bg-elevated); border: 1px solid var(--line); color: var(--tx); font-size: 13px;
   font-family: var(--f-ui); transition: border-color .15s, box-shadow .15s;
 }
 .field textarea { height: auto; min-height: 88px; padding: 10px 12px; resize: vertical; line-height: 1.55; }

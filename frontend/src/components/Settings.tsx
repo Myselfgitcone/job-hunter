@@ -66,7 +66,7 @@ function TagInput({ tags, setTags, placeholder, suggestions }: {
 const AI_PROVIDERS: Record<string, { models: {id: string, name: string}[]; keyUrl: string }> = {
   "OpenRouter":  { 
     models: [
-      { id: "anthropic/claude-opus-4-8", name: "Anthropic Claude 4.8 Opus (Recommended)" },
+      { id: "anthropic/claude-opus-4-8", name: "Anthropic Claude 4.8 Opus (Premium)" },
       { id: "anthropic/claude-sonnet-4.6", name: "Anthropic Claude 4.6 Sonnet (Balanced)" },
       { id: "openai/gpt-5", name: "OpenAI GPT-5" },
       { id: "google/gemini-2.5-flash-lite", name: "Google Gemini 2.5 Lite" }
@@ -94,7 +94,7 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
   const [provider, setProvider] = useState("OpenRouter");
   const [modelParse, setModelParse] = useState("google/gemini-2.0-flash-exp:free");
   const [modelTailor, setModelTailor] = useState("anthropic/claude-opus-4-8");
-  const [modelQualify, setModelQualify] = useState("anthropic/claude-opus-4-8");
+  const [modelQualify, setModelQualify] = useState("anthropic/claude-sonnet-4.6");
   const [modelCoverLetter, setModelCoverLetter] = useState("anthropic/claude-sonnet-4.6");
   const [apiKey, setApiKey]     = useState("");
   const [showKey, setShowKey]   = useState(false);
@@ -117,7 +117,7 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
       setProvider(s.ai_provider || "OpenRouter");
       setModelParse(s.ai_model_parse || "google/gemini-2.0-flash-exp:free");
       setModelTailor(s.ai_model_tailor || "anthropic/claude-opus-4-8");
-      setModelQualify(s.ai_model_qualify || "anthropic/claude-opus-4-8");
+      setModelQualify(s.ai_model_qualify || "anthropic/claude-sonnet-4.6");
       setModelCoverLetter(s.ai_model_cover_letter || "anthropic/claude-sonnet-4.6");
       setApiKey(s.ai_api_key || "");
       setBotToken(s.telegram_bot_token || "");

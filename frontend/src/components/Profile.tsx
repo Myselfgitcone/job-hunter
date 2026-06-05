@@ -33,23 +33,38 @@ const I = {
   check:    '<path d="M20 6 9 17l-5-5"/>',
   x:        '<path d="M18 6 6 18M6 6l12 12"/>',
   upload:   '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
+  mail:     '<path d="M4 7.00005L10.2 11.65C11.2667 12.45 12.7333 12.45 13.8 11.65L20 7"/><rect x="3" y="5" width="18" height="14" rx="2"/>',
+  phone:    '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>',
+  mapPin:   '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
+  linkedin: '<path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/>',
+  github:   '<path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>',
 };
 
 // ── Field primitive ───────────────────────────────────────────────────────────
-function Field({ label, value, onChange, type, placeholder, full, readOnly }: {
+function Field({ label, value, onChange, type, placeholder, full, readOnly, innerIcon }: {
   label: React.ReactNode; value: string; onChange?: (v: string) => void;
-  type?: string; placeholder?: string; full?: boolean; readOnly?: boolean;
+  type?: string; placeholder?: string; full?: boolean; readOnly?: boolean; innerIcon?: React.ReactNode;
 }) {
   return (
     <label className={`field${full ? " full" : ""}`}>
       <span className="field-label">{label}</span>
-      <input 
-        type={type || "text"} value={value} 
-        onChange={e => onChange?.(e.target.value)} 
-        placeholder={placeholder} 
-        readOnly={readOnly}
-        style={readOnly ? { background: "rgba(255,255,255,0.03)", color: "#9ca3af", cursor: "default", outline: "none", border: "1px solid rgba(255,255,255,0.05)" } : {}}
-      />
+      <div style={{ position: "relative" }}>
+        {innerIcon && (
+          <div style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#6b7280", display: "flex", pointerEvents: "none" }}>
+            {innerIcon}
+          </div>
+        )}
+        <input 
+          type={type || "text"} value={value} 
+          onChange={e => onChange?.(e.target.value)} 
+          placeholder={placeholder} 
+          readOnly={readOnly}
+          style={{
+            ...(readOnly ? { background: "rgba(255,255,255,0.03)", color: "#9ca3af", cursor: "default", outline: "none", border: "1px solid rgba(255,255,255,0.05)" } : {}),
+            ...(innerIcon ? { paddingLeft: 34 } : {})
+          }}
+        />
+      </div>
     </label>
   );
 }
@@ -101,7 +116,7 @@ const VISA_OPTIONS = ["US Citizen", "Green Card", "H1B", "OPT / CPT", "TN Visa",
 
 export function Profile() {
   const [profile, setProfile] = useState<any>({
-    personal: { firstName: "", middleName: "", lastName: "", email: "", phone: "", address: "", linkedin: "", github: "", visa: "" },
+    personal: { firstName: "", lastName: "", email: "", phone: "", address: "", linkedin: "", github: "", visa: "" },
     experience: [] as any[],
     education: [] as any[],
     projects: [] as any[],
@@ -134,12 +149,11 @@ export function Profile() {
         
         const nameParts = (p.name || "").split(" ");
         const first = nameParts[0] || "";
-        const last = nameParts.length > 1 ? nameParts[nameParts.length - 1] : "";
-        const middle = nameParts.length > 2 ? nameParts.slice(1, -1).join(" ") : "";
+        const last = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
 
         setProfile({
           personal: {
-            firstName: first, middleName: middle, lastName: last, 
+            firstName: first, lastName: last, 
             email: p.email || "", phone: p.phone || "",
             address: p.address || p.location || "", linkedin: p.linkedin || "", github: p.github || "",
             visa: p.visa_status || "",
@@ -159,7 +173,7 @@ export function Profile() {
   const clearAll = () => {
     if (!window.confirm("Are you sure you want to clear your entire profile? This cannot be undone until you save again.")) return;
     setProfile({
-      personal: { firstName: "", middleName: "", lastName: "", email: "", phone: "", address: "", linkedin: "", github: "", visa: "" },
+      personal: { firstName: "", lastName: "", email: "", phone: "", address: "", linkedin: "", github: "", visa: "" },
       experience: [], education: [], projects: [], skills: [], certifications: [],
     });
   };
@@ -169,7 +183,7 @@ export function Profile() {
     try {
       // Map back to API format
       const payload = {
-        name: [profile.personal.firstName, profile.personal.middleName, profile.personal.lastName].filter(Boolean).join(" "),
+        name: [profile.personal.firstName, profile.personal.lastName].filter(Boolean).join(" "),
         email: profile.personal.email,
         phone: profile.personal.phone, address: profile.personal.address,
         linkedin: profile.personal.linkedin, github: profile.personal.github,
@@ -220,15 +234,13 @@ export function Profile() {
         
         const nameParts = (parsed.name || "").split(" ");
         const first = nameParts[0] || "";
-        const last = nameParts.length > 1 ? nameParts[nameParts.length - 1] : "";
-        const middle = nameParts.length > 2 ? nameParts.slice(1, -1).join(" ") : "";
+        const last = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
 
         setProfile((prev: any) => ({
           ...prev,
           personal: {
             ...prev.personal,
             firstName: first           || prev.personal.firstName,
-            middleName: middle         || prev.personal.middleName,
             lastName:  last            || prev.personal.lastName,
             email:    parsed.email     || prev.personal.email,
             phone:    parsed.phone     || prev.personal.phone,
@@ -293,21 +305,35 @@ export function Profile() {
         <section className="form-section">
           <div className="section-label"><Ic d={I.user} size={16} /> Personal Info</div>
           <div className="field-grid">
-            <Field label="First Name"   value={P.personal.firstName} onChange={v => pset("firstName", v)} />
-            <Field label="Middle Name"  value={P.personal.middleName} onChange={v => pset("middleName", v)} />
-            <Field label="Last Name"    value={P.personal.lastName}  onChange={v => pset("lastName", v)} />
-            <Field label="Email"        type="email" value={P.personal.email} onChange={v => pset("email", v)} />
-            <Field label="Phone"        value={P.personal.phone}     onChange={v => pset("phone", v)} />
-            <Field label="Address"      value={P.personal.address}   onChange={v => pset("address", v)} placeholder="City, State, Country" />
-            <Field label="LinkedIn URL" value={P.personal.linkedin}  onChange={v => pset("linkedin", v)} />
-            <Field label="GitHub URL"   value={P.personal.github}    onChange={v => pset("github", v)} />
+            <Field label="First name"   value={P.personal.firstName} onChange={v => pset("firstName", v)} />
+            <Field label="Last name"    value={P.personal.lastName}  onChange={v => pset("lastName", v)} />
+            <Field 
+              label={<><span style={{display: "inline-flex", alignItems: "center", gap: 4}}><Ic d={I.mail} size={13} /> Email</span></>} 
+              type="email" value={P.personal.email} onChange={v => pset("email", v)} 
+            />
+            <Field 
+              label={<><span style={{display: "inline-flex", alignItems: "center", gap: 4}}><Ic d={I.phone} size={13} /> Phone</span></>} 
+              value={P.personal.phone} onChange={v => pset("phone", v)} 
+            />
+            <Field 
+              label={<><span style={{display: "inline-flex", alignItems: "center", gap: 4}}><Ic d={I.mapPin} size={13} /> Address</span></>} 
+              value={P.personal.address} onChange={v => pset("address", v)} placeholder="City, State, Country" 
+            />
             <label className="field">
-              <span className="field-label">Visa Status</span>
+              <span className="field-label">Visa status</span>
               <select value={P.personal.visa} onChange={e => pset("visa", e.target.value)}>
-                <option value="" disabled>Select Visa Status</option>
+                <option value="" disabled>Select visa status</option>
                 {VISA_OPTIONS.map(o => <option key={o}>{o}</option>)}
               </select>
             </label>
+            <Field 
+              label="LinkedIn" value={P.personal.linkedin} onChange={v => pset("linkedin", v)} 
+              innerIcon={<Ic d={I.linkedin} size={16} />} placeholder="linkedin.com/in/..." 
+            />
+            <Field 
+              label="GitHub" value={P.personal.github} onChange={v => pset("github", v)} 
+              innerIcon={<Ic d={I.github} size={16} />} placeholder="github.com/..." 
+            />
           </div>
         </section>
 

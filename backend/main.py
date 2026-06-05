@@ -1869,10 +1869,10 @@ Rules:
         match = re.search(r'\{.*\}', response, re.DOTALL)
         if match:
             return json.loads(match.group())
-    except Exception:
-        pass
-
-    raise HTTPException(500, "AI could not parse resume JSON. Try again.")
+        else:
+            raise Exception("No JSON brackets {} found in response")
+    except Exception as e:
+        raise HTTPException(500, f"AI could not parse resume JSON. Error: {str(e)}\n\nRaw output snippet: {response[:500]}")
 
 
 

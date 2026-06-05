@@ -110,7 +110,10 @@ class UserSettings(Base):
     level_filter         = Column(Boolean, default=False)   # True = hide overqualified
     ai_provider          = Column(String, default="openrouter")
     ai_api_key           = Column(String, default="")
-    ai_model             = Column(String, default="anthropic/claude-sonnet-4-5")
+    ai_model_parse       = Column(String, default="")
+    ai_model_tailor      = Column(String, default="")
+    ai_model_qualify     = Column(String, default="")
+    ai_model_cover_letter= Column(String, default="")
     profile_name         = Column(String, default="")
     profile_visa         = Column(String, default="")  # display: "F1/OPT", "H1B", "Citizen"
     # Profile fields for auto-apply

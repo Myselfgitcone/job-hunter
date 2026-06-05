@@ -518,7 +518,10 @@ async def _get_user_settings(user_id: str) -> dict:
             "resume": s.resume or "",
             "ai_provider": s.ai_provider or "openrouter",
             "ai_api_key": s.ai_api_key or "",
-            "ai_model": s.ai_model or "google/gemini-flash-1.5",
+            "ai_model_parse": s.ai_model_parse or "",
+            "ai_model_tailor": s.ai_model_tailor or "",
+            "ai_model_qualify": s.ai_model_qualify or "",
+            "ai_model_cover_letter": s.ai_model_cover_letter or "",
         }
 
 
@@ -539,8 +542,11 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
             "visa_filter": bool(s.visa_filter),
             "level_filter": bool(s.level_filter),
             "ai_provider": s.ai_provider or "openrouter",
-            "ai_api_key": (s.ai_api_key or "")[:8] + "â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" if s.ai_api_key else "",
-            "ai_model": s.ai_model or "google/gemini-flash-1.5",
+            "ai_api_key": s.ai_api_key or "",
+            "ai_model_parse": s.ai_model_parse or "google/gemini-2.0-flash-exp:free",
+            "ai_model_tailor": s.ai_model_tailor or "anthropic/claude-opus-4-8",
+            "ai_model_qualify": s.ai_model_qualify or "anthropic/claude-opus-4-8",
+            "ai_model_cover_letter": s.ai_model_cover_letter or "anthropic/claude-sonnet-4.6",
             "profile_name": s.profile_name or "",
             "profile_visa": s.profile_visa or "",
             "profile_phone": s.profile_phone or "",
@@ -567,16 +573,14 @@ async def update_settings(body: dict = Body(...), user_id: str = Depends(get_cur
         if not s:
             s = UserSettings(user_id=user_id)
             db.add(s)
-        for field in ["resume", "ai_provider", "ai_model", "profile_name", "profile_visa",
+        for field in ["resume", "ai_provider", "ai_model_parse", "ai_model_tailor", "ai_model_qualify", "ai_model_cover_letter",
+                       "profile_name", "profile_visa",
                        "profile_phone", "profile_address", "profile_linkedin",
                        "profile_github", "profile_website", "profile_summary",
-                       "telegram_chat_id"]:
+                       "telegram_chat_id", "ai_api_key", "telegram_bot_token"]:
             if field in body:
                 setattr(s, field, body[field])
-        if "ai_api_key" in body and body["ai_api_key"] and "â€¢â€¢" not in body["ai_api_key"]:
-            s.ai_api_key = body["ai_api_key"]
-        if "telegram_bot_token" in body and body["telegram_bot_token"] and "â€¢â€¢" not in body["telegram_bot_token"]:
-            s.telegram_bot_token = body["telegram_bot_token"]
+
         if "job_roles" in body:
             s.job_roles = json.dumps(body["job_roles"] if isinstance(body["job_roles"], list) else [body["job_roles"]])
         if "countries" in body:

@@ -38,6 +38,8 @@ const I = {
   mapPin:   '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
   linkedin: '<path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/>',
   github:   '<path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>',
+  chevronUp: '<polyline points="18 15 12 9 6 15"/>',
+  chevronDown: '<polyline points="6 9 12 15 18 9"/>',
 };
 
 // ── Field primitive ───────────────────────────────────────────────────────────
@@ -70,12 +72,25 @@ function Field({ label, value, onChange, type, placeholder, full, readOnly, inne
 }
 
 // ── RepeatCard ────────────────────────────────────────────────────────────────
-function RepeatCard({ children, onRemove, index }: { children: React.ReactNode; onRemove: () => void; index: number }) {
+function RepeatCard({ children, onRemove, index, title }: { children: React.ReactNode; onRemove: () => void; index: number; title?: string }) {
+  const [expanded, setExpanded] = useState(true);
   return (
     <div className="repeat-card">
       <span className="repeat-num">{String(index + 1).padStart(2, "0")}</span>
-      <div className="repeat-body">{children}</div>
-      <button className="repeat-del" onClick={onRemove} title="Remove"><Ic d={I.x} size={14} /></button>
+      <div className="repeat-body" style={{ display: expanded ? "flex" : "none" }}>{children}</div>
+      {!expanded && (
+        <div style={{ flex: 1, padding: "9px 0", color: "#e5e7eb", fontWeight: 500, fontSize: 14 }}>
+          {title || "Untitled"}
+        </div>
+      )}
+      <div className="repeat-actions">
+        <button className="repeat-act" onClick={() => setExpanded(!expanded)} title={expanded ? "Collapse" : "Expand"}>
+          <Ic d={expanded ? I.chevronUp : I.chevronDown} size={15} />
+        </button>
+        <button className="repeat-act red" onClick={onRemove} title="Remove">
+          <Ic d={I.x} size={15} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -376,13 +391,15 @@ export function Profile() {
             </button>
           </div>
           {P.experience.map((e: any, i: number) => (
-            <RepeatCard key={i} index={i} onRemove={() => setProfile((p: any) => ({ ...p, experience: p.experience.filter((_: any, j: number) => j !== i) }))}>
+            <RepeatCard key={i} index={i} title={e.title || e.company ? `${e.title}${e.title && e.company ? ' at ' : ''}${e.company}` : "New Experience"} onRemove={() => setProfile((p: any) => ({ ...p, experience: p.experience.filter((_: any, j: number) => j !== i) }))}>
               <div className="field-grid">
                 <Field label="Job Title" value={e.title}   onChange={v => updateAt("experience", i, "title", v)} />
                 <Field label="Company"   value={e.company} onChange={v => updateAt("experience", i, "company", v)} />
-                <Field label="Start Date" value={e.start}  onChange={v => updateAt("experience", i, "start", v)} placeholder="Jan 2021" />
-                <Field label="End Date"   value={e.end}    onChange={v => updateAt("experience", i, "end", v)} placeholder="Present" />
-                <Field label="Total Exp"  value={calcYears(e.start, e.end)} placeholder="-" readOnly />
+                <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "1fr 1fr 100px", gap: 14 }}>
+                  <Field label="Start Date" value={e.start}  onChange={v => updateAt("experience", i, "start", v)} placeholder="Jan 2021" />
+                  <Field label="End Date"   value={e.end}    onChange={v => updateAt("experience", i, "end", v)} placeholder="Present" />
+                  <Field label="Total Exp"  value={calcYears(e.start, e.end)} placeholder="-" readOnly />
+                </div>
               </div>
               <label className="field full">
                 <span className="field-label">Description</span>
@@ -401,7 +418,7 @@ export function Profile() {
             </button>
           </div>
           {P.education.map((e: any, i: number) => (
-            <RepeatCard key={i} index={i} onRemove={() => setProfile((p: any) => ({ ...p, education: p.education.filter((_: any, j: number) => j !== i) }))}>
+            <RepeatCard key={i} index={i} title={e.degree || e.school ? `${e.degree}${e.degree && e.school ? ' at ' : ''}${e.school}` : "New Education"} onRemove={() => setProfile((p: any) => ({ ...p, education: p.education.filter((_: any, j: number) => j !== i) }))}>
               <div className="field-grid">
                 <Field label="Degree"           value={e.degree} onChange={v => updateAt("education", i, "degree", v)} />
                 <Field label="School / University" value={e.school} onChange={v => updateAt("education", i, "school", v)} />
@@ -421,7 +438,7 @@ export function Profile() {
             </button>
           </div>
           {P.projects.map((e: any, i: number) => (
-            <RepeatCard key={i} index={i} onRemove={() => setProfile((p: any) => ({ ...p, projects: p.projects.filter((_: any, j: number) => j !== i) }))}>
+            <RepeatCard key={i} index={i} title={e.name || "New Project"} onRemove={() => setProfile((p: any) => ({ ...p, projects: p.projects.filter((_: any, j: number) => j !== i) }))}>
               <div className="field-grid">
                 <Field label="Project Name" value={e.name}  onChange={v => updateAt("projects", i, "name", v)} />
                 <Field label="Tech Stack"   value={e.stack} onChange={v => updateAt("projects", i, "stack", v)} />

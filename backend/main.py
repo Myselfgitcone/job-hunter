@@ -518,7 +518,7 @@ async def _get_user_settings(user_id: str) -> dict:
             "resume": s.resume or "",
             "ai_provider": s.ai_provider or "openrouter",
             "ai_api_key": s.ai_api_key or "",
-            "ai_model": s.ai_model or "anthropic/claude-sonnet-4-5",
+            "ai_model": s.ai_model or "anthropic/claude-3.5-sonnet",
         }
 
 
@@ -540,7 +540,7 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
             "level_filter": bool(s.level_filter),
             "ai_provider": s.ai_provider or "openrouter",
             "ai_api_key": (s.ai_api_key or "")[:8] + "â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" if s.ai_api_key else "",
-            "ai_model": s.ai_model or "anthropic/claude-sonnet-4-5",
+            "ai_model": s.ai_model or "anthropic/claude-3.5-sonnet",
             "profile_name": s.profile_name or "",
             "profile_visa": s.profile_visa or "",
             "profile_phone": s.profile_phone or "",
@@ -1048,7 +1048,7 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model = user_cfg.get("ai_model", "anthropic/claude-sonnet-4-5")
+    model = user_cfg.get("ai_model", "anthropic/claude-3.5-sonnet")
 
     if not api_key:
         raise HTTPException(400, "No AI API key set. Add one in Settings.")
@@ -1103,7 +1103,7 @@ async def generate_cover_letter_endpoint(job_id: str, user_id: str = Depends(get
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model = user_cfg.get("ai_model", "anthropic/claude-sonnet-4-5")
+    model = user_cfg.get("ai_model", "anthropic/claude-3.5-sonnet")
 
     if not api_key:
         raise HTTPException(400, "No AI API key set. Add one in Settings.")
@@ -1217,7 +1217,7 @@ async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_curr
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model    = user_cfg.get("ai_model", "anthropic/claude-sonnet-4-5")
+    model    = user_cfg.get("ai_model", "anthropic/claude-3.5-sonnet")
 
     if not api_key:
         raise HTTPException(400, "No AI API key set. Add one in Settings.")
@@ -1235,7 +1235,7 @@ async def quick_tailor_pdf(body: QuickTailorRequest, user_id: str = Depends(get_
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model    = user_cfg.get("ai_model", "anthropic/claude-sonnet-4-5")
+    model    = user_cfg.get("ai_model", "anthropic/claude-3.5-sonnet")
 
     if not api_key:
         raise HTTPException(400, "No AI API key set.")
@@ -1257,7 +1257,7 @@ async def quick_tailor_docx(body: QuickTailorRequest, user_id: str = Depends(get
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model    = user_cfg.get("ai_model", "anthropic/claude-sonnet-4-5")
+    model    = user_cfg.get("ai_model", "anthropic/claude-3.5-sonnet")
 
     if not api_key:
         raise HTTPException(400, "No AI API key set.")
@@ -1766,7 +1766,7 @@ async def parse_resume_file(file: UploadFile = File(...), user_id: str = Depends
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model = user_cfg.get("ai_model", "anthropic/claude-sonnet-4-5")
+    model = user_cfg.get("ai_model", "anthropic/claude-3.5-sonnet")
 
 
     if not api_key:
@@ -1886,7 +1886,7 @@ async def qualify_job_endpoint(job_id: str, user_id: str = Depends(get_current_u
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model = user_cfg.get("ai_model", "anthropic/claude-sonnet-4-5")
+    model = user_cfg.get("ai_model", "anthropic/claude-3.5-sonnet")
     # Profile still read from global Setting for now
     async with SessionLocal() as db:
         profile_row = await db.get(Setting, "profile")
@@ -1950,7 +1950,7 @@ async def _run_qualify_all():
 
     api_key = settings.get("ai_api_key", "")
     provider = settings.get("ai_provider", "openrouter")
-    model = settings.get("ai_model", "anthropic/claude-sonnet-4-5")
+    model = settings.get("ai_model", "anthropic/claude-3.5-sonnet")
     profile_raw = settings.get("profile", "{}")
     try:
         profile = json.loads(profile_raw)
@@ -2032,5 +2032,6 @@ async def clean_html_descriptions(user_id: str = Depends(get_current_user_id)):
         await db.commit()
 
     return {"cleaned": cleaned}
+
 
 

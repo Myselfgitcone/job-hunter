@@ -32,7 +32,7 @@ app = FastAPI(title="Job Hunter API")
 
 @app.get("/version")
 def version():
-    return {"version": "3", "cors": "wildcard-all"}
+    return {"version": "4", "cors": "always-injected"}
 
 import os as _os
 _cors_raw = _os.getenv("CORS_ORIGINS", "")
@@ -45,6 +45,27 @@ _CORS_ORIGINS += [
 ]
 _CORS_ORIGINS = list(set(_CORS_ORIGINS))
 
+# ── Bulletproof CORS: always inject headers on EVERY response ──────────────────
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+
+class AlwaysCORSMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        if request.method == "OPTIONS":
+            from starlette.responses import Response as StarletteResponse
+            resp = StarletteResponse(status_code=200)
+            resp.headers["Access-Control-Allow-Origin"] = "*"
+            resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+            resp.headers["Access-Control-Allow-Headers"] = "*"
+            resp.headers["Access-Control-Max-Age"] = "86400"
+            return resp
+        response = await call_next(request)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        return response
+
+app.add_middleware(AlwaysCORSMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -52,6 +73,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 @app.get("/health")
 async def health_check():

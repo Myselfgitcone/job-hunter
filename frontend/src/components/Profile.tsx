@@ -369,7 +369,7 @@ export function Profile() {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
             <div style={{ display: "flex", gap: 8 }}>
-              <button className="act" onClick={() => fileRef.current?.click()} disabled={parsing} style={{ height: 38 }}>
+              <button className="act primary" onClick={() => fileRef.current?.click()} disabled={parsing} style={{ height: 38, padding: "0 16px" }}>
                 {parsing ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     Parsing…
@@ -381,12 +381,12 @@ export function Profile() {
               </button>
               <input ref={fileRef} type="file" accept=".pdf,.docx,.txt" style={{ display: "none" }} onChange={handleUpload} />
               
-              <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", padding: "6px 12px", borderRadius: 8, border: "1px solid #e5e7eb", boxShadow: "0 1px 2px rgba(0,0,0,0.05)", height: 38, boxSizing: "border-box" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--grad-soft)", padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(124,58,237,0.25)", boxShadow: "0 1px 2px rgba(124,58,237,0.05)", height: 38, boxSizing: "border-box" }}>
                 <div style={{ display: "flex", gap: 2 }}>
-                  <button onClick={undo} disabled={past.length === 0} style={{ background: "transparent", border: "none", color: past.length === 0 ? "#d1d5db" : "#6b7280", cursor: past.length === 0 ? "default" : "pointer", padding: "4px 6px", borderRadius: 4, transition: "background 0.2s" }} title="Undo (Ctrl+Z)" onMouseOver={e => e.currentTarget.style.background = past.length === 0 ? "transparent" : "#f3f4f6"} onMouseOut={e => e.currentTarget.style.background = "transparent"}><Ic d={I.undo} size={15} /></button>
-                  <button onClick={redo} disabled={future.length === 0} style={{ background: "transparent", border: "none", color: future.length === 0 ? "#d1d5db" : "#6b7280", cursor: future.length === 0 ? "default" : "pointer", padding: "4px 6px", borderRadius: 4, transition: "background 0.2s" }} title="Redo (Ctrl+Y)" onMouseOver={e => e.currentTarget.style.background = future.length === 0 ? "transparent" : "#f3f4f6"} onMouseOut={e => e.currentTarget.style.background = "transparent"}><Ic d={I.redo} size={15} /></button>
+                  <button onClick={undo} disabled={past.length === 0} style={{ background: "transparent", border: "none", color: past.length === 0 ? "rgba(124,58,237,0.3)" : "#4f46e5", cursor: past.length === 0 ? "default" : "pointer", padding: "4px 6px", borderRadius: 4, transition: "background 0.2s" }} title="Undo (Ctrl+Z)" onMouseOver={e => e.currentTarget.style.background = past.length === 0 ? "transparent" : "rgba(124,58,237,0.1)"} onMouseOut={e => e.currentTarget.style.background = "transparent"}><Ic d={I.undo} size={15} /></button>
+                  <button onClick={redo} disabled={future.length === 0} style={{ background: "transparent", border: "none", color: future.length === 0 ? "rgba(124,58,237,0.3)" : "#4f46e5", cursor: future.length === 0 ? "default" : "pointer", padding: "4px 6px", borderRadius: 4, transition: "background 0.2s" }} title="Redo (Ctrl+Y)" onMouseOver={e => e.currentTarget.style.background = future.length === 0 ? "transparent" : "rgba(124,58,237,0.1)"} onMouseOut={e => e.currentTarget.style.background = "transparent"}><Ic d={I.redo} size={15} /></button>
                 </div>
-                <div style={{ width: 1, height: 16, background: "#e5e7eb" }} />
+                <div style={{ width: 1, height: 16, background: "rgba(124,58,237,0.15)" }} />
                 <div style={{ fontSize: 13, color: saveStatus === "unsaved" ? "#d97706" : saveStatus === "saving" ? "#3b82f6" : "#059669", display: "flex", alignItems: "center", gap: 6, width: 70, justifyContent: "flex-end", fontWeight: 500 }}>
                   {saveStatus === "unsaved" && "Unsaved"}
                   {saveStatus === "saving" && "Saving..."}
@@ -546,12 +546,12 @@ export function Profile() {
           <button className="act" onClick={clearAll} style={{ background: "rgba(239,68,64,0.1)", color: "#ef4440", border: "1px solid rgba(239,68,64,0.2)" }}>
             Clear All
           </button>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", padding: "6px 12px", borderRadius: 8, border: "1px solid #e5e7eb", boxShadow: "0 1px 2px rgba(0,0,0,0.05)", height: 38, boxSizing: "border-box" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--grad-soft)", padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(124,58,237,0.25)", boxShadow: "0 1px 2px rgba(124,58,237,0.05)", height: 38, boxSizing: "border-box" }}>
             <div style={{ display: "flex", gap: 2 }}>
-              <button onClick={undo} disabled={past.length === 0} style={{ background: "transparent", border: "none", color: past.length === 0 ? "#d1d5db" : "#6b7280", cursor: past.length === 0 ? "default" : "pointer", padding: "4px 6px", borderRadius: 4, transition: "background 0.2s" }} title="Undo (Ctrl+Z)" onMouseOver={e => e.currentTarget.style.background = past.length === 0 ? "transparent" : "#f3f4f6"} onMouseOut={e => e.currentTarget.style.background = "transparent"}><Ic d={I.undo} size={15} /></button>
-              <button onClick={redo} disabled={future.length === 0} style={{ background: "transparent", border: "none", color: future.length === 0 ? "#d1d5db" : "#6b7280", cursor: future.length === 0 ? "default" : "pointer", padding: "4px 6px", borderRadius: 4, transition: "background 0.2s" }} title="Redo (Ctrl+Y)" onMouseOver={e => e.currentTarget.style.background = future.length === 0 ? "transparent" : "#f3f4f6"} onMouseOut={e => e.currentTarget.style.background = "transparent"}><Ic d={I.redo} size={15} /></button>
+              <button onClick={undo} disabled={past.length === 0} style={{ background: "transparent", border: "none", color: past.length === 0 ? "rgba(124,58,237,0.3)" : "#4f46e5", cursor: past.length === 0 ? "default" : "pointer", padding: "4px 6px", borderRadius: 4, transition: "background 0.2s" }} title="Undo (Ctrl+Z)" onMouseOver={e => e.currentTarget.style.background = past.length === 0 ? "transparent" : "rgba(124,58,237,0.1)"} onMouseOut={e => e.currentTarget.style.background = "transparent"}><Ic d={I.undo} size={15} /></button>
+              <button onClick={redo} disabled={future.length === 0} style={{ background: "transparent", border: "none", color: future.length === 0 ? "rgba(124,58,237,0.3)" : "#4f46e5", cursor: future.length === 0 ? "default" : "pointer", padding: "4px 6px", borderRadius: 4, transition: "background 0.2s" }} title="Redo (Ctrl+Y)" onMouseOver={e => e.currentTarget.style.background = future.length === 0 ? "transparent" : "rgba(124,58,237,0.1)"} onMouseOut={e => e.currentTarget.style.background = "transparent"}><Ic d={I.redo} size={15} /></button>
             </div>
-            <div style={{ width: 1, height: 16, background: "#e5e7eb" }} />
+            <div style={{ width: 1, height: 16, background: "rgba(124,58,237,0.15)" }} />
             <div style={{ fontSize: 13, color: saveStatus === "unsaved" ? "#d97706" : saveStatus === "saving" ? "#3b82f6" : "#059669", display: "flex", alignItems: "center", gap: 6, width: 70, justifyContent: "flex-end", fontWeight: 500 }}>
               {saveStatus === "unsaved" && "Unsaved"}
               {saveStatus === "saving" && "Saving..."}

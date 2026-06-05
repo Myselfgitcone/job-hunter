@@ -66,7 +66,7 @@ function TagInput({ tags, setTags, placeholder, suggestions }: {
 const AI_PROVIDERS: Record<string, { models: {id: string, name: string}[]; keyUrl: string }> = {
   "OpenRouter":  { 
     models: [
-      { id: "deepseek/deepseek-v4-flash", name: "Deepseek V4 Flash" },
+      { id: "google/gemini-2.5-flash-lite", name: "Google Gemini 2.5 Lite" },
       { id: "google/gemini-2.5-flash", name: "Google Gemini 2.5 Flash" },
       { id: "anthropic/claude-haiku-4.5", name: "Claude Haiku 4.5" },
       { id: "openai/gpt-5", name: "OpenAI GPT-5" }
@@ -217,9 +217,7 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
               <select value={modelParse} onChange={e => setModelParse(e.target.value)}>
                 {provider === "OpenRouter" ? (
                   <>
-                    <option value="deepseek/deepseek-v4-flash">Deepseek V4 Flash (Recommended)</option>
-                    <option value="google/gemini-2.5-flash">Google Gemini 2.5 Flash</option>
-                    <option value="anthropic/claude-haiku-4.5">Claude Haiku 4.5</option>
+                    <option value="google/gemini-2.5-flash-lite">Google Gemini (Recommended)</option>
                   </>
                 ) : (
                   AI_PROVIDERS[provider]?.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)

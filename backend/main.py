@@ -2083,7 +2083,7 @@ async def _run_qualify_all():
 
     api_key = settings.get("ai_api_key", "")
     provider = settings.get("ai_provider", "openrouter")
-    model = settings.get("ai_model", "google/gemini-flash-1.5")
+    model = settings.get("ai_model", "google/gemini-2.5-flash-lite")
     profile_raw = settings.get("profile", "{}")
     try:
         profile = json.loads(profile_raw)

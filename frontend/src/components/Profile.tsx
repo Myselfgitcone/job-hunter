@@ -13,7 +13,7 @@ function calcYears(start: string, end: string) {
   if (!s || !e) return "";
   const diffMonths = (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth());
   if (diffMonths < 0) return "";
-  return `(${(diffMonths / 12).toFixed(1)} yrs)`;
+  return `${(diffMonths / 12).toFixed(1)} yrs`;
 }
 
 // ── SVG icon helper ───────────────────────────────────────────────────────────
@@ -36,14 +36,20 @@ const I = {
 };
 
 // ── Field primitive ───────────────────────────────────────────────────────────
-function Field({ label, value, onChange, type, placeholder, full }: {
-  label: React.ReactNode; value: string; onChange: (v: string) => void;
-  type?: string; placeholder?: string; full?: boolean;
+function Field({ label, value, onChange, type, placeholder, full, readOnly }: {
+  label: React.ReactNode; value: string; onChange?: (v: string) => void;
+  type?: string; placeholder?: string; full?: boolean; readOnly?: boolean;
 }) {
   return (
     <label className={`field${full ? " full" : ""}`}>
       <span className="field-label">{label}</span>
-      <input type={type || "text"} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} />
+      <input 
+        type={type || "text"} value={value} 
+        onChange={e => onChange?.(e.target.value)} 
+        placeholder={placeholder} 
+        readOnly={readOnly}
+        style={readOnly ? { background: "rgba(255,255,255,0.03)", color: "#9ca3af", cursor: "default", outline: "none", border: "1px solid rgba(255,255,255,0.05)" } : {}}
+      />
     </label>
   );
 }
@@ -319,10 +325,8 @@ export function Profile() {
                 <Field label="Job Title" value={e.title}   onChange={v => updateAt("experience", i, "title", v)} />
                 <Field label="Company"   value={e.company} onChange={v => updateAt("experience", i, "company", v)} />
                 <Field label="Start Date" value={e.start}  onChange={v => updateAt("experience", i, "start", v)} placeholder="Jan 2021" />
-                <Field 
-                  label={<span>End Date <span style={{ color: "#60a5fa", marginLeft: 6, fontWeight: 500 }}>{calcYears(e.start, e.end)}</span></span>} 
-                  value={e.end} onChange={v => updateAt("experience", i, "end", v)} placeholder="Present" 
-                />
+                <Field label="End Date"   value={e.end}    onChange={v => updateAt("experience", i, "end", v)} placeholder="Present" />
+                <Field label="Total Exp"  value={calcYears(e.start, e.end)} placeholder="-" readOnly />
               </div>
               <label className="field full">
                 <span className="field-label">Description</span>

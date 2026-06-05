@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { api } from "../api";
 
 function calcYears(start: string, end: string) {
@@ -40,6 +40,8 @@ const I = {
   github:   '<path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>',
   chevronUp: '<polyline points="18 15 12 9 6 15"/>',
   chevronDown: '<polyline points="6 9 12 15 18 9"/>',
+  undo: '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/>',
+  redo: '<path d="M21 7v6h-6"/><path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7"/>',
 };
 
 // ── Field primitive ───────────────────────────────────────────────────────────
@@ -136,7 +138,7 @@ function TagInput({ tags, setTags, placeholder, suggestions }: {
 const VISA_OPTIONS = ["US Citizen", "Green Card", "H1B", "OPT / CPT", "TN Visa", "Need Sponsorship"];
 
 export function Profile() {
-  const [profile, setProfile] = useState<any>({
+  const [profile, _setProfile] = useState<any>({
     personal: { firstName: "", lastName: "", email: "", phone: "", address: "", linkedin: "", github: "", visa: "" },
     experience: [] as any[],
     education: [] as any[],
@@ -144,8 +146,83 @@ export function Profile() {
     skills: [] as string[],
     certifications: [] as string[],
   });
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+
+  // ── History & Auto-Save State ────────────────────────────────────────────────
+  const [past, setPast] = useState<any[]>([]);
+  const [future, setFuture] = useState<any[]>([]);
+  const lastPushRef = useRef(Date.now());
+  const initialLoadRef = useRef(true);
+  
+  const [saveStatus, setSaveStatus] = useState<"saved" | "unsaved" | "saving">("saved");
+  const saveTimeoutRef = useRef<number | null>(null);
+
+  const setProfile = useCallback((valOrFn: any) => {
+    _setProfile((prev: any) => {
+      const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
+      const now = Date.now();
+      if (now - lastPushRef.current > 800) setPast(p => [...p, prev].slice(-50));
+      lastPushRef.current = now;
+      setFuture([]);
+      return next;
+    });
+  }, []);
+
+  const undo = useCallback(() => {
+    setPast(p => {
+      if (p.length === 0) return p;
+      const newPast = [...p]; const prev = newPast.pop();
+      _setProfile((current: any) => { setFuture(f => [current, ...f].slice(0, 50)); return prev; });
+      return newPast;
+    });
+  }, []);
+
+  const redo = useCallback(() => {
+    setFuture(f => {
+      if (f.length === 0) return f;
+      const newFuture = [...f]; const next = newFuture.shift();
+      _setProfile((current: any) => { setPast(p => [...p, current].slice(-50)); return next; });
+      return newFuture;
+    });
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = document.activeElement?.tagName.toLowerCase();
+      if (tag === "input" || tag === "textarea") return; // Let native handle it
+      if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === "y") { e.preventDefault(); redo(); }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [undo, redo]);
+
+  useEffect(() => {
+    if (initialLoadRef.current) return;
+    setSaveStatus("unsaved");
+    if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = window.setTimeout(async () => {
+      setSaveStatus("saving");
+      try {
+        const payload = {
+          name: [profile.personal.firstName, profile.personal.lastName].filter(Boolean).join(" "),
+          email: profile.personal.email, phone: profile.personal.phone, address: profile.personal.address,
+          linkedin: profile.personal.linkedin, github: profile.personal.github, visa_status: profile.personal.visa,
+          experience: profile.experience.map((e: any) => ({
+            role: e.title, company: e.company, start_date: e.start, end_date: e.end,
+            bullets: e.desc ? e.desc.split("\n").map((b: string) => b.replace(/^[\s•\-\.]*/, "").trim()).filter(Boolean) : [], years: 0,
+            expanded: e.expanded !== false,
+          })),
+          education: profile.education.map((e: any) => ({ ...e, expanded: e.expanded !== false })),
+          projects: profile.projects.map((pr: any) => ({ name: pr.name, description: pr.stack || pr.desc, url: pr.url, expanded: pr.expanded !== false })),
+          skills: profile.skills, certifications: profile.certifications,
+        };
+        await api.saveProfile(payload as any);
+        setSaveStatus("saved");
+      } catch { setSaveStatus("unsaved"); }
+    }, 1500);
+    return () => window.clearTimeout(saveTimeoutRef.current!);
+  }, [profile]);
+  // ─────────────────────────────────────────────────────────────────────────────
   const [parsing, setParsing] = useState(false);
   const [parseTime, setParseTime] = useState(0);
   const [parseError, setParseError] = useState("");
@@ -176,7 +253,7 @@ export function Profile() {
         const first = nameParts[0] || "";
         const last = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
 
-        setProfile({
+        _setProfile({
           personal: {
             firstName: first, lastName: last, 
             email: p.email || "", phone: p.phone || "",
@@ -187,6 +264,7 @@ export function Profile() {
           skills: p.skills || [],
           certifications: p.certifications || [],
         });
+        setTimeout(() => { initialLoadRef.current = false; }, 100);
       }
     }).catch(() => {});
   }, []);
@@ -203,30 +281,7 @@ export function Profile() {
     });
   };
 
-  const save = async () => {
-    setSaving(true);
-    try {
-      // Map back to API format
-      const payload = {
-        name: [profile.personal.firstName, profile.personal.lastName].filter(Boolean).join(" "),
-        email: profile.personal.email,
-        phone: profile.personal.phone, address: profile.personal.address,
-        linkedin: profile.personal.linkedin, github: profile.personal.github,
-        visa_status: profile.personal.visa,
-        experience: profile.experience.map((e: any) => ({
-          role: e.title, company: e.company, start_date: e.start, end_date: e.end,
-          bullets: e.desc ? e.desc.split("\n").map((b: string) => b.replace(/^[\s•\-\.]*/, "").trim()).filter(Boolean) : [], years: 0,
-          expanded: e.expanded !== false,
-        })),
-        education: profile.education.map((e: any) => ({ ...e, expanded: e.expanded !== false })),
-        projects: profile.projects.map((pr: any) => ({ name: pr.name, description: pr.stack || pr.desc, url: pr.url, expanded: pr.expanded !== false })),
-        skills: profile.skills,
-        certifications: profile.certifications,
-      };
-      await api.saveProfile(payload as any);
-      setSaved(true); setTimeout(() => setSaved(false), 2000);
-    } catch {} finally { setSaving(false); }
-  };
+
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
@@ -325,9 +380,19 @@ export function Profile() {
                 ) : <><Ic d={I.upload} size={15} /> Upload Resume</>}
               </button>
               <input ref={fileRef} type="file" accept=".pdf,.docx,.txt" style={{ display: "none" }} onChange={handleUpload} />
-              <button className="save-btn" onClick={save} disabled={saving}>
-                <Ic d={I.check} size={15} /> {saved ? "Saved!" : saving ? "Saving…" : "Save Profile"}
-              </button>
+              
+              <div style={{ display: "flex", alignItems: "center", gap: 12, background: "rgba(99, 102, 241, 0.08)", padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(99, 102, 241, 0.2)" }}>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <button onClick={undo} disabled={past.length === 0} style={{ background: "transparent", border: "none", color: past.length === 0 ? "rgba(79, 70, 229, 0.3)" : "#4f46e5", cursor: past.length === 0 ? "default" : "pointer", padding: 4 }} title="Undo (Ctrl+Z)"><Ic d={I.undo} size={15} /></button>
+                  <button onClick={redo} disabled={future.length === 0} style={{ background: "transparent", border: "none", color: future.length === 0 ? "rgba(79, 70, 229, 0.3)" : "#4f46e5", cursor: future.length === 0 ? "default" : "pointer", padding: 4 }} title="Redo (Ctrl+Y)"><Ic d={I.redo} size={15} /></button>
+                </div>
+                <div style={{ width: 1, height: 16, background: "rgba(99, 102, 241, 0.2)" }} />
+                <div style={{ fontSize: 13, color: saveStatus === "unsaved" ? "#eab308" : saveStatus === "saving" ? "#6366f1" : "#10b981", display: "flex", alignItems: "center", gap: 6, width: 70, justifyContent: "flex-end", fontWeight: 600 }}>
+                  {saveStatus === "unsaved" && "Unsaved"}
+                  {saveStatus === "saving" && "Saving..."}
+                  {saveStatus === "saved" && <><Ic d={I.check} size={14} /> Saved</>}
+                </div>
+              </div>
             </div>
             {parseError && (
               <div style={{ fontSize: 12, color: "#f87171", background: "rgba(248,113,113,.08)", border: "1px solid rgba(248,113,113,.2)", borderRadius: 7, padding: "6px 12px", maxWidth: 380, textAlign: "right" }}>
@@ -481,9 +546,18 @@ export function Profile() {
           <button className="act" onClick={clearAll} style={{ background: "rgba(239,68,64,0.1)", color: "#ef4440", border: "1px solid rgba(239,68,64,0.2)" }}>
             Clear All
           </button>
-          <button className="save-btn" onClick={save} disabled={saving}>
-            <Ic d={I.check} size={15} /> {saved ? "Saved!" : saving ? "Saving…" : "Save Profile"}
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, background: "rgba(99, 102, 241, 0.08)", padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(99, 102, 241, 0.2)" }}>
+            <div style={{ display: "flex", gap: 4 }}>
+              <button onClick={undo} disabled={past.length === 0} style={{ background: "transparent", border: "none", color: past.length === 0 ? "rgba(79, 70, 229, 0.3)" : "#4f46e5", cursor: past.length === 0 ? "default" : "pointer", padding: 4 }} title="Undo (Ctrl+Z)"><Ic d={I.undo} size={15} /></button>
+              <button onClick={redo} disabled={future.length === 0} style={{ background: "transparent", border: "none", color: future.length === 0 ? "rgba(79, 70, 229, 0.3)" : "#4f46e5", cursor: future.length === 0 ? "default" : "pointer", padding: 4 }} title="Redo (Ctrl+Y)"><Ic d={I.redo} size={15} /></button>
+            </div>
+            <div style={{ width: 1, height: 16, background: "rgba(99, 102, 241, 0.2)" }} />
+            <div style={{ fontSize: 13, color: saveStatus === "unsaved" ? "#eab308" : saveStatus === "saving" ? "#6366f1" : "#10b981", display: "flex", alignItems: "center", gap: 6, width: 70, justifyContent: "flex-end", fontWeight: 600 }}>
+              {saveStatus === "unsaved" && "Unsaved"}
+              {saveStatus === "saving" && "Saving..."}
+              {saveStatus === "saved" && <><Ic d={I.check} size={14} /> Saved</>}
+            </div>
+          </div>
         </div>
       </div>
     </div>

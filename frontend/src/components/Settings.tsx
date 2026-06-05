@@ -66,9 +66,9 @@ function TagInput({ tags, setTags, placeholder, suggestions }: {
 const AI_PROVIDERS: Record<string, { models: {id: string, name: string}[]; keyUrl: string }> = {
   "OpenRouter":  { 
     models: [
-      { id: "nvidia/nemotron-3-ultra-550b-a55b:free", name: "Nvidia Nemotron 3" },
-      { id: "anthropic/claude-sonnet-4.6", name: "Anthropic Claude 4.6 Sonnet (Balanced)" },
-      { id: "anthropic/claude-opus-4-8", name: "Anthropic Claude 4.8 Opus (Recommended)" },
+      { id: "deepseek/deepseek-v4-flash", name: "Deepseek V4 Flash" },
+      { id: "google/gemini-2.5-flash", name: "Google Gemini 2.5 Flash" },
+      { id: "anthropic/claude-haiku-4.5", name: "Claude Haiku 4.5" },
       { id: "openai/gpt-5", name: "OpenAI GPT-5" }
     ], 
     keyUrl: "openrouter.ai/keys" 
@@ -217,10 +217,9 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
               <select value={modelParse} onChange={e => setModelParse(e.target.value)}>
                 {provider === "OpenRouter" ? (
                   <>
-                    <option value="nvidia/nemotron-3-ultra-550b-a55b:free">Nvidia Nemotron 3 (Recommended)</option>
-                    <option value="stepfun/step-3.7-flash">Stepfun 3.7 Flash</option>
-                    <option value="minimax/minimax-m3">Minimax M3</option>
-                    <option value="anthropic/claude-haiku-4.5">Claude Haiku 4.5 (Balanced)</option>
+                    <option value="deepseek/deepseek-v4-flash">Deepseek V4 Flash (Recommended)</option>
+                    <option value="google/gemini-2.5-flash">Google Gemini 2.5 Flash</option>
+                    <option value="anthropic/claude-haiku-4.5">Claude Haiku 4.5</option>
                   </>
                 ) : (
                   AI_PROVIDERS[provider]?.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)

@@ -537,17 +537,16 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 /* ── Styles ── */
 const styles = {
   page: {
-    display: "flex", height: "100vh", fontFamily: "'Inter', system-ui, sans-serif",
-    background: "#f8f7f4", overflow: "hidden",
+    display: "flex", minHeight: "100vh", fontFamily: "'Inter', system-ui, sans-serif",
+    background: "#f8f7f4", flexWrap: "wrap",
   } as React.CSSProperties,
 
   aside: {
-    width: "52%", flexShrink: 0,
+    flex: "1 1 500px", minWidth: 320,
     background: "linear-gradient(135deg, #ede9fe 0%, #f0f9ff 40%, #f8f7f4 100%)",
-    padding: "52px 60px 52px 100px",
+    padding: "52px 60px",
     display: "flex", flexDirection: "column", justifyContent: "center",
     borderRight: "1px solid rgba(0,0,0,0.07)",
-    height: "100%", overflowY: "auto", minHeight: 0,
     boxSizing: "border-box" as const,
   } as React.CSSProperties,
 
@@ -595,9 +594,9 @@ const styles = {
   } as React.CSSProperties,
 
   formSide: {
-    flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-    padding: "60px 64px", background: "#f8f7f4",
-    height: "100%", overflowY: "auto", minHeight: 0,
+    flex: "1 1 400px", minWidth: 320,
+    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+    padding: "60px 40px", background: "#f8f7f4",
     boxSizing: "border-box" as const,
   } as React.CSSProperties,
 

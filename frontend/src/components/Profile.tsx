@@ -331,19 +331,19 @@ export function Profile() {
         <section className="form-section">
           <div className="section-label"><Ic d={I.user} size={16} /> Personal Info</div>
           {namePermutations.length > 0 && (
-            <div style={{ background: "rgba(96, 165, 250, 0.08)", border: "1px solid rgba(96, 165, 250, 0.2)", borderRadius: 8, padding: 12, marginBottom: 14 }}>
+            <div style={{ background: "rgba(59, 130, 246, 0.06)", border: "1px solid rgba(59, 130, 246, 0.15)", borderRadius: 8, padding: 12, marginBottom: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <span style={{ fontSize: 13, color: "#93c5fd", fontWeight: 500 }}>Multi-word name detected. How should we split it?</span>
-                <button onClick={() => setNamePermutations([])} style={{ background: "transparent", border: "none", color: "#60a5fa", cursor: "pointer", padding: 0 }}><Ic d={I.x} size={14} /></button>
+                <span style={{ fontSize: 13, color: "#2563eb", fontWeight: 500 }}>Multi-word name detected. How should we split it?</span>
+                <button onClick={() => setNamePermutations([])} style={{ background: "transparent", border: "none", color: "#3b82f6", cursor: "pointer", padding: 0 }}><Ic d={I.x} size={14} /></button>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {namePermutations.map((p, i) => (
-                  <button key={i} className="tag-sg" onClick={() => {
+                  <button key={i} onClick={() => {
                     setProfile((prev: any) => ({ ...prev, personal: { ...prev.personal, firstName: p.first, lastName: p.last } }));
                     setNamePermutations([]);
-                  }} style={{ display: "flex", gap: 6, alignItems: "center", textAlign: "left", padding: "6px 12px" }}>
-                    <span style={{ color: "rgba(255,255,255,0.4)" }}>First:</span> <span style={{ color: "#fff" }}>{p.first}</span>
-                    <span style={{ color: "rgba(255,255,255,0.4)", marginLeft: 6 }}>Last:</span> <span style={{ color: "#fff" }}>{p.last}</span>
+                  }} style={{ display: "flex", gap: 6, alignItems: "center", textAlign: "left", padding: "6px 12px", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 6, cursor: "pointer", boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}>
+                    <span style={{ color: "#6b7280", fontSize: 12 }}>First:</span> <span style={{ color: "#111827", fontSize: 13, fontWeight: 500 }}>{p.first}</span>
+                    <span style={{ color: "#6b7280", fontSize: 12, marginLeft: 6 }}>Last:</span> <span style={{ color: "#111827", fontSize: 13, fontWeight: 500 }}>{p.last}</span>
                   </button>
                 ))}
               </div>

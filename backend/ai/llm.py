@@ -55,7 +55,7 @@ async def chat(
         "Content-Type": "application/json",
     }
     if provider == "openrouter":
-        headers["HTTP-Referer"] = "http://localhost:5173"
+        headers["HTTP-Referer"] = "https://job-hunter-sigma.vercel.app"
         headers["X-Title"] = "Job Hunter"
 
     payload = {

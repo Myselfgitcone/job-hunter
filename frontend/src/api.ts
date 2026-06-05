@@ -40,6 +40,8 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+let _profileCache: ProfileData | null = null;
+
 export const api = {
   // ── Auth ──────────────────────────────────────────────────────────────────
   auth: {
@@ -169,9 +171,16 @@ export const api = {
   cleanDescriptions: () =>
     req<{ cleaned: number }>("/api/jobs/clean-descriptions", { method: "POST" }),
 
-  getProfile: () => req<ProfileData>("/api/profile"),
-  saveProfile: (data: ProfileData) =>
-    req("/api/profile", { method: "PUT", body: JSON.stringify(data) }),
+  getProfile: async () => {
+    if (_profileCache) return _profileCache;
+    const data = await req<ProfileData>("/api/profile");
+    _profileCache = data;
+    return data;
+  },
+  saveProfile: async (data: ProfileData) => {
+    _profileCache = data;
+    return req("/api/profile", { method: "PUT", body: JSON.stringify(data) });
+  },
 
   parseResume: async (file: File): Promise<ProfileData> => {
     const token = localStorage.getItem("jh_token");

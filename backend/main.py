@@ -1867,11 +1867,10 @@ Rules:
 
     try:
         import json_repair
-        match = re.search(r'\{.*\}', response, re.DOTALL)
-        if match:
-            return json_repair.loads(match.group())
-        else:
-            raise Exception("No JSON brackets {} found in response")
+        result = json_repair.loads(response)
+        if not isinstance(result, dict):
+            raise Exception("Parsed result is not a JSON object. Ensure the AI returns structured data.")
+        return result
     except Exception as e:
         raise HTTPException(500, f"AI could not parse resume JSON. Error: {str(e)}\n\nRaw output snippet: {response[:500]}")
 

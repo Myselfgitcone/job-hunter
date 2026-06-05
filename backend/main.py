@@ -524,6 +524,8 @@ def google_login(request: Request):
     if not GOOGLE_CLIENT_ID:
         return RedirectResponse(f"{frontend}?error=Google+OAuth+not+configured")
     base_url = str(request.base_url).rstrip("/")
+    if "railway.app" in base_url and base_url.startswith("http://"):
+        base_url = base_url.replace("http://", "https://")
     redirect_uri = f"{base_url}/api/auth/google/callback"
     scope = "openid email profile"
     url = f"https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id={GOOGLE_CLIENT_ID}&redirect_uri={urllib.parse.quote(redirect_uri)}&scope={urllib.parse.quote(scope)}"
@@ -536,6 +538,8 @@ async def google_callback(request: Request, code: str = None, error: str = None)
     if error or not code:
         return RedirectResponse(f"{frontend}?error=Google+login+failed")
     base_url = str(request.base_url).rstrip("/")
+    if "railway.app" in base_url and base_url.startswith("http://"):
+        base_url = base_url.replace("http://", "https://")
     redirect_uri = f"{base_url}/api/auth/google/callback"
     async with httpx.AsyncClient() as client:
         token_res = await client.post("https://oauth2.googleapis.com/token", data={
@@ -571,6 +575,8 @@ def github_login(request: Request):
     if not GITHUB_CLIENT_ID:
         return RedirectResponse(f"{frontend}?error=GitHub+OAuth+not+configured")
     base_url = str(request.base_url).rstrip("/")
+    if "railway.app" in base_url and base_url.startswith("http://"):
+        base_url = base_url.replace("http://", "https://")
     redirect_uri = f"{base_url}/api/auth/github/callback"
     scope = "user:email"
     url = f"https://github.com/login/oauth/authorize?client_id={GITHUB_CLIENT_ID}&redirect_uri={urllib.parse.quote(redirect_uri)}&scope={urllib.parse.quote(scope)}"
@@ -582,6 +588,8 @@ async def github_callback(request: Request, code: str = None, error: str = None)
     if error or not code:
         return RedirectResponse(f"{frontend}?error=GitHub+login+failed")
     base_url = str(request.base_url).rstrip("/")
+    if "railway.app" in base_url and base_url.startswith("http://"):
+        base_url = base_url.replace("http://", "https://")
     redirect_uri = f"{base_url}/api/auth/github/callback"
     async with httpx.AsyncClient() as client:
         token_res = await client.post("https://github.com/login/oauth/access_token", data={

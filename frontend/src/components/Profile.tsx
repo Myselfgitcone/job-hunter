@@ -150,13 +150,38 @@ export function Profile() {
     setParsing(true);
     try {
       const parsed = await api.parseResume(file);
-      if (parsed) setProfile((prev: any) => ({
-        ...prev,
-        personal: { ...prev.personal, fullName: parsed.name || prev.personal.fullName, email: parsed.email || prev.personal.email },
-        experience: parsed.experience || prev.experience,
-        education: parsed.education || prev.education,
-        skills: parsed.skills || prev.skills,
-      }));
+      if (parsed) {
+        const exp = (parsed.experience || []).map((e: any) => ({
+          title: e.role || e.title || "",
+          company: e.company || "",
+          start: e.start_date || e.start || "",
+          end: e.end_date || e.end || "Present",
+          desc: Array.isArray(e.bullets) ? e.bullets.join("\n") : (e.desc || ""),
+        }));
+        const edu = (parsed.education || []).map((e: any) => ({
+          degree: e.degree || "", school: e.school || "", year: e.year || "", gpa: e.gpa || "",
+        }));
+        const proj = (parsed.projects || []).map((pr: any) => ({
+          name: pr.name || "", stack: pr.stack || pr.description || "", desc: pr.description || "", url: pr.url || "",
+        }));
+        // Append certifications to skills
+        const certs = (parsed.certifications || []) as string[];
+        const mergedSkills = [...new Set([...(parsed.skills || []), ...certs])];
+        setProfile((prev: any) => ({
+          ...prev,
+          personal: {
+            ...prev.personal,
+            fullName:  parsed.name     || prev.personal.fullName,
+            email:     parsed.email    || prev.personal.email,
+            phone:     parsed.phone    || prev.personal.phone,
+            address:   parsed.location || prev.personal.address,
+          },
+          experience: exp.length  ? exp  : prev.experience,
+          education:  edu.length  ? edu  : prev.education,
+          projects:   proj.length ? proj : prev.projects,
+          skills:     mergedSkills.length ? mergedSkills : prev.skills,
+        }));
+      }
     } catch {} finally { setParsing(false); }
     e.target.value = "";
   };

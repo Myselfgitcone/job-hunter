@@ -32,12 +32,11 @@ app = FastAPI(title="Job Hunter API")
 
 @app.get("/version")
 def version():
-    return {"version": "4", "cors": "always-injected"}
+    return {"version": "5", "cors": "raw-asgi"}
 
 import os as _os
 _cors_raw = _os.getenv("CORS_ORIGINS", "")
 _CORS_ORIGINS = [o.strip() for o in _cors_raw.split(",") if o.strip()] if _cors_raw else []
-# Always include localhost + vercel app
 _CORS_ORIGINS += [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -45,27 +44,46 @@ _CORS_ORIGINS += [
 ]
 _CORS_ORIGINS = list(set(_CORS_ORIGINS))
 
-# ── Bulletproof CORS: always inject headers on EVERY response ──────────────────
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request as StarletteRequest
+# ── Raw ASGI CORS — works with file uploads, streaming, and exceptions ──────────
+_CORS_HEADERS = [
+    (b"access-control-allow-origin",  b"*"),
+    (b"access-control-allow-methods", b"GET, POST, PUT, DELETE, OPTIONS, PATCH"),
+    (b"access-control-allow-headers", b"*"),
+    (b"access-control-max-age",        b"86400"),
+]
 
-class AlwaysCORSMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: StarletteRequest, call_next):
-        if request.method == "OPTIONS":
-            from starlette.responses import Response as StarletteResponse
-            resp = StarletteResponse(status_code=200)
-            resp.headers["Access-Control-Allow-Origin"] = "*"
-            resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-            resp.headers["Access-Control-Allow-Headers"] = "*"
-            resp.headers["Access-Control-Max-Age"] = "86400"
-            return resp
-        response = await call_next(request)
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-        response.headers["Access-Control-Allow-Headers"] = "*"
-        return response
+class RawCORSMiddleware:
+    def __init__(self, app):
+        self.app = app
 
-app.add_middleware(AlwaysCORSMiddleware)
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        # Handle OPTIONS preflight immediately — no auth, no routing
+        if scope.get("method") == "OPTIONS":
+            await send({
+                "type": "http.response.start",
+                "status": 200,
+                "headers": _CORS_HEADERS,
+            })
+            await send({"type": "http.response.body", "body": b""})
+            return
+
+        # For all other requests — inject CORS headers into the response
+        async def send_with_cors(message):
+            if message["type"] == "http.response.start":
+                # Merge existing headers with CORS headers
+                existing = dict(message.get("headers", []))
+                for k, v in _CORS_HEADERS:
+                    existing[k] = v
+                message = {**message, "headers": list(existing.items())}
+            await send(message)
+
+        await self.app(scope, receive, send_with_cors)
+
+app.add_middleware(RawCORSMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -73,7 +91,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 @app.get("/health")
 async def health_check():

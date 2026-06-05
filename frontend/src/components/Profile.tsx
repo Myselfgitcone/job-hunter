@@ -105,8 +105,10 @@ export function Profile() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [parsing, setParsing] = useState(false);
+  const [parseTime, setParseTime] = useState(0);
   const [parseError, setParseError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
     api.getProfile().then((p: any) => {
@@ -148,6 +150,14 @@ export function Profile() {
   const updateAt = (key: "experience" | "education" | "projects", i: number, k: string, v: string) =>
     setProfile((p: any) => ({ ...p, [key]: p[key].map((x: any, j: number) => j === i ? { ...x, [k]: v } : x) }));
 
+  const clearAll = () => {
+    if (!window.confirm("Are you sure you want to clear your entire profile? This cannot be undone until you save again.")) return;
+    setProfile({
+      personal: { firstName: "", middleName: "", lastName: "", email: "", phone: "", address: "", linkedin: "", github: "", visa: "" },
+      experience: [], education: [], projects: [], skills: [], certifications: [],
+    });
+  };
+
   const save = async () => {
     setSaving(true);
     try {
@@ -176,6 +186,9 @@ export function Profile() {
     const file = e.target.files?.[0]; if (!file) return;
     setParsing(true);
     setParseError("");
+    setParseTime(0);
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    timerRef.current = window.setInterval(() => setParseTime(t => t + 1), 1000);
     try {
       const parsed = await api.parseResume(file);
       if (parsed) {
@@ -227,7 +240,10 @@ export function Profile() {
       }
     } catch (err: any) {
       setParseError(err?.message || "Resume parse failed. Check AI key in Settings.");
-    } finally { setParsing(false); }
+    } finally { 
+      setParsing(false); 
+      if (timerRef.current) window.clearInterval(timerRef.current);
+    }
     e.target.value = "";
   };
 
@@ -245,7 +261,14 @@ export function Profile() {
           <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
             <div style={{ display: "flex", gap: 8 }}>
               <button className="act" onClick={() => fileRef.current?.click()} disabled={parsing} style={{ height: 38 }}>
-                {parsing ? "Parsing…" : <><Ic d={I.upload} size={15} /> Upload Resume</>}
+                {parsing ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    Parsing…
+                    <div style={{ width: 22, height: 22, borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: "bold" }}>
+                      {parseTime}s
+                    </div>
+                  </div>
+                ) : <><Ic d={I.upload} size={15} /> Upload Resume</>}
               </button>
               <input ref={fileRef} type="file" accept=".pdf,.docx,.txt" style={{ display: "none" }} onChange={handleUpload} />
               <button className="save-btn" onClick={save} disabled={saving}>
@@ -367,7 +390,10 @@ export function Profile() {
             suggestions={["AWS Certified Solutions Architect", "Certified Kubernetes Administrator", "PMP"]} />
         </section>
 
-        <div className="form-foot">
+        <div className="form-foot" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <button className="act" onClick={clearAll} style={{ background: "rgba(239,68,64,0.1)", color: "#ef4440", border: "1px solid rgba(239,68,64,0.2)" }}>
+            Clear All
+          </button>
           <button className="save-btn" onClick={save} disabled={saving}>
             <Ic d={I.check} size={15} /> {saved ? "Saved!" : saving ? "Saving…" : "Save Profile"}
           </button>

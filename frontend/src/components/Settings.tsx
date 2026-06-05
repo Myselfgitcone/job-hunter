@@ -66,7 +66,7 @@ function TagInput({ tags, setTags, placeholder, suggestions }: {
 const AI_PROVIDERS: Record<string, { models: {id: string, name: string}[]; keyUrl: string }> = {
   "OpenRouter":  { 
     models: [
-      { id: "google/gemini-2.0-flash-exp:free", name: "Google Gemini 2.0 Flash" },
+      { id: "google/gemma-4-31b-it:free", name: "Google Gemma 4" },
       { id: "anthropic/claude-sonnet-4.6", name: "Anthropic Claude 4.6 Sonnet (Balanced)" },
       { id: "anthropic/claude-opus-4-8", name: "Anthropic Claude 4.8 Opus (Recommended)" },
       { id: "openai/gpt-5", name: "OpenAI GPT-5" }
@@ -217,7 +217,7 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
               <select value={modelParse} onChange={e => setModelParse(e.target.value)}>
                 {provider === "OpenRouter" ? (
                   <>
-                    <option value="google/gemini-2.0-flash-exp:free">Google Gemini 2.0 Flash (Recommended)</option>
+                    <option value="google/gemma-4-31b-it:free">Google Gemma 4 (Recommended)</option>
                     <option value="openai/gpt-5">OpenAI GPT-5 (Balanced)</option>
                   </>
                 ) : (

@@ -94,7 +94,7 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
   const [provider, setProvider] = useState("OpenRouter");
   const [modelParse, setModelParse] = useState("google/gemini-2.0-flash-exp:free");
   const [modelTailor, setModelTailor] = useState("anthropic/claude-opus-4-8");
-  const [modelQualify, setModelQualify] = useState("anthropic/claude-sonnet-4.6");
+  const [modelQualify, setModelQualify] = useState("google/gemini-2.5-flash-lite");
   const [modelCoverLetter, setModelCoverLetter] = useState("anthropic/claude-sonnet-4.6");
   const [apiKey, setApiKey]     = useState("");
   const [showKey, setShowKey]   = useState(false);
@@ -117,7 +117,7 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
       setProvider(s.ai_provider || "OpenRouter");
       setModelParse(s.ai_model_parse || "google/gemini-2.0-flash-exp:free");
       setModelTailor(s.ai_model_tailor || "anthropic/claude-opus-4-8");
-      setModelQualify(s.ai_model_qualify || "anthropic/claude-sonnet-4.6");
+      setModelQualify(s.ai_model_qualify || "google/gemini-2.5-flash-lite");
       setModelCoverLetter(s.ai_model_cover_letter || "anthropic/claude-sonnet-4.6");
       setApiKey(s.ai_api_key || "");
       setBotToken(s.telegram_bot_token || "");
@@ -233,7 +233,14 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
             <label className="field">
               <span className="field-label">Job Qualification Model</span>
               <select value={modelQualify} onChange={e => setModelQualify(e.target.value)}>
-                {AI_PROVIDERS[provider]?.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                {provider === "OpenRouter" ? (
+                  <>
+                    <option value="google/gemini-2.5-flash-lite">Google Gemini 2.5 Lite (Recommended)</option>
+                    <option value="anthropic/claude-sonnet-4.6">Anthropic Claude 4.6 Sonnet</option>
+                  </>
+                ) : (
+                  AI_PROVIDERS[provider]?.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
+                )}
               </select>
             </label>
             <label className="field">

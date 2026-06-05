@@ -12,6 +12,10 @@ import uuid
 import uuid as _uuid
 from pathlib import Path
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load .env file
+load_dotenv()
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 

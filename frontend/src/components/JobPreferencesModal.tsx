@@ -4,6 +4,9 @@ import { Icon as Ic } from './primitives';
 
 const I = { x: '<path d="M18 6 6 18M6 6l12 12"/>' };
 
+let externalRolesCache: string[] = [];
+let fetchingExternalRoles = false;
+
 const ALL_ROLES = [
   // Data & Analytics
   "Data Engineer", "Data Analyst", "Data Scientist", "Data Architect", "Database Administrator", "Analytics Engineer", "Business Intelligence Analyst", "Machine Learning Engineer", "AI Engineer", "MLOps Engineer", "Data Analytics Manager", "Big Data Engineer",
@@ -30,20 +33,33 @@ const ALL_ROLES = [
   "Financial Analyst", "Accountant", "Finance Manager", "Human Resources Manager", "HR Generalist", "Recruiter", "Talent Acquisition Specialist", "Operations Manager"
 ];
 
-function TagInput({ tags, setTags, placeholder, suggestions }: {
-  tags: string[]; setTags: (t: string[]) => void; placeholder?: string; suggestions?: string[];
+function TagInput({ tags, setTags, placeholder, suggestions, externalSuggestions = [] }: {
+  tags: string[]; setTags: (t: string[]) => void; placeholder?: string; suggestions?: string[]; externalSuggestions?: string[];
 }) {
   const [val, setVal] = useState("");
   const add = (t: string) => { t = t.trim(); if (t && !tags.includes(t)) setTags([...tags, t]); setVal(""); };
   
   const displaySuggestions = React.useMemo(() => {
-    if (!suggestions) return [];
     if (!val.trim()) {
       return ["Data Engineer", "Software Engineer", "Product Manager", "Backend Engineer", "Full Stack Engineer"].filter(s => !tags.includes(s));
     }
     const lower = val.toLowerCase();
-    return suggestions.filter(s => s.toLowerCase().includes(lower) && !tags.includes(s)).slice(0, 8);
-  }, [val, suggestions, tags]);
+    
+    let localMatches = (suggestions || []).filter(s => s.toLowerCase().includes(lower) && !tags.includes(s));
+    
+    // If we need more matches, search the massive external dictionary
+    if (localMatches.length < 8 && externalSuggestions.length > 0) {
+      const extMatches = externalSuggestions
+        .filter(s => s.toLowerCase().includes(lower))
+        // Convert to Title Case to look nice
+        .map(s => s.replace(/\b\w/g, c => c.toUpperCase()))
+        .filter(s => !tags.includes(s) && !localMatches.includes(s));
+        
+      localMatches = [...localMatches, ...extMatches];
+    }
+    
+    return localMatches.slice(0, 10);
+  }, [val, suggestions, tags, externalSuggestions]);
 
   return (
     <div style={{ width: "100%" }}>
@@ -103,6 +119,7 @@ export default function JobPreferencesModal({
   const [roles, setRoles] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [extRoles, setExtRoles] = useState<string[]>(externalRolesCache);
 
   useEffect(() => {
     if (open) {
@@ -112,6 +129,22 @@ export default function JobPreferencesModal({
         const r = Array.isArray(s.job_roles) ? s.job_roles : JSON.parse(s.job_roles || "[]");
         setRoles(r);
       }).finally(() => setLoading(false));
+
+      // Fetch massive job dictionary if not cached
+      if (externalRolesCache.length === 0 && !fetchingExternalRoles) {
+        fetchingExternalRoles = true;
+        fetch("https://raw.githubusercontent.com/jneidel/job-titles/master/job-titles.json")
+          .then(res => res.json())
+          .then(data => {
+            if (data && data["job-titles"]) {
+              externalRolesCache = data["job-titles"];
+              setExtRoles(externalRolesCache);
+            }
+          })
+          .catch(err => console.error("Failed to load massive roles dict", err));
+      } else if (externalRolesCache.length > 0) {
+        setExtRoles(externalRolesCache);
+      }
     }
   }, [open]);
 
@@ -168,6 +201,7 @@ export default function JobPreferencesModal({
                 setTags={setRoles}
                 placeholder="Type a role and press Enter…"
                 suggestions={ALL_ROLES}
+                externalSuggestions={extRoles}
               />
             </div>
           )}

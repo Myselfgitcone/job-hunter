@@ -67,7 +67,7 @@ const AI_PROVIDERS: Record<string, { models: {id: string, name: string}[]; keyUr
   "OpenRouter":  { 
     models: [
       { id: "anthropic/claude-sonnet-4.6", name: "Anthropic Claude 4.6 Sonnet (Recommended)" },
-      { id: "anthropic/claude-opus-4-8", name: "Anthropic Claude 4.8 Opus (Premium)" },
+      { id: "anthropic/claude-opus-4-8", name: "Anthropic Claude 4.8 Opus (Balanced)" },
       { id: "anthropic/claude-haiku-4.5", name: "Anthropic Claude 4.5 Haiku" },
       { id: "openai/gpt-5", name: "OpenAI GPT-5" },
       { id: "google/gemini-2.5-flash", name: "Google Gemini 2.5 Flash" },

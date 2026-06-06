@@ -285,6 +285,16 @@ export function Profile() {
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
+    
+    try {
+      const s = await api.getSettings();
+      if (!s || !s.ai_api_key) {
+        window.alert("No AI API key found! Please go to the Settings tab and add your API key before uploading a resume.");
+        if (fileRef.current) fileRef.current.value = "";
+        return;
+      }
+    } catch {}
+
     setParsing(true);
     setParseError("");
     setParseTime(0);

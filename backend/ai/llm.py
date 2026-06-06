@@ -54,14 +54,22 @@ async def chat(
 
     models_to_try = [model]
     if provider == "openrouter":
-        fallback_models = [
-            "google/gemini-2.5-flash-lite",
-            "google/gemini-2.5-flash",
-            "anthropic/claude-haiku-4.5",
-            "anthropic/claude-sonnet-4.6",
-            "anthropic/claude-opus-4-8",
-            "openai/gpt-5"
-        ]
+        if "lite" in model or "flash" in model:
+            fallback_models = [
+                "google/gemini-2.5-flash",
+                "google/gemini-2.5-flash-lite",
+                "anthropic/claude-haiku-4.5",
+                "openai/gpt-5"
+            ]
+        else:
+            fallback_models = [
+                "anthropic/claude-opus-4-8",
+                "anthropic/claude-haiku-4.5",
+                "google/gemini-2.5-flash",
+                "google/gemini-2.5-flash-lite",
+                "openai/gpt-5"
+            ]
+        
         for fm in fallback_models:
             if fm not in models_to_try:
                 models_to_try.append(fm)

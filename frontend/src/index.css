@@ -273,6 +273,10 @@ textarea { resize: none; }
 .nav-item svg { width: 16px; height: 16px; flex: 0 0 16px; opacity: .9; }
 .nav-item:hover { background: var(--bg-hover); color: var(--tx); }
 .nav-item.active { background: var(--bg-selected); color: var(--tx); }
+.nav-item.active::before {
+  content: ""; position: absolute; left: 0; top: 15%; bottom: 15%;
+  width: 3px; border-radius: 0 3px 3px 0; background: var(--st-new);
+}
 .nav-item .kbd { margin-left: auto; }
 .nav-count {
   margin-left: auto; font-family: var(--f-mono); font-size: 10.5px;

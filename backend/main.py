@@ -633,21 +633,40 @@ import telegram_bot
 
 # â”€â”€ Settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+ADMIN_EMAIL = "Jaggubhai8766@gmail.com"
+
+async def _get_admin_settings(db) -> UserSettings:
+    res = await db.execute(select(User).where(User.email.ilike(ADMIN_EMAIL)))
+    admin = res.scalar_one_or_none()
+    if not admin: return None
+    res_s = await db.execute(select(UserSettings).where(UserSettings.user_id == admin.id))
+    return res_s.scalar_one_or_none()
+
 async def _get_user_settings(user_id: str) -> dict:
-    """Helper to fetch user's AI/resume settings from user_settings table."""
+    """Helper to fetch user's AI/resume settings from user_settings table.
+       Falls back to Master Admin's API keys for normal users."""
     async with SessionLocal() as db:
         result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
         s = result.scalar_one_or_none()
-        if not s:
+        
+        user_res = await db.execute(select(User).where(User.id == user_id))
+        u = user_res.scalar_one_or_none()
+        is_admin = bool(u and u.email.lower() == ADMIN_EMAIL.lower())
+        
+        admin_s = await _get_admin_settings(db) if not is_admin else None
+        ai_source = admin_s if admin_s else s
+
+        if not s and not admin_s:
             return {}
+
         return {
-            "resume": s.resume or "",
-            "ai_provider": s.ai_provider or "openrouter",
-            "ai_api_key": s.ai_api_key or "",
-            "ai_model_parse": s.ai_model_parse or "",
-            "ai_model_tailor": s.ai_model_tailor or "",
-            "ai_model_qualify": s.ai_model_qualify or "",
-            "ai_model_cover_letter": s.ai_model_cover_letter or "",
+            "resume": s.resume if s else "",
+            "ai_provider": ai_source.ai_provider if ai_source else "openrouter",
+            "ai_api_key": ai_source.ai_api_key if ai_source else "",
+            "ai_model_parse": ai_source.ai_model_parse if ai_source else "",
+            "ai_model_tailor": ai_source.ai_model_tailor if ai_source else "",
+            "ai_model_qualify": ai_source.ai_model_qualify if ai_source else "",
+            "ai_model_cover_letter": ai_source.ai_model_cover_letter if ai_source else "",
         }
 
 
@@ -1119,8 +1138,16 @@ async def debug_google():
 # ————————————————————————————————————————————————————————————————————————————————
 
 
+async def _verify_admin(user_id: str):
+    async with SessionLocal() as db:
+        res = await db.execute(select(User).where(User.id == user_id))
+        u = res.scalar_one_or_none()
+        if not u or u.email.lower() != ADMIN_EMAIL.lower():
+            raise HTTPException(status_code=403, detail="Restricted Access. Only the Master Admin can perform this action.")
+
 @app.post("/api/jobs/scrape")
 async def scrape_jobs(user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
     return await _run_scrape()
 
 
@@ -1740,6 +1767,7 @@ class SchedulerConfig(BaseModel):
 
 @app.get("/api/scheduler/status")
 async def scheduler_status(user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
     jobs = _scheduler.get_jobs()
     return {
         "running": _scheduler.running,
@@ -1748,6 +1776,7 @@ async def scheduler_status(user_id: str = Depends(get_current_user_id)):
 
 @app.put("/api/scheduler/cron")
 async def update_scheduler_cron(body: SchedulerConfig, user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
     async with SessionLocal() as db:
         setting = await db.get(Setting, "auto_scrape_cron")
         if setting:
@@ -1762,6 +1791,7 @@ async def update_scheduler_cron(body: SchedulerConfig, user_id: str = Depends(ge
 @app.post("/api/scheduler/run-now")
 async def run_scraper_now(user_id: str = Depends(get_current_user_id)):
     """Trigger scraper immediately outside the schedule."""
+    await _verify_admin(user_id)
     _scheduler.modify_job("auto_scrape", next_run_time=datetime.now())
     return {"ok": True, "message": "Scraper triggered immediately"}
 

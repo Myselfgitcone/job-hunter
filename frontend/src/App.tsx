@@ -388,11 +388,13 @@ export default function App() {
   const handleNav = (v: string) => { if (v === "tailor") { setTailorOpen(true); return; } setView(v as View); };
   const activeFilterCount = filters.category.length + filters.level.length + filters.type.length + filters.country.length + filters.source.length + (filters.score !== "any" ? 1 : 0);
   const filtersActive = activeFilterCount > 0 || filters.q !== "" || !myRolesOnly;
+  const isAdmin = currentUser?.email?.toLowerCase() === "jaggubhai8766@gmail.com";
+  
   const navItems = [
     { id: "jobs",      label: "Jobs",         ic: IC.search   },
     { id: "dashboard", label: "Dashboard",    ic: IC.dash     },
     { id: "profile",   label: "My Profile",   ic: IC.user     },
-    { id: "settings",  label: "Settings",     ic: IC.settings },
+    ...(isAdmin ? [{ id: "settings",  label: "Settings",     ic: IC.settings }] : []),
     { id: "tailor",    label: "Quick Tailor", ic: IC.sparkles },
   ];
 
@@ -483,7 +485,7 @@ export default function App() {
       <div className="main">
         {view === "dashboard" && <Dashboard />}
         {view === "profile"   && <Profile />}
-        {view === "settings"  && <Settings onToast={toast} />}
+        {view === "settings"  && (isAdmin ? <Settings onToast={toast} /> : <div style={{padding: 40, color: "#f87171", fontSize: 16}}>Restricted Access. Only the Master Admin can view Settings.</div>)}
 
         {view === "jobs" && (
           <>
@@ -492,6 +494,7 @@ export default function App() {
               onScrape={handleScrape} count={filteredJobs.length}
               totalJobs={allJobs.length}
               viewMode={viewMode} setViewMode={setViewMode} IC={IC}
+              isAdmin={isAdmin}
             />
             <FilterBar
               filters={filters} setFilters={setFilters}
@@ -609,17 +612,21 @@ function countPanelFilters(f: { category: string[]; level: string[]; type: strin
 }
 
 // ── Topbar (exact match to shell.jsx TopBar) ────────────────────────────────────
-function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, setViewMode, IC }: {
+function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, setViewMode, IC, isAdmin }: {
   scraping: boolean; lastScraped: string; onScrape: () => void;
   count: number; totalJobs: number; viewMode: string; setViewMode: (m: ViewMode) => void;
-  IC: Record<string, string>;
+  IC: Record<string, string>; isAdmin: boolean;
 }) {
   return (
     <div className="topbar">
-      <button className={`scrape-btn${scraping ? " running" : ""}`} onClick={onScrape} disabled={scraping}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.refresh }} />
-        {scraping ? "Scraping…" : "Scrape Now"}
-      </button>
+      {isAdmin ? (
+        <button className={`scrape-btn${scraping ? " running" : ""}`} onClick={onScrape} disabled={scraping}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.refresh }} />
+          {scraping ? "Scraping…" : "Scrape Now"}
+        </button>
+      ) : (
+        <div style={{ flex: 1 }} />
+      )}
       <div className="meta">
         <div className="live-pip" />
         Last scraped <b>{lastScraped || "never"}</b>

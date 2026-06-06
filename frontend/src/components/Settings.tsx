@@ -94,7 +94,7 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
   const [expFilter, setExpFilter]   = useState(false);
 
   const [provider, setProvider] = useState("OpenRouter");
-  const [modelParse, setModelParse] = useState("google/gemini-2.0-flash-exp:free");
+  const [modelParse, setModelParse] = useState("google/gemini-2.5-flash-lite");
   const [modelTailor, setModelTailor] = useState("anthropic/claude-sonnet-4.6");
   const [modelQualify, setModelQualify] = useState("anthropic/claude-sonnet-4.6");
   const [modelCoverLetter, setModelCoverLetter] = useState("anthropic/claude-sonnet-4.6");
@@ -117,7 +117,7 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
       setVisaFilter(!!s.visa_filter);
       setExpFilter(!!s.level_filter);
       setProvider(s.ai_provider || "OpenRouter");
-      setModelParse(s.ai_model_parse || "google/gemini-2.0-flash-exp:free");
+      setModelParse(s.ai_model_parse || "google/gemini-2.5-flash-lite");
       setModelTailor(s.ai_model_tailor || "anthropic/claude-sonnet-4.6");
       setModelQualify(s.ai_model_qualify || "anthropic/claude-sonnet-4.6");
       setModelCoverLetter(s.ai_model_cover_letter || "anthropic/claude-sonnet-4.6");

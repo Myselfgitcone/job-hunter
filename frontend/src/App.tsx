@@ -502,6 +502,7 @@ export default function App() {
               searchRef={searchRef}
               COUNTRIES={COUNTRIES}
               visaFilter={visaFilter} setVisaFilter={(v) => { setVisaFilter(v); saveFilterToggle(v, false); }}
+              isAdmin={isAdmin}
             />
               {scraping && (
               <div className="scrape-banner">
@@ -750,11 +751,12 @@ function DeptSelector({ selected, onChange }: { selected: string[]; onChange: (v
   );
 }
 
-function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, COUNTRIES, visaFilter, setVisaFilter }: {
+function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, COUNTRIES, visaFilter, setVisaFilter, isAdmin }: {
   filters: Filters; setFilters: React.Dispatch<React.SetStateAction<Filters>>;
   role: string; roleOn: boolean; setRoleOn: (v: boolean) => void;
   searchRef: React.RefObject<HTMLInputElement>; COUNTRIES: string[];
   visaFilter: boolean; setVisaFilter: (v: boolean) => void;
+  isAdmin: boolean;
 }) {
   const set = (k: keyof Filters, v: any) => setFilters(f => ({ ...f, [k]: v }));
   const [open, setOpen] = React.useState(false);
@@ -785,7 +787,7 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, CO
   const groups: [keyof typeof draft, string, string[]][] = [
     ["level",    "Experience Level", ["Internship","Entry Level","Mid Level","Senior","Lead"]],
     ["type",     "Work Type",["Remote","Onsite","Hybrid"]],
-
+    ...(isAdmin ? [["source" as keyof typeof draft, "Source", ["Greenhouse","Lever","Ashby","Workday","HiringCafe"]]] : []),
     ["country",  "Country",  COUNTRIES.length ? COUNTRIES : ["USA","Canada","United Kingdom","Germany","France","India","Remote"]],
   ];
   const scoreOpts: [string, string][] = [["any","Any"],["60","≥60%"],["70","≥70%"],["80","≥80%"],["90","≥90%"]];

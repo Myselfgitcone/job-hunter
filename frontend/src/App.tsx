@@ -116,6 +116,7 @@ export default function App() {
 
   const [viewMode, setViewMode]     = useState<ViewMode>("list");
   const [listMode, setListMode]     = useState<"compact"|"cards">("compact");
+  const [sortBy, setSortBy]         = useState<"score"|"date">("score");
   const [jobs, setJobs]             = useState<Job[]>([]);
   const [allJobs, setAllJobs]       = useState<Job[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -322,8 +323,18 @@ export default function App() {
         if (t !== null && now - t > parseInt(filters.time) * 3600000 + 6 * 3600000) return false;
       }
       return true;
+    }).sort((a, b) => {
+      if (sortBy === "score") {
+        const scoreA = (a.qualify_result as any)?.score ?? -1;
+        const scoreB = (b.qualify_result as any)?.score ?? -1;
+        if (scoreA !== scoreB) return scoreB - scoreA;
+      }
+      // Date sort (fallback for score, or primary for date)
+      const tA = parseMs(a.posted_at) ?? parseMs(a.scraped_at) ?? 0;
+      const tB = parseMs(b.posted_at) ?? parseMs(b.scraped_at) ?? 0;
+      return tB - tA;
     });
-  }, [jobs, filters, myRolesOnly, activeRoleView, userSettings]);
+  }, [jobs, filters, myRolesOnly, activeRoleView, userSettings, sortBy]);
 
   const selectedJob = jobs.find(j => j.id === selectedId) || null;
 
@@ -529,8 +540,16 @@ export default function App() {
               <div className="jobs-body">
                 <div className="list-pane">
                   <div className="list-head">
-                    <span className="sort">
-                      Sorted by <b style={{ color: "var(--tx-2)" }}>match score</b>
+                    <span className="sort" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      Sorted by 
+                      <select 
+                        value={sortBy} 
+                        onChange={e => setSortBy(e.target.value as "score"|"date")}
+                        style={{ background: "none", border: "none", color: "var(--violet)", fontWeight: 600, padding: "0 4px", cursor: "pointer", outline: "none", fontFamily: "inherit", fontSize: 13 }}
+                      >
+                        <option value="score">match score</option>
+                        <option value="date">date posted</option>
+                      </select>
                     </span>
                     <div className="seg" style={{ padding: 2 }}>
                       <button className={listMode === "compact" ? "on" : ""} title="Compact rows" onClick={() => setListMode("compact")}>

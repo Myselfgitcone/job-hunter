@@ -810,7 +810,7 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, CO
       </div>
 
       {/* Single Filters button + panel */}
-      <div ref={ref} style={{ position: "relative" }}>
+      <div ref={ref}>
         <button className={`filters-btn${committed > 0 ? " has" : ""}`} onClick={() => setOpen(o => !o)}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 4h18l-7 8v6l-4 2v-8z"/>

@@ -440,7 +440,7 @@ textarea { resize: none; }
 .fb-time-label { font-size: 11px; color: var(--tx-3); margin-left: 2px; }
 
 .filter-panel {
-  position: absolute; z-index: 70; top: calc(100% + 8px); left: 0; width: 560px; max-width: 92vw;
+  position: absolute; z-index: 70; top: calc(100% + 8px); left: 14px; width: 560px; max-width: calc(100% - 28px);
   background: var(--bg-elevated); border: 1px solid var(--line);
   border-radius: var(--r-xl); box-shadow: 0 20px 60px -10px rgba(0,0,0,.25), 0 4px 16px -4px rgba(0,0,0,.15);
   animation: popIn .17s var(--ease); overflow: hidden;

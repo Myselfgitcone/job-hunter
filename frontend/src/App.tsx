@@ -808,7 +808,7 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, CO
           <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
         </svg>
         <input ref={searchRef} className="search-input" type="text" value={filters.q} onChange={e => set("q", e.target.value)} placeholder="Search titles, companies…" />
-        {!filters.q && <span className="kbd s-kbd">⌘K</span>}
+
       </div>
 
       {/* Single Filters button + panel */}

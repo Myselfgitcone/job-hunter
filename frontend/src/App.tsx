@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type { Job, JobStatus, QualifyResult } from "./types";
 import { api } from "./api";
+
+import JobPreferencesModal from './components/JobPreferencesModal';
 import { checkVisa } from "./utils/visaCheck";
 import { isLevelMatch } from "./utils/levelCheck";
 import { JobCard } from "./components/JobCard";
@@ -153,6 +155,7 @@ export default function App() {
   }, []);
 
   const [tailorOpen, setTailorOpen] = useState(false);
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [busy, setBusy]             = useState<string | null>(null);
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem("jh_welcomed"));
   const { toasts, toast }           = useToasts();
@@ -494,7 +497,7 @@ export default function App() {
               onScrape={handleScrape} count={filteredJobs.length}
               totalJobs={allJobs.length}
               viewMode={viewMode} setViewMode={setViewMode} IC={IC}
-              isAdmin={isAdmin}
+              isAdmin={isAdmin} onOpenPreferences={() => setPreferencesOpen(true)}
             />
             <FilterBar
               filters={filters} setFilters={setFilters}
@@ -553,6 +556,12 @@ export default function App() {
       </div>
 
       <QuickTailor open={tailorOpen} onClose={() => setTailorOpen(false)} onToast={toast} />
+      <JobPreferencesModal 
+        open={preferencesOpen} 
+        onClose={() => setPreferencesOpen(false)} 
+        onToast={toast}
+        onSaved={(s) => setUserSettings(s)}
+      />
       <Toasts toasts={toasts} />
 
       {/* Welcome modal — first time only */}
@@ -613,10 +622,10 @@ function countPanelFilters(f: { category: string[]; level: string[]; type: strin
 }
 
 // ── Topbar (exact match to shell.jsx TopBar) ────────────────────────────────────
-function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, setViewMode, IC, isAdmin }: {
+function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, setViewMode, IC, isAdmin, onOpenPreferences }: {
   scraping: boolean; lastScraped: string; onScrape: () => void;
   count: number; totalJobs: number; viewMode: string; setViewMode: (m: ViewMode) => void;
-  IC: Record<string, string>; isAdmin: boolean;
+  IC: Record<string, string>; isAdmin: boolean; onOpenPreferences?: () => void;
 }) {
   return (
     <div className="topbar">
@@ -626,7 +635,12 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
           {scraping ? "Scraping…" : "Scrape Now"}
         </button>
       ) : (
-        <div style={{ flex: 1 }} />
+        <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
+          <button onClick={onOpenPreferences} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--bg-elevated)", border: "1px solid var(--line)", padding: "7px 12px", borderRadius: "var(--r-sm)", cursor: "pointer", color: "var(--tx-2)", fontSize: 13, fontWeight: 500, transition: "background 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--bg-hover)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-elevated)"}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.target }} />
+            Job Preferences
+          </button>
+        </div>
       )}
       <div className="meta">
         <div className="live-pip" />

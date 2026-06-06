@@ -8,7 +8,7 @@
    ============================================================ */
 
 :root {
-  /* — Surfaces — */
+  /* Surfaces — DARK (default) */
   --bg-base:      #0a0b10;
   --bg-base-2:    #0c0e14;
   --bg-surface:   #101218;
@@ -19,7 +19,7 @@
   /* Compat aliases */
   --bg-selected:  #1f2430;
 
-  /* glass */
+  /* Glass */
   --glass:        rgba(22, 25, 34, 0.62);
   --glass-hi:     rgba(28, 32, 44, 0.72);
   --glass-border: rgba(255, 255, 255, 0.07);
@@ -120,19 +120,19 @@ html, body, #root { height: 100%; }
 
 /* ── LIGHT THEME ──────────────────────────────────────────── */
 html.light {
-  /* Surfaces */
-  --bg-base:      #f0f2f7;
-  --bg-base-2:    #e8eaf0;
-  --bg-surface:   #ffffff;
+  /* Surfaces — LIGHT (warm off-white, never pure white except elevated) */
+  --bg-base:      #f5f4f1;
+  --bg-base-2:    #efeeea;
+  --bg-surface:   #fbfaf8;
   --bg-elevated:  #ffffff;
-  --bg-hover:     #f1f3f8;
-  --bg-active:    #e8eaf2;
-  --bg-selected:  #ede9fb;
+  --bg-hover:     #eeece8;
+  --bg-active:    #e5e2dc;
+  --bg-selected:  #e5e2dc; /* Compat */
 
   /* Glass */
-  --glass:        rgba(255, 255, 255, 0.80);
-  --glass-hi:     rgba(255, 255, 255, 0.95);
-  --glass-border: rgba(0, 0, 0, 0.09);
+  --glass:        rgba(255, 255, 255, 0.66);
+  --glass-hi:     rgba(255, 255, 255, 0.86);
+  --glass-border: rgba(24, 24, 33, 0.09);
   --glass-blur:   14px;
 
   /* Borders */
@@ -1459,7 +1459,8 @@ html.light .tag-pill button:hover { background: rgba(124,58,237,.15); }
   display: flex; align-items: center; gap: 10px;
   height: 50px; padding: 0 16px;
   flex-shrink: 0;
-  background: var(--bg-surface);
+  background: linear-gradient(180deg, rgba(12,14,20,.7), rgba(12,14,20,.4));
+  backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--line);
   position: relative; z-index: 100;
 }
@@ -1516,7 +1517,7 @@ html.light .tag-pill button:hover { background: rgba(124,58,237,.15); }
   display: flex; align-items: center; gap: 7px;
   height: 48px; padding: 0 14px;
   flex-shrink: 0;
-  background: var(--bg-base-2);
+  background: rgba(10,11,16,.4);
   border-bottom: 1px solid var(--line);
   overflow: visible; position: relative; z-index: 90;
 }

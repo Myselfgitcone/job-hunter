@@ -787,7 +787,7 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, CO
   const groups: [keyof typeof draft, string, string[]][] = [
     ["level",    "Experience Level", ["Internship","Entry Level","Mid Level","Senior","Lead"]],
     ["type",     "Work Type",["Remote","Onsite","Hybrid"]],
-    ...(isAdmin ? [["source" as keyof typeof draft, "Source", ["Greenhouse","Lever","Ashby","Workday","HiringCafe"]]] : []),
+    ...(isAdmin ? [["source", "Source", ["Greenhouse","Lever","Ashby","Workday","HiringCafe"]] as [keyof typeof draft, string, string[]]] : []),
     ["country",  "Country",  COUNTRIES.length ? COUNTRIES : ["USA","Canada","United Kingdom","Germany","France","India","Remote"]],
   ];
   const scoreOpts: [string, string][] = [["any","Any"],["60","≥60%"],["70","≥70%"],["80","≥80%"],["90","≥90%"]];

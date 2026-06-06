@@ -182,7 +182,8 @@ export default function App() {
 
   const DEFAULT_FILTERS: Filters = { q: "", category: [], level: [], type: [], country: [], source: [], score: "any", time: "any" };
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
-  const [myRolesOnly, setMyRolesOnly] = useState(true);
+  const [myRolesOnly, setMyRolesOnly] = useState(false);
+  const [activeRoleView, setActiveRoleView] = useState<string>("");
 
   // ── Theme toggle ──────────────────────────────────────────────────────────
   const [isDark, setIsDark] = useState<boolean>(() => {
@@ -260,13 +261,19 @@ export default function App() {
       return isNaN(t) ? null : t;
     };
     return jobs.filter(j => {
-      // myRoles filter (role chip)
-      if (myRolesOnly && userSettings?.job_roles?.length) {
-        const roles: string[] = Array.isArray(userSettings.job_roles)
-          ? userSettings.job_roles : JSON.parse(userSettings.job_roles || "[]");
+      // 1. Base Pool (Job Preferences)
+      const rawRoles = userSettings?.job_roles;
+      if (rawRoles) {
+        const roles: string[] = Array.isArray(rawRoles) ? rawRoles : JSON.parse(rawRoles || "[]");
         if (roles.length > 0) {
           const title = j.title.toLowerCase();
-          if (!roles.some((r: string) => title.includes(r.toLowerCase()))) return false;
+          const matchesAnyRole = roles.some((r: string) => title.includes(r.toLowerCase()));
+          if (!matchesAnyRole) return false;
+
+          // 2. View Filter (Dropdown)
+          if (myRolesOnly && activeRoleView) {
+            if (!title.includes(activeRoleView.toLowerCase())) return false;
+          }
         }
       }
       // q — free text (design: title + company)
@@ -316,7 +323,7 @@ export default function App() {
       }
       return true;
     });
-  }, [jobs, filters, myRolesOnly, userSettings]);
+  }, [jobs, filters, myRolesOnly, activeRoleView, userSettings]);
 
   const selectedJob = jobs.find(j => j.id === selectedId) || null;
 
@@ -344,7 +351,7 @@ export default function App() {
     catch (e: any) { toast(e.message, "error"); }
   };
 
-  const handleResetFilters = () => { setFilters(DEFAULT_FILTERS); setMyRolesOnly(true); };
+  const handleResetFilters = () => { setFilters(DEFAULT_FILTERS); setMyRolesOnly(false); };
 
   const handleStatusChange = async (id: string, status: JobStatus) => {
     await api.setStatus(id, status); updateJob(id, { status }); toast("Moved to " + status, "success");
@@ -502,10 +509,11 @@ export default function App() {
             <FilterBar
               filters={filters} setFilters={setFilters}
               role={userRole} roleOn={myRolesOnly} setRoleOn={setMyRolesOnly}
+              activeRoleView={activeRoleView} setActiveRoleView={setActiveRoleView}
               searchRef={searchRef}
               COUNTRIES={COUNTRIES}
               visaFilter={visaFilter} setVisaFilter={(v) => { setVisaFilter(v); saveFilterToggle(v, false); }}
-              isAdmin={isAdmin}
+              isAdmin={isAdmin} userRoles={userSettings?.job_roles ? (Array.isArray(userSettings.job_roles) ? userSettings.job_roles : JSON.parse(userSettings.job_roles)) : []}
             />
               {scraping && (
               <div className="scrape-banner">
@@ -765,12 +773,13 @@ function DeptSelector({ selected, onChange }: { selected: string[]; onChange: (v
   );
 }
 
-function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, COUNTRIES, visaFilter, setVisaFilter, isAdmin }: {
+function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, activeRoleView, setActiveRoleView, searchRef, COUNTRIES, visaFilter, setVisaFilter, isAdmin, userRoles }: {
   filters: Filters; setFilters: React.Dispatch<React.SetStateAction<Filters>>;
   role: string; roleOn: boolean; setRoleOn: (v: boolean) => void;
+  activeRoleView: string; setActiveRoleView: (v: string) => void;
   searchRef: React.RefObject<HTMLInputElement>; COUNTRIES: string[];
   visaFilter: boolean; setVisaFilter: (v: boolean) => void;
-  isAdmin: boolean;
+  isAdmin: boolean; userRoles?: string[];
 }) {
   const set = (k: keyof Filters, v: any) => setFilters(f => ({ ...f, [k]: v }));
   const [open, setOpen] = React.useState(false);
@@ -808,13 +817,28 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, CO
 
   return (
     <div className="filterbar">
-      {/* Role chip */}
-      <button className={`chip role`} onClick={() => setRoleOn(!roleOn)} style={{ opacity: roleOn ? 1 : 0.5 }}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--violet)" }}>
-          <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>
-        </svg>
-        My Role: <b style={{ color: "var(--violet)", fontWeight: 600 }}>{role}</b>
-      </button>
+      {/* Role chip - hybrid toggle/dropdown */}
+      {userRoles && userRoles.length > 0 && (
+        <div className="chip" style={{ display: "flex", alignItems: "center", padding: 0, opacity: roleOn ? 1 : 0.6, background: roleOn ? "var(--bg-hover)" : "transparent", transition: "opacity 0.2s" }}>
+          <button onClick={() => setRoleOn(!roleOn)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px 0 10px", height: "100%", background: "none", border: "none", cursor: "pointer", color: "var(--tx)", borderRight: "1px solid var(--line)", borderTopLeftRadius: "var(--r-sm)", borderBottomLeftRadius: "var(--r-sm)" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--violet)" }}>
+              <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>
+            </svg>
+            My Role:
+          </button>
+          <select 
+            value={activeRoleView} 
+            onChange={(e) => {
+              setActiveRoleView(e.target.value);
+              if (e.target.value) setRoleOn(true);
+            }}
+            style={{ background: "none", border: "none", color: "var(--violet)", fontWeight: 600, padding: "0 10px 0 8px", cursor: "pointer", outline: "none", height: "100%", fontFamily: "inherit", fontSize: 13 }}
+          >
+            <option value="">All My Roles</option>
+            {userRoles.map((r: string) => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+      )}
 
       {/* Search */}
       <div className="search-wrap">

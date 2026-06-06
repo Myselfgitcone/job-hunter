@@ -845,7 +845,11 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, activeRoleVie
       {/* Role chip - hybrid toggle/dropdown */}
       {userRoles && userRoles.length > 0 && (
         <div className="chip" style={{ display: "flex", alignItems: "center", padding: 0, opacity: roleOn ? 1 : 0.6, background: roleOn ? "var(--bg-hover)" : "transparent", transition: "opacity 0.2s" }}>
-          <button onClick={() => setRoleOn(!roleOn)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px 0 10px", height: "100%", background: "none", border: "none", cursor: "pointer", color: "var(--tx)", borderRight: "1px solid var(--line)", borderTopLeftRadius: "var(--r-sm)", borderBottomLeftRadius: "var(--r-sm)" }}>
+          <button onClick={() => {
+            const nextState = !roleOn;
+            setRoleOn(nextState);
+            if (!nextState) setActiveRoleView("");
+          }} style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px 0 10px", height: "100%", background: "none", border: "none", cursor: "pointer", color: "var(--tx)", borderRight: "1px solid var(--line)", borderTopLeftRadius: "var(--r-sm)", borderBottomLeftRadius: "var(--r-sm)" }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--violet)" }}>
               <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>
             </svg>

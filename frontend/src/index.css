@@ -441,7 +441,7 @@ textarea { resize: none; }
 
 .filter-panel {
   position: absolute; z-index: 70; top: calc(100% + 8px); left: 0; width: 560px; max-width: 92vw;
-  background: var(--bg-panel); border: 1px solid var(--line);
+  background: var(--bg-elevated); border: 1px solid var(--line);
   border-radius: var(--r-xl); box-shadow: 0 20px 60px -10px rgba(0,0,0,.25), 0 4px 16px -4px rgba(0,0,0,.15);
   animation: popIn .17s var(--ease); overflow: hidden;
 }
@@ -1461,7 +1461,7 @@ html.light .tag-pill button:hover { background: rgba(124,58,237,.15); }
   flex-shrink: 0;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--line);
-  position: relative; z-index: 30;
+  position: relative; z-index: 100;
 }
 .scrape-btn {
   display: inline-flex; align-items: center; gap: 7px;
@@ -1518,7 +1518,7 @@ html.light .tag-pill button:hover { background: rgba(124,58,237,.15); }
   flex-shrink: 0;
   background: var(--bg-base-2);
   border-bottom: 1px solid var(--line);
-  overflow: visible; position: relative; z-index: 20;
+  overflow: visible; position: relative; z-index: 90;
 }
 .fb-divider { width: 1px; height: 18px; background: var(--line-hi); flex-shrink: 0; margin: 0 2px; }
 

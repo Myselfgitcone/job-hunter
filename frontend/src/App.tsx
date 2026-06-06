@@ -637,19 +637,23 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
 }) {
   return (
     <div className="topbar">
-      {isAdmin ? (
-        <button className={`scrape-btn${scraping ? " running" : ""}`} onClick={onScrape} disabled={scraping}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.refresh }} />
-          {scraping ? "Scraping…" : "Scrape Now"}
+      <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
+        <button 
+          onClick={onOpenPreferences} 
+          style={{ display: "flex", alignItems: "center", gap: 7, background: "var(--bg-surface)", border: "1px solid var(--line)", padding: "7px 14px", borderRadius: 8, cursor: "pointer", color: "var(--tx-2)", fontSize: 13, fontWeight: 600, transition: "all 0.2s", boxShadow: "var(--sh-sm)" }} 
+          onMouseOver={e => { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--tx)"; e.currentTarget.style.borderColor = "var(--tx-3)"; }} 
+          onMouseOut={e => { e.currentTarget.style.background = "var(--bg-surface)"; e.currentTarget.style.color = "var(--tx-2)"; e.currentTarget.style.borderColor = "var(--line)"; }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.target }} />
+          Job Preferences
         </button>
-      ) : (
-        <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
-          <button onClick={onOpenPreferences} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--bg-elevated)", border: "1px solid var(--line)", padding: "7px 12px", borderRadius: "var(--r-sm)", cursor: "pointer", color: "var(--tx-2)", fontSize: 13, fontWeight: 500, transition: "background 0.2s" }} onMouseOver={e => e.currentTarget.style.background = "var(--bg-hover)"} onMouseOut={e => e.currentTarget.style.background = "var(--bg-elevated)"}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.target }} />
-            Job Preferences
+        {isAdmin && (
+          <button className={`scrape-btn${scraping ? " running" : ""}`} onClick={onScrape} disabled={scraping}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.refresh }} />
+            {scraping ? "Scraping…" : "Scrape Now"}
           </button>
-        </div>
-      )}
+        )}
+      </div>
       <div className="meta">
         <div className="live-pip" />
         Last scraped <b>{lastScraped || "never"}</b>

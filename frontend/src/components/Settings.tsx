@@ -31,37 +31,7 @@ function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   );
 }
 
-// ── TagInput ──────────────────────────────────────────────────────────────────
-function TagInput({ tags, setTags, placeholder, suggestions }: {
-  tags: string[]; setTags: (t: string[]) => void; placeholder?: string; suggestions?: string[];
-}) {
-  const [val, setVal] = useState("");
-  const add = (t: string) => { t = t.trim(); if (t && !tags.includes(t)) setTags([...tags, t]); setVal(""); };
-  return (
-    <div>
-      <div className="taginput" onClick={e => (e.currentTarget.querySelector("input") as HTMLInputElement)?.focus()}>
-        {tags.map(t => (
-          <span className="tag-pill" key={t}>
-            {t}
-            <button onClick={() => setTags(tags.filter(x => x !== t))}><Ic d={I.x} size={11} /></button>
-          </span>
-        ))}
-        <input value={val} onChange={e => setVal(e.target.value)} placeholder={tags.length ? "" : placeholder}
-          onKeyDown={e => {
-            if (e.key === "Enter") { e.preventDefault(); add(val); }
-            else if (e.key === "Backspace" && !val && tags.length) setTags(tags.slice(0, -1));
-          }} />
-      </div>
-      {suggestions && (
-        <div className="tag-suggest">
-          {suggestions.filter(s => !tags.includes(s)).map(s => (
-            <button key={s} className="tag-sg" onClick={() => add(s)}>+ {s}</button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+
 
 const AI_PROVIDERS: Record<string, { models: {id: string, name: string}[]; keyUrl: string }> = {
   "OpenRouter":  { 
@@ -89,7 +59,7 @@ const CRON_PRESETS: Record<string, string> = {
 export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }) {
   const toast = onToast || ((m: string) => console.log(m));
 
-  const [roles, setRoles]           = useState<string[]>([]);
+
   const [visaFilter, setVisaFilter] = useState(false);
   const [expFilter, setExpFilter]   = useState(false);
 
@@ -112,8 +82,6 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
   useEffect(() => {
     api.getSettings().then((s: any) => {
       if (!s) return;
-      const r = Array.isArray(s.job_roles) ? s.job_roles : JSON.parse(s.job_roles || "[]");
-      setRoles(r);
       setVisaFilter(!!s.visa_filter);
       setExpFilter(!!s.level_filter);
       setProvider(s.ai_provider || "OpenRouter");
@@ -137,7 +105,7 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
         ai_model_qualify: modelQualify, ai_model_cover_letter: modelCoverLetter,
         telegram_bot_token: botToken, telegram_chat_id: chatId,
         auto_scrape_cron: cron,
-        job_roles: roles,
+
       } as any);
       toast("Settings saved", "success");
     } catch { toast("Save failed", "error"); }
@@ -179,15 +147,6 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
           </button>
         </div>
 
-        {/* Job Preferences */}
-        <section className="form-section">
-          <div className="section-label"><Ic d={I.target} size={16} /> Job Preferences</div>
-          <label className="field full">
-            <span className="field-label">Job Roles</span>
-            <TagInput tags={roles} setTags={setRoles} placeholder="Add a target role…"
-              suggestions={["Data Engineer","Analytics Engineer","ML Engineer","Data Platform Engineer","Backend Engineer"]} />
-          </label>
-        </section>
 
         {/* AI Configuration */}
         <section className="form-section">

@@ -540,17 +540,20 @@ export default function App() {
               <div className="jobs-body">
                 <div className="list-pane">
                   <div className="list-head">
-                    <span className="sort" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      Sorted by 
-                      <select 
-                        value={sortBy} 
-                        onChange={e => setSortBy(e.target.value as "score"|"date")}
-                        style={{ background: "none", border: "none", color: "var(--violet)", fontWeight: 600, padding: "0 4px", cursor: "pointer", outline: "none", fontFamily: "inherit", fontSize: 13 }}
-                      >
-                        <option value="score">match score</option>
-                        <option value="date">date posted</option>
-                      </select>
-                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--tx-3)", whiteSpace: "nowrap" }}>
+                      Sorted by:
+                      <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                        <select 
+                          value={sortBy} 
+                          onChange={e => setSortBy(e.target.value as "score"|"date")}
+                          style={{ appearance: "none", background: "var(--bg-elevated)", border: "1px solid var(--line)", borderRadius: 6, color: "var(--tx)", fontWeight: 600, padding: "3px 22px 3px 10px", cursor: "pointer", outline: "none", fontFamily: "inherit", fontSize: 12.5, boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}
+                        >
+                          <option value="score">Match Score</option>
+                          <option value="date">Date Posted</option>
+                        </select>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", right: 7, color: "var(--tx-3)", pointerEvents: "none" }}><path d="m6 9 6 6 6-6"/></svg>
+                      </div>
+                    </div>
                     <div className="seg" style={{ padding: 2 }}>
                       <button className={listMode === "compact" ? "on" : ""} title="Compact rows" onClick={() => setListMode("compact")}>
                         <Ic d={IC.list} size={15} />

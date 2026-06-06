@@ -4,11 +4,34 @@ import { Icon as Ic } from './primitives';
 
 const I = { x: '<path d="M18 6 6 18M6 6l12 12"/>' };
 
+const ALL_ROLES = [
+  "Data Engineer", "Data Analyst", "Data Scientist", "Data Architect", "Database Administrator",
+  "Software Engineer", "Backend Engineer", "Frontend Engineer", "Full Stack Engineer",
+  "Machine Learning Engineer", "AI Engineer", "MLOps Engineer",
+  "Product Manager", "Project Manager", "Scrum Master",
+  "DevOps Engineer", "Site Reliability Engineer", "Cloud Architect",
+  "Security Engineer", "Network Engineer", "Systems Administrator",
+  "UI Designer", "UX Designer", "Product Designer",
+  "QA Engineer", "Test Automation Engineer", "Analytics Engineer",
+  "Technical Lead", "Engineering Manager", "CTO", "Director of Engineering",
+  "Business Analyst", "Financial Analyst", "Marketing Manager", "Sales Engineer"
+];
+
 function TagInput({ tags, setTags, placeholder, suggestions }: {
   tags: string[]; setTags: (t: string[]) => void; placeholder?: string; suggestions?: string[];
 }) {
   const [val, setVal] = useState("");
   const add = (t: string) => { t = t.trim(); if (t && !tags.includes(t)) setTags([...tags, t]); setVal(""); };
+  
+  const displaySuggestions = React.useMemo(() => {
+    if (!suggestions) return [];
+    if (!val.trim()) {
+      return ["Data Engineer", "Software Engineer", "Product Manager", "Backend Engineer", "Full Stack Engineer"].filter(s => !tags.includes(s));
+    }
+    const lower = val.toLowerCase();
+    return suggestions.filter(s => s.toLowerCase().includes(lower) && !tags.includes(s)).slice(0, 8);
+  }, [val, suggestions, tags]);
+
   return (
     <div style={{ width: "100%" }}>
       <div 
@@ -40,9 +63,9 @@ function TagInput({ tags, setTags, placeholder, suggestions }: {
           }} 
         />
       </div>
-      {suggestions && (
+      {displaySuggestions.length > 0 && (
         <div className="tag-suggest" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-          {suggestions.filter(s => !tags.includes(s)).map(s => (
+          {displaySuggestions.map(s => (
             <button key={s} className="tag-sg" onClick={() => add(s)} style={{ background: 'var(--bg-elevated)', border: '1px dashed var(--line)', color: 'var(--tx-3)', padding: '5px 12px', borderRadius: 999, fontSize: 12, fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s' }} onMouseOver={e => { e.currentTarget.style.color = 'var(--violet)'; e.currentTarget.style.borderColor = 'var(--violet)'; e.currentTarget.style.background = 'var(--grad-soft)'; }} onMouseOut={e => { e.currentTarget.style.color = 'var(--tx-3)'; e.currentTarget.style.borderColor = 'var(--line)'; e.currentTarget.style.background = 'var(--bg-elevated)'; }}>
               + {s}
             </button>
@@ -131,7 +154,7 @@ export default function JobPreferencesModal({
                 tags={roles}
                 setTags={setRoles}
                 placeholder="Type a role and press Enter…"
-                suggestions={["Data Engineer", "Machine Learning", "Backend", "Full Stack", "Product Manager"]}
+                suggestions={ALL_ROLES}
               />
             </div>
           )}

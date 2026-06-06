@@ -1,0 +1,13 @@
+backend/venv/
+backend/__pycache__/
+**/__pycache__/
+*.pyc
+backend/.env
+backend/.env_run
+backend/jobs.db
+backend/job_hunter.db
+frontend/node_modules/
+frontend/dist/
+.git/
+.git-rewrite/
+*.log

@@ -1,0 +1,13 @@
+[phases.setup]
+### liberation_ttf: metric-compatible Arial substitute so PDF export matches
+### local output instead of silently falling back to Helvetica.
+nixPkgs = ["python311", "curl", "liberation_ttf"]
+
+[phases.install]
+cmds = [
+  "curl -sSL https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages",
+  "python3 -m pip install --break-system-packages -r backend/requirements.txt"
+]
+
+[start]
+cmd = "cd backend && python3 -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"

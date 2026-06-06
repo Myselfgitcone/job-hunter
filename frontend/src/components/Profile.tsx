@@ -288,7 +288,7 @@ export function Profile() {
 
   const handleUploadClick = () => {
     if (hasApiKey === false) {
-      window.alert("No AI API key found! Please go to the Settings tab and add your API key before uploading a resume.");
+      setParseError("No AI API key found! Please go to Settings and add your API key before uploading a resume.");
       return;
     }
     fileRef.current?.click();

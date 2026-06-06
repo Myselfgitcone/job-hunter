@@ -505,6 +505,7 @@ export default function App() {
               totalJobs={allJobs.length}
               viewMode={viewMode} setViewMode={setViewMode} IC={IC}
               isAdmin={isAdmin} onOpenPreferences={() => setPreferencesOpen(true)}
+              userRoles={userSettings?.job_roles ? (Array.isArray(userSettings.job_roles) ? userSettings.job_roles : JSON.parse(userSettings.job_roles)) : []}
             />
             <FilterBar
               filters={filters} setFilters={setFilters}
@@ -630,31 +631,45 @@ function countPanelFilters(f: { category: string[]; level: string[]; type: strin
 }
 
 // ── Topbar (exact match to shell.jsx TopBar) ────────────────────────────────────
-function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, setViewMode, IC, isAdmin, onOpenPreferences }: {
+function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, setViewMode, IC, isAdmin, onOpenPreferences, userRoles }: {
   scraping: boolean; lastScraped: string; onScrape: () => void;
   count: number; totalJobs: number; viewMode: string; setViewMode: (m: ViewMode) => void;
-  IC: Record<string, string>; isAdmin: boolean; onOpenPreferences?: () => void;
+  IC: Record<string, string>; isAdmin: boolean; onOpenPreferences?: () => void; userRoles?: string[];
 }) {
   return (
     <div className="topbar">
-      <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 12 }}>
         <button 
           onClick={onOpenPreferences} 
-          style={{ display: "flex", alignItems: "center", gap: 7, background: "var(--bg-surface)", border: "1px solid var(--line)", padding: "7px 14px", borderRadius: 8, cursor: "pointer", color: "var(--tx-2)", fontSize: 13, fontWeight: 600, transition: "all 0.2s", boxShadow: "var(--sh-sm)" }} 
-          onMouseOver={e => { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--tx)"; e.currentTarget.style.borderColor = "var(--tx-3)"; }} 
-          onMouseOut={e => { e.currentTarget.style.background = "var(--bg-surface)"; e.currentTarget.style.color = "var(--tx-2)"; e.currentTarget.style.borderColor = "var(--line)"; }}
+          style={{ display: "flex", alignItems: "center", gap: 7, background: "var(--grad-soft)", border: "1px solid rgba(124,58,237,0.2)", padding: "7px 14px", borderRadius: 999, cursor: "pointer", color: "var(--violet)", fontSize: 13, fontWeight: 600, transition: "all 0.2s", boxShadow: "0 2px 10px -2px rgba(124,58,237,0.15)" }} 
+          onMouseOver={e => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 4px 12px -2px rgba(124,58,237,0.25)"; }} 
+          onMouseOut={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 2px 10px -2px rgba(124,58,237,0.15)"; }}
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.target }} />
           Job Preferences
         </button>
-        {isAdmin && (
-          <button className={`scrape-btn${scraping ? " running" : ""}`} onClick={onScrape} disabled={scraping}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.refresh }} />
-            {scraping ? "Scraping…" : "Scrape Now"}
-          </button>
+
+        {userRoles && userRoles.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", borderLeft: "1px solid var(--line)", paddingLeft: 12 }}>
+            {userRoles.map(role => (
+              <span key={role} style={{ background: "var(--bg-elevated)", border: "1px solid var(--line)", color: "var(--tx-2)", fontSize: 11.5, fontWeight: 500, padding: "3px 8px", borderRadius: 6 }}>
+                {role}
+              </span>
+            ))}
+          </div>
         )}
       </div>
+
       <div className="meta">
+        {isAdmin && (
+          <>
+            <button className={`scrape-btn${scraping ? " running" : ""}`} onClick={onScrape} disabled={scraping} style={{ height: 26, padding: "0 10px", fontSize: 12, borderRadius: 6, marginRight: 8 }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.refresh }} />
+              {scraping ? "Scraping…" : "Scrape Now"}
+            </button>
+            <span className="dot-sep" style={{ marginRight: 8 }} />
+          </>
+        )}
         <div className="live-pip" />
         Last scraped <b>{lastScraped || "never"}</b>
         <span className="dot-sep" />

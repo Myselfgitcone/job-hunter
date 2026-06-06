@@ -262,7 +262,7 @@ textarea { resize: none; }
 .nav-group { display: flex; flex-direction: column; gap: 1px; margin-top: 2px; }
 .nav-label {
   font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
-  color: var(--tx-faint); padding: 12px 10px 5px;
+  color: var(--tx-3); padding: 12px 10px 5px;
 }
 .nav-item {
   display: flex; align-items: center; gap: 10px;
@@ -272,12 +272,7 @@ textarea { resize: none; }
 }
 .nav-item svg { width: 16px; height: 16px; flex: 0 0 16px; opacity: .9; }
 .nav-item:hover { background: var(--bg-hover); color: var(--tx); }
-.nav-item.active { background: var(--bg-active); color: var(--tx); }
-.nav-item.active::before {
-  content: ""; position: absolute; left: -10px; top: 50%; transform: translateY(-50%);
-  width: 3px; height: 17px; border-radius: 0 3px 3px 0; background: var(--grad);
-  box-shadow: 0 0 10px var(--violet-glow);
-}
+.nav-item.active { background: var(--bg-selected); color: var(--tx); }
 .nav-item .kbd { margin-left: auto; }
 .nav-count {
   margin-left: auto; font-family: var(--f-mono); font-size: 10.5px;

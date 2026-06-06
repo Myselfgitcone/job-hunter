@@ -5,16 +5,29 @@ import { Icon as Ic } from './primitives';
 const I = { x: '<path d="M18 6 6 18M6 6l12 12"/>' };
 
 const ALL_ROLES = [
-  "Data Engineer", "Data Analyst", "Data Scientist", "Data Architect", "Database Administrator",
-  "Software Engineer", "Backend Engineer", "Frontend Engineer", "Full Stack Engineer",
-  "Machine Learning Engineer", "AI Engineer", "MLOps Engineer",
-  "Product Manager", "Project Manager", "Scrum Master",
-  "DevOps Engineer", "Site Reliability Engineer", "Cloud Architect",
-  "Security Engineer", "Network Engineer", "Systems Administrator",
-  "UI Designer", "UX Designer", "Product Designer",
-  "QA Engineer", "Test Automation Engineer", "Analytics Engineer",
-  "Technical Lead", "Engineering Manager", "CTO", "Director of Engineering",
-  "Business Analyst", "Financial Analyst", "Marketing Manager", "Sales Engineer"
+  // Data & Analytics
+  "Data Engineer", "Data Analyst", "Data Scientist", "Data Architect", "Database Administrator", "Analytics Engineer", "Business Intelligence Analyst", "Machine Learning Engineer", "AI Engineer", "MLOps Engineer", "Data Analytics Manager", "Big Data Engineer",
+  
+  // Software Engineering
+  "Software Engineer", "Backend Engineer", "Frontend Engineer", "Full Stack Engineer", "Web Developer", "Mobile Developer", "iOS Developer", "Android Developer", "Firmware Engineer", "Embedded Systems Engineer", "Game Developer", "QA Engineer", "Test Automation Engineer", "SDET",
+
+  // Product & Project Management
+  "Product Manager", "Project Manager", "Scrum Master", "Product Owner", "Technical Program Manager", "Program Manager", "Business Analyst", "Agile Coach", "Release Manager",
+
+  // IT, Cloud & Infrastructure
+  "DevOps Engineer", "Site Reliability Engineer", "Cloud Architect", "Security Engineer", "Network Engineer", "Systems Administrator", "IT Manager", "Help Desk Technician", "IT Support Specialist", "Information Security Analyst", "Cloud Engineer",
+
+  // Design & UX
+  "UI Designer", "UX Designer", "Product Designer", "Graphic Designer", "Web Designer", "Art Director", "Creative Director", "UX Researcher", "Interaction Designer",
+
+  // Sales & Account Management
+  "Sales Associate", "Sales Manager", "Sales Assistant", "Sales Engineer", "Sales Representative", "Sales Director", "Account Executive", "Account Manager", "Key Account Manager", "Business Development Manager", "Business Development Representative", "Sales Development Representative", "VP of Sales", "Customer Success Manager",
+
+  // Marketing
+  "Marketing Manager", "Marketing Director", "Digital Marketing Specialist", "SEO Specialist", "Content Creator", "Content Manager", "Social Media Manager", "Product Marketing Manager", "Growth Hacker", "Copywriter",
+
+  // Finance & HR
+  "Financial Analyst", "Accountant", "Finance Manager", "Human Resources Manager", "HR Generalist", "Recruiter", "Talent Acquisition Specialist", "Operations Manager"
 ];
 
 function TagInput({ tags, setTags, placeholder, suggestions }: {

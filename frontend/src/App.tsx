@@ -826,7 +826,7 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, searchRef, CO
               <button className="fp-reset" onClick={resetAll}>Reset all</button>
             </div>
             <div className="fp-accordion">
-              <AccordionSection label="Department" count={draft.category.length} defaultOpen={true}>
+              <AccordionSection label="Department" count={draft.category.length}>
                 <DeptSelector selected={draft.category} onChange={v => setDraft(d => ({ ...d, category: v }))} />
               </AccordionSection>
               {groups.map(([key, label, opts]) => (

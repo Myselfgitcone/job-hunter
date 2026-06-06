@@ -66,12 +66,12 @@ function TagInput({ tags, setTags, placeholder, suggestions }: {
 const AI_PROVIDERS: Record<string, { models: {id: string, name: string}[]; keyUrl: string }> = {
   "OpenRouter":  { 
     models: [
-      { id: "anthropic/claude-sonnet-4.6", name: "Anthropic Claude 4.6 Sonnet (Recommended)" },
-      { id: "anthropic/claude-opus-4-8", name: "Anthropic Claude 4.8 Opus (Balanced)" },
-      { id: "anthropic/claude-haiku-4.5", name: "Anthropic Claude 4.5 Haiku" },
-      { id: "openai/gpt-5", name: "OpenAI GPT-5" },
-      { id: "google/gemini-2.5-flash", name: "Google Gemini 2.5 Flash" },
-      { id: "google/gemini-2.5-flash-lite", name: "Google Gemini 2.5 Lite" }
+      { id: "anthropic/claude-sonnet-4.6", name: "Claude 4.6 Sonnet (Best + Recommended)" },
+      { id: "anthropic/claude-opus-4-8", name: "Claude 4.8 Opus (Balanced)" },
+      { id: "anthropic/claude-haiku-4.5", name: "Claude 4.5 Haiku" },
+      { id: "openai/gpt-5", name: "GPT-5" },
+      { id: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+      { id: "google/gemini-2.5-flash-lite", name: "Gemini 2.5 Lite" }
     ], 
     keyUrl: "openrouter.ai/keys" 
   },
@@ -219,7 +219,7 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
               <select value={modelParse} onChange={e => setModelParse(e.target.value)}>
                 {provider === "OpenRouter" ? (
                   <>
-                    <option value="google/gemini-2.5-flash-lite">Google Gemini (Recommended)</option>
+                    <option value="google/gemini-2.5-flash-lite">Gemini 2.5 Lite (Best + Recommended)</option>
                   </>
                 ) : (
                   AI_PROVIDERS[provider]?.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)

@@ -281,19 +281,23 @@ export function Profile() {
     });
   };
 
+  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
+  useEffect(() => {
+    api.getSettings().then((s: any) => setHasApiKey(!!(s && s.ai_api_key))).catch(() => {});
+  }, []);
+
+  const handleUploadClick = () => {
+    if (hasApiKey === false) {
+      window.alert("No AI API key found! Please go to the Settings tab and add your API key before uploading a resume.");
+      return;
+    }
+    fileRef.current?.click();
+  };
+
 
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
-    
-    try {
-      const s = await api.getSettings();
-      if (!s || !s.ai_api_key) {
-        window.alert("No AI API key found! Please go to the Settings tab and add your API key before uploading a resume.");
-        if (fileRef.current) fileRef.current.value = "";
-        return;
-      }
-    } catch {}
 
     setParsing(true);
     setParseError("");
@@ -379,7 +383,7 @@ export function Profile() {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
             <div style={{ display: "flex", gap: 8 }}>
-              <button className="act primary" onClick={() => fileRef.current?.click()} disabled={parsing} style={{ height: 38, padding: "0 16px" }}>
+              <button className="act primary" onClick={handleUploadClick} disabled={parsing} style={{ height: 38, padding: "0 16px" }}>
                 {parsing ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     Parsing…

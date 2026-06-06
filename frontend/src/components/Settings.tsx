@@ -246,7 +246,16 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
             <label className="field">
               <span className="field-label">Cover Letter Model</span>
               <select value={modelCoverLetter} onChange={e => setModelCoverLetter(e.target.value)}>
-                {AI_PROVIDERS[provider]?.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                {provider === "OpenRouter" ? (
+                  <>
+                    <option value="anthropic/claude-sonnet-4.6">Anthropic Claude 4.6 Sonnet (Recommended)</option>
+                    <option value="anthropic/claude-opus-4-8">Anthropic Claude 4.8 Opus</option>
+                    <option value="openai/gpt-5">OpenAI GPT-5</option>
+                    <option value="google/gemini-2.5-flash-lite">Google Gemini 2.5 Lite</option>
+                  </>
+                ) : (
+                  AI_PROVIDERS[provider]?.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
+                )}
               </select>
             </label>
           </div>

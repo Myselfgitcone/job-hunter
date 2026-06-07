@@ -211,7 +211,7 @@ body::before {
     radial-gradient(900px 700px at 60% 120%, rgba(124,58,237,0.06), transparent 60%);
 }
 
-#root { position: relative; z-index: 1; height: 100vh; }
+#root { position: relative; z-index: 1; height: 100%; }
 
 /* ── MONO ── */
 .mono { font-family: var(--f-mono); font-variant-ligatures: none; letter-spacing: 0; }
@@ -231,7 +231,7 @@ textarea { resize: none; }
 /* ============================================================
    APP SHELL
    ============================================================ */
-.app { display: flex; height: 100vh; }
+.app { display: flex; height: 100%; }
 
 /* ---------------- SIDEBAR ---------------- */
 .sidebar {
@@ -1235,7 +1235,7 @@ input.field::placeholder, textarea.field::placeholder { color: var(--tx-faint); 
 /* ============================================================
    ONBOARDING
    ============================================================ */
-.onb { display: flex; flex-direction: column; height: 100vh; }
+.onb { display: flex; flex-direction: column; height: 100%; }
 .onb-top { display: flex; align-items: center; gap: 40px; padding: 20px 32px; border-bottom: 1px solid var(--line); background: rgba(12,14,20,.5); backdrop-filter: blur(var(--glass-blur)); }
 .onb-steps { display: flex; align-items: center; flex: 1; max-width: 560px; }
 .onb-step { display: flex; align-items: center; gap: 9px; flex: 1; color: var(--tx-3); position: relative; }
@@ -1292,7 +1292,7 @@ html.light .tag-pill button:hover { background: rgba(124,58,237,.15); }
 /* ============================================================
    AUTH
    ============================================================ */
-.auth { display: flex; height: 100vh; }
+.auth { display: flex; height: 100%; }
 .auth-aside {
   width: 46%; max-width: 620px; flex: 0 0 auto; padding: 54px 56px; display: flex; flex-direction: column;
   background: linear-gradient(155deg, rgba(124,58,237,.16), rgba(6,182,212,.08) 60%, transparent), var(--bg-surface);
@@ -1361,7 +1361,7 @@ html.light .tag-pill button:hover { background: rgba(124,58,237,.15); }
 /* ============================================================
    APP LAYOUT — .app, .sidebar, .main
    ============================================================ */
-.app { display: flex; height: 100vh; overflow: hidden; background: var(--bg-base); }
+.app { display: flex; height: 100%; overflow: hidden; background: var(--bg-base); }
 
 /* SIDEBAR */
 .sidebar {
@@ -1947,7 +1947,7 @@ html.light .tag-pill button:hover { background: rgba(124,58,237,.15); }
 /* ============================================================
    AUTH PAGE
    ============================================================ */
-.auth { display: flex; height: 100vh; }
+.auth { display: flex; height: 100%; }
 .auth-aside {
   width: 46%; max-width: 620px; flex: 0 0 auto; padding: 54px 56px; display: flex; flex-direction: column;
   background: linear-gradient(155deg, rgba(124,58,237,.16), rgba(6,182,212,.08) 60%, transparent), var(--bg-surface);

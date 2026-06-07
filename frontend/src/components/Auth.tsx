@@ -147,7 +147,7 @@ export default function Auth({ onSuccess }: Props) {
         onSuccess(result.user);
       }
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Authentication failed. Please check your credentials.");
+      setError(err.message || "Authentication failed. Please check your credentials.");
     } finally {
       setLoading(false);
     }

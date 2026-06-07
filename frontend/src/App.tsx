@@ -119,9 +119,6 @@ export default function App() {
   const [sortBy, setSortBy]         = useState<"score"|"date">("score");
   const [jobs, setJobs]             = useState<Job[]>([]);
   const [allJobs, setAllJobs]       = useState<Job[]>([]);
-  const [totalJobs, setTotalJobs]   = useState<number>(0);
-  const [jobOffset, setJobOffset]   = useState<number>(0);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab]               = useState("description");
   const [loading, setLoading]       = useState(false);
@@ -235,36 +232,14 @@ export default function App() {
     return true;
   }, [visaFilter, expFilter]);
 
-  const loadJobs = useCallback(async (reset = true) => {
+  const loadJobs = useCallback(async () => {
     if (!isAuthenticated) return;
-    if (reset) setLoading(true);
-    else setLoadingMore(true);
-    try {
-      const offset = reset ? 0 : jobOffset;
-      const res = await api.getJobs({ limit: 60, offset });
-      const newJobs = res.jobs.filter(filterJob);
-      if (reset) {
-        setJobs(newJobs);
-        setAllJobs(newJobs);
-        setJobOffset(newJobs.length);
-      } else {
-        setJobs(prev => [...prev, ...newJobs]);
-        setAllJobs(prev => [...prev, ...newJobs]);
-        setJobOffset(prev => prev + newJobs.length);
-      }
-      setTotalJobs(res.total);
-    } catch {} finally {
-      if (reset) setLoading(false);
-      else setLoadingMore(false);
-    }
-  }, [filterJob, isAuthenticated, jobOffset]);
+    setLoading(true);
+    try { const raw = await api.getJobs(); const f = raw.filter(filterJob); setJobs(f); setAllJobs(f); }
+    catch {} finally { setLoading(false); }
+  }, [filterJob, isAuthenticated]);
 
-  const loadMoreJobs = useCallback(async () => {
-    if (loadingMore || jobs.length >= totalJobs) return;
-    await loadJobs(false);
-  }, [loadJobs, loadingMore, jobs.length, totalJobs]);
-
-  useEffect(() => { loadJobs(true); }, [isAuthenticated, filterJob]);
+  useEffect(() => { loadJobs(); }, [loadJobs]);
 
   const sourceCounts = useMemo(() => {
     const m: Record<string, number> = {};
@@ -614,9 +589,6 @@ export default function App() {
                         onQualifyUpdated={(id, r) => updateJob(id, { qualify_result: r })}
                         emptyState={allJobs.length === 0 ? "Click Scrape Now to fetch jobs" : "Try clearing filters"}
                         mode={listMode}
-                        onLoadMore={loadMoreJobs}
-                        hasMore={jobs.length < totalJobs}
-                        loadingMore={loadingMore}
                       />
                     )}
                   </div>

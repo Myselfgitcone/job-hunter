@@ -57,19 +57,27 @@ async def seed_companies_if_empty() -> int:
     companies = []
     reader = csv.DictReader(io.StringIO(csv_text))
     for row in reader:
-        # CSV columns vary — try common field names
-        ats_raw = (row.get("ats") or row.get("board_type") or row.get("type") or "").lower().strip()
-        slug = (row.get("slug") or row.get("board") or row.get("id") or "").strip()
-        name = (row.get("name") or row.get("company") or row.get("company_name") or slug.replace("-", " ").title()).strip()
-        url = (row.get("url") or row.get("careers_url") or "").strip()
-
+        # JSeek columns: company_slug, board_slug, board_url, monitor_type, monitor_config
+        ats_raw = (row.get("monitor_type") or "").lower().strip()
+        company_slug = (row.get("company_slug") or "").strip()
+        url = (row.get("board_url") or "").strip()
+        
         ats = ATS_MAP.get(ats_raw, ats_raw)
-        if not slug or ats not in SUPPORTED_ATS:
+        if not company_slug or ats not in SUPPORTED_ATS:
             continue
+            
+        # Parse monitor_config which looks like '{"token": "1800contacts"}' or '{"slug": "..."}'
+        config_str = row.get("monitor_config") or "{}"
+        try:
+            import json
+            config = json.loads(config_str)
+            slug = config.get("token") or config.get("slug") or company_slug
+        except Exception:
+            slug = company_slug
 
         companies.append({
             "id": str(uuid.uuid4()),
-            "name": name or slug.replace("-", " ").title(),
+            "name": company_slug.replace("-", " ").title(),
             "ats": ats,
             "slug": slug,
             "careers_url": url,

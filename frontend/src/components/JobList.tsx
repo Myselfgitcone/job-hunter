@@ -12,31 +12,32 @@ interface Props {
   onQualifyUpdated?: (id: string, r: QualifyResult) => void;
   emptyState?: string;
   mode?: "compact" | "cards";
-  onLoadMore?: () => void;
-  hasMore?: boolean;
-  loadingMore?: boolean;
 }
 
-export function JobList({ jobs, selectedId, onSelect, onSkip, onQualifyUpdated, emptyState, mode = "compact", onLoadMore, hasMore, loadingMore }: Props) {
+export function JobList({ jobs, selectedId, onSelect, onSkip, onQualifyUpdated, emptyState, mode = "compact" }: Props) {
+  const [visible, setVisible] = useState(PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  // Reset handled by parent now (server-side pagination)
+  // Reset pagination when job list changes (e.g. filter applied)
+  useEffect(() => { setVisible(PAGE_SIZE); }, [jobs.length]);
 
   // Infinite scroll — watch the sentinel div at the bottom
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
+
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loadingMore) {
-          onLoadMore?.();
+        if (entries[0].isIntersecting) {
+          setVisible(v => Math.min(v + PAGE_SIZE, jobs.length));
         }
       },
-      { rootMargin: "300px" }
+      { rootMargin: "200px" } // start loading 200px before hitting the bottom
     );
+
     observer.observe(el);
     return () => observer.disconnect();
-  }, [hasMore, loadingMore, onLoadMore]);
+  }, [jobs.length]);
 
   if (jobs.length === 0) {
     return (
@@ -55,11 +56,11 @@ export function JobList({ jobs, selectedId, onSelect, onSkip, onQualifyUpdated, 
   }
 
   const shown = jobs.slice(0, visible);
-  const localHasMore = visible < jobs.length;
+  const hasMore = visible < jobs.length;
 
   return (
     <>
-      {jobs.map((job, i) => (
+      {shown.map((job, i) => (
         <JobCard
           key={job.id}
           job={job}
@@ -74,15 +75,16 @@ export function JobList({ jobs, selectedId, onSelect, onSkip, onQualifyUpdated, 
       {/* Sentinel — invisible div that triggers loading more when scrolled into view */}
       <div ref={sentinelRef} style={{ height: 1 }} />
 
-      {/* Loading spinner when fetching next page */}
-      {loadingMore && (
-        <div style={{ padding: "14px", textAlign: "center", fontSize: 11, color: "var(--tx-3)" }}>
-          Loading more jobs…
-        </div>
-      )}
-      {!hasMore && jobs.length > 0 && (
-        <div style={{ padding: "14px", textAlign: "center", fontSize: 11, color: "var(--tx-3)", letterSpacing: "0.04em" }}>
-          ✓ All {jobs.length} jobs loaded
+      {/* Subtle loading indicator */}
+      {hasMore && (
+        <div style={{
+          padding: "12px",
+          textAlign: "center",
+          fontSize: 11,
+          color: "var(--tx-3)",
+          letterSpacing: "0.04em",
+        }}>
+          Showing {visible} of {jobs.length} jobs…
         </div>
       )}
     </>

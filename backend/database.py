@@ -165,24 +165,30 @@ class Company(Base):
 
 
 async def init_db():
+    # 1. Create all tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Migrations — jobs table columns
-        for stmt in [
-            "ALTER TABLE jobs ADD COLUMN country TEXT DEFAULT ''",
-            "ALTER TABLE jobs ADD COLUMN cover_letter TEXT",
-            "ALTER TABLE jobs ADD COLUMN notes TEXT DEFAULT ''",
-            "ALTER TABLE jobs ADD COLUMN tailored_at TEXT",
-            "ALTER TABLE jobs ADD COLUMN applied_at TEXT",
-            "ALTER TABLE jobs ADD COLUMN deadline TEXT",
-            "ALTER TABLE jobs ADD COLUMN interview_date TEXT",
-            "ALTER TABLE jobs ADD COLUMN priority INTEGER DEFAULT 0",
-            "ALTER TABLE jobs ADD COLUMN qualify_result TEXT",
-        ]:
-            try:
+        
+    # 2. Migrations - jobs table columns
+    # We run these in separate transactions because Postgres will abort the entire
+    # transaction if an ALTER TABLE fails (e.g., if the column already exists).
+    migrations = [
+        "ALTER TABLE jobs ADD COLUMN country TEXT",
+        "ALTER TABLE jobs ADD COLUMN cover_letter TEXT",
+        "ALTER TABLE jobs ADD COLUMN notes TEXT",
+        "ALTER TABLE jobs ADD COLUMN tailored_at TEXT",
+        "ALTER TABLE jobs ADD COLUMN applied_at TEXT",
+        "ALTER TABLE jobs ADD COLUMN deadline TEXT",
+        "ALTER TABLE jobs ADD COLUMN interview_date TEXT",
+        "ALTER TABLE jobs ADD COLUMN priority INTEGER DEFAULT 0",
+        "ALTER TABLE jobs ADD COLUMN qualify_result TEXT",
+    ]
+    for stmt in migrations:
+        try:
+            async with engine.begin() as conn:
                 await conn.execute(text(stmt))
-            except Exception:
-                pass  # column already exists
+        except Exception:
+            pass  # column already exists or other error
 
     # Backfill country for existing jobs that have empty country
     await _backfill_country()

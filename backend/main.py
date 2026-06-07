@@ -912,9 +912,6 @@ async def list_jobs(
     remote:     Optional[bool] = None,
     country:    Optional[str]  = None,
     time_range: Optional[str]  = None,   # "24h" | "48h" | "7d" | None=all
-    limit:      int            = 60,
-    offset:     int            = 0,
-    search:     Optional[str]  = None,
 ):
     from datetime import timezone, timedelta
     now = datetime.now(timezone.utc)
@@ -994,9 +991,7 @@ async def list_jobs(
         else:
             d["status"] = "new"
         out.append(d)
-
-    total = len(out)
-    return {"jobs": out[offset: offset + limit], "total": total, "offset": offset, "limit": limit}
+    return out
 
 
 

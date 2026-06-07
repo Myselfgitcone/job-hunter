@@ -81,17 +81,14 @@ export const api = {
   },
 
   // ── Jobs ─────────────────────────────────────────────────────────────────
-  getJobs: (params?: { status?: string; remote?: boolean; country?: string; source?: string; time_range?: string; limit?: number; offset?: number; search?: string }) => {
+  getJobs: (params?: { status?: string; remote?: boolean; country?: string; source?: string; time_range?: string }) => {
     const q = new URLSearchParams();
     if (params?.status)               q.set("status",      params.status);
     if (params?.remote !== undefined)  q.set("remote",      String(params.remote));
     if (params?.country)              q.set("country",     params.country);
     if (params?.source)               q.set("source",      params.source);
     if (params?.time_range)           q.set("time_range",  params.time_range);
-    if (params?.limit !== undefined)  q.set("limit",       String(params.limit));
-    if (params?.offset !== undefined) q.set("offset",      String(params.offset));
-    if (params?.search)               q.set("search",      params.search);
-    return req<{ jobs: Job[]; total: number; offset: number; limit: number }>(`/api/jobs?${q}`);
+    return req<Job[]>(`/api/jobs?${q}`);
   },
 
   getJob: (id: string) => req<Job>(`/api/jobs/${id}`),

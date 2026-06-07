@@ -77,20 +77,6 @@ export default function App() {
   const [showOnboarding, setShowOnboarding]   = useState(false);
   const [userSettings, setUserSettings]       = useState<any>(null);
 
-  // Auto-scale the entire app to fit the window perfectly without scrolling
-  useEffect(() => {
-    const handleResize = () => {
-      // The app is designed for roughly a 1300x800 canvas
-      const scaleW = window.innerWidth / 1300;
-      const scaleH = window.innerHeight / 800;
-      const newScale = Math.min(scaleW, scaleH, 1);
-      (document.body.style as any).zoom = newScale;
-    };
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');

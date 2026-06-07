@@ -885,10 +885,8 @@ async def public_today_stats():
         )
         added_today = added_r.scalar() or 0
         # Most recent scrape timestamp
-        last_r = await db.execute(
-            select(Job.scraped_at).order_by(Job.scraped_at.desc()).limit(1)
-        )
-        last_scraped_at = last_r.scalar()
+        setting = await db.get(Setting, "last_scraped_at")
+        last_scraped_at = setting.value if setting else None
         # Best ATS match score
         score_r = await db.execute(
             select(func.max(Job.ats_score_before)).select_from(Job)

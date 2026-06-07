@@ -528,7 +528,7 @@ export default function App() {
 
       {/* ── MAIN CONTENT ── */}
       <div className="main">
-        {sidebarCollapsed && (
+        {sidebarCollapsed && view !== "jobs" && (
           <div style={{ display: "flex", alignItems: "center", height: 58, borderBottom: "1px solid var(--line)", padding: "0 18px", gap: 14, flexShrink: 0, background: "var(--bg-surface)" }}>
             <button onClick={() => setSidebarCollapsed(false)} className="collapse-btn" title="Open sidebar">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M9 3v18"/></svg>
@@ -553,6 +553,8 @@ export default function App() {
               viewMode={viewMode} setViewMode={setViewMode} IC={IC}
               isAdmin={isAdmin} onOpenPreferences={() => setPreferencesOpen(true)}
               userRoles={userSettings?.job_roles ? (Array.isArray(userSettings.job_roles) ? userSettings.job_roles : JSON.parse(userSettings.job_roles)) : []}
+              sidebarCollapsed={sidebarCollapsed}
+              setSidebarCollapsed={setSidebarCollapsed}
             />
             <FilterBar
               filters={filters} setFilters={setFilters}
@@ -689,14 +691,26 @@ function countPanelFilters(f: { category: string[]; level: string[]; type: strin
 }
 
 // ── Topbar (exact match to shell.jsx TopBar) ────────────────────────────────────
-function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, setViewMode, IC, isAdmin, onOpenPreferences, userRoles }: {
+function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, setViewMode, IC, isAdmin, onOpenPreferences, userRoles, sidebarCollapsed, setSidebarCollapsed }: {
   scraping: boolean; lastScraped: string; onScrape: () => void;
   count: number; totalJobs: number; viewMode: string; setViewMode: (m: ViewMode) => void;
   IC: Record<string, string>; isAdmin: boolean; onOpenPreferences?: () => void; userRoles?: string[];
+  sidebarCollapsed: boolean; setSidebarCollapsed: (v: boolean) => void;
 }) {
   return (
-    <div className="topbar">
+    <div className="topbar" style={{ paddingLeft: sidebarCollapsed ? 18 : 20 }}>
       <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
+        {sidebarCollapsed && (
+          <div style={{ display: "flex", alignItems: "center", gap: 14, marginRight: 24 }}>
+            <button onClick={() => setSidebarCollapsed(false)} className="collapse-btn" title="Open sidebar">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M9 3v18"/></svg>
+            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div className="brand-mark" style={{ width: 26, height: 26, borderRadius: 8 }}><span className="brand-dot" /></div>
+              <div className="brand-name" style={{ margin: 0, fontSize: 16 }}>Job <span style={{ color: "var(--cyan)" }}>.</span>Hunter</div>
+            </div>
+          </div>
+        )}
         <div 
           onClick={onOpenPreferences} 
           style={{ display: "inline-flex", alignItems: "center", background: "var(--bg-surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 4, cursor: "pointer", transition: "all 0.2s", boxShadow: "var(--sh-sm)" }}

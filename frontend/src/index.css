@@ -2001,3 +2001,71 @@ html.light .tag-pill button:hover { background: rgba(124,58,237,.15); }
 html.light .auth-aside { background: linear-gradient(155deg, rgba(124,58,237,.10), rgba(6,182,212,.06) 60%, transparent), #f8fafc; }
 html.light .auth-input { background: #fff; border-color: rgba(0,0,0,.14); color: #0f172a; }
 html.light .auth-tabs { background: #f1f5f9; border-color: rgba(0,0,0,.10); }
+
+/* ============================================================
+   RESPONSIVE LAYOUT (Auto-scaling for smaller screens)
+   ============================================================ */
+@media (max-width: 1400px) {
+  :root {
+    --sidebar-w: 200px;
+  }
+  .list-pane {
+    min-width: 300px;
+  }
+  .dh-logo {
+    width: 44px; height: 44px; font-size: 16px;
+  }
+  .dh-title {
+    font-size: 19px;
+  }
+}
+
+@media (max-width: 1100px) {
+  :root {
+    --sidebar-w: 180px;
+  }
+  .list-pane {
+    min-width: 280px;
+  }
+  .jobcard {
+    padding: 6px 8px 6px 10px;
+  }
+  .jc-title {
+    font-size: 12px;
+  }
+  body {
+    font-size: 12px;
+  }
+  /* Optional auto-zoom for very dense screens on Webkit (Chrome/Edge/Safari) */
+  html {
+    zoom: 0.9;
+  }
+}
+
+@media (max-width: 850px) {
+  /* On very small screens/tablets, collapse sidebar to icons only */
+  :root {
+    --sidebar-w: 60px;
+  }
+  .sidebar {
+    padding: 14px 4px 10px;
+  }
+  .brand-text, .nav-label, .kbd, .nav-count, .user-meta {
+    display: none;
+  }
+  .brand {
+    justify-content: center; padding: 4px 0 14px;
+  }
+  .nav-item {
+    justify-content: center; padding: 10px;
+  }
+  .user-card {
+    padding: 4px; justify-content: center; background: transparent; border-color: transparent;
+  }
+  .list-pane {
+    min-width: 260px;
+  }
+  html {
+    zoom: 0.85;
+  }
+}

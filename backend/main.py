@@ -195,6 +195,10 @@ async def _run_scrape() -> dict:
             existing_fps.add(fp)
             new_count += 1
             new_jobs_for_tg.append(job_data)
+            
+            # Flush in batches of 500 to prevent exceeding PostgreSQL parameter limits
+            if new_count % 500 == 0:
+                await db.flush()
 
         setting = await db.get(Setting, "last_scraped_at")
         if setting:

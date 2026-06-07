@@ -127,6 +127,24 @@ export default function App() {
   const [lastScrapedTs, setLastScrapedTs] = useState<string>("");
   const [lastScrapedDisplay, setLastScrapedDisplay] = useState("");
 
+  const refreshJob = useCallback(async (id: string) => {
+    try {
+      const updated = await api.getJob(id);
+      setJobs(prev => prev.map(j => j.id === id ? { ...j, ...updated } : j));
+      setAllJobs(prev => prev.map(j => j.id === id ? { ...j, ...updated } : j));
+    } catch {}
+  }, []);
+
+  // Lazy-load the full job description when a job is selected
+  useEffect(() => {
+    if (selectedId) {
+      const j = allJobs.find(x => x.id === selectedId);
+      if (j && !j.description) {
+        refreshJob(selectedId);
+      }
+    }
+  }, [selectedId, allJobs, refreshJob]);
+
   // Live-update "X min ago" every 30s
   useEffect(() => {
     if (!lastScrapedTs) return;
@@ -366,10 +384,6 @@ export default function App() {
 
   const handleStatusChange = async (id: string, status: JobStatus) => {
     await api.setStatus(id, status); updateJob(id, { status }); toast("Moved to " + status, "success");
-  };
-
-  const refreshJob = async (id: string) => {
-    try { const updated = await api.getJob(id); updateJob(id, updated); } catch {}
   };
 
   const runAction = async (action: string) => {

@@ -917,7 +917,16 @@ async def list_jobs(
     now = datetime.now(timezone.utc)
 
     async with SessionLocal() as db:
-        q = select(Job).order_by(Job.posted_at.desc(), Job.scraped_at.desc())
+        from sqlalchemy.orm import defer
+        q = select(Job).options(
+            defer(Job.description),
+            defer(Job.raw_html),
+            defer(Job.fit_analysis),
+            defer(Job.interview_tips),
+            defer(Job.cover_letter),
+            defer(Job.tailored_resume)
+        ).order_by(Job.posted_at.desc(), Job.scraped_at.desc())
+        
         if source:
             q = q.where(Job.source == source)
         if remote is not None:
@@ -1523,10 +1532,23 @@ async def get_analytics(user_id: str = Depends(get_current_user_id)):
     from datetime import date, timedelta
 
     async with SessionLocal() as db:
-        result = await db.execute(select(Job).order_by(Job.scraped_at.desc()))
-        jobs = result.scalars().all()
+        q = select(
+            Job.id,
+            Job.source,
+            Job.country,
+            Job.scraped_at,
+            Job.title,
+            Job.company,
+            Job.location,
+            UserJob.status,
+            UserJob.applied_at,
+            UserJob.tailored_at
+        ).outerjoin(UserJob, (UserJob.job_id == Job.id) & (UserJob.user_id == user_id))
+        
+        result = await db.execute(q)
+        rows = result.fetchall()
 
-    total = len(jobs)
+    total = len(rows)
     by_status  = defaultdict(int)
     by_country = defaultdict(int)
     by_source  = defaultdict(int)
@@ -1538,25 +1560,37 @@ async def get_analytics(user_id: str = Depends(get_current_user_id)):
     applied_jobs  = []
     tailored_jobs = []
 
-    for j in jobs:
-        by_status[j.status] += 1
-        by_country[getattr(j, "country", "") or "Unknown"] += 1
-        by_source[j.source] += 1
-        day   = (j.scraped_at or "")[:10]
-        month = (j.scraped_at or "")[:7]   # YYYY-MM
+    for r in rows:
+        j_id, j_src, j_country, j_scraped, j_title, j_company, j_location, u_status, u_applied, u_tailored = r
+        status = u_status or "new"
+        
+        by_status[status] += 1
+        by_country[j_country or "Unknown"] += 1
+        by_source[j_src or "Unknown"] += 1
+        
+        day   = (j_scraped or "")[:10]
+        month = (j_scraped or "")[:7]
         if day:
             by_day[day] += 1
             by_month[month]["scraped"] += 1
-        if j.status == "applied":
+            
+        if status == "applied":
             if day:
                 applied_by_day[day] += 1
                 by_month[month]["applied"] += 1
-            applied_jobs.append(_job_to_dict(j))
-        if j.tailored_resume:
+            applied_jobs.append({
+                "id": j_id, "title": j_title, "company": j_company, 
+                "location": j_location, "applied_at": u_applied or j_scraped
+            })
+            
+        if u_tailored:
             if day:
                 tailored_by_day[day] += 1
                 by_month[month]["tailored"] += 1
-            tailored_jobs.append(_job_to_dict(j))
+            tailored_jobs.append({
+                "id": j_id, "title": j_title, "company": j_company,
+                "location": j_location, "tailored_at": u_tailored
+            })
 
     today = date.today()
 

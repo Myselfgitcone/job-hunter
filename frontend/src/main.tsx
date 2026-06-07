@@ -8,13 +8,15 @@ function AutoScale({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const handleResize = () => {
-      // The absolute minimum dimensions the dense layout requires before it would need to scroll
-      const BASE_W = 1440;
-      const BASE_H = 960; 
-      const scaleW = window.innerWidth / BASE_W;
-      const scaleH = window.innerHeight / BASE_H;
-      // Scale down to fit, but never scale up past 1
-      setScale(Math.min(scaleW, scaleH, 1));
+      // The absolute minimum dimensions required to fit the UI without scrolling
+      const MIN_W = 1440;
+      const MIN_H = 960; 
+      
+      // If the screen is larger than the minimum, don't scale (let it be fully dynamic and responsive)
+      const scaleW = window.innerWidth < MIN_W ? window.innerWidth / MIN_W : 1;
+      const scaleH = window.innerHeight < MIN_H ? window.innerHeight / MIN_H : 1;
+      
+      setScale(Math.min(scaleW, scaleH));
     };
 
     handleResize();

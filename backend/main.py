@@ -917,15 +917,7 @@ async def list_jobs(
     now = datetime.now(timezone.utc)
 
     async with SessionLocal() as db:
-        from sqlalchemy.orm import defer
-        q = select(Job).options(
-            defer(Job.description),
-            defer(Job.fit_analysis),
-            defer(Job.interview_tips),
-            defer(Job.cover_letter),
-            defer(Job.tailored_resume)
-        ).order_by(Job.posted_at.desc(), Job.scraped_at.desc())
-        
+        q = select(Job).order_by(Job.posted_at.desc(), Job.scraped_at.desc())
         if source:
             q = q.where(Job.source == source)
         if remote is not None:

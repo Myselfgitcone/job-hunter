@@ -543,11 +543,12 @@ def google_login(request: Request):
         base_url = base_url.replace("http://", "https://")
     redirect_uri = f"{base_url}/api/auth/google/callback"
     scope = "openid email profile"
-    url = f"https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id={GOOGLE_CLIENT_ID}&redirect_uri={urllib.parse.quote(redirect_uri)}&scope={urllib.parse.quote(scope)}"
+    state = request.query_params.get("action", "login")
+    url = f"https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id={GOOGLE_CLIENT_ID}&redirect_uri={urllib.parse.quote(redirect_uri)}&scope={urllib.parse.quote(scope)}&state={state}"
     return RedirectResponse(url)
 
 @app.get("/api/auth/google/callback")
-async def google_callback(request: Request, code: str = None, error: str = None):
+async def google_callback(request: Request, code: str = None, error: str = None, state: str = None):
     # Origin won't be present on a callback redirect from Google, so use FRONTEND_URL env var
     frontend = _os.getenv("FRONTEND_URL", "https://job-hunter-sigma.vercel.app" if "railway" in str(request.base_url) else "http://localhost:5173")
     if error or not code:
@@ -575,6 +576,8 @@ async def google_callback(request: Request, code: str = None, error: str = None)
             result = await db.execute(select(User).where(User.email == email))
             user = result.scalar_one_or_none()
             if not user:
+                if state != "register":
+                    return RedirectResponse(f"{frontend}?error=Account+not+found.+Please+register+first.")
                 user = User(id=str(_uuid.uuid4()), email=email, name=name, password_hash="OAUTH_USER", created_at=datetime.utcnow().isoformat() + "Z")
                 db.add(user)
                 await db.commit()
@@ -594,11 +597,12 @@ def github_login(request: Request):
         base_url = base_url.replace("http://", "https://")
     redirect_uri = f"{base_url}/api/auth/github/callback"
     scope = "user:email"
-    url = f"https://github.com/login/oauth/authorize?client_id={GITHUB_CLIENT_ID}&redirect_uri={urllib.parse.quote(redirect_uri)}&scope={urllib.parse.quote(scope)}"
+    state = request.query_params.get("action", "login")
+    url = f"https://github.com/login/oauth/authorize?client_id={GITHUB_CLIENT_ID}&redirect_uri={urllib.parse.quote(redirect_uri)}&scope={urllib.parse.quote(scope)}&state={state}"
     return RedirectResponse(url)
 
 @app.get("/api/auth/github/callback")
-async def github_callback(request: Request, code: str = None, error: str = None):
+async def github_callback(request: Request, code: str = None, error: str = None, state: str = None):
     frontend = _os.getenv("FRONTEND_URL", "https://job-hunter-sigma.vercel.app" if "railway" in str(request.base_url) else "http://localhost:5173")
     if error or not code:
         return RedirectResponse(f"{frontend}?error=GitHub+login+failed")
@@ -635,6 +639,8 @@ async def github_callback(request: Request, code: str = None, error: str = None)
             result = await db.execute(select(User).where(User.email == email))
             user = result.scalar_one_or_none()
             if not user:
+                if state != "register":
+                    return RedirectResponse(f"{frontend}?error=Account+not+found.+Please+register+first.")
                 user = User(id=str(_uuid.uuid4()), email=email, name=name, password_hash="OAUTH_USER", created_at=datetime.utcnow().isoformat() + "Z")
                 db.add(user)
                 await db.commit()

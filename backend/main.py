@@ -215,7 +215,8 @@ async def _run_scrape() -> dict:
     # Telegram digest
     try:
         import telegram_bot
-        await telegram_bot.send_scrape_digest(new_jobs_for_tg)
+        total_after_scrape = len(existing_rows) + new_count
+        await telegram_bot.send_scrape_digest(new_jobs_for_tg, total_after_scrape)
     except Exception as te:
         print(f"[Scrape] Telegram notify failed: {te}")
 

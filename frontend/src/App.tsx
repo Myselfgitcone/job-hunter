@@ -467,7 +467,7 @@ export default function App() {
         <aside className="sidebar">
           {/* Brand */}
           <div className="brand" style={{ justifyContent: "space-between" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
               <div className="brand-mark" style={{ flexShrink: 0 }}><span className="brand-dot" /></div>
               <div className="brand-text">
                 <div className="brand-name">Job <span className="hl">Hunter</span></div>

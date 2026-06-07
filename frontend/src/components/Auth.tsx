@@ -303,11 +303,11 @@ export default function Auth({ onSuccess }: Props) {
               </div>
               <div style={S.liveGrid}>
                 {[
-                  { value: liveStats?.last_scrape_mins_ago != null ? (liveStats.last_scrape_mins_ago < 60 ? `${liveStats.last_scrape_mins_ago}m ago` : `${Math.round(liveStats.last_scrape_mins_ago/60)}h ago`) : "—", label: "Last scrape", color: "#64748b" },
-                  { value: jobCount > 0 ? <><Counter to={jobCount} />+</> : "6,831+", label: "Jobs scraped", color: "#7c3aed" },
-                  { value: liveStats?.added_today ?? "0", label: "New today", color: "#06b6d4" },
-                  { value: "10+", label: "Job boards", color: "#f59e0b" },
-                  { value: "⚡", label: "Auto Apply", color: "#10b981" },
+                  { value: liveStats?.last_scrape_mins_ago != null ? (liveStats.last_scrape_mins_ago < 60 ? `${liveStats.last_scrape_mins_ago}m ago` : `${Math.round(liveStats.last_scrape_mins_ago/60)}h ago`) : "—", label: "Last updated", color: "#64748b" },
+                  { value: jobCount > 0 ? <><Counter to={jobCount} />+</> : "6,831+", label: "Total jobs", color: "#7c3aed" },
+                  { value: liveStats?.added_today ?? "0", label: "Added today", color: "#06b6d4" },
+                  { value: "10+", label: "Sources tracked", color: "#f59e0b" },
+                  { value: "⚡", label: "Auto-Apply", color: "#10b981" },
                 ].map((s, i) => (
                   <div key={s.label} style={{ ...S.liveCell, borderLeft: i > 0 ? "1px solid rgba(0,0,0,0.07)" : "none", padding: "16px 8px" }}>
                     <div style={{ ...S.liveCellVal, fontSize: 26, color: s.color, fontWeight: 900 }}>{s.value}</div>

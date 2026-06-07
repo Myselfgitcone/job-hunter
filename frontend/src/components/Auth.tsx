@@ -223,13 +223,13 @@ export default function Auth({ onSuccess }: Props) {
             <Brand light />
 
             <h1 style={{
-              fontSize: 60, fontWeight: 900, lineHeight: 1.06,
-              letterSpacing: "-.04em", marginBottom: 20,
+              fontSize: "min(60px, 7vh)", fontWeight: 900, lineHeight: 1.06,
+              letterSpacing: "-.04em", marginBottom: "min(20px, 2vh)",
               background: "linear-gradient(135deg, #0f172a 0%, #7c3aed 60%, #06b6d4 100%)",
               WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
             }}>Hunt smarter,<br />not harder.</h1>
             <p style={{
-              fontSize: 17, color: "#475569", lineHeight: 1.7,
+              fontSize: "min(17px, 2vh)", color: "#475569", lineHeight: 1.7,
               maxWidth: "38ch", marginBottom: 0,
             }}>
               Scrape thousands of roles, auto-score every match against your profile,
@@ -237,11 +237,11 @@ export default function Auth({ onSuccess }: Props) {
             </p>
 
             {/* What's waiting for you */}
-            <div style={{ marginTop: 32 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "#94a3b8", marginBottom: 22 }}>
+            <div style={{ marginTop: "min(32px, 3.5vh)" }}>
+              <div style={{ fontSize: "min(13px, 1.5vh)", fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "#94a3b8", marginBottom: "min(22px, 2.5vh)" }}>
                 What's waiting for you
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 26 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "min(26px, 3vh)" }}>
                 {[
                   {
                     icon: "🕐",
@@ -543,15 +543,15 @@ const styles = {
   aside: {
     flex: "1 1 500px", minWidth: 320,
     background: "linear-gradient(135deg, #ede9fe 0%, #f0f9ff 40%, #f8f7f4 100%)",
-    padding: "52px 60px",
+    padding: "min(52px, 5vh) 60px",
     display: "flex", flexDirection: "column", justifyContent: "center",
     borderRight: "1px solid rgba(0,0,0,0.07)",
     boxSizing: "border-box" as const,
   } as React.CSSProperties,
 
   hero: {
-    fontSize: 38, fontWeight: 900, color: "#0f172a",
-    lineHeight: 1.15, letterSpacing: "-.03em", marginBottom: 14,
+    fontSize: "min(38px, 4vh)", fontWeight: 900, color: "#0f172a",
+    lineHeight: 1.15, letterSpacing: "-.03em", marginBottom: "min(14px, 1.5vh)",
   } as React.CSSProperties,
 
   heroSub: {
@@ -584,7 +584,7 @@ const styles = {
   },
 
   liveCellVal: {
-    fontSize: 16, fontWeight: 800, color: "#0f172a",
+    fontSize: "min(16px, 2vh)", fontWeight: 800, color: "#0f172a",
     letterSpacing: "-.02em", lineHeight: 1.2,
   } as React.CSSProperties,
 
@@ -595,7 +595,7 @@ const styles = {
   formSide: {
     flex: "1 1 400px", minWidth: 320,
     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-    padding: "60px 40px", background: "#f8f7f4",
+    padding: "min(60px, 6vh) 40px", background: "#f8f7f4",
     boxSizing: "border-box" as const,
   } as React.CSSProperties,
 

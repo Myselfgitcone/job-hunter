@@ -730,8 +730,12 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
             "telegram_configured": bool(s.telegram_bot_token and s.telegram_chat_id),
             # Legacy fields for backward compat
             "auto_scrape_cron": "0 * * * *",
-            "last_scraped_at": "",
         }
+        
+        # Also fetch global settings for dashboard display
+        global_setting = await db.get(Setting, "last_scraped_at")
+        data["last_scraped_at"] = global_setting.value if global_setting else ""
+        
         return data
 
 

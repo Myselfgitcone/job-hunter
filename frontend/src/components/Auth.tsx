@@ -536,7 +536,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 /* ── Styles ── */
 const styles = {
   page: {
-    display: "flex", minHeight: "100vh", overflowY: "auto", fontFamily: "'Inter', system-ui, sans-serif",
+    display: "flex", height: "100vh", overflowY: "auto", fontFamily: "'Inter', system-ui, sans-serif",
     background: "#f8f7f4", flexWrap: "wrap",
   } as React.CSSProperties,
 

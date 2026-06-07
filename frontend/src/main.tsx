@@ -8,15 +8,13 @@ function AutoScale({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const handleResize = () => {
-      // The absolute minimum dimensions required to fit the UI without scrolling
-      const MIN_W = 1440;
-      const MIN_H = 960; 
-      
-      // If the screen is larger than the minimum, don't scale (let it be fully dynamic and responsive)
-      const scaleW = window.innerWidth < MIN_W ? window.innerWidth / MIN_W : 1;
-      const scaleH = window.innerHeight < MIN_H ? window.innerHeight / MIN_H : 1;
-      
-      setScale(Math.min(scaleW, scaleH));
+      // The minimum desktop bounds the app was designed for
+      const BASE_W = 1440;
+      const BASE_H = 850;
+      const scaleW = window.innerWidth / BASE_W;
+      const scaleH = window.innerHeight / BASE_H;
+      // Scale down to fit, but never scale up past 1
+      setScale(Math.min(scaleW, scaleH, 1));
     };
 
     handleResize();
@@ -24,15 +22,16 @@ function AutoScale({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  if (scale === 1) return <>{children}</>;
+
   return (
-    <div style={{
-      width: `${100 / scale}vw`,
-      height: `${100 / scale}vh`,
-      transform: `scale(${scale})`,
-      transformOrigin: "top left",
-      overflow: "hidden"
-    }}>
-      {children}
+    <div style={{ width: "100vw", height: "100vh", overflow: "hidden", display: "flex", justifyContent: "center", alignItems: "center", background: "var(--bg-base)" }}>
+      <div style={{
+        width: 1440, height: 850,
+        transform: `scale(${scale})`, transformOrigin: "center center"
+      }}>
+        {children}
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import type { Job, QualifyResult } from "../types";
 import { JobCard } from "./JobCard";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 const PAGE_SIZE = 60;
 
@@ -16,9 +16,28 @@ interface Props {
 
 export function JobList({ jobs, selectedId, onSelect, onSkip, onQualifyUpdated, emptyState, mode = "compact" }: Props) {
   const [visible, setVisible] = useState(PAGE_SIZE);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
-  // Reset pagination when jobs list changes (filter applied etc.)
+  // Reset pagination when job list changes (e.g. filter applied)
   useEffect(() => { setVisible(PAGE_SIZE); }, [jobs.length]);
+
+  // Infinite scroll — watch the sentinel div at the bottom
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisible(v => Math.min(v + PAGE_SIZE, jobs.length));
+        }
+      },
+      { rootMargin: "200px" } // start loading 200px before hitting the bottom
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [jobs.length]);
 
   if (jobs.length === 0) {
     return (
@@ -52,28 +71,20 @@ export function JobList({ jobs, selectedId, onSelect, onSkip, onQualifyUpdated, 
           onSkip={onSkip}
         />
       ))}
+
+      {/* Sentinel — invisible div that triggers loading more when scrolled into view */}
+      <div ref={sentinelRef} style={{ height: 1 }} />
+
+      {/* Subtle loading indicator */}
       {hasMore && (
-        <div style={{ padding: "16px 12px", textAlign: "center" }}>
-          <button
-            id="load-more-jobs"
-            onClick={() => setVisible(v => v + PAGE_SIZE)}
-            style={{
-              background: "var(--bg-elevated)",
-              border: "1px solid var(--border-subtle)",
-              borderRadius: 8,
-              color: "var(--tx-2)",
-              fontSize: 12,
-              fontWeight: 600,
-              padding: "8px 20px",
-              cursor: "pointer",
-              width: "100%",
-              transition: "background 0.15s",
-            }}
-            onMouseEnter={e => (e.currentTarget.style.background = "var(--bg-hover)")}
-            onMouseLeave={e => (e.currentTarget.style.background = "var(--bg-elevated)")}
-          >
-            ↓ Load more ({jobs.length - visible} remaining)
-          </button>
+        <div style={{
+          padding: "12px",
+          textAlign: "center",
+          fontSize: 11,
+          color: "var(--tx-3)",
+          letterSpacing: "0.04em",
+        }}>
+          Showing {visible} of {jobs.length} jobs…
         </div>
       )}
     </>

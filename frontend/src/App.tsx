@@ -115,7 +115,7 @@ export default function App() {
   }, []);
 
   const [viewMode, setViewMode]     = useState<ViewMode>("list");
-  const [listMode, setListMode]     = useState<"compact"|"cards">("compact");
+  const [listMode, setListMode]     = useState<"compact"|"cards">("cards");
   const [sortBy, setSortBy]         = useState<"score"|"date">("score");
   const [jobs, setJobs]             = useState<Job[]>([]);
   const [allJobs, setAllJobs]       = useState<Job[]>([]);
@@ -533,9 +533,12 @@ export default function App() {
             <button onClick={() => setSidebarCollapsed(false)} className="collapse-btn" title="Open sidebar">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M9 3v18"/></svg>
             </button>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div className="brand-mark" style={{ width: 26, height: 26, borderRadius: 8 }}><span className="brand-dot" /></div>
-              <div className="brand-name" style={{ margin: 0, fontSize: 16 }}>Job <span style={{ color: "var(--cyan)" }}>.</span>Hunter</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+              <div className="brand-mark" style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0 }}><span className="brand-dot" /></div>
+              <div className="brand-text">
+                <div className="brand-name" style={{ margin: 0, fontSize: 16 }}>Job <span className="hl">Hunter</span></div>
+                <div className="brand-sub">Hunt Smarter, Not Harder</div>
+              </div>
             </div>
           </div>
         )}
@@ -591,14 +594,6 @@ export default function App() {
                         </select>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", right: 7, color: "var(--tx-3)", pointerEvents: "none" }}><path d="m6 9 6 6 6-6"/></svg>
                       </div>
-                    </div>
-                    <div className="seg" style={{ padding: 2 }}>
-                      <button className={listMode === "compact" ? "on" : ""} title="Compact rows" onClick={() => setListMode("compact")}>
-                        <Ic d={IC.list} size={15} />
-                      </button>
-                      <button className={listMode === "cards" ? "on" : ""} title="Padded cards" onClick={() => setListMode("cards")}>
-                        <Ic d='<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>' size={15} />
-                      </button>
                     </div>
                   </div>
                   <div className={`list-scroll${listMode === "cards" ? " cards" : ""}`}>
@@ -701,13 +696,16 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
     <div className="topbar" style={{ paddingLeft: sidebarCollapsed ? 18 : 20 }}>
       <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
         {sidebarCollapsed && (
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginRight: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, marginRight: 40 }}>
             <button onClick={() => setSidebarCollapsed(false)} className="collapse-btn" title="Open sidebar">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M9 3v18"/></svg>
             </button>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div className="brand-mark" style={{ width: 26, height: 26, borderRadius: 8 }}><span className="brand-dot" /></div>
-              <div className="brand-name" style={{ margin: 0, fontSize: 16 }}>Job <span style={{ color: "var(--cyan)" }}>.</span>Hunter</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+              <div className="brand-mark" style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0 }}><span className="brand-dot" /></div>
+              <div className="brand-text">
+                <div className="brand-name" style={{ margin: 0, fontSize: 16 }}>Job <span className="hl">Hunter</span></div>
+                <div className="brand-sub">Hunt Smarter, Not Harder</div>
+              </div>
             </div>
           </div>
         )}

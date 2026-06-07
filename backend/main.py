@@ -133,6 +133,18 @@ async def _run_scrape() -> dict:
     async with SessionLocal() as db:
         settings_result = await db.execute(select(Setting))
         settings = {r.key: r.value for r in settings_result.scalars().all()}
+        
+        # Aggregate job roles from all users to search HiringCafe dynamically
+        user_settings_result = await db.execute(select(UserSettings.job_roles))
+        all_roles = set()
+        for row in user_settings_result.scalars().all():
+            if row:
+                try:
+                    roles = json.loads(row)
+                    all_roles.update([r.lower().strip() for r in roles])
+                except:
+                    pass
+        settings["_dynamic_roles"] = list(all_roles) if all_roles else ["data engineer"]
 
     now = datetime.now(timezone.utc)
     now_iso = now.isoformat()
@@ -230,7 +242,7 @@ async def startup():
         print(f"[Startup] DB init error (will retry on requests): {e}")
 
 
-    # â”€â”€ Auto-migrate: add any missing columns safely â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # — Auto-migrate: add any missing columns safely ————————————————————————————————
     new_columns = [
         ("user_settings", "profile_phone",     "VARCHAR"),
         ("user_settings", "profile_address",    "VARCHAR"),
@@ -242,13 +254,12 @@ async def startup():
         ("user_settings", "telegram_chat_id",   "VARCHAR"),
     ]
     try:
-        async with engine.begin() as conn:
-            for table, col, typedef in new_columns:
-                try:
-                    # Works for both SQLite and PostgreSQL
+        for table, col, typedef in new_columns:
+            try:
+                async with engine.begin() as conn:
                     await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {typedef}"))
-                except Exception:
-                    pass  # column already exists â€” safe to ignore
+            except Exception:
+                pass  # column already exists — safe to ignore
         print("[Startup] DB migration complete")
     except Exception as e:
         print(f"[Startup] DB migration error: {e}")

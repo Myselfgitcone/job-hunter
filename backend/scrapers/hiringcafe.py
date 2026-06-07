@@ -140,8 +140,11 @@ async def fetch(settings: dict) -> list[dict]:
             return []
 
         print(f"[HiringCafe] build_id={build_id}")
+        
+        search_terms = settings.get("_dynamic_roles", SEARCH_TERMS)
+        print(f"[HiringCafe] Searching dynamic roles: {search_terms}")
 
-        for term in SEARCH_TERMS:
+        for term in search_terms:
             page = 0
             while page < MAX_PAGES:
                 try:

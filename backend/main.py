@@ -920,7 +920,6 @@ async def list_jobs(
         from sqlalchemy.orm import defer
         q = select(Job).options(
             defer(Job.description),
-            defer(Job.raw_html),
             defer(Job.fit_analysis),
             defer(Job.interview_tips),
             defer(Job.cover_letter),

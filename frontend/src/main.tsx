@@ -8,9 +8,9 @@ function AutoScale({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const handleResize = () => {
-      // The minimum desktop bounds the app was designed for
+      // The absolute minimum dimensions the dense layout requires before it would need to scroll
       const BASE_W = 1440;
-      const BASE_H = 850;
+      const BASE_H = 960; 
       const scaleW = window.innerWidth / BASE_W;
       const scaleH = window.innerHeight / BASE_H;
       // Scale down to fit, but never scale up past 1
@@ -22,16 +22,15 @@ function AutoScale({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  if (scale === 1) return <>{children}</>;
-
   return (
-    <div style={{ width: "100vw", height: "100vh", overflow: "hidden", display: "flex", justifyContent: "center", alignItems: "center", background: "var(--bg-base)" }}>
-      <div style={{
-        width: 1440, height: 850,
-        transform: `scale(${scale})`, transformOrigin: "center center"
-      }}>
-        {children}
-      </div>
+    <div style={{
+      width: `${100 / scale}vw`,
+      height: `${100 / scale}vh`,
+      transform: `scale(${scale})`,
+      transformOrigin: "top left",
+      overflow: "hidden"
+    }}>
+      {children}
     </div>
   );
 }

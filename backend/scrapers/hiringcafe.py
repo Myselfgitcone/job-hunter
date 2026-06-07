@@ -20,7 +20,16 @@ async def _fetch_full_jd(client: httpx.AsyncClient, url: str) -> str | None:
         from jd_fetcher import fetch_full_jd
         async with _JD_SEM:
             result = await fetch_full_jd(url)
-            return result if result and len(result) > 100 else None
+            if not result or len(result) < 100:
+                return None
+            
+            # Reject bot-protection and unsupported browser pages
+            bad_phrases = ["unsupported browser", "enable javascript", "access denied", "cloudflare", "security check", "please wait while we verify", "browser does not support"]
+            lower_res = result.lower()
+            if any(p in lower_res for p in bad_phrases):
+                return None
+                
+            return result
     except Exception:
         return None
 

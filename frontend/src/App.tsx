@@ -175,9 +175,12 @@ export default function App() {
 
   const [tailorOpen, setTailorOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("jh_sidebar") === "1");
   const [busy, setBusy]             = useState<string | null>(null);
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem("jh_welcomed"));
   const { toasts, toast }           = useToasts();
+
+  useEffect(() => { localStorage.setItem("jh_sidebar", sidebarCollapsed ? "1" : "0"); }, [sidebarCollapsed]);
   const searchRef                   = useRef<HTMLInputElement>(null);
 
   // Dynamic user display from auth
@@ -460,15 +463,21 @@ export default function App() {
   return (
     <div className="app">
       {/* ── SIDEBAR ── */}
-      <aside className="sidebar">
-        {/* Brand */}
-        <div className="brand">
-          <div className="brand-mark"><span className="brand-dot" /></div>
-          <div className="brand-text">
-            <div className="brand-name">Job <span className="hl">Hunter</span></div>
-            <div className="brand-sub">Hunt Smarter, Not Harder</div>
+      {!sidebarCollapsed && (
+        <aside className="sidebar">
+          {/* Brand */}
+          <div className="brand" style={{ justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div className="brand-mark"><span className="brand-dot" /></div>
+              <div className="brand-text">
+                <div className="brand-name">Job <span className="hl">Hunter</span></div>
+                <div className="brand-sub">Hunt Smarter, Not Harder</div>
+              </div>
+            </div>
+            <button onClick={() => setSidebarCollapsed(true)} className="collapse-btn" title="Close sidebar">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M9 3v18"/></svg>
+            </button>
           </div>
-        </div>
 
         {/* Nav */}
         <div className="nav-label">Workspace</div>
@@ -515,9 +524,22 @@ export default function App() {
           </button>
         </div>
       </aside>
+      )}
 
       {/* ── MAIN CONTENT ── */}
       <div className="main">
+        {sidebarCollapsed && (
+          <div style={{ display: "flex", alignItems: "center", height: 58, borderBottom: "1px solid var(--line)", padding: "0 18px", gap: 14, flexShrink: 0, background: "var(--bg-surface)" }}>
+            <button onClick={() => setSidebarCollapsed(false)} className="collapse-btn" title="Open sidebar">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M9 3v18"/></svg>
+            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div className="brand-mark" style={{ width: 26, height: 26, borderRadius: 8 }}><span className="brand-dot" /></div>
+              <div className="brand-name" style={{ margin: 0, fontSize: 16 }}>Job <span style={{ color: "var(--cyan)" }}>.</span>Hunter</div>
+            </div>
+          </div>
+        )}
+        
         {view === "dashboard" && <Dashboard />}
         {view === "profile"   && <Profile />}
         {view === "settings"  && (isAdmin ? <Settings onToast={toast} /> : <div style={{padding: 40, color: "#f87171", fontSize: 16}}>Restricted Access. Only the Master Admin can view Settings.</div>)}

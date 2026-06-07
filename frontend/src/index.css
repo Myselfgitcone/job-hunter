@@ -1399,6 +1399,12 @@ html.light .tag-pill button:hover { background: rgba(124,58,237,.15); }
   padding: 10px 8px 6px;
   flex-shrink: 0;
 }
+.collapse-btn {
+  background: transparent; border: none; color: var(--tx-3);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  padding: 4px; border-radius: 6px; transition: all 0.2s;
+}
+.collapse-btn:hover { background: var(--bg-hover); color: var(--tx); }
 .nav-item {
   display: flex; align-items: center; gap: 9px;
   height: 36px; padding: 0 12px;

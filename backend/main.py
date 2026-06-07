@@ -36,7 +36,10 @@ app = FastAPI(title="Job Hunter API")
 
 @app.get("/version")
 def version():
-    return {"version": "5", "cors": "raw-asgi"}
+    import os
+    db_url = os.getenv("DATABASE_URL", "sqlite")
+    masked = db_url[:15] + "..." if len(db_url) > 15 else db_url
+    return {"version": "6", "db": masked}
 
 import os as _os
 _cors_raw = _os.getenv("CORS_ORIGINS", "")

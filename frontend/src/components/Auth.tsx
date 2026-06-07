@@ -304,7 +304,7 @@ export default function Auth({ onSuccess }: Props) {
               <div style={S.liveGrid}>
                 {[
                   { value: liveStats?.last_scrape_mins_ago != null ? (liveStats.last_scrape_mins_ago < 60 ? `${liveStats.last_scrape_mins_ago}m ago` : `${Math.round(liveStats.last_scrape_mins_ago/60)}h ago`) : "—", label: "Last updated", color: "#64748b" },
-                  { value: jobCount > 0 ? <><Counter to={jobCount} />+</> : "6,831+", label: "Total jobs", color: "#7c3aed" },
+                  { value: jobCount > 0 ? <><Counter to={jobCount} />+</> : "6,831+", label: "Total jobs scraped", color: "#7c3aed" },
                   { value: liveStats?.added_today ?? "0", label: "Added today", color: "#06b6d4" },
                   { value: "10+", label: "Sources tracked", color: "#f59e0b" },
                   { value: "⚡", label: "Auto-Apply", color: "#10b981" },

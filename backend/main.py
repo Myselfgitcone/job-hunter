@@ -1170,9 +1170,12 @@ async def _verify_admin(user_id: str):
             raise HTTPException(status_code=403, detail="Restricted Access. Only the Master Admin can perform this action.")
 
 @app.post("/api/jobs/scrape")
-async def scrape_jobs(user_id: str = Depends(get_current_user_id)):
+async def scrape_jobs(background_tasks: BackgroundTasks, user_id: str = Depends(get_current_user_id)):
     await _verify_admin(user_id)
-    return await _run_scrape()
+    # The actual scrape takes ~2 minutes for 3600 companies, which exceeds Railway's 100s HTTP timeout.
+    # We must run it in the background so the UI doesn't crash or timeout.
+    background_tasks.add_task(_run_scrape)
+    return {"message": "Scrape started in background. Check back in a few minutes."}
 
 
 # ————————————————————————————————————————————————————————————————————————————————

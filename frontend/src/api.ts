@@ -93,7 +93,7 @@ export const api = {
 
   getJob: (id: string) => req<Job>(`/api/jobs/${id}`),
 
-  scrape: () => req<{ new_jobs: number; total_scraped: number; deleted_old: number; scraped_at: string }>(
+  scrape: () => req<{ message: string }>(
     `/api/jobs/scrape`, { method: "POST" }
   ),
 

@@ -368,8 +368,8 @@ export default function App() {
     if (scraping) return; setScraping(true); setScrapeMsg("");
     try {
       const r = await api.scrape();
-      setScrapeMsg("+" + r.new_jobs + " new"); setLastScrapedTs(new Date().toISOString()); setLastScrapedDisplay("just now");
-      await loadJobs(); toast("Found " + r.new_jobs + " new jobs", "success");
+      setScrapeMsg("Running");
+      toast(r.message || "Scrape started in background", "success");
     } catch (e: any) { setScrapeMsg(e.message); toast(e.message, "error"); }
     finally { setScraping(false); }
   };

@@ -1,6 +1,8 @@
 import type { Job, QualifyResult } from "../types";
 import { JobCard } from "./JobCard";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+
+const PAGE_SIZE = 60;
 
 interface Props {
   jobs: Job[];
@@ -13,6 +15,11 @@ interface Props {
 }
 
 export function JobList({ jobs, selectedId, onSelect, onSkip, onQualifyUpdated, emptyState, mode = "compact" }: Props) {
+  const [visible, setVisible] = useState(PAGE_SIZE);
+
+  // Reset pagination when jobs list changes (filter applied etc.)
+  useEffect(() => { setVisible(PAGE_SIZE); }, [jobs.length]);
+
   if (jobs.length === 0) {
     return (
       <div className="empty" style={{ minHeight: 200 }}>
@@ -29,9 +36,12 @@ export function JobList({ jobs, selectedId, onSelect, onSkip, onQualifyUpdated, 
     );
   }
 
+  const shown = jobs.slice(0, visible);
+  const hasMore = visible < jobs.length;
+
   return (
     <>
-      {jobs.map((job, i) => (
+      {shown.map((job, i) => (
         <JobCard
           key={job.id}
           job={job}
@@ -42,6 +52,30 @@ export function JobList({ jobs, selectedId, onSelect, onSkip, onQualifyUpdated, 
           onSkip={onSkip}
         />
       ))}
+      {hasMore && (
+        <div style={{ padding: "16px 12px", textAlign: "center" }}>
+          <button
+            id="load-more-jobs"
+            onClick={() => setVisible(v => v + PAGE_SIZE)}
+            style={{
+              background: "var(--bg-elevated)",
+              border: "1px solid var(--border-subtle)",
+              borderRadius: 8,
+              color: "var(--tx-2)",
+              fontSize: 12,
+              fontWeight: 600,
+              padding: "8px 20px",
+              cursor: "pointer",
+              width: "100%",
+              transition: "background 0.15s",
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = "var(--bg-hover)")}
+            onMouseLeave={e => (e.currentTarget.style.background = "var(--bg-elevated)")}
+          >
+            ↓ Load more ({jobs.length - visible} remaining)
+          </button>
+        </div>
+      )}
     </>
   );
 }

@@ -529,15 +529,17 @@ export default function App() {
       {/* ── MAIN CONTENT ── */}
       <div className="main">
         {sidebarCollapsed && view !== "jobs" && (
-          <div style={{ display: "flex", alignItems: "center", height: 58, borderBottom: "1px solid var(--line)", padding: "0 18px", gap: 14, flexShrink: 0, background: "var(--bg-surface)" }}>
-            <button onClick={() => setSidebarCollapsed(false)} className="collapse-btn" title="Open sidebar">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M9 3v18"/></svg>
-            </button>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-              <div className="brand-mark" style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0 }}><span className="brand-dot" /></div>
-              <div className="brand-text">
-                <div className="brand-name" style={{ margin: 0, fontSize: 16 }}>Job <span className="hl">Hunter</span></div>
-                <div className="brand-sub">Hunt Smarter, Not Harder</div>
+          <div style={{ display: "flex", alignItems: "center", height: 58, borderBottom: "1px solid var(--line)", padding: "0 18px", flexShrink: 0, background: "var(--bg-surface)" }}>
+            <div style={{ display: "flex", alignItems: "center", width: 230, flexShrink: 0 }}>
+              <button onClick={() => setSidebarCollapsed(false)} className="collapse-btn" title="Open sidebar" style={{ marginRight: 16 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M9 3v18"/></svg>
+              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <div className="brand-mark" style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0 }}><span className="brand-dot" /></div>
+                <div className="brand-text">
+                  <div className="brand-name" style={{ margin: 0, fontSize: 16 }}>Job <span className="hl">Hunter</span></div>
+                  <div className="brand-sub">Hunt Smarter, Not Harder</div>
+                </div>
               </div>
             </div>
           </div>
@@ -567,6 +569,7 @@ export default function App() {
               COUNTRIES={COUNTRIES}
               visaFilter={visaFilter} setVisaFilter={(v) => { setVisaFilter(v); saveFilterToggle(v, false); }}
               isAdmin={isAdmin} userRoles={userSettings?.job_roles ? (Array.isArray(userSettings.job_roles) ? userSettings.job_roles : JSON.parse(userSettings.job_roles)) : []}
+              sidebarCollapsed={sidebarCollapsed}
             />
               {scraping && (
               <div className="scrape-banner">
@@ -696,11 +699,11 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
     <div className="topbar" style={{ paddingLeft: sidebarCollapsed ? 18 : 20 }}>
       <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
         {sidebarCollapsed && (
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginRight: 40 }}>
-            <button onClick={() => setSidebarCollapsed(false)} className="collapse-btn" title="Open sidebar">
+          <div style={{ display: "flex", alignItems: "center", width: 230, flexShrink: 0 }}>
+            <button onClick={() => setSidebarCollapsed(false)} className="collapse-btn" title="Open sidebar" style={{ marginRight: 16 }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M9 3v18"/></svg>
             </button>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
               <div className="brand-mark" style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0 }}><span className="brand-dot" /></div>
               <div className="brand-text">
                 <div className="brand-name" style={{ margin: 0, fontSize: 16 }}>Job <span className="hl">Hunter</span></div>
@@ -868,13 +871,14 @@ function DeptSelector({ selected, onChange }: { selected: string[]; onChange: (v
   );
 }
 
-function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, activeRoleView, setActiveRoleView, searchRef, COUNTRIES, visaFilter, setVisaFilter, isAdmin, userRoles }: {
+function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, activeRoleView, setActiveRoleView, searchRef, COUNTRIES, visaFilter, setVisaFilter, isAdmin, userRoles, sidebarCollapsed }: {
   filters: Filters; setFilters: React.Dispatch<React.SetStateAction<Filters>>;
   role: string; roleOn: boolean; setRoleOn: (v: boolean) => void;
   activeRoleView: string; setActiveRoleView: (v: string) => void;
   searchRef: React.RefObject<HTMLInputElement>; COUNTRIES: string[];
   visaFilter: boolean; setVisaFilter: (v: boolean) => void;
   isAdmin: boolean; userRoles?: string[];
+  sidebarCollapsed?: boolean;
 }) {
   const set = (k: keyof Filters, v: any) => setFilters(f => ({ ...f, [k]: v }));
   const [open, setOpen] = React.useState(false);
@@ -911,7 +915,7 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, activeRoleVie
   const scoreOpts: [string, string][] = [["any","Any"],["60","≥60%"],["70","≥70%"],["80","≥80%"],["90","≥90%"]];
 
   return (
-    <div className="filterbar">
+    <div className="filterbar" style={{ paddingLeft: sidebarCollapsed ? 248 : 20 }}>
       {/* Role chip - hybrid toggle/dropdown */}
       {userRoles && userRoles.length > 0 && (
         <div className="chip" style={{ display: "flex", alignItems: "center", padding: 0, opacity: roleOn ? 1 : 0.6, background: roleOn ? "var(--bg-hover)" : "transparent", transition: "opacity 0.2s" }}>

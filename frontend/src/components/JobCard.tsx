@@ -74,7 +74,8 @@ export function JobCard({ job, selected, onClick, onSkip, mode = "compact", inde
   const posted  = relTime(job.posted_at || job.scraped_at || "");
   const stColor = STATUS_COLOR[job.status] || "var(--st-new)";
   const srcVar  = SRC_VAR[job.source];
-  const isNew   = job.status === "new" && !!job.posted_at && (Date.now() - new Date(job.posted_at).getTime()) < 24 * 3600000;
+  const _newTs  = job.posted_at || job.scraped_at || "";
+  const isNew   = job.status === "new" && !!_newTs && (Date.now() - new Date(_newTs).getTime()) < 24 * 3600000;
   const isRemote = job.remote || (job.location || "").toLowerCase().includes("remote");
 
   return (

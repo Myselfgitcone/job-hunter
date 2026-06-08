@@ -231,20 +231,6 @@ async def fetch(settings: dict) -> list[dict]:
                         description = "\n\n".join(p for p in description_parts if p)
 
                         salary = _parse_salary(v5)
-                        seniority = v5.get("seniority_level") or ""
-
-                        # Enrich title with seniority if not already there
-                        if seniority and seniority.lower() not in title.lower():
-                            level_map = {
-                                "Senior Level": "Senior",
-                                "Mid Level": "Mid",
-                                "Entry Level": "Entry",
-                                "Lead": "Lead",
-                                "Staff": "Staff",
-                            }
-                            lvl = level_map.get(seniority, "")
-                            if lvl and lvl.lower() not in title.lower():
-                                title = f"{lvl} {title}"
 
                         # Extract posting date with sanity check (reject AI hallucinations like 2007)
                         posted_at = ""

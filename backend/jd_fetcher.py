@@ -269,6 +269,11 @@ async def fetch_full_jd(url: str) -> dict:
 
     return {"description": "[Description not available — use Paste JD manually]", "date": ""}
 
+_GARBAGE_LINES = re.compile(
+    r"^(\*\*[:\-\*]*\*\*|[-\*]{1,3}|[:\-\|]{1,3}|\*+|_+)$"
+)
+_NA_VALUES = {"na", "n/a", "n.a.", "not available", "not applicable", "none", "tbd", "-", "—"}
+
 def _extract_clean(raw: str) -> str:
     lines = raw.split("\n")
     kept = []
@@ -279,7 +284,15 @@ def _extract_clean(raw: str) -> str:
             break
         if any(re.search(p, lower) for p in SKIP_PATTERNS):
             continue
+        # Drop lines that are pure markdown garbage (---, **:**, *, etc.)
+        if _GARBAGE_LINES.match(stripped):
+            continue
         kept.append(line)
     result = "\n".join(kept)
     result = re.sub(r"\n{3,}", "\n\n", result)
-    return result.strip()[:8000]
+    result = result.strip()[:8000]
+
+    # Reject if result is just an NA placeholder or too short to be useful
+    if result.lower() in _NA_VALUES or len(result) < 80:
+        return ""
+    return result

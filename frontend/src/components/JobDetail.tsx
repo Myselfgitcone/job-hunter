@@ -607,8 +607,8 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
                   <span className="sw" style={{ background: `var(--src-${job.source.toLowerCase()}, var(--tx-3))` }} />
                   {job.source}
                 </span>
-                {job.posted_at && (
-                  <span className="meta-i"><Ic d={I.clock} size={13} />{relTimeDetail(job.posted_at)}</span>
+                {(job.posted_at || job.scraped_at) && (
+                  <span className="meta-i"><Ic d={I.clock} size={13} />{relTimeDetail(job.posted_at || job.scraped_at!)}</span>
                 )}
               </div>
             </div>

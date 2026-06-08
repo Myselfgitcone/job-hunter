@@ -6,9 +6,11 @@ Scraping order / priority (for dedup):
   2. Lever
   3. Ashby
   4. Workday
-  5. HiringCafe (widest coverage, lowest priority)
+  5. SmartRecruiters / BambooHR / Workable / Recruitee
+  6. HiringCafe (widest coverage, lowest priority)
 """
 import asyncio
+from collections import Counter
 from scrapers import greenhouse, lever, ashby, workday, hiringcafe
 from scrapers import smartrecruiters, bamboohr, workable, recruitee
 
@@ -55,45 +57,14 @@ def _fingerprint(job: dict) -> str:
     return f"{title}|||{company}"
 
 
-async def run_all_scrapers(settings: dict) -> list[dict]:
-    # Fetch company slugs from DB for each ATS
-    gh_slugs, lever_slugs, ashby_slugs, wd_slugs = await asyncio.gather(
-        _get_slugs_for_ats("greenhouse"),
-        _get_slugs_for_ats("lever"),
-        _get_slugs_for_ats("ashby"),
-        _get_slugs_for_ats("workday"),
-    )
-
-    # Inject slugs into settings so scrapers can use them
-    settings_with_slugs = {
-        **settings,
-        "_gh_slugs":    gh_slugs,
-        "_lever_slugs": lever_slugs,
-        "_ashby_slugs": ashby_slugs,
-        "_wd_slugs":    wd_slugs,
-    }
-
-    results = await asyncio.gather(
-        greenhouse.fetch(settings_with_slugs),
-        lever.fetch(settings_with_slugs),
-        ashby.fetch(settings_with_slugs),
-        workday.fetch(settings_with_slugs),
-        smartrecruiters.fetch(settings),
-        bamboohr.fetch(settings),
-        workable.fetch(settings),
-        recruitee.fetch(settings),
-        hiringcafe.fetch(settings),
-        return_exceptions=True,
-    )
-
+def _dedup(results, group_name: str = "") -> list[dict]:
+    """Merge scraper batches, dedup by URL then fingerprint (source priority wins)."""
     raw: list[dict] = []
     for batch in results:
         if isinstance(batch, Exception):
-            print(f"[Scraper] batch error: {batch}")
+            print(f"[Scrapers/{group_name}] batch error: {batch}")
             continue
         raw.extend(batch)
-
-    print(f"[Scrapers] raw total before dedup: {len(raw)}")
 
     seen_fp:  dict[str, dict] = {}
     seen_url: set[str] = set()
@@ -119,11 +90,80 @@ async def run_all_scrapers(settings: dict) -> list[dict]:
                     seen_url.add(url)
 
     all_jobs = list(seen_fp.values())
-
-    from collections import Counter
     by_src = Counter(j.get("source", "?") for j in all_jobs)
-    print(f"[Scrapers] after dedup: {len(all_jobs)} unique jobs")
+    print(f"[Scrapers/{group_name}] {len(all_jobs)} unique jobs (from {len(raw)} raw)")
     for src, n in by_src.most_common():
         print(f"  {src}: {n}")
-
     return all_jobs
+
+
+# ── Group A: fast scrapers (~3-5 min) ────────────────────────────────────────
+# Lever + Ashby + Workday + SmartRecruiters + Workable + BambooHR + Recruitee
+async def run_group_fast(settings: dict) -> list[dict]:
+    lever_slugs, ashby_slugs, wd_slugs = await asyncio.gather(
+        _get_slugs_for_ats("lever"),
+        _get_slugs_for_ats("ashby"),
+        _get_slugs_for_ats("workday"),
+    )
+    s = {**settings, "_lever_slugs": lever_slugs, "_ashby_slugs": ashby_slugs, "_wd_slugs": wd_slugs}
+    results = await asyncio.gather(
+        lever.fetch(s),
+        ashby.fetch(s),
+        workday.fetch(s),
+        smartrecruiters.fetch(settings),
+        bamboohr.fetch(settings),
+        workable.fetch(settings),
+        recruitee.fetch(settings),
+        return_exceptions=True,
+    )
+    return _dedup(results, "GroupA-Fast")
+
+
+# ── Group B: Greenhouse (~5-10 min) ──────────────────────────────────────────
+async def run_group_greenhouse(settings: dict) -> list[dict]:
+    gh_slugs = await _get_slugs_for_ats("greenhouse")
+    s = {**settings, "_gh_slugs": gh_slugs}
+    results = await asyncio.gather(
+        greenhouse.fetch(s),
+        return_exceptions=True,
+    )
+    return _dedup(results, "GroupB-Greenhouse")
+
+
+# ── Group C: HiringCafe (~8-15 min) ──────────────────────────────────────────
+async def run_group_hiringcafe(settings: dict) -> list[dict]:
+    results = await asyncio.gather(
+        hiringcafe.fetch(settings),
+        return_exceptions=True,
+    )
+    return _dedup(results, "GroupC-HiringCafe")
+
+
+# ── Legacy: all scrapers at once (kept for backward compat) ──────────────────
+async def run_all_scrapers(settings: dict) -> list[dict]:
+    gh_slugs, lever_slugs, ashby_slugs, wd_slugs = await asyncio.gather(
+        _get_slugs_for_ats("greenhouse"),
+        _get_slugs_for_ats("lever"),
+        _get_slugs_for_ats("ashby"),
+        _get_slugs_for_ats("workday"),
+    )
+    settings_with_slugs = {
+        **settings,
+        "_gh_slugs":    gh_slugs,
+        "_lever_slugs": lever_slugs,
+        "_ashby_slugs": ashby_slugs,
+        "_wd_slugs":    wd_slugs,
+    }
+    results = await asyncio.gather(
+        greenhouse.fetch(settings_with_slugs),
+        lever.fetch(settings_with_slugs),
+        ashby.fetch(settings_with_slugs),
+        workday.fetch(settings_with_slugs),
+        smartrecruiters.fetch(settings),
+        bamboohr.fetch(settings),
+        workable.fetch(settings),
+        recruitee.fetch(settings),
+        hiringcafe.fetch(settings),
+        return_exceptions=True,
+    )
+    return _dedup(results, "AllScrapers")

@@ -10,17 +10,22 @@ Scraping order / priority (for dedup):
 """
 import asyncio
 from scrapers import greenhouse, lever, ashby, workday, hiringcafe
+from scrapers import smartrecruiters, bamboohr, workable, recruitee
 
 SOURCE_PRIORITY = {
-    "Greenhouse": 1,
-    "Lever":      2,
-    "Ashby":      3,
-    "Workday":    4,
-    "Google":     4,
-    "Apple":      4,
-    "Meta":       4,
-    "Netflix":    4,
-    "HiringCafe": 5,
+    "Greenhouse":      1,
+    "Lever":           2,
+    "Ashby":           3,
+    "Workday":         4,
+    "SmartRecruiters": 4,
+    "BambooHR":        4,
+    "Workable":        4,
+    "Recruitee":       4,
+    "Google":          4,
+    "Apple":           4,
+    "Meta":            4,
+    "Netflix":         4,
+    "HiringCafe":      5,
 }
 
 
@@ -73,6 +78,10 @@ async def run_all_scrapers(settings: dict) -> list[dict]:
         lever.fetch(settings_with_slugs),
         ashby.fetch(settings_with_slugs),
         workday.fetch(settings_with_slugs),
+        smartrecruiters.fetch(settings),
+        bamboohr.fetch(settings),
+        workable.fetch(settings),
+        recruitee.fetch(settings),
         hiringcafe.fetch(settings),
         return_exceptions=True,
     )

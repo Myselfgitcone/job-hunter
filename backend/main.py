@@ -235,10 +235,10 @@ async def _auto_scrape():
     """Background auto-scrape task â€” runs on schedule."""
     print("[Scheduler] Auto-scrape startingâ€¦")
     try:
-        result = await asyncio.wait_for(_run_scrape(), timeout=300)  # 5 min max
+        result = await asyncio.wait_for(_run_scrape(), timeout=1800)  # 30 min max
         print(f"[Scheduler] Auto-scrape complete: {result}")
     except asyncio.TimeoutError:
-        print("[Scheduler] Auto-scrape timed out after 5 minutes")
+        print("[Scheduler] Auto-scrape timed out after 30 minutes")
     except Exception as e:
         print(f"[Scheduler] Auto-scrape failed: {e}")
         import traceback; traceback.print_exc()

@@ -44,8 +44,20 @@ HEADERS = {
     "Referer": "https://hiring.cafe/",
 }
 
+# Broad terms that cover all knowledge-work roles.
+# HiringCafe searches title+description, so each term returns hundreds of relevant jobs.
+# Exclusion filter in base.py blocks garbage (nurses, cashiers, plumbers, etc.)
 SEARCH_TERMS = [
-    "data engineer",
+    "engineer",
+    "developer",
+    "analyst",
+    "scientist",
+    "architect",
+    "designer",
+    "manager",
+    "consultant",
+    "director",
+    "administrator",
 ]
 
 
@@ -150,8 +162,8 @@ async def fetch(settings: dict) -> list[dict]:
 
         print(f"[HiringCafe] build_id={build_id}")
         
-        search_terms = settings.get("_dynamic_roles", SEARCH_TERMS)
-        print(f"[HiringCafe] Searching dynamic roles: {search_terms}")
+        search_terms = SEARCH_TERMS
+        print(f"[HiringCafe] Searching broad terms: {search_terms}")
 
         for term in search_terms:
             page = 0

@@ -181,7 +181,20 @@ async def _scrape_and_insert(fetch_fn, group_name, settings, cutoff_posted, now_
     return new_count, new_jobs
 
 
+_scrape_running = False
+
 async def _run_scrape() -> dict:
+    global _scrape_running
+    if _scrape_running:
+        print("[Scrape] A scrape is already running — ignoring duplicate trigger.")
+        return {"message": "Scrape already running"}
+    _scrape_running = True
+    try:
+        return await _run_scrape_internal()
+    finally:
+        _scrape_running = False
+
+async def _run_scrape_internal() -> dict:
     """Core scrape logic: 3 groups run concurrently, each inserts when done."""
     from datetime import timedelta
 

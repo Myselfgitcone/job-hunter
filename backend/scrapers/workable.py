@@ -20,6 +20,16 @@ async def fetch(settings: dict) -> list[dict]:
     seen: set[str] = set()
 
     async with httpx.AsyncClient(timeout=30, headers=HEADERS) as client:
+        # Quick probe — bail fast if API is down (saves ~175 failed requests)
+        try:
+            probe = await client.post(BASE, json={"query": "engineer", "location": ""})
+            if probe.status_code in (404, 410):
+                print("[Workable] API returned 404 — endpoint deprecated, skipping")
+                return []
+        except Exception as e:
+            print(f"[Workable] probe failed: {e}")
+            return []
+
         dynamic = settings.get("_dynamic_roles") or []
         search_terms = list(dict.fromkeys(SEARCH_TERMS + [r for r in dynamic if r not in SEARCH_TERMS]))
         for term in search_terms:

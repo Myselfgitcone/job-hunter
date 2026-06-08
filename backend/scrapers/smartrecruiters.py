@@ -34,6 +34,16 @@ async def fetch(settings: dict) -> list[dict]:
     seen: set[str] = set()
 
     async with httpx.AsyncClient(timeout=20, headers=HEADERS) as client:
+        # Quick probe — bail fast if API is down (saves ~70 failed requests)
+        try:
+            probe = await client.get(BASE, params={"q": "engineer", "limit": 1, "country": "US"})
+            if probe.status_code == 404:
+                print("[SmartRecruiters] API returned 404 — endpoint deprecated, skipping")
+                return []
+        except Exception as e:
+            print(f"[SmartRecruiters] probe failed: {e}")
+            return []
+
         dynamic = settings.get("_dynamic_roles") or []
         search_terms = list(dict.fromkeys(SEARCH_TERMS + [r for r in dynamic if r not in SEARCH_TERMS]))
         for country_code, country_label in COUNTRIES:

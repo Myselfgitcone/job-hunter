@@ -9,29 +9,8 @@ import httpx
 import asyncio
 import re
 import json
+from datetime import datetime
 from scrapers.base import JobData, detect_country, is_relevant_title, CUTOFF_HOURS, SEARCH_TERMS as _BASE_TERMS
-
-# Semaphore for JD fetches — don't hammer company servers
-_JD_SEM = asyncio.Semaphore(8)
-
-async def _fetch_full_jd(client: httpx.AsyncClient, url: str) -> str | None:
-    """Fetch full JD from company ATS URL. Handles Greenhouse, Lever, Ashby, Workday, generic HTML."""
-    try:
-        from jd_fetcher import fetch_full_jd
-        async with _JD_SEM:
-            result = await fetch_full_jd(url)
-            if not result or len(result) < 100:
-                return None
-            
-            # Reject bot-protection and unsupported browser pages
-            bad_phrases = ["unsupported browser", "enable javascript", "access denied", "cloudflare", "security check", "please wait while we verify", "browser does not support"]
-            lower_res = result.lower()
-            if any(p in lower_res for p in bad_phrases):
-                return None
-                
-            return result
-    except Exception:
-        return None
 
 BASE_URL    = "https://hiring.cafe"
 PAGE_SIZE   = 40   # their fixed page size
@@ -240,21 +219,16 @@ async def fetch(settings: dict) -> list[dict]:
                             or hit.get("board_token", "").replace("-", " ").title()
                         )
 
-                        # Try to fetch full JD from the company's ATS URL
-                        full_desc = await _fetch_full_jd(client, apply_url)
-
-                        if full_desc:
-                            description = full_desc
-                        else:
-                            # Fallback: build description from structured HiringCafe data
-                            tech_tools = v5.get("technical_tools") or []
-                            description_parts = [req_summary]
-                            if tech_tools:
-                                description_parts.append("Tech Stack: " + ", ".join(tech_tools))
-                            role_activities = v5.get("role_activities") or []
-                            if role_activities:
-                                description_parts.append("Responsibilities: " + "; ".join(role_activities))
-                            description = "\n\n".join(p for p in description_parts if p)
+                        # Build description from HiringCafe structured data
+                        # (skip per-job JD fetch — too slow at scale, causes 1800s timeout)
+                        tech_tools = v5.get("technical_tools") or []
+                        description_parts = [req_summary]
+                        if tech_tools:
+                            description_parts.append("Tech Stack: " + ", ".join(tech_tools))
+                        role_activities = v5.get("role_activities") or []
+                        if role_activities:
+                            description_parts.append("Responsibilities: " + "; ".join(role_activities))
+                        description = "\n\n".join(p for p in description_parts if p)
 
                         salary = _parse_salary(v5)
                         seniority = v5.get("seniority_level") or ""

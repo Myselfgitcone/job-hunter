@@ -14,7 +14,7 @@ from scrapers.base import JobData, detect_country, is_relevant_title, CUTOFF_HOU
 
 BASE_URL    = "https://hiring.cafe"
 PAGE_SIZE   = 40   # their fixed page size
-MAX_PAGES   = 25   # cap at 1000 jobs per scrape run
+MAX_PAGES   = 8    # cap at 320 jobs per term (37 terms × 8 pages × ~1.4s ≈ 7 min total)
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "

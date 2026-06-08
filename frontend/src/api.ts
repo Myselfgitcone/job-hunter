@@ -100,7 +100,7 @@ export const api = {
   setStatus: (id: string, status: string) =>
     req(`/api/jobs/${id}/status`, { method: "PUT", body: JSON.stringify({ status }) }),
 
-  fetchJd: (id: string) => req<{ description: string }>(`/api/jobs/${id}/fetch-jd`, { method: "POST" }),
+  fetchJd: (id: string) => req<{ description: string; date?: string }>(`/api/jobs/${id}/fetch-jd`, { method: "POST" }),
 
   saveDescription: (id: string, description: string) =>
     req(`/api/jobs/${id}/description`, { method: "PUT", body: JSON.stringify({ description }) }),

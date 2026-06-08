@@ -145,7 +145,12 @@ function DescriptionTab({ job, onUpdate, onToast }: { job: Job; onUpdate: (p: Pa
     setFetching(true);
     try {
       const r = await api.fetchJd(job.id);
-      if (r.description) { onUpdate({ description: r.description }); onToast("Description fetched", "success"); }
+      if (r.description) { 
+        const updates: any = { description: r.description };
+        if (r.date) updates.posted_at = r.date;
+        onUpdate(updates); 
+        onToast("Description fetched", "success"); 
+      }
     } catch { onToast("Fetch failed — try pasting JD manually", "error"); }
     finally { setFetching(false); }
   };

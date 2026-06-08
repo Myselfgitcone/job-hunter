@@ -1256,7 +1256,9 @@ async def fetch_jd(job_id: str, user_id: str = Depends(get_current_user_id)):
         url       = job.url
         existing  = (job.description or "").strip()
 
-    full_desc = await fetch_full_jd(url)
+    res = await fetch_full_jd(url)
+    full_desc = res.get("description", "")
+    extracted_date = res.get("date", "")
 
     # If URL fetch failed/useless, keep existing scraped description (better than nothing)
     FAILED = {"[Description not available", "[Could not load"}
@@ -1268,9 +1270,19 @@ async def fetch_jd(job_id: str, user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
         job = await db.get(Job, job_id)
         job.description = full_desc
+        if extracted_date:
+            try:
+                from datetime import timezone as _tz
+                pub_dt = datetime.fromisoformat(extracted_date.replace("Z", "+00:00"))
+                now_utc = datetime.now(_tz.utc)
+                age_days = (now_utc - pub_dt).days
+                if 0 <= age_days <= 180:  # relax to 180 since it's user-triggered manual refresh
+                    job.posted_at = pub_dt.isoformat()
+            except Exception:
+                pass
         await db.commit()
 
-    return {"description": full_desc}
+    return {"description": full_desc, "date": job.posted_at}
 
 
 # ————————————————————————————————————————————————————————————————————————————————

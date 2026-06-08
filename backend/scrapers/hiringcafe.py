@@ -255,7 +255,7 @@ async def fetch(settings: dict) -> list[dict]:
                                 pub_dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
                                 now_utc = datetime.now(_tz.utc)
                                 age_days = (now_utc - pub_dt).days
-                                if 0 <= age_days <= 90:  # sane range: not future, not older than 90 days
+                                if 0 <= age_days <= 180:  # allow up to 6 months
                                     posted_at = pub_dt.isoformat()
                             except Exception:
                                 pass

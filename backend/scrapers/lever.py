@@ -5,6 +5,8 @@ No auth required for public boards.
 
 Company list sourced from jobseek (github.com/colophon-group/jobseek) — 150+ companies.
 """
+from zoneinfo import ZoneInfo
+EST = ZoneInfo('America/New_York')
 import httpx
 import asyncio
 from scrapers.base import JobData, detect_country, CUTOFF_HOURS
@@ -65,7 +67,7 @@ def _is_recent(ts_ms) -> bool:
         return True
     try:
         dt = datetime.fromtimestamp(int(ts_ms) / 1000, tz=timezone.utc)
-        return dt >= datetime.now(timezone.utc) - timedelta(hours=CUTOFF_HOURS)
+        return dt >= datetime.now(EST) - timedelta(hours=CUTOFF_HOURS)
     except Exception:
         return True
 

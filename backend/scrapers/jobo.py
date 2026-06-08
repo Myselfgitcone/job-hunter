@@ -4,6 +4,8 @@ GET https://connect.jobo.world/api/jobs
 Covers 50+ ATS platforms: Workday, Taleo, iCIMS, SuccessFactors, Greenhouse, etc.
 Requires API key from jobo.world (free tier available).
 """
+from zoneinfo import ZoneInfo
+EST = ZoneInfo('America/New_York')
 import httpx
 from datetime import datetime, timezone, timedelta
 from scrapers.base import JobData, detect_country, is_relevant_title, SEARCH_TERMS, CUTOFF_HOURS
@@ -25,7 +27,7 @@ async def fetch(settings: dict) -> list[dict]:
         "User-Agent": "Mozilla/5.0",
     }
 
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=CUTOFF_HOURS)).isoformat()
+    cutoff = (datetime.now(EST) - timedelta(hours=CUTOFF_HOURS)).isoformat()
     jobs: list[dict] = []
     seen: set[str] = set()
 

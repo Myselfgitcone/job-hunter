@@ -2,6 +2,8 @@
 SmartRecruiters — public search API, no auth required.
 https://api.smartrecruiters.com/v1/postings?q=...
 """
+from zoneinfo import ZoneInfo
+EST = ZoneInfo('America/New_York')
 import httpx
 from datetime import datetime, timezone, timedelta
 from scrapers.base import JobData, detect_country, CUTOFF_HOURS, SEARCH_TERMS
@@ -22,7 +24,7 @@ def _is_recent(date_str: str) -> bool:
         dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
-        return dt >= datetime.now(timezone.utc) - timedelta(hours=CUTOFF_HOURS)
+        return dt >= datetime.now(EST) - timedelta(hours=CUTOFF_HOURS)
     except Exception:
         return True
 

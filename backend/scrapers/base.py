@@ -1,3 +1,5 @@
+from zoneinfo import ZoneInfo
+EST = ZoneInfo('America/New_York')
 from dataclasses import dataclass, field
 from typing import Optional
 from datetime import datetime, timedelta, timezone
@@ -169,7 +171,7 @@ def is_recent(posted_at_iso: str, hours: int = CUTOFF_HOURS) -> bool:
         dt = datetime.fromisoformat(posted_at_iso.replace("Z", "+00:00"))
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
-        return dt >= datetime.now(timezone.utc) - timedelta(hours=hours)
+        return dt >= datetime.now(EST) - timedelta(hours=hours)
     except Exception:
         return True
 

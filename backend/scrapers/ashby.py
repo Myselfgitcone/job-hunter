@@ -5,6 +5,8 @@ No auth required for public boards.
 
 Company list sourced from jobseek (github.com/colophon-group/jobseek) — 855 companies.
 """
+from zoneinfo import ZoneInfo
+EST = ZoneInfo('America/New_York')
 import httpx
 import asyncio
 from bs4 import BeautifulSoup
@@ -161,7 +163,7 @@ def _is_recent(date_str: str) -> bool:
         dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
-        return dt >= datetime.now(timezone.utc) - timedelta(hours=CUTOFF_HOURS)
+        return dt >= datetime.now(EST) - timedelta(hours=CUTOFF_HOURS)
     except Exception:
         return True
 

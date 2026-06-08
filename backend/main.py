@@ -1,3 +1,5 @@
+from zoneinfo import ZoneInfo
+EST = ZoneInfo('America/New_York')
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -149,7 +151,7 @@ async def _run_scrape() -> dict:
                     pass
         settings["_dynamic_roles"] = list(all_roles) if all_roles else ["data engineer"]
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(EST)
     now_iso = now.isoformat()
 
     from scrapers.base import CUTOFF_HOURS as _CUTOFF_H
@@ -428,8 +430,8 @@ async def forgot_password(body: ForgotPasswordBody):
         # Generate fresh token (valid 1 hour)
         token = _secrets.token_urlsafe(40)
         from datetime import timezone, timedelta
-        expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
-        now_iso = datetime.now(timezone.utc).isoformat()
+        expires_at = (datetime.now(EST) + timedelta(hours=1)).isoformat()
+        now_iso = datetime.now(EST).isoformat()
         db.add(_PRT(
             id=str(uuid.uuid4()),
             user_id=user.id,
@@ -513,7 +515,7 @@ async def reset_password_with_token(body: ResetPasswordBody):
                 expires_at = expires_at.replace(tzinfo=timezone.utc)
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid token data.")
-        if datetime.now(timezone.utc) > expires_at:
+        if datetime.now(EST) > expires_at:
             raise HTTPException(status_code=400, detail="Reset link has expired. Please request a new one.")
 
         result2 = await db.execute(select(User).where(User.id == token_record.user_id))
@@ -877,7 +879,7 @@ async def public_job_count():
 async def public_today_stats():
     """Public endpoint â€” live stats for login page (no auth needed)."""
     from datetime import datetime, timezone
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(EST).strftime("%Y-%m-%d")
     async with SessionLocal() as db:
         # Jobs added today
         added_r = await db.execute(
@@ -897,7 +899,7 @@ async def public_today_stats():
     if last_scraped_at:
         try:
             last_dt = datetime.fromisoformat(last_scraped_at.replace("Z", "+00:00"))
-            mins_ago = max(0, int((datetime.now(timezone.utc) - last_dt).total_seconds() / 60))
+            mins_ago = max(0, int((datetime.now(EST) - last_dt).total_seconds() / 60))
         except Exception:
             pass
 
@@ -917,7 +919,7 @@ async def list_jobs(
     time_range: Optional[str]  = None,   # "24h" | "48h" | "7d" | None=all
 ):
     from datetime import timezone, timedelta
-    now = datetime.now(timezone.utc)
+    now = datetime.now(EST)
 
     async with SessionLocal() as db:
         q = select(Job).order_by(Job.posted_at.desc(), Job.scraped_at.desc())
@@ -1778,7 +1780,7 @@ async def search_jobs(
 async def get_reminders(user_id: str = Depends(get_current_user_id)):
     """Return jobs with upcoming deadlines or interview dates within 7 days."""
     from datetime import timezone, timedelta
-    now = datetime.now(timezone.utc)
+    now = datetime.now(EST)
     cutoff = (now + timedelta(days=7)).isoformat()
 
     async with SessionLocal() as db:

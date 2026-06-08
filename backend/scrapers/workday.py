@@ -5,6 +5,8 @@ No auth required. Returns JSON directly — no JS rendering needed.
 
 Companies: major tech/finance firms known to use Workday.
 """
+from zoneinfo import ZoneInfo
+EST = ZoneInfo('America/New_York')
 import httpx
 import asyncio
 import re
@@ -138,7 +140,7 @@ def _days_ago_to_iso(days: int) -> str:
     Using start-of-day matches how Workday labels posts (not exact hour).
     """
     from datetime import datetime, timezone, timedelta
-    d = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    d = datetime.now(EST).replace(hour=0, minute=0, second=0, microsecond=0)
     d = d - timedelta(days=days)
     return d.isoformat()
 

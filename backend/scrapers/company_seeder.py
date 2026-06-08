@@ -4,6 +4,8 @@ Runs once on startup if the companies table is empty.
 
 Source: https://raw.githubusercontent.com/colophon-group/jobseek/main/apps/crawler/data/boards.csv
 """
+from zoneinfo import ZoneInfo
+EST = ZoneInfo('America/New_York')
 import httpx
 import uuid
 import csv
@@ -82,7 +84,7 @@ async def seed_companies_if_empty() -> int:
             "slug": slug,
             "careers_url": url,
             "active": True,
-            "added_at": datetime.now(timezone.utc).isoformat(),
+            "added_at": datetime.now(EST).isoformat(),
             "source": "jseek_csv",
         })
 
@@ -106,7 +108,7 @@ async def _seed_from_hardcoded() -> int:
     from scrapers.ashby import COMPANIES as ASHBY_COMPANIES
     from scrapers.lever import COMPANIES as LEVER_COMPANIES
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(EST).isoformat()
     companies = []
 
     for slug in GH_BOARDS:

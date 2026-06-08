@@ -530,7 +530,7 @@ export default function App() {
       <div className="main">
         {sidebarCollapsed && view !== "jobs" && (
           <div style={{ display: "flex", alignItems: "center", height: 58, borderBottom: "1px solid var(--line)", padding: "0 18px", flexShrink: 0, background: "var(--bg-surface)" }}>
-            <div style={{ display: "flex", alignItems: "center", width: 210, flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", width: 230, flexShrink: 0 }}>
               <button onClick={() => setSidebarCollapsed(false)} className="collapse-btn" title="Open sidebar" style={{ marginRight: 16 }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M9 3v18"/></svg>
               </button>
@@ -699,7 +699,7 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
     <div className="topbar" style={{ paddingLeft: sidebarCollapsed ? 18 : 20 }}>
       <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
         {sidebarCollapsed && (
-          <div style={{ display: "flex", alignItems: "center", width: 210, flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", width: 230, flexShrink: 0 }}>
             <button onClick={() => setSidebarCollapsed(false)} className="collapse-btn" title="Open sidebar" style={{ marginRight: 16 }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M9 3v18"/></svg>
             </button>
@@ -915,30 +915,27 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, activeRoleVie
   const scoreOpts: [string, string][] = [["any","Any"],["60","≥60%"],["70","≥70%"],["80","≥80%"],["90","≥90%"]];
 
   return (
-    <div className="filterbar" style={{ paddingLeft: sidebarCollapsed ? 228 : 20 }}>
+    <div className="filterbar" style={{ paddingLeft: sidebarCollapsed ? 248 : 20 }}>
       {/* Role chip - hybrid toggle/dropdown */}
       {userRoles && userRoles.length > 0 && (
-        <div style={{ display: "inline-flex", alignItems: "center", background: "var(--bg-surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 4, opacity: roleOn ? 1 : 0.6, transition: "all 0.2s", boxShadow: "var(--sh-sm)" }}>
+        <div className="chip" style={{ display: "flex", alignItems: "center", padding: 0, opacity: roleOn ? 1 : 0.6, background: roleOn ? "var(--bg-hover)" : "transparent", transition: "opacity 0.2s" }}>
           <button onClick={() => {
             const nextState = !roleOn;
             setRoleOn(nextState);
             if (!nextState) setActiveRoleView("");
-          }} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px 4px 6px", background: "none", border: "none", cursor: "pointer", color: "var(--tx)", fontSize: 13, fontWeight: 600 }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--violet)" }}>
+          }} style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px 0 10px", height: "100%", background: "none", border: "none", cursor: "pointer", color: "var(--tx)", borderRight: "1px solid var(--line)", borderTopLeftRadius: "var(--r-sm)", borderBottomLeftRadius: "var(--r-sm)" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--violet)" }}>
               <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>
             </svg>
             My Role:
           </button>
-          
-          <div style={{ width: 1, height: 18, background: "var(--line)", margin: "0 6px 0 2px" }} />
-
           <select 
             value={activeRoleView} 
             onChange={(e) => {
               setActiveRoleView(e.target.value);
               if (e.target.value) setRoleOn(true);
             }}
-            style={{ background: "none", border: "none", color: "var(--tx-2)", fontWeight: 600, padding: "0 6px", cursor: "pointer", outline: "none", fontFamily: "inherit", fontSize: 12.5 }}
+            style={{ background: "none", border: "none", color: "var(--violet)", fontWeight: 600, padding: "0 10px 0 8px", cursor: "pointer", outline: "none", height: "100%", fontFamily: "inherit", fontSize: 13 }}
           >
             <option value="">All My Roles</option>
             {userRoles.map((r: string) => <option key={r} value={r}>{r}</option>)}

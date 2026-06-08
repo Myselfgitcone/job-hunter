@@ -154,7 +154,10 @@ async def _run_scrape() -> dict:
     now = datetime.now(EST)
     now_iso = now.isoformat()
 
-    from scrapers.base import CUTOFF_HOURS as _CUTOFF_H
+    # Read retention window from DB settings — fallback to 7 days if not configured
+    from scrapers.base import CUTOFF_HOURS as _DEFAULT_CUTOFF_H
+    _CUTOFF_H = int(settings.get("scrape_cutoff_hours") or _DEFAULT_CUTOFF_H)
+
     cutoff_old = (now - timedelta(hours=_CUTOFF_H)).isoformat()
     async with SessionLocal() as db:
         old_jobs_result = await db.execute(
@@ -169,7 +172,7 @@ async def _run_scrape() -> dict:
         deleted = len(old_jobs)
         await db.commit()
     if deleted:
-        print(f"[Scrape] Deleted {deleted} jobs older than {_CUTOFF_H}h")
+        print(f"[Scrape] Deleted {deleted} jobs older than {_CUTOFF_H}h ({_CUTOFF_H // 24}d)")
 
     scraped = await run_all_scrapers(settings)
     ALLOWED_COUNTRIES = {"USA", "India", "Remote"}
@@ -177,7 +180,7 @@ async def _run_scrape() -> dict:
 
     cutoff_posted = (now - timedelta(hours=_CUTOFF_H)).isoformat()
     scraped = [j for j in scraped if not j.get("posted_at") or j["posted_at"] >= cutoff_posted]
-    print(f"[Scrape] {len(scraped)} jobs after date/country filter")
+    print(f"[Scrape] {len(scraped)} jobs after date/country filter (retention={_CUTOFF_H}h)")
 
     new_count = 0
     new_jobs_for_tg: list[dict] = []
@@ -1822,14 +1825,41 @@ async def get_reminders(user_id: str = Depends(get_current_user_id)):
 class SchedulerConfig(BaseModel):
     cron: str  # e.g. "0 */6 * * *"
 
+class RetentionConfig(BaseModel):
+    days: int  # e.g. 7
+
 @app.get("/api/scheduler/status")
 async def scheduler_status(user_id: str = Depends(get_current_user_id)):
     await _verify_admin(user_id)
+    from scrapers.base import CUTOFF_HOURS as _DEFAULT_H
     jobs = _scheduler.get_jobs()
+    async with SessionLocal() as db:
+        cron_s  = await db.get(Setting, "auto_scrape_cron")
+        ret_s   = await db.get(Setting, "scrape_cutoff_hours")
+    cutoff_hours = int(ret_s.value) if ret_s else _DEFAULT_H
     return {
-        "running": _scheduler.running,
-        "jobs": [{"id": j.id, "next_run": str(j.next_run_time)} for j in jobs],
+        "running":         _scheduler.running,
+        "jobs":            [{"id": j.id, "next_run": str(j.next_run_time)} for j in jobs],
+        "cron":            cron_s.value if cron_s else "0 * * * *",
+        "retention_days":  cutoff_hours // 24,
+        "retention_hours": cutoff_hours,
     }
+
+@app.put("/api/scheduler/retention")
+async def update_retention(body: RetentionConfig, user_id: str = Depends(get_current_user_id)):
+    """Update the rolling job retention window (in days). Jobs older than this are deleted on next scrape."""
+    await _verify_admin(user_id)
+    if body.days < 1 or body.days > 30:
+        raise HTTPException(status_code=400, detail="days must be between 1 and 30")
+    hours = body.days * 24
+    async with SessionLocal() as db:
+        setting = await db.get(Setting, "scrape_cutoff_hours")
+        if setting:
+            setting.value = str(hours)
+        else:
+            db.add(Setting(key="scrape_cutoff_hours", value=str(hours)))
+        await db.commit()
+    return {"ok": True, "retention_days": body.days, "retention_hours": hours}
 
 @app.put("/api/scheduler/cron")
 async def update_scheduler_cron(body: SchedulerConfig, user_id: str = Depends(get_current_user_id)):

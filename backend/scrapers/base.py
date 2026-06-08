@@ -127,7 +127,9 @@ _EXCLUDE_KEYWORDS = [
     "merchandiser", "sales representative", "sales associate",
     "account executive", "customer service representative", "call center",
     "receptionist", "administrative assistant", "office assistant",
-    "secretary", "front desk clerk",
+    "executive assistant", "secretary", "front desk clerk",
+    # Education leadership (not tech)
+    "head of school",
     # Transportation
     "driver", "delivery", "courier", "flight attendant",
     # Trades / Manual Labor

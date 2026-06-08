@@ -48,16 +48,48 @@ HEADERS = {
 # HiringCafe searches title+description, so each term returns hundreds of relevant jobs.
 # Exclusion filter in base.py blocks garbage (nurses, cashiers, plumbers, etc.)
 SEARCH_TERMS = [
+    # Core tech
     "engineer",
     "developer",
+    "programmer",
+    "architect",
+    "administrator",
+    "technologist",
+    # Data / AI / Research
     "analyst",
     "scientist",
-    "architect",
-    "designer",
+    "researcher",
+    "economist",
+    "actuary",
+    "tester",
+    # Product / Agile
     "manager",
-    "consultant",
     "director",
-    "administrator",
+    "consultant",
+    "strategist",
+    "specialist",
+    "coordinator",
+    "scrum",
+    "agile",
+    "president",      # catches Vice President
+    "head",           # catches Head of Engineering / Head of Data
+    # Design / Content
+    "designer",
+    "writer",
+    "editor",
+    # Finance / Legal / Ops
+    "accountant",
+    "auditor",
+    "controller",
+    "underwriter",
+    "trader",
+    "officer",
+    "attorney",
+    "counsel",
+    "operations",     # catches DevOps, MLOps, FinOps, SecOps, DataOps, RevOps
+    # HR / Talent
+    "recruiter",
+    "generalist",
 ]
 
 

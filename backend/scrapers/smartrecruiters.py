@@ -34,8 +34,10 @@ async def fetch(settings: dict) -> list[dict]:
     seen: set[str] = set()
 
     async with httpx.AsyncClient(timeout=20, headers=HEADERS) as client:
+        dynamic = settings.get("_dynamic_roles") or []
+        search_terms = list(dict.fromkeys(SEARCH_TERMS + [r for r in dynamic if r not in SEARCH_TERMS]))
         for country_code, country_label in COUNTRIES:
-            for term in SEARCH_TERMS:
+            for term in search_terms:
                 try:
                     resp = await client.get(BASE, params={
                         "q": term,

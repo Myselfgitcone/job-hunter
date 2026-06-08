@@ -9,7 +9,7 @@ import httpx
 import asyncio
 import re
 import json
-from scrapers.base import JobData, detect_country, is_relevant_title, CUTOFF_HOURS
+from scrapers.base import JobData, detect_country, is_relevant_title, CUTOFF_HOURS, SEARCH_TERMS as _BASE_TERMS
 
 # Semaphore for JD fetches — don't hammer company servers
 _JD_SEM = asyncio.Semaphore(8)
@@ -194,8 +194,10 @@ async def fetch(settings: dict) -> list[dict]:
 
         print(f"[HiringCafe] build_id={build_id}")
         
-        search_terms = SEARCH_TERMS
-        print(f"[HiringCafe] Searching broad terms: {search_terms}")
+        # Combine broad base terms + user's dynamic roles (e.g. "kyriba", "power bi")
+        dynamic = settings.get("_dynamic_roles") or []
+        search_terms = list(dict.fromkeys(_BASE_TERMS + [r for r in dynamic if r not in _BASE_TERMS]))
+        print(f"[HiringCafe] Searching {len(search_terms)} terms (base={len(_BASE_TERMS)} + dynamic={len(dynamic)})")
 
         for term in search_terms:
             page = 0

@@ -20,7 +20,9 @@ async def fetch(settings: dict) -> list[dict]:
     seen: set[str] = set()
 
     async with httpx.AsyncClient(timeout=30, headers=HEADERS) as client:
-        for term in SEARCH_TERMS:
+        dynamic = settings.get("_dynamic_roles") or []
+        search_terms = list(dict.fromkeys(SEARCH_TERMS + [r for r in dynamic if r not in SEARCH_TERMS]))
+        for term in search_terms:
             token = None
             page = 0
             while page < 5:  # max 5 pages per term

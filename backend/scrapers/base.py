@@ -79,7 +79,22 @@ def detect_country(location: str, default: str = "Remote") -> str:
 
 MAX_YEARS_EXPERIENCE = 8  # skip jobs requiring more than this
 
-SEARCH_TERMS = ["data engineer", "senior data engineer"]
+SEARCH_TERMS = [
+    # Core tech
+    "engineer", "developer", "programmer", "architect", "administrator", "technologist",
+    # Data / AI / Research
+    "analyst", "scientist", "researcher", "economist", "actuary", "tester",
+    # Product / Agile / Leadership
+    "manager", "director", "consultant", "strategist", "specialist",
+    "scrum", "agile", "president", "head",
+    # Design / Content
+    "designer", "writer", "editor",
+    # Finance / Legal / Ops
+    "accountant", "auditor", "controller", "underwriter", "trader",
+    "officer", "attorney", "counsel", "operations",
+    # HR / Talent
+    "recruiter", "generalist",
+]
 
 # Patterns: "7+ years", "7-10 years", "minimum 7 years", "at least 7 years", "7 years of experience"
 _EXP_RE = re.compile(

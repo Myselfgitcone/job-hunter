@@ -107,61 +107,58 @@ def exceeds_experience_limit(description: str) -> bool:
     return years > MAX_YEARS_EXPERIENCE
 
 
-# Broad list of knowledge-work title keywords — covers all tech, finance, product, design, etc.
-_RELEVANT_KEYWORDS = [
-    # Engineering / Tech
-    "engineer", "developer", "programmer", "architect", "devops", "sre",
-    "infrastructure", "platform", "backend", "frontend", "fullstack", "full-stack",
-    "full stack", "cloud", "security", "embedded", "firmware",
-    # Data / Analytics
-    "data", "analytics", "analyst", "etl", "pipeline", "warehouse",
-    "bi ", " bi", "business intelligence", "reporting",
-    # AI / ML / Research
-    "machine learning", "ml ", " ml", "artificial intelligence", "ai ", " ai",
-    "scientist", "research", "nlp", "computer vision", "deep learning",
-    "llm", "generative",
-    # Product
-    "product manager", "product owner", "program manager", "project manager",
-    "product analyst", "product lead",
-    # Design
-    "designer", "ux", "ui ", " ui", "user experience", "user interface",
-    "visual design", "interaction design",
-    # Finance / Quant
-    "quantitative", "quant", "financial", "finance", "trading", "investment",
-    "risk", "portfolio", "actuarial", "credit analyst", "equity", "fixed income",
-    # Operations / Strategy
-    "operations", "strategy", "consultant", "business analyst",
-    # Marketing / Growth
-    "growth", "marketing analyst", "marketing engineer", "seo", "sem",
-    # Management (tech/data)
-    "engineering manager", "tech lead", "technical lead", "staff engineer",
-    "principal engineer", "vp of engineering", "cto", "director of engineering",
-    "head of data", "head of engineering",
-]
-
 _EXCLUDE_KEYWORDS = [
+    # Healthcare / Medical
     "nurse", "physician", "doctor", "pharmacist", "therapist", "counselor",
-    "teacher", "instructor", "professor", "principal",
+    "surgeon", "dentist", "orthodontist", "veterinarian", "vet tech",
+    "medical assistant", "phlebotomist", "radiologist", "optometrist",
+    "chiropractor", "podiatrist", "anesthesiologist", "psychiatrist",
+    "psychologist", "social worker", "occupational therapist",
+    "physical therapist", "speech therapist", "paramedic", "emt",
+    "caregiver", "home health aide", "nursing assistant", "cna",
+    # Education
+    "teacher", "instructor", "professor", "principal", "tutor",
+    "librarian", "teaching assistant",
+    # Food / Restaurant
     "chef", "cook", "barista", "server", "bartender",
-    "driver", "delivery", "warehouse worker", "forklift",
-    "cleaner", "janitor", "custodian",
+    "dishwasher", "line cook", "prep cook", "sous chef", "busser", "hostess",
+    # Retail / Customer Service
+    "cashier", "retail associate", "store associate", "stocker",
+    "merchandiser", "sales representative", "sales associate",
+    "account executive", "customer service representative", "call center",
+    "receptionist", "administrative assistant", "office assistant",
+    "secretary", "front desk clerk",
+    # Transportation
+    "driver", "delivery", "courier", "flight attendant",
+    # Trades / Manual Labor
     "electrician", "plumber", "carpenter", "mechanic",
-    "sales representative", "account executive", "sales associate",
-    "customer service representative", "call center",
+    "welder", "pipefitter", "hvac technician", "painter",
+    "roofer", "mason", "tiler", "landscaper", "groundskeeper",
+    "lawn care", "tree trimmer",
+    # Physical Security
+    "security guard", "security officer", "loss prevention",
+    # Cleaning
+    "cleaner", "janitor", "custodian", "housekeeper", "maid",
+    # Manufacturing / Warehouse
+    "warehouse worker", "forklift",
+    "assembly worker", "production worker", "machine operator",
+    "line worker", "factory worker",
+    # Personal Services
+    "hair stylist", "nail technician", "esthetician",
+    "massage therapist", "cosmetologist", "barber",
+    # Other non-knowledge-work
+    "personal trainer", "fitness instructor",
+    "nanny", "babysitter", "childcare worker",
+    "real estate agent", "insurance agent", "loan officer",
 ]
 
 
 def is_relevant_title(title: str) -> bool:
     t = title.lower()
-    # First check hard exclusions
     for kw in _EXCLUDE_KEYWORDS:
         if kw in t:
             return False
-    # Then check if any relevant keyword matches
-    for kw in _RELEVANT_KEYWORDS:
-        if kw in t:
-            return True
-    return False
+    return True
 
 
 def is_recent(posted_at_iso: str, hours: int = CUTOFF_HOURS) -> bool:

@@ -253,10 +253,17 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
               <button key={c} className={`cron-chip${cron === c ? " on" : ""}`} onClick={() => setCron(c)}>{d}</button>
             ))}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
             <button className="act" onClick={saveSettings}><Ic d={I.check} size={14} /> Update Schedule</button>
             <button className={`act primary${scraping ? " running" : ""}`} onClick={runNow} style={scraping ? { animation: "pulseBtn 1.4s ease-in-out infinite" } : {}}>
               <Ic d={I.skip} size={14} /> {scraping ? "Running…" : "Run Now"}
+            </button>
+            <button className="act fail" style={{ color: "var(--tx-error)", borderColor: "var(--tx-error)" }} onClick={async () => {
+              if (!confirm("Delete ALL jobs? Cannot be undone.")) return;
+              try { const r = await api.clearAllJobs(); toast("Cleared " + r.deleted + " jobs", "success"); setTimeout(() => window.location.reload(), 1500); }
+              catch (e: any) { toast(e.message, "error"); }
+            }}>
+              <Ic d={I.x} size={14} /> Clear All Jobs
             </button>
             {scraping && <span className="test-res" style={{ color: "var(--tx-3)" }}><span className="mini-spin" /> scraping sources…</span>}
           </div>

@@ -134,45 +134,37 @@ _scheduler = AsyncIOScheduler()
 _insert_lock = asyncio.Lock()
 
 
-async def _scrape_and_insert(
-    fetch_fn,
-    group_name: str,
-    settings: dict,
-    cutoff_posted: str,
-    now_iso: str,
-    timeout_s: int,
-) -> tuple[int, list[dict]]:
-    “””Run one scraper group, filter, insert to DB. Returns (new_count, new_jobs).”””
-    ALLOWED_COUNTRIES = {“USA”, “India”, “Remote”}
+async def _scrape_and_insert(fetch_fn, group_name, settings, cutoff_posted, now_iso, timeout_s):
+    """Run one scraper group, filter, insert to DB. Returns (new_count, new_jobs)."""
+    ALLOWED_COUNTRIES = {"USA", "India", "Remote"}
     try:
         raw = await asyncio.wait_for(fetch_fn(settings), timeout=timeout_s)
     except asyncio.TimeoutError:
-        print(f”[Scrape/{group_name}] Timed out after {timeout_s}s — partial results discarded”)
+        print(f"[Scrape/{group_name}] Timed out after {timeout_s}s -- partial results discarded")
         raw = []
     except Exception as e:
-        print(f”[Scrape/{group_name}] Error: {e}”)
+        print(f"[Scrape/{group_name}] Error: {e}")
         raw = []
 
-    filtered = [j for j in raw if j.get(“country”, “”) in ALLOWED_COUNTRIES]
-    filtered = [j for j in filtered if not j.get(“posted_at”) or j[“posted_at”] >= cutoff_posted]
-    print(f”[Scrape/{group_name}] {len(filtered)} after filter (from {len(raw)} raw)”)
+    filtered = [j for j in raw if j.get("country", "") in ALLOWED_COUNTRIES]
+    filtered = [j for j in filtered if not j.get("posted_at") or j["posted_at"] >= cutoff_posted]
+    print(f"[Scrape/{group_name}] {len(filtered)} after filter (from {len(raw)} raw)")
 
     new_count = 0
-    new_jobs: list[dict] = []
+    new_jobs = []
 
-    # Serialize DB inserts across all 3 concurrent groups
     async with _insert_lock:
         async with SessionLocal() as db:
             existing_result = await db.execute(select(Job.url, Job.title, Job.company))
             existing_rows = existing_result.all()
             existing_urls = {row.url for row in existing_rows if row.url}
-            existing_fps  = {
-                f”{(row.title or '').lower().strip()}|||{(row.company or '').lower().strip()}”
+            existing_fps = {
+                f"{(row.title or '').lower().strip()}|||{(row.company or '').lower().strip()}"
                 for row in existing_rows
             }
             for job_data in filtered:
-                url = job_data.get(“url”, “”)
-                fp  = f”{(job_data.get('title', '') or '').lower().strip()}|||{(job_data.get('company', '') or '').lower().strip()}”
+                url = job_data.get("url", "")
+                fp = f"{(job_data.get('title', '') or '').lower().strip()}|||{(job_data.get('company', '') or '').lower().strip()}"
                 if (url and url in existing_urls) or fp in existing_fps:
                     continue
                 db.add(Job(id=str(uuid.uuid4()), scraped_at=now_iso, **job_data))
@@ -185,25 +177,20 @@ async def _scrape_and_insert(
                     await db.flush()
             await db.commit()
 
-    print(f”[Scrape/{group_name}] Inserted {new_count} new jobs”)
+    print(f"[Scrape/{group_name}] Inserted {new_count} new jobs")
     return new_count, new_jobs
 
 
 async def _run_scrape() -> dict:
-    “””Core scrape logic — shared by the scheduler and the /api/jobs/scrape endpoint.
-
-    Three scraper groups run concurrently; each inserts to DB as it finishes so
-    users see Group A jobs (~3 min) without waiting for HiringCafe (~15 min).
-    “””
+    """Core scrape logic: 3 groups run concurrently, each inserts when done."""
     from datetime import timedelta
 
-    # 1. Load settings + aggregate dynamic roles from all users
     async with SessionLocal() as db:
         settings_result = await db.execute(select(Setting))
         settings = {r.key: r.value for r in settings_result.scalars().all()}
 
         user_settings_result = await db.execute(select(UserSettings.job_roles))
-        all_roles: set[str] = set()
+        all_roles = set()
         for row in user_settings_result.scalars().all():
             if row:
                 try:
@@ -211,22 +198,21 @@ async def _run_scrape() -> dict:
                     all_roles.update([r.lower().strip() for r in roles])
                 except Exception:
                     pass
-        settings[“_dynamic_roles”] = list(all_roles) if all_roles else [“data engineer”]
+        settings["_dynamic_roles"] = list(all_roles) if all_roles else ["data engineer"]
 
     now = datetime.now(EST)
     now_iso = now.isoformat()
 
     from scrapers.base import CUTOFF_HOURS as _DEFAULT_CUTOFF_H
-    _CUTOFF_H     = int(settings.get(“scrape_cutoff_hours”) or _DEFAULT_CUTOFF_H)
-    cutoff_old    = (now - timedelta(hours=_CUTOFF_H)).isoformat()
-    cutoff_posted = cutoff_old  # same window for posted-at filter
+    _CUTOFF_H = int(settings.get("scrape_cutoff_hours") or _DEFAULT_CUTOFF_H)
+    cutoff_old = (now - timedelta(hours=_CUTOFF_H)).isoformat()
+    cutoff_posted = cutoff_old
 
-    # 2. Delete old jobs
     async with SessionLocal() as db:
         old_jobs_result = await db.execute(
             select(Job).where(
                 Job.scraped_at < cutoff_old,
-                Job.status.in_([“new”, “skipped”]),
+                Job.status.in_(["new", "skipped"]),
             )
         )
         old_jobs = old_jobs_result.scalars().all()
@@ -235,60 +221,53 @@ async def _run_scrape() -> dict:
         deleted = len(old_jobs)
         await db.commit()
     if deleted:
-        print(f”[Scrape] Deleted {deleted} jobs older than {_CUTOFF_H}h ({_CUTOFF_H // 24}d)”)
+        print(f"[Scrape] Deleted {deleted} jobs older than {_CUTOFF_H}h ({_CUTOFF_H // 24}d)")
 
-    # 3. Run 3 groups concurrently — each inserts to DB as it finishes
-    #    Group A timeout=600s  Group B timeout=900s  Group C timeout=1800s
-    print(“[Scrape] Starting 3 concurrent scraper groups…”)
+    print("[Scrape] Starting 3 concurrent scraper groups...")
     group_results = await asyncio.gather(
-        _scrape_and_insert(run_group_fast,       “GroupA-Fast”,       settings, cutoff_posted, now_iso, 600),
-        _scrape_and_insert(run_group_greenhouse, “GroupB-Greenhouse”, settings, cutoff_posted, now_iso, 900),
-        _scrape_and_insert(run_group_hiringcafe, “GroupC-HiringCafe”, settings, cutoff_posted, now_iso, 1800),
+        _scrape_and_insert(run_group_fast,       "GroupA-Fast",       settings, cutoff_posted, now_iso, 600),
+        _scrape_and_insert(run_group_greenhouse, "GroupB-Greenhouse", settings, cutoff_posted, now_iso, 900),
+        _scrape_and_insert(run_group_hiringcafe, "GroupC-HiringCafe", settings, cutoff_posted, now_iso, 1800),
         return_exceptions=True,
     )
 
     total_new = 0
-    all_new_jobs: list[dict] = []
+    all_new_jobs = []
     for r in group_results:
         if isinstance(r, Exception):
-            print(f”[Scrape] Group exception: {r}”)
+            print(f"[Scrape] Group exception: {r}")
         else:
             cnt, jobs = r
             total_new += cnt
             all_new_jobs.extend(jobs)
 
-    # 4. Update last_scraped_at + get total count for Telegram
     async with SessionLocal() as db:
         count_result = await db.execute(select(func.count()).select_from(Job))
         total_count = count_result.scalar() or 0
-
-        setting = await db.get(Setting, “last_scraped_at”)
+        setting = await db.get(Setting, "last_scraped_at")
         if setting:
             setting.value = now_iso
         else:
-            db.add(Setting(key=”last_scraped_at”, value=now_iso))
+            db.add(Setting(key="last_scraped_at", value=now_iso))
         await db.commit()
 
-    print(f”[Scrape] Done — {total_new} new jobs saved ({total_count} total in DB)”)
+    print(f"[Scrape] Done -- {total_new} new jobs saved ({total_count} total in DB)")
 
-    # 5. Telegram digest
     try:
         import telegram_bot
         await telegram_bot.send_scrape_digest(all_new_jobs, total_count)
     except Exception as te:
-        print(f”[Scrape] Telegram notify failed: {te}”)
+        print(f"[Scrape] Telegram notify failed: {te}")
 
-    # 6. Auto-qualify new jobs (fire-and-forget)
     asyncio.create_task(_run_qualify_all())
 
-    return {“new_jobs”: total_new, “deleted_old”: deleted, “scraped_at”: now_iso}
-
+    return {"new_jobs": total_new, "deleted_old": deleted, "scraped_at": now_iso}
 
 async def _auto_scrape():
     """Background auto-scrape task â€” runs on schedule."""
     print("[Scheduler] Auto-scrape startingâ€¦")
     try:
-        result = await asyncio.wait_for(_run_scrape(), timeout=2100)  # 35 min — covers 3-group max
+        result = await asyncio.wait_for(_run_scrape(), timeout=2100)  # 35 min -- covers 3-group max
         print(f"[Scheduler] Auto-scrape complete: {result}")
     except asyncio.TimeoutError:
         print("[Scheduler] Auto-scrape timed out after 30 minutes")

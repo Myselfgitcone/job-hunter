@@ -169,8 +169,9 @@ export default function JobPreferencesModal({
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(10,11,16,0.8)", backdropFilter: "blur(12px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 24 }}>
-      <div style={{ background: "var(--bg-surface)", border: "1px solid var(--glass-border)", borderRadius: 24, width: "100%", maxWidth: 480, boxShadow: "0 25px 50px -12px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05)", animation: "modalIn 250ms cubic-bezier(0.16, 1, 0.3, 1)", overflow: "hidden" }}>
+    <>
+      <div style={{ position: "fixed", inset: 0, zIndex: 999 }} onClick={onClose} />
+      <div style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, zIndex: 1000, background: "var(--bg-surface)", border: "1px solid var(--line)", borderRadius: 16, width: 420, boxShadow: "0 12px 30px -10px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05)", animation: "modalIn 200ms cubic-bezier(0.16, 1, 0.3, 1)", overflow: "hidden" }}>
         
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "24px 28px 20px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -217,6 +218,6 @@ export default function JobPreferencesModal({
         </div>
 
       </div>
-    </div>
+    </>
   );
 }

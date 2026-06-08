@@ -560,6 +560,14 @@ export default function App() {
               userRoles={userSettings?.job_roles ? (Array.isArray(userSettings.job_roles) ? userSettings.job_roles : JSON.parse(userSettings.job_roles)) : []}
               sidebarCollapsed={sidebarCollapsed}
               setSidebarCollapsed={setSidebarCollapsed}
+              preferencesNode={
+                <JobPreferencesModal 
+                  open={preferencesOpen} 
+                  onClose={() => setPreferencesOpen(false)} 
+                  onToast={toast}
+                  onSaved={(s) => setUserSettings(s)}
+                />
+              }
             />
             <FilterBar
               filters={filters} setFilters={setFilters}
@@ -623,12 +631,6 @@ export default function App() {
       </div>
 
       <QuickTailor open={tailorOpen} onClose={() => setTailorOpen(false)} onToast={toast} />
-      <JobPreferencesModal 
-        open={preferencesOpen} 
-        onClose={() => setPreferencesOpen(false)} 
-        onToast={toast}
-        onSaved={(s) => setUserSettings(s)}
-      />
       <Toasts toasts={toasts} />
 
       {/* Welcome modal — first time only */}
@@ -689,11 +691,12 @@ function countPanelFilters(f: { category: string[]; level: string[]; type: strin
 }
 
 // ── Topbar (exact match to shell.jsx TopBar) ────────────────────────────────────
-function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, setViewMode, IC, isAdmin, onOpenPreferences, userRoles, sidebarCollapsed, setSidebarCollapsed }: {
+function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, setViewMode, IC, isAdmin, onOpenPreferences, userRoles, sidebarCollapsed, setSidebarCollapsed, preferencesNode }: {
   scraping: boolean; lastScraped: string; onScrape: () => void;
   count: number; totalJobs: number; viewMode: string; setViewMode: (m: ViewMode) => void;
   IC: Record<string, string>; isAdmin: boolean; onOpenPreferences?: () => void; userRoles?: string[];
   sidebarCollapsed: boolean; setSidebarCollapsed: (v: boolean) => void;
+  preferencesNode?: React.ReactNode;
 }) {
   return (
     <div className="topbar" style={{ paddingLeft: sidebarCollapsed ? 18 : 20 }}>
@@ -712,30 +715,33 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
             </div>
           </div>
         )}
-        <div 
-          onClick={onOpenPreferences} 
-          style={{ display: "inline-flex", alignItems: "center", background: "var(--bg-surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 4, cursor: "pointer", transition: "all 0.2s", boxShadow: "var(--sh-sm)" }}
-          onMouseOver={e => { e.currentTarget.style.borderColor = "rgba(124,58,237,0.4)"; e.currentTarget.style.boxShadow = "0 4px 14px -2px rgba(124,58,237,0.12)"; }}
-          onMouseOut={e => { e.currentTarget.style.borderColor = "var(--line)"; e.currentTarget.style.boxShadow = "var(--sh-sm)"; }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px 4px 6px", color: "var(--tx)", fontSize: 13, fontWeight: 600 }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--violet)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.target }} />
-            Job Preferences
-          </div>
-          
-          <div style={{ width: 1, height: 18, background: "var(--line)", margin: "0 6px 0 2px" }} />
+        <div style={{ position: "relative" }}>
+          <div 
+            onClick={onOpenPreferences} 
+            style={{ display: "inline-flex", alignItems: "center", background: "var(--bg-surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 4, cursor: "pointer", transition: "all 0.2s", boxShadow: "var(--sh-sm)" }}
+            onMouseOver={e => { e.currentTarget.style.borderColor = "rgba(124,58,237,0.4)"; e.currentTarget.style.boxShadow = "0 4px 14px -2px rgba(124,58,237,0.12)"; }}
+            onMouseOut={e => { e.currentTarget.style.borderColor = "var(--line)"; e.currentTarget.style.boxShadow = "var(--sh-sm)"; }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px 4px 6px", color: "var(--tx)", fontSize: 13, fontWeight: 600 }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--violet)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.target }} />
+              Job Preferences
+            </div>
+            
+            <div style={{ width: 1, height: 18, background: "var(--line)", margin: "0 6px 0 2px" }} />
 
-          <div style={{ display: "flex", alignItems: "center", gap: 6, paddingRight: 6 }}>
-            {userRoles && userRoles.length > 0 ? (
-              userRoles.map(role => (
-                <span key={role} style={{ background: "var(--bg-elevated)", border: "1px solid var(--line)", color: "var(--tx-2)", fontSize: 11.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6 }}>
-                  {role}
-                </span>
-              ))
-            ) : (
-              <span style={{ fontSize: 12, color: "var(--tx-3)", padding: "0 6px", fontWeight: 500 }}>All jobs shown</span>
-            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, paddingRight: 6 }}>
+              {userRoles && userRoles.length > 0 ? (
+                userRoles.map(role => (
+                  <span key={role} style={{ background: "var(--bg-elevated)", border: "1px solid var(--line)", color: "var(--tx-2)", fontSize: 11.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6 }}>
+                    {role}
+                  </span>
+                ))
+              ) : (
+                <span style={{ fontSize: 12, color: "var(--tx-3)", padding: "0 6px", fontWeight: 500 }}>All jobs shown</span>
+              )}
+            </div>
           </div>
+          {preferencesNode}
         </div>
       </div>
 

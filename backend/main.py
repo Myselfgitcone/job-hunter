@@ -227,7 +227,7 @@ async def _run_scrape() -> dict:
     group_results = await asyncio.gather(
         _scrape_and_insert(run_group_fast,       "GroupA-Fast",       settings, cutoff_posted, now_iso, 600),
         _scrape_and_insert(run_group_greenhouse, "GroupB-Greenhouse", settings, cutoff_posted, now_iso, 900),
-        _scrape_and_insert(run_group_hiringcafe, "GroupC-HiringCafe", settings, cutoff_posted, now_iso, 1800),
+        _scrape_and_insert(run_group_hiringcafe, "GroupC-HiringCafe", settings, cutoff_posted, now_iso, 2700),
         return_exceptions=True,
     )
 
@@ -267,7 +267,7 @@ async def _auto_scrape():
     """Background auto-scrape task â€” runs on schedule."""
     print("[Scheduler] Auto-scrape startingâ€¦")
     try:
-        result = await asyncio.wait_for(_run_scrape(), timeout=2100)  # 35 min -- covers 3-group max
+        result = await asyncio.wait_for(_run_scrape(), timeout=3000)  # 50 min -- covers 3-group max
         print(f"[Scheduler] Auto-scrape complete: {result}")
     except asyncio.TimeoutError:
         print("[Scheduler] Auto-scrape timed out after 30 minutes")

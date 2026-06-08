@@ -126,6 +126,7 @@ export default function App() {
   const [scrapeMsg, setScrapeMsg]   = useState("");
   const [lastScrapedTs, setLastScrapedTs] = useState<string>("");
   const [lastScrapedDisplay, setLastScrapedDisplay] = useState("");
+  const scrapePollerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refreshJob = useCallback(async (id: string) => {
     try {
@@ -153,6 +154,11 @@ export default function App() {
     const iv = setInterval(update, 30000);
     return () => clearInterval(iv);
   }, [lastScrapedTs]);
+
+  // Cleanup scrape poller on unmount
+  useEffect(() => {
+    return () => { if (scrapePollerRef.current) clearInterval(scrapePollerRef.current); };
+  }, []);
 
   const [visaFilter, setVisaFilter] = useState(false);
   const [expFilter,  setExpFilter]  = useState(false);
@@ -373,13 +379,36 @@ export default function App() {
     setJobs(js => js.map(j => j.id === id ? { ...j, ...patch } : j));
 
   const handleScrape = async () => {
-    if (scraping) return; setScraping(true); setScrapeMsg("");
+    if (scraping) return;
+    setScraping(true);
+    setScrapeMsg("");
+    const tsBeforeScrape = lastScrapedTs;
     try {
       const r = await api.scrape();
       setScrapeMsg("Running");
-      toast(r.message || "Scrape started in background", "success");
-    } catch (e: any) { setScrapeMsg(e.message); toast(e.message, "error"); }
-    finally { setScraping(false); }
+      toast(r.message || "Scrape started — button unlocks when done", "success");
+      // Poll every 10s until last_scraped_at changes → scrape finished
+      if (scrapePollerRef.current) clearInterval(scrapePollerRef.current);
+      scrapePollerRef.current = setInterval(async () => {
+        try {
+          const s = await api.getSettings();
+          const newTs: string = (s as any).last_scraped_at || "";
+          if (newTs && newTs !== tsBeforeScrape) {
+            clearInterval(scrapePollerRef.current!);
+            scrapePollerRef.current = null;
+            setLastScrapedTs(newTs);
+            setScraping(false);
+            setScrapeMsg("");
+            toast("Scrape complete! New jobs loaded.", "success");
+            loadJobs();
+          }
+        } catch { /* ignore poll errors */ }
+      }, 10_000);
+    } catch (e: any) {
+      setScrapeMsg(e.message);
+      toast(e.message, "error");
+      setScraping(false);
+    }
   };
 
   const handleClearAll = async () => {

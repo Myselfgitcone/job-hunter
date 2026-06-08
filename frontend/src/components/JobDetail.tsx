@@ -9,18 +9,22 @@ function relTimeDetail(iso: string): string {
   if (isNaN(diff)) return "";
   const m = Math.floor(diff / 60000);
   if (m < 1) return "just now";
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return `${m}min ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
 }
 
 // Animated ScoreRing matching design spec
-function ScoreRingDetail({ value = 0, size = 64, stroke = 6 }: { value?: number; size?: number; stroke?: number }) {
+function ScoreRingDetail({ value, size = 64, stroke = 6 }: { value?: number | null; size?: number; stroke?: number }) {
   const r    = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
   const [off, setOff] = useState(circ);
   useEffect(() => {
+    if (value == null) {
+      setOff(circ);
+      return;
+    }
     const t = setTimeout(() => setOff(circ * (1 - value / 100)), 80);
     return () => clearTimeout(t);
   }, [value, circ]);
@@ -34,11 +38,13 @@ function ScoreRingDetail({ value = 0, size = 64, stroke = 6 }: { value?: number;
           </linearGradient>
         </defs>
         <circle className="ring-bg" cx={size/2} cy={size/2} r={r} fill="none" strokeWidth={stroke} />
-        <circle className="ring-fg" cx={size/2} cy={size/2} r={r} fill="none" strokeWidth={stroke}
-          stroke="url(#ringGradDetail)"
-          strokeDasharray={circ} strokeDashoffset={off} />
+        {value != null && (
+          <circle className="ring-fg" cx={size/2} cy={size/2} r={r} fill="none" strokeWidth={stroke}
+            stroke="url(#ringGradDetail)"
+            strokeDasharray={circ} strokeDashoffset={off} />
+        )}
       </svg>
-      <div className="ring-val">{value}<small>%</small></div>
+      <div className="ring-val">{value != null ? <>{value}<small>%</small></> : <span style={{color: "var(--tx-faint)"}}>—</span>}</div>
     </div>
   );
 }
@@ -604,7 +610,7 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
 
             {/* Score ring */}
             <div className="dh-score">
-              <ScoreRingDetail value={scoreNum ?? 0} />
+              <ScoreRingDetail value={scoreNum} />
               <span className="ring-label">AI Match</span>
             </div>
           </div>

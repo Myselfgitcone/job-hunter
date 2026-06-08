@@ -272,6 +272,20 @@ async def fetch(settings: dict) -> list[dict]:
                             if lvl and lvl.lower() not in title.lower():
                                 title = f"{lvl} {title}"
 
+                        # Extract posting date with sanity check (reject AI hallucinations like 2007)
+                        posted_at = ""
+                        raw_date = v5.get("estimated_publish_date") or ""
+                        if raw_date:
+                            try:
+                                from datetime import timezone as _tz
+                                pub_dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+                                now_utc = datetime.now(_tz.utc)
+                                age_days = (now_utc - pub_dt).days
+                                if 0 <= age_days <= 90:  # sane range: not future, not older than 90 days
+                                    posted_at = pub_dt.isoformat()
+                            except Exception:
+                                pass
+
                         jobs.append(JobData(
                             title=title,
                             company=company_name,
@@ -282,7 +296,7 @@ async def fetch(settings: dict) -> list[dict]:
                             country=country,
                             salary=salary,
                             remote=is_remote,
-                            posted_at="",
+                            posted_at=posted_at,
                         ).to_dict())
 
                     if pp.get("ssrIsLastPage"):

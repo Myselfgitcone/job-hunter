@@ -289,7 +289,12 @@ export default function App() {
         const roles: string[] = Array.isArray(rawRoles) ? rawRoles : JSON.parse(rawRoles || "[]");
         if (roles.length > 0) {
           const title = j.title.toLowerCase();
-          const matchesAnyRole = roles.some((r: string) => title.includes(r.toLowerCase()));
+          const desc = (j.description || "").toLowerCase();
+          const matchesAnyRole = roles.some((r: string) => {
+            const term = r.toLowerCase().trim();
+            if (term === "bi") return /\bbi\b/.test(title) || /\bbi\b/.test(desc);
+            return title.includes(term) || desc.includes(term);
+          });
           if (!matchesAnyRole) return false;
 
           // 2. View Filter (Dropdown)

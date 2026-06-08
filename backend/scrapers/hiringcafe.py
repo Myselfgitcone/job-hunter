@@ -157,7 +157,7 @@ async def fetch(settings: dict) -> list[dict]:
             page = 0
             while page < MAX_PAGES:
                 try:
-                    pp = await _fetch_page(client, build_id, term, page, days=4)
+                    pp = await _fetch_page(client, build_id, term, page, days=7)
                     hits = pp.get("ssrHits") or []
                     if not hits:
                         break

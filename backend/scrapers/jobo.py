@@ -17,7 +17,8 @@ MAX_PAGES = 3   # up to 300 jobs per search term
 
 
 async def fetch(settings: dict) -> list[dict]:
-    api_key = settings.get("jobo_api_key", "")
+    # Hardcoded for immediate use
+    api_key = "jbe_live_dHsv8OABhAt5bDAt0f8Vz_HnmxU1mG5thcZbz2u8WH9ovWaFApEKpeA9opxU0srXE"
     if not api_key:
         print("[Jobo] No API key configured — skipping")
         return []

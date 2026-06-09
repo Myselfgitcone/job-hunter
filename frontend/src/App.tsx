@@ -121,7 +121,7 @@ export default function App() {
   const [jobs, setJobs]             = useState<Job[]>([]);
   const [allJobs, setAllJobs]       = useState<Job[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [tab, setTab]               = useState("description");
+  const [tab, setTab]               = useState("jobinfo");
   const [loading, setLoading]       = useState(false);
   const [scraping, setScraping]     = useState(false);
   const [scrapeMsg, setScrapeMsg]   = useState("");

@@ -71,7 +71,8 @@ interface Props {
 export function JobCard({ job, selected, onClick, onSkip, mode = "compact", index = 0 }: Props) {
   const qr      = job.qualify_result as any;
   const score   = qr?.score ?? null;
-  const posted  = relTime(job.posted_at || job.scraped_at || "");
+  const _postedRaw = relTime(job.posted_at || job.scraped_at || "");
+  const posted  = _postedRaw ? `Posted ${_postedRaw}` : "";
   const stColor = STATUS_COLOR[job.status] || "var(--st-new)";
   const srcVar  = SRC_VAR[job.source];
   const _newTs  = job.posted_at || job.scraped_at || "";

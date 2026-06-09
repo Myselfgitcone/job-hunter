@@ -83,7 +83,9 @@ const I = {
 };
 
 const TABS = [
-  { id: "description", label: "Description" },
+  { id: "jobinfo",     label: "Job Info" },
+  { id: "companyinfo", label: "Company Info" },
+  { id: "description", label: "Job Description" },
   { id: "qualify",     label: "Qualify" },
   { id: "resume",      label: "Tailored Resume" },
   { id: "fit",         label: "Fit & Tips" },
@@ -131,6 +133,91 @@ function StatusDropdown({ status, onChange }: { status: string; onChange: (s: st
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Job Info tab ───────────────────────────────────────────────────────────────
+function JobInfoTab({ job }: { job: Job }) {
+  const postedTs = job.posted_at || job.scraped_at || "";
+  const postedLabel = relTimeDetail(postedTs);
+  const hcOrig = (job as any).hc_original_date || "";
+  const hcOrigLabel = hcOrig ? relTimeDetail(hcOrig) : "";
+  const showOriginal = hcOrig && hcOrigLabel && hcOrigLabel !== postedLabel;
+
+  const rows: [string, string][] = [
+    ["Location",   job.location || "—"],
+    ["Country",    job.country  || "—"],
+    ["Work Type",  job.remote || (job.location||"").toLowerCase().includes("remote") ? "Remote" : "Onsite"],
+    ["Salary",     job.salary   || "—"],
+    ["Source",     job.source   || "—"],
+    ["Status",     job.status   || "new"],
+  ];
+
+  return (
+    <div style={{ padding: "20px 0", display: "flex", flexDirection: "column", gap: 20 }}>
+      {/* Posted date — hero element matching screenshot */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <span style={{ fontSize: 13, color: "var(--tx-3)", fontWeight: 500 }}>Posted</span>
+        <span style={{ fontSize: 22, fontWeight: 700, color: "var(--tx-1)" }}>
+          {postedLabel || "Unknown"}
+        </span>
+        {showOriginal && (
+          <span style={{ fontSize: 12, color: "var(--tx-3)" }}>
+            Originally posted: {hcOrigLabel} (HC estimate)
+          </span>
+        )}
+      </div>
+
+      {/* Metadata grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: "10px 16px" }}>
+        {rows.map(([k, v]) => (
+          <>
+            <span key={k+"-k"} style={{ fontSize: 13, color: "var(--tx-3)", fontWeight: 500 }}>{k}</span>
+            <span key={k+"-v"} style={{ fontSize: 13, color: "var(--tx-1)" }}>{v}</span>
+          </>
+        ))}
+      </div>
+
+      {/* Apply link */}
+      <a href={job.url} target="_blank" rel="noreferrer"
+        style={{ fontSize: 13, color: "var(--accent)", wordBreak: "break-all", textDecoration: "none" }}>
+        {job.url}
+      </a>
+    </div>
+  );
+}
+
+// ── Company Info tab ───────────────────────────────────────────────────────────
+function CompanyInfoTab({ job }: { job: Job }) {
+  let careerDomain = "";
+  try { careerDomain = new URL(job.url).hostname.replace("www.", ""); } catch {}
+
+  return (
+    <div style={{ padding: "20px 0", display: "flex", flexDirection: "column", gap: 20 }}>
+      {/* Company hero */}
+      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        <CompanyLogo url={job.url} company={job.company} size={56} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontSize: 20, fontWeight: 700, color: "var(--tx-1)" }}>{job.company}</span>
+          <span style={{ fontSize: 13, color: "var(--tx-3)" }}>Hiring via {job.source}</span>
+        </div>
+      </div>
+
+      {/* Details */}
+      <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: "10px 16px" }}>
+        <span style={{ fontSize: 13, color: "var(--tx-3)", fontWeight: 500 }}>Location</span>
+        <span style={{ fontSize: 13, color: "var(--tx-1)" }}>{job.location || "—"}</span>
+        <span style={{ fontSize: 13, color: "var(--tx-3)", fontWeight: 500 }}>Country</span>
+        <span style={{ fontSize: 13, color: "var(--tx-1)" }}>{job.country || "—"}</span>
+        <span style={{ fontSize: 13, color: "var(--tx-3)", fontWeight: 500 }}>ATS Platform</span>
+        <span style={{ fontSize: 13, color: "var(--tx-1)" }}>{job.source}</span>
+        <span style={{ fontSize: 13, color: "var(--tx-3)", fontWeight: 500 }}>Career Page</span>
+        <a href={job.url} target="_blank" rel="noreferrer"
+          style={{ fontSize: 13, color: "var(--accent)", textDecoration: "none" }}>
+          {careerDomain}
+        </a>
+      </div>
     </div>
   );
 }
@@ -653,6 +740,8 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
 
         {/* Tab content */}
         <div className="tab-body">
+          {tab === "jobinfo"     && <JobInfoTab job={job} />}
+          {tab === "companyinfo" && <CompanyInfoTab job={job} />}
           {tab === "description" && <DescriptionTab job={job} onUpdate={onUpdate} onToast={onToast} />}
           {tab === "qualify"     && <QualifyTab job={job} running={busy === "qualify"} onRun={() => runAction("qualify")} />}
           {tab === "resume"      && <ResumeTab job={job} tailoring={busy === "resume"} onTailor={() => runAction("resume")} onToast={onToast} />}

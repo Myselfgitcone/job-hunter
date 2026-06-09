@@ -243,10 +243,16 @@ async def fetch(settings: dict) -> list[dict]:
                                 pub_dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
                                 now_utc = datetime.now(_tz.utc)
                                 age_days = (now_utc - pub_dt).days
-                                if 0 <= age_days <= 365 * 5:  # store raw if sane (not 1985 hallucination)
+                                
+                                # THE NUKE OPTION:
+                                # If HiringCafe admits this job is older than 14 days,
+                                # throw the entire job in the trash immediately!
+                                if age_days > 14:
+                                    continue
+                                    
+                                if 0 <= age_days <= 14:
                                     hc_original_date = pub_dt.isoformat()
-                                    if age_days <= 14:
-                                        posted_at = hc_original_date
+                                    posted_at = hc_original_date
                             except Exception:
                                 pass
 

@@ -232,8 +232,10 @@ async def fetch(settings: dict) -> list[dict]:
 
                         salary = _parse_salary(v5)
 
-                        # Extract posting date with sanity check (reject AI hallucinations like 2007)
+                        # posted_at: only use HC date if fresh (≤14 days) — older dates mislead UI
+                        # hc_original_date: always store raw HC estimate for UI age-filter
                         posted_at = ""
+                        hc_original_date = ""
                         raw_date = v5.get("estimated_publish_date") or ""
                         if raw_date:
                             try:
@@ -241,8 +243,10 @@ async def fetch(settings: dict) -> list[dict]:
                                 pub_dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
                                 now_utc = datetime.now(_tz.utc)
                                 age_days = (now_utc - pub_dt).days
-                                if 0 <= age_days <= 14:  # strict 14-day limit to discard ancient HiringCafe dates
-                                    posted_at = pub_dt.isoformat()
+                                if 0 <= age_days <= 365 * 5:  # store raw if sane (not 1985 hallucination)
+                                    hc_original_date = pub_dt.isoformat()
+                                    if age_days <= 14:
+                                        posted_at = hc_original_date
                             except Exception:
                                 pass
 
@@ -257,6 +261,7 @@ async def fetch(settings: dict) -> list[dict]:
                             salary=salary,
                             remote=is_remote,
                             posted_at=posted_at,
+                            hc_original_date=hc_original_date,
                         ).to_dict())
 
                     if pp.get("ssrIsLastPage"):

@@ -1708,6 +1708,7 @@ def _job_to_dict(job: Job) -> dict:
         "remote": job.remote,
         "posted_at": job.posted_at,
         "scraped_at": job.scraped_at,
+        "hc_original_date": getattr(job, "hc_original_date", "") or "",
         "status": job.status,
         "tailored_resume": job.tailored_resume,
         "tailored_at": getattr(job, "tailored_at", None) or "",

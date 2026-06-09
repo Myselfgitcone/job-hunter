@@ -55,6 +55,7 @@ class Job(Base):
     remote = Column(Boolean, default=False)
     posted_at = Column(String, default="")
     scraped_at = Column(String, default="")
+    hc_original_date = Column(String, default="")  # HC estimated_publish_date (raw, unfiltered)
     status = Column(String, default="new")  # new / applied / skipped / interview
 
     tailored_resume = Column(Text, default=None)
@@ -182,6 +183,7 @@ async def init_db():
         "ALTER TABLE jobs ADD COLUMN interview_date TEXT",
         "ALTER TABLE jobs ADD COLUMN priority INTEGER DEFAULT 0",
         "ALTER TABLE jobs ADD COLUMN qualify_result TEXT",
+        "ALTER TABLE jobs ADD COLUMN hc_original_date TEXT DEFAULT ''",
     ]
     for stmt in migrations:
         try:

@@ -56,6 +56,7 @@ export interface Job {
   remote: boolean;
   posted_at: string;
   scraped_at: string;
+  hc_original_date: string;  // HC's raw estimated_publish_date (only for HiringCafe jobs)
   status: JobStatus;
   tailored_resume: string | null;
   tailored_at: string;

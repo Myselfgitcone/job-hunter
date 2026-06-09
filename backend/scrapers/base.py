@@ -202,6 +202,7 @@ class JobData:
     salary: str = ""
     remote: bool = False
     posted_at: str = ""
+    hc_original_date: str = ""  # HC estimated_publish_date (raw, only set for HiringCafe jobs)
 
     def to_dict(self) -> dict:
         return {
@@ -215,4 +216,5 @@ class JobData:
             "salary": self.salary,
             "remote": self.remote,
             "posted_at": self.posted_at,
+            "hc_original_date": self.hc_original_date,
         }

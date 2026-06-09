@@ -69,6 +69,7 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
   const [modelQualify, setModelQualify] = useState("anthropic/claude-sonnet-4.6");
   const [modelCoverLetter, setModelCoverLetter] = useState("anthropic/claude-sonnet-4.6");
   const [apiKey, setApiKey]     = useState("");
+  const [joboApiKey, setJoboApiKey] = useState("");
   const [showKey, setShowKey]   = useState(false);
 
   const [botToken, setBotToken]   = useState("");
@@ -90,6 +91,7 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
       setModelQualify(s.ai_model_qualify || "anthropic/claude-sonnet-4.6");
       setModelCoverLetter(s.ai_model_cover_letter || "anthropic/claude-sonnet-4.6");
       setApiKey(s.ai_api_key || "");
+      setJoboApiKey(s.jobo_api_key || "");
       setBotToken(s.telegram_bot_token || "");
       setChatId(s.telegram_chat_id || "");
       setCron(s.auto_scrape_cron || "0 * * * *");
@@ -101,6 +103,7 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
       await api.saveSettings({
         visa_filter: visaFilter, level_filter: expFilter,
         ai_provider: provider, ai_api_key: apiKey,
+        jobo_api_key: joboApiKey,
         ai_model_parse: modelParse, ai_model_tailor: modelTailor,
         ai_model_qualify: modelQualify, ai_model_cover_letter: modelCoverLetter,
         telegram_bot_token: botToken, telegram_chat_id: chatId,

@@ -23,7 +23,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from database import init_db, SessionLocal, engine, Job, Setting, User, UserSettings, UserJob, Company
 from auth import get_current_user_id, get_optional_user_id, hash_password, verify_password, create_token
-from scrapers import run_all_scrapers, run_group_fast, run_group_greenhouse, run_group_hiringcafe
+from scrapers import run_all_scrapers, run_group_fast, run_group_greenhouse, run_group_hiringcafe, run_group_jobo
 from scrapers.jobspy_scraper import fetch as jobspy_fetch
 from ai.ats import score_ats
 from ai.tailor import tailor_resume
@@ -236,11 +236,12 @@ async def _run_scrape_internal() -> dict:
     if deleted:
         print(f"[Scrape] Deleted {deleted} jobs older than {_CUTOFF_H}h ({_CUTOFF_H // 24}d)")
 
-    print("[Scrape] Starting 2 concurrent scraper groups (HiringCafe disabled)...")
+    print("[Scrape] Starting Jobo-only scraper (all others disabled for testing)...")
     group_results = await asyncio.gather(
-        _scrape_and_insert(run_group_fast,       "GroupA-Fast",       settings, cutoff_posted, now_iso, 600),
-        _scrape_and_insert(run_group_greenhouse, "GroupB-Greenhouse", settings, cutoff_posted, now_iso, 900),
-        # _scrape_and_insert(run_group_hiringcafe, "GroupC-HiringCafe", settings, cutoff_posted, now_iso, 2700),  # DISABLED: 89% ghost jobs, unreliable data
+        # _scrape_and_insert(run_group_fast,       "GroupA-Fast",       settings, cutoff_posted, now_iso, 600),   # DISABLED for Jobo test
+        # _scrape_and_insert(run_group_greenhouse, "GroupB-Greenhouse", settings, cutoff_posted, now_iso, 900),   # DISABLED for Jobo test
+        # _scrape_and_insert(run_group_hiringcafe, "GroupC-HiringCafe", settings, cutoff_posted, now_iso, 2700),  # DISABLED: 89% ghost jobs
+        _scrape_and_insert(run_group_jobo,       "GroupD-Jobo",       settings, cutoff_posted, now_iso, 300),
         return_exceptions=True,
     )
 

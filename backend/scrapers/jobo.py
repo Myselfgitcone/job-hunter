@@ -1,7 +1,7 @@
 """
 Jobo.world — unified job search API.
 GET https://connect.jobo.world/api/jobs
-Covers 50+ ATS platforms: Workday, Taleo, iCIMS, SuccessFactors, Greenhouse, etc.
+Covers 57+ ATS platforms: Workday, Greenhouse, Lever, Ashby, iCIMS, etc.
 Requires API key from jobo.world (free tier available).
 """
 from zoneinfo import ZoneInfo
@@ -13,12 +13,13 @@ from scrapers.base import JobData, detect_country, is_relevant_title, SEARCH_TER
 BASE = "https://connect.jobo.world/api/jobs"
 
 LOCATIONS = ["United States"]
-MAX_PAGES = 2   # 200 jobs/combo max → ~800 credits per full scrape
+MAX_PAGES = 3   # up to 300 jobs per search term
 
 
 async def fetch(settings: dict) -> list[dict]:
     api_key = settings.get("jobo_api_key", "")
     if not api_key:
+        print("[Jobo] No API key configured — skipping")
         return []
 
     headers = {
@@ -27,7 +28,7 @@ async def fetch(settings: dict) -> list[dict]:
         "User-Agent": "Mozilla/5.0",
     }
 
-    cutoff = (datetime.now(EST) - timedelta(hours=CUTOFF_HOURS)).isoformat()
+    now_utc = datetime.now(timezone.utc)
     jobs: list[dict] = []
     seen: set[str] = set()
 
@@ -40,15 +41,22 @@ async def fetch(settings: dict) -> list[dict]:
                         resp = await client.get(BASE, params={
                             "q": term,
                             "location": location,
-                            "posted_after": cutoff,
                             "page_size": 100,
                             "page": page,
                         })
                         if resp.status_code == 401:
                             print("[Jobo] Invalid API key")
-                            return []
+                            return jobs
+                        if resp.status_code == 402:
+                            print("[Jobo] Insufficient credits")
+                            return jobs
                         resp.raise_for_status()
                         data = resp.json()
+
+                        # Log credit usage
+                        credits_left = resp.headers.get("X-Credits-Balance", "?")
+                        credits_used = resp.headers.get("X-Credits-Deducted", "?")
+                        print(f"[Jobo] term={term!r} page={page} credits_used={credits_used} balance={credits_left}")
 
                         items = data.get("jobs", [])
                         if not items:
@@ -63,6 +71,23 @@ async def fetch(settings: dict) -> list[dict]:
                             if not apply_url or apply_url in seen:
                                 continue
 
+                            # ── STRICT 14-DAY NUKE RULE ──
+                            # If Jobo provides a date and it's older than 14 days,
+                            # throw the entire job in the trash immediately.
+                            posted_at = ""
+                            raw_date = item.get("date_posted", "")
+                            if raw_date:
+                                try:
+                                    pub_dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+                                    age_days = (now_utc - pub_dt).days
+                                    if age_days > 14:
+                                        continue  # NUKE — ghost job
+                                    if 0 <= age_days <= 14:
+                                        posted_at = pub_dt.isoformat()
+                                except Exception:
+                                    pass
+
+                            # ── Location parsing ──
                             locs = item.get("locations", [{}])
                             loc0 = locs[0] if locs else {}
                             loc_str = ", ".join(filter(None, [
@@ -74,24 +99,35 @@ async def fetch(settings: dict) -> list[dict]:
                             if country not in ("USA", "India", "Remote"):
                                 continue
 
-                            comp = item.get("compensation", {})
+                            # ── Salary parsing ──
+                            comp = item.get("compensation", {}) or {}
                             salary = ""
                             if comp.get("min") and comp.get("max"):
                                 sym = "$" if comp.get("currency", "USD") == "USD" else comp.get("currency", "$")
                                 salary = f"{sym}{int(comp['min']):,} – {sym}{int(comp['max']):,}"
 
+                            # ── Description ──
+                            desc = item.get("description", "") or ""
+
+                            # ── Remote detection ──
+                            work_model = item.get("work_model", "") or ""
+                            is_remote = work_model.lower() in ("remote", "hybrid")
+
+                            # ── ATS source tag ──
+                            ats_source = item.get("source", "")
+
                             seen.add(apply_url)
                             jobs.append(JobData(
                                 title=title,
-                                company=item.get("company", {}).get("name", "Unknown"),
+                                company=item.get("company", {}).get("name", "Unknown") if isinstance(item.get("company"), dict) else str(item.get("company", "Unknown")),
                                 url=apply_url,
                                 source="Jobo",
-                                description="",
+                                description=desc,
                                 location=loc_str,
                                 country=country,
                                 salary=salary,
-                                remote=item.get("work_model", "") == "remote",
-                                posted_at=item.get("date_posted", ""),
+                                remote=is_remote,
+                                posted_at=posted_at,
                             ).to_dict())
 
                         total_pages = data.get("total_pages", 1)
@@ -100,8 +136,8 @@ async def fetch(settings: dict) -> list[dict]:
                         page += 1
 
                     except Exception as e:
-                        print(f"[Jobo] error: {e}")
+                        print(f"[Jobo] error term={term!r} page={page}: {e}")
                         break
 
-    print(f"[Jobo] {len(jobs)} jobs")
+    print(f"[Jobo] {len(jobs)} jobs (after 14-day filter)")
     return jobs

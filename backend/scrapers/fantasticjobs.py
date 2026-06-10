@@ -86,19 +86,38 @@ def _map_country(countries: list, arrangement: str) -> str:
     return ""
 
 
+import re as _re
+
+_LI_CODE = _re.compile(r'\\?#LI-\S+')          # LinkedIn tracking codes
+_ESC_N   = _re.compile(r'\\n')                  # literal \n → newline
+_TRAIL_BS = _re.compile(r'\\+\s*$', _re.M)      # trailing backslashes per line
+_MULTI_NL = _re.compile(r'\n{3,}')
+
+
+def _clean_text(raw: str) -> str:
+    """Clean FJ raw text: decode \\n, strip LinkedIn codes, remove stray backslashes."""
+    t = _LI_CODE.sub('', raw)
+    t = _ESC_N.sub('\n', t)
+    t = _TRAIL_BS.sub('', t)
+    t = t.replace('\\', '')           # any remaining backslashes
+    t = _MULTI_NL.sub('\n\n', t)
+    return t.strip()
+
+
 def _build_description(job: dict) -> str:
     """
     Priority:
-      1. Raw description field (requested via description_format=text)
-      2. AI-extracted fields
-    Returns "" if nothing useful — caller will trigger jd_fetcher fallback.
+      1. Raw description field (≥500 chars = real JD, not just AI summary)
+      2. AI-extracted fields as minimal fallback
+    Returns "" if short/missing — caller triggers jd_fetcher for full ATS page.
+    NOTE: 500-char threshold forces jd_fetcher for short AI summaries (~200 chars).
     """
-    # 1. Raw description from API
+    # 1. Raw description — only trust if long enough to be a real JD
     raw = job.get("description") or ""
-    if isinstance(raw, str) and len(raw.strip()) >= 80:
-        return raw.strip()[:8000]
+    if isinstance(raw, str) and len(raw.strip()) >= 500:
+        return _clean_text(raw)[:8000]
 
-    # 2. AI-extracted fields
+    # 2. AI-extracted fields (used as fallback if jd_fetcher also fails)
     parts  = []
     req    = job.get("ai_requirements_summary") or ""
     resp   = job.get("ai_core_responsibilities") or ""
@@ -110,7 +129,8 @@ def _build_description(job: dict) -> str:
     if skills:
         parts.append("**Skills:** " + ", ".join(skills))
     result = "\n\n".join(parts).strip()
-    return result if len(result) >= 80 else ""
+    # Return AI summary only as last resort (marks job for jd_fetcher first)
+    return ""   # always try jd_fetcher — AI summary stored after fallback attempt
 
 
 async def _fetch_page(client: httpx.AsyncClient, location: str, offset: int = 0) -> list:
@@ -142,10 +162,11 @@ async def _fetch_page(client: httpx.AsyncClient, location: str, offset: int = 0)
         return []
 
 
-async def _fill_descriptions(null_jobs: list[dict]) -> None:
+async def _fill_descriptions(null_jobs: list[dict], orig_jobs: list[dict]) -> None:
     """
-    For jobs with no description, fetch from ATS URL using jd_fetcher.
-    Mutates the dicts in-place. Capped concurrency to avoid hammering ATS sites.
+    For jobs with no description, fetch from ATS URL via jd_fetcher.
+    If jd_fetcher also fails, fall back to AI-summary fields from orig_jobs.
+    Mutates the dicts in-place. Capped concurrency.
     """
     if not null_jobs:
         return
@@ -154,26 +175,45 @@ async def _fill_descriptions(null_jobs: list[dict]) -> None:
     except ImportError:
         return
 
+    # Build lookup: url → original API job dict (for AI field fallback)
+    orig_by_url = {j.get("url", ""): j for j in orig_jobs}
+
     sem = asyncio.Semaphore(_JD_FALLBACK_CONCURRENCY)
     fetched = 0
+    ai_fallback = 0
 
     async def _one(job: dict) -> None:
-        nonlocal fetched
+        nonlocal fetched, ai_fallback
         async with sem:
             url = job.get("url", "")
             if not url:
                 return
+            # Try jd_fetcher
             try:
                 result = await fetch_full_jd(url)
                 desc = (result or {}).get("description", "")
                 if desc and len(desc) >= 80:
                     job["description"] = desc
                     fetched += 1
-            except Exception as e:
-                pass  # silently skip — description just stays empty
+                    return
+            except Exception:
+                pass
+            # Last resort: AI summary fields
+            orig = orig_by_url.get(url, {})
+            parts = []
+            req    = orig.get("ai_requirements_summary") or ""
+            resp   = orig.get("ai_core_responsibilities") or ""
+            skills = orig.get("ai_key_skills") or []
+            if req:   parts.append(req)
+            if resp:  parts.append("**Responsibilities:** " + resp)
+            if skills: parts.append("**Skills:** " + ", ".join(skills))
+            ai_desc = "\n\n".join(parts).strip()
+            if len(ai_desc) >= 80:
+                job["description"] = ai_desc
+                ai_fallback += 1
 
     await asyncio.gather(*[_one(j) for j in null_jobs])
-    print(f"[FantasticJobs] jd_fetcher filled {fetched}/{len(null_jobs)} null descriptions")
+    print(f"[FantasticJobs] desc fallback: jd_fetcher={fetched} ai_summary={ai_fallback} still_null={len(null_jobs)-fetched-ai_fallback}")
 
 
 async def fetch(settings: dict) -> list[dict]:
@@ -196,6 +236,7 @@ async def fetch(settings: dict) -> list[dict]:
 
     jobs: list[dict] = []
     seen: set[str]   = set()
+    raw_hits: list[dict] = []   # keep original API dicts for AI fallback
 
     async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
         print(f"[FantasticJobs] Fetching (USA + India, title filter, desc+logo included)...")
@@ -207,6 +248,7 @@ async def fetch(settings: dict) -> list[dict]:
 
             kept = 0
             for job in hits:
+                raw_hits.append(job)
                 url = job.get("url") or ""
                 if not url or url in seen:
                     continue
@@ -273,7 +315,7 @@ async def fetch(settings: dict) -> list[dict]:
     null_desc_jobs = [j for j in jobs if not j.get("description")]
     if null_desc_jobs:
         print(f"[FantasticJobs] {len(null_desc_jobs)} jobs need description fallback...")
-        await _fill_descriptions(null_desc_jobs)
+        await _fill_descriptions(null_desc_jobs, raw_hits)
 
     desc_ok  = sum(1 for j in jobs if j.get("description"))
     desc_nil = len(jobs) - desc_ok

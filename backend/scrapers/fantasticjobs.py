@@ -110,12 +110,12 @@ def _build_description(job: dict) -> str:
     return "\n\n".join(parts)
 
 
-async def _fetch_page(client: httpx.AsyncClient, location: str) -> list:
-    """Single page, 50 jobs, 7-day window — 1 API request."""
+async def _fetch_page(client: httpx.AsyncClient, location: str, offset: int = 0) -> list:
+    """50 jobs per page, 24h window."""
     params = {
-        "time_frame": "7d",   # 7-day window → more variety per request
+        "time_frame": "24h",
         "limit": 50,
-        "offset": 0,
+        "offset": offset,
         "location": location,
     }
     try:
@@ -159,9 +159,22 @@ async def fetch(settings: dict) -> list[dict]:
         print(f"[FantasticJobs] Fetching data jobs (USA + India, 1 page each = 2 API requests)...")
 
         for location in LOCATIONS:
-            hits = await _fetch_page(client, location)
+            # USA: 2 pages (100 jobs, 2 requests) — more coverage for data jobs
+            # India: 1 page (50 jobs, 1 request)
+            pages = 2 if location == "United States" else 1
+            hits = []
+            for page in range(pages):
+                batch = await _fetch_page(client, location, offset=page * 50)
+                hits.extend(batch)
+                if len(batch) < 50:
+                    break
+                await asyncio.sleep(0.3)
             if not hits:
                 continue
+
+            # Debug: print first 10 titles to see what API returns
+            sample_titles = [j.get("title","") for j in hits[:10]]
+            print(f"[FantasticJobs] {location} sample titles: {sample_titles}")
 
             kept = 0
             for job in hits:

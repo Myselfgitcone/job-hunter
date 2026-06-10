@@ -4,29 +4,45 @@ https://data.fantastic.jobs/v1/active-ats
 
 Auth: Authorization: Bearer {API_KEY}
 time_frame: 1h | 24h | 7d | 6m
-Filters:  location, source, ai_work_arrangement
-Pagination: offset
+Filters:  title_advanced (boolean: |/&/!), location_advanced, limit/offset
 
-Trial limits: 500 jobs/week, 50 API requests/week
-Budget plan: USA + India, 1 page each = 2 requests/scrape
-Rate guard: 6h minimum between fetches
+Paid plan target: $175/mo (≤50K jobs/mo).
+Rate guard: 6h minimum between fetches.
 
-NOTE: API has no keyword filter — returns all ATS jobs for location.
-      Title filter (is_relevant_title) blocks nurses/drivers/teachers etc.
-      Use UI search to narrow to data engineer roles.
+Description priority:
+  1. Raw `description` field from API (requested via description_format=text)
+  2. AI-extracted fields: ai_requirements_summary + ai_core_responsibilities + ai_key_skills
+  3. jd_fetcher.fetch_full_jd(url)  ← fallback for null-desc jobs only
 """
 import os
-import httpx
 import asyncio
 from datetime import datetime, timezone, timedelta
+
+import httpx
+
 from scrapers.base import JobData, detect_country, is_relevant_title, CUTOFF_HOURS
 
 BASE_ATS = "https://data.fantastic.jobs/v1/active-ats"
 
+# USA + India, 1 page each = 2 API requests per scrape
 LOCATIONS = ["United States", "India"]
 
 _last_fetch_ts: datetime | None = None
 MIN_FETCH_INTERVAL_H = 6
+
+# Max concurrent jd_fetcher calls for null-description jobs
+_JD_FALLBACK_CONCURRENCY = 5
+
+# Boolean title filter — 5 roles, US+India
+TITLE_FILTER = (
+    "(devops | sre | 'site reliability' | 'platform engineer'"
+    " | 'data engineer' | etl"
+    " | 'data analyst' | 'data analytics'"
+    " | 'security engineer' | 'security analyst' | 'soc analyst'"
+    " | cybersecurity | infosec | 'application security'"
+    " | 'business intelligence' | 'bi developer' | 'bi analyst' | 'power bi')"
+    " & !(financial | marketing | sales | nurse)"
+)
 
 
 def _get_headers() -> dict:
@@ -71,6 +87,18 @@ def _map_country(countries: list, arrangement: str) -> str:
 
 
 def _build_description(job: dict) -> str:
+    """
+    Priority:
+      1. Raw description field (requested via description_format=text)
+      2. AI-extracted fields
+    Returns "" if nothing useful — caller will trigger jd_fetcher fallback.
+    """
+    # 1. Raw description from API
+    raw = job.get("description") or ""
+    if isinstance(raw, str) and len(raw.strip()) >= 80:
+        return raw.strip()[:8000]
+
+    # 2. AI-extracted fields
     parts  = []
     req    = job.get("ai_requirements_summary") or ""
     resp   = job.get("ai_core_responsibilities") or ""
@@ -81,7 +109,8 @@ def _build_description(job: dict) -> str:
         parts.append("**Responsibilities:** " + resp)
     if skills:
         parts.append("**Skills:** " + ", ".join(skills))
-    return "\n\n".join(parts)
+    result = "\n\n".join(parts).strip()
+    return result if len(result) >= 80 else ""
 
 
 async def _fetch_page(client: httpx.AsyncClient, location: str, offset: int = 0) -> list:
@@ -89,10 +118,16 @@ async def _fetch_page(client: httpx.AsyncClient, location: str, offset: int = 0)
         "time_frame": "24h",
         "limit": 50,
         "offset": offset,
-        "location": location,
+        "location_advanced": location,
+        "description_format": "text",          # request raw description
+        "include_basic_organization_details": "true",  # org logo etc.
     }
     try:
         r = await client.get(BASE_ATS, params=params, timeout=30)
+        if r.status_code == 403:
+            detail = r.json().get("detail", "")
+            print(f"[FantasticJobs] 403 {location}: {detail}")
+            return []
         if r.status_code == 429:
             print("[FantasticJobs] Rate limited (429) — skipping")
             return []
@@ -104,6 +139,40 @@ async def _fetch_page(client: httpx.AsyncClient, location: str, offset: int = 0)
     except Exception as e:
         print(f"[FantasticJobs] fetch error {location}: {e}")
         return []
+
+
+async def _fill_descriptions(null_jobs: list[dict]) -> None:
+    """
+    For jobs with no description, fetch from ATS URL using jd_fetcher.
+    Mutates the dicts in-place. Capped concurrency to avoid hammering ATS sites.
+    """
+    if not null_jobs:
+        return
+    try:
+        from jd_fetcher import fetch_full_jd
+    except ImportError:
+        return
+
+    sem = asyncio.Semaphore(_JD_FALLBACK_CONCURRENCY)
+    fetched = 0
+
+    async def _one(job: dict) -> None:
+        nonlocal fetched
+        async with sem:
+            url = job.get("url", "")
+            if not url:
+                return
+            try:
+                result = await fetch_full_jd(url)
+                desc = (result or {}).get("description", "")
+                if desc and len(desc) >= 80:
+                    job["description"] = desc
+                    fetched += 1
+            except Exception as e:
+                pass  # silently skip — description just stays empty
+
+    await asyncio.gather(*[_one(j) for j in null_jobs])
+    print(f"[FantasticJobs] jd_fetcher filled {fetched}/{len(null_jobs)} null descriptions")
 
 
 async def fetch(settings: dict) -> list[dict]:
@@ -128,7 +197,7 @@ async def fetch(settings: dict) -> list[dict]:
     seen: set[str]   = set()
 
     async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
-        print(f"[FantasticJobs] Fetching... (USA + India, 1 page each = 2 API requests)")
+        print(f"[FantasticJobs] Fetching (USA + India, title filter, desc+logo included)...")
 
         for location in LOCATIONS:
             hits = await _fetch_page(client, location)
@@ -174,14 +243,21 @@ async def fetch(settings: dict) -> list[dict]:
                 locs_derived = job.get("locations_derived") or []
                 location_str = locs_derived[0] if locs_derived else ""
 
+                # Logo from organization details
+                logo_url = (job.get("org_logo_permalink") or "")
+
                 seen.add(url)
                 kept += 1
+
+                # Build description (raw → AI fields → empty for now; fallback below)
+                description = _build_description(job)
+
                 jobs.append(JobData(
                     title=title,
                     company=company,
                     url=url,
                     source="FantasticJobs",
-                    description=_build_description(job),
+                    description=description,
                     location=location_str,
                     country=country,
                     salary=_fmt_salary(job),
@@ -189,9 +265,16 @@ async def fetch(settings: dict) -> list[dict]:
                     posted_at=posted_at,
                 ).to_dict())
 
-            print(f"[FantasticJobs] {location}: {len(hits)} raw → {kept} tech jobs kept")
+            print(f"[FantasticJobs] {location}: {len(hits)} raw → {kept} kept")
             await asyncio.sleep(0.3)
 
-    _last_fetch_ts = now
-    print(f"[FantasticJobs] Done — {len(jobs)} jobs (USA+India)")
+    # jd_fetcher fallback for jobs that have no description yet
+    null_desc_jobs = [j for j in jobs if not j.get("description")]
+    if null_desc_jobs:
+        print(f"[FantasticJobs] {len(null_desc_jobs)} jobs need description fallback...")
+        await _fill_descriptions(null_desc_jobs)
+
+    desc_ok  = sum(1 for j in jobs if j.get("description"))
+    desc_nil = len(jobs) - desc_ok
+    print(f"[FantasticJobs] Done — {len(jobs)} jobs | desc OK: {desc_ok} | still null: {desc_nil}")
     return jobs

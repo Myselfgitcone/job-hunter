@@ -88,18 +88,21 @@ def _map_country(countries: list, arrangement: str) -> str:
 
 import re as _re
 
-_LI_CODE = _re.compile(r'\\?#LI-\S+')          # LinkedIn tracking codes
-_ESC_N   = _re.compile(r'\\n')                  # literal \n → newline
-_TRAIL_BS = _re.compile(r'\\+\s*$', _re.M)      # trailing backslashes per line
+_LI_CODE  = _re.compile(r'\\?#LI-\S+')                     # LinkedIn tracking codes
+_ESC_N    = _re.compile(r'\\n')                             # literal \n → newline
+_ESC_R    = _re.compile(r'\\r')                             # literal \r
+_TRAIL_BS = _re.compile(r'\s*\\+\s*$', _re.M)              # trailing backslashes per line
+_MD_UNESC = _re.compile(r'\\([#\-*_\[\]()!`>+|~{}@])')     # markdownify over-escapes
 _MULTI_NL = _re.compile(r'\n{3,}')
 
 
 def _clean_text(raw: str) -> str:
-    """Clean FJ raw text: decode \\n, strip LinkedIn codes, remove stray backslashes."""
+    """Clean FJ raw text: decode escape sequences, strip garbage, unescape markdown."""
     t = _LI_CODE.sub('', raw)
     t = _ESC_N.sub('\n', t)
+    t = _ESC_R.sub('', t)
+    t = _MD_UNESC.sub(r'\1', t)       # \# → #, \- → -, etc.
     t = _TRAIL_BS.sub('', t)
-    t = t.replace('\\', '')           # any remaining backslashes
     t = _MULTI_NL.sub('\n\n', t)
     return t.strip()
 

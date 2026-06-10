@@ -4,10 +4,14 @@ from bs4 import BeautifulSoup
 import re
 import markdownify
 
+# Markdownify over-escapes characters like \#, \-, \*, \_, \( etc.
+# This undoes that so rendered text stays clean.
+_MD_UNESCAPE = re.compile(r'\\([#\-*_\[\]()!`>+|~{}@])')
+
 def _to_markdown(html_str: str) -> str:
     """Convert HTML to clean Markdown preserving lists/headers."""
     md = markdownify.markdownify(html_str, heading_style="ATX", strip=["a", "img", "script", "style"])
-    # clean up excess newlines
+    md = _MD_UNESCAPE.sub(r'\1', md)       # undo markdownify over-escaping
     md = re.sub(r"\n{3,}", "\n\n", md)
     return md.strip()
 
@@ -99,6 +103,83 @@ async def _fetch_workday(url: str, client: httpx.AsyncClient) -> dict | None:
     except Exception:
         pass
     return None
+
+async def _fetch_ashby(url: str, client: httpx.AsyncClient) -> dict | None:
+    """Ashby public posting API."""
+    # URL: https://jobs.ashbyhq.com/{company}/{jobId}
+    m = re.search(r"ashbyhq\.com/([^/]+)/([a-f0-9\-]{20,})", url)
+    if not m:
+        return None
+    company, job_id = m.group(1), m.group(2)
+    api = f"https://api.ashbyhq.com/posting-api/job-board/{company}/posting/{job_id}"
+    try:
+        r = await client.get(api, headers={"Accept": "application/json"})
+        r.raise_for_status()
+        data = r.json()
+        posting = data.get("job") or data
+        parts = []
+        desc_html = posting.get("descriptionHtml") or posting.get("description") or ""
+        if desc_html:
+            parts.append(_to_markdown(desc_html))
+        if parts:
+            return {"description": _extract_clean("\n\n".join(parts)), "date": posting.get("publishedDate", "")}
+    except Exception:
+        pass
+    return None
+
+
+async def _fetch_bamboohr(url: str, client: httpx.AsyncClient) -> dict | None:
+    """BambooHR career page scraper."""
+    # URL: https://{company}.bamboohr.com/careers/{jobId}
+    m = re.search(r"([\w-]+)\.bamboohr\.com/(?:careers|jobs)/(\d+)", url)
+    if not m:
+        return None
+    company, job_id = m.group(1), m.group(2)
+    api = f"https://{company}.bamboohr.com/jobs/view.php?id={job_id}&source=other"
+    try:
+        r = await client.get(api)
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, "lxml")
+        for sel in [".BambooRichText", "#jobDescription", "[class*='jobDescription']",
+                    "[class*='description']", ".job-description"]:
+            el = soup.select_one(sel)
+            if el:
+                text = _extract_clean(_to_markdown(str(el)))
+                if len(text) > 150:
+                    return {"description": text, "date": ""}
+    except Exception:
+        pass
+    return None
+
+
+async def _fetch_workable(url: str, client: httpx.AsyncClient) -> dict | None:
+    """Workable job page — JSON embedded in page."""
+    if "workable.com" not in url:
+        return None
+    try:
+        r = await client.get(url)
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, "lxml")
+        # Workable embeds job data in a <script id="__NEXT_DATA__"> or window.__INITIAL_STATE__
+        for script in soup.find_all("script", type="application/json"):
+            try:
+                data = json.loads(script.string or "")
+                desc = (data.get("props") or {}).get("pageProps", {}).get("job", {}).get("description", "")
+                if desc and len(desc) > 100:
+                    return {"description": _extract_clean(_to_markdown(desc)), "date": ""}
+            except Exception:
+                pass
+        # fallback: look for specific selectors
+        for sel in [".job-section-text", "[data-ui='job-description']", ".styles--3wl4J"]:
+            el = soup.select_one(sel)
+            if el:
+                text = _extract_clean(_to_markdown(str(el)))
+                if len(text) > 150:
+                    return {"description": text, "date": ""}
+    except Exception:
+        pass
+    return None
+
 
 async def _fetch_smartrecruiters(url: str, client: httpx.AsyncClient) -> dict | None:
     """SmartRecruiters has a public API."""
@@ -199,8 +280,10 @@ async def fetch_full_jd(url: str) -> dict:
     """Returns dict: {'description': str, 'date': str}"""
     try:
         async with httpx.AsyncClient(timeout=25, headers=HEADERS, follow_redirects=True) as client:
-            # ATS API Handlers
-            for handler in [_fetch_greenhouse, _fetch_lever, _fetch_workday, _fetch_smartrecruiters]:
+            # ATS API Handlers (ordered by prevalence in FJ feed)
+            for handler in [_fetch_greenhouse, _fetch_lever, _fetch_ashby,
+                            _fetch_workday, _fetch_smartrecruiters,
+                            _fetch_bamboohr, _fetch_workable]:
                 res = await handler(url, client)
                 if res and res.get("description") and len(res["description"]) > 150:
                     return res

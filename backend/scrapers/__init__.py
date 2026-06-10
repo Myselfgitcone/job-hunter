@@ -14,6 +14,7 @@ from collections import Counter
 from scrapers import greenhouse, lever, ashby, workday, hiringcafe
 from scrapers import smartrecruiters, bamboohr, workable, recruitee
 from scrapers import jobo
+from scrapers import fantasticjobs
 
 SOURCE_PRIORITY = {
     "Greenhouse":      1,
@@ -30,6 +31,7 @@ SOURCE_PRIORITY = {
     "Netflix":         4,
     "HiringCafe":      5,
     "Jobo":            3,
+    "FantasticJobs":   2,
 }
 
 
@@ -148,6 +150,15 @@ async def run_group_jobo(settings: dict) -> list[dict]:
         return_exceptions=True,
     )
     return _dedup(results, "GroupD-Jobo")
+
+
+# ── Group E: FantasticJobs (~1 min, rate-guarded 6h) ─────────────────────────
+async def run_group_fantasticjobs(settings: dict) -> list[dict]:
+    results = await asyncio.gather(
+        fantasticjobs.fetch(settings),
+        return_exceptions=True,
+    )
+    return _dedup(results, "GroupE-FantasticJobs")
 
 
 # ── Legacy: all scrapers at once (kept for backward compat) ──────────────────

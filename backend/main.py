@@ -236,14 +236,13 @@ async def _run_scrape_internal() -> dict:
     if deleted:
         print(f"[Scrape] Deleted {deleted} jobs older than {_CUTOFF_H}h ({_CUTOFF_H // 24}d)")
 
-    print("[Scrape] Starting 4 concurrent scraper groups...")
+    print("[Scrape] Starting 5 concurrent scraper groups...")
     group_results = await asyncio.gather(
         _scrape_and_insert(run_group_fast,          "GroupA-Fast",          settings, cutoff_posted, now_iso, 600),
         _scrape_and_insert(run_group_greenhouse,    "GroupB-Greenhouse",    settings, cutoff_posted, now_iso, 900),
         _scrape_and_insert(run_group_hiringcafe,    "GroupC-HiringCafe",    settings, cutoff_posted, now_iso, 2700),
         _scrape_and_insert(run_group_jobo,          "GroupD-Jobo",          settings, cutoff_posted, now_iso, 300),
-        # FJ trial exhausted (500 jobs/week limit hit) — re-enable next week
-        # _scrape_and_insert(run_group_fantasticjobs, "GroupE-FantasticJobs", settings, cutoff_posted, now_iso, 120),
+        _scrape_and_insert(run_group_fantasticjobs, "GroupE-FantasticJobs", settings, cutoff_posted, now_iso, 120),
         return_exceptions=True,
     )
 

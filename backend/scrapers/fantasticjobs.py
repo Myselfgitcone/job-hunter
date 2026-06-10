@@ -1,5 +1,5 @@
 """
-Fantastic.jobs Feed API scraper — Data jobs only (budget-optimised).
+Fantastic.jobs Feed API scraper.
 https://data.fantastic.jobs/v1/active-ats
 
 Auth: Authorization: Bearer {API_KEY}
@@ -8,8 +8,12 @@ Filters:  location, source, ai_work_arrangement
 Pagination: offset
 
 Trial limits: 500 jobs/week, 50 API requests/week
-Budget plan: USA + India only, 1 page each = 2 requests/scrape
+Budget plan: USA + India, 1 page each = 2 requests/scrape
 Rate guard: 6h minimum between fetches
+
+NOTE: API has no keyword filter — returns all ATS jobs for location.
+      Title filter (is_relevant_title) blocks nurses/drivers/teachers etc.
+      Use UI search to narrow to data engineer roles.
 """
 import os
 import httpx
@@ -19,40 +23,10 @@ from scrapers.base import JobData, detect_country, is_relevant_title, CUTOFF_HOU
 
 BASE_ATS = "https://data.fantastic.jobs/v1/active-ats"
 
-# Only USA + India — 1 request each = 2 API calls per scrape
 LOCATIONS = ["United States", "India"]
 
-# Rate guard
 _last_fetch_ts: datetime | None = None
 MIN_FETCH_INTERVAL_H = 6
-
-
-# ── Data-job title filter ─────────────────────────────────────────────────────
-_DATA_KEYWORDS = {
-    "data engineer", "data engineering",
-    "analytics engineer",
-    "data architect",
-    "data platform",
-    "data infrastructure",
-    "data pipeline",
-    "etl", "elt",
-    "data warehouse",
-    "data lake",
-    "data ops", "dataops",
-    "data integration",
-    "bi engineer", "bi developer", "business intelligence",
-    "ml engineer", "machine learning engineer",
-    "mlops", "ml ops",
-    "ai engineer",
-    "data scientist",        # close enough to data eng roles
-    "data analyst",          # include — user group is 4 people
-    "analytics",
-    "dbt", "spark", "airflow", "kafka", "snowflake", "databricks",
-}
-
-def _is_data_job(title: str) -> bool:
-    t = title.lower()
-    return any(kw in t for kw in _DATA_KEYWORDS)
 
 
 def _get_headers() -> dict:
@@ -111,7 +85,6 @@ def _build_description(job: dict) -> str:
 
 
 async def _fetch_page(client: httpx.AsyncClient, location: str, offset: int = 0) -> list:
-    """50 jobs per page, 24h window."""
     params = {
         "time_frame": "24h",
         "limit": 50,
@@ -138,7 +111,6 @@ async def fetch(settings: dict) -> list[dict]:
 
     now = datetime.now(timezone.utc)
 
-    # Rate guard
     if _last_fetch_ts and (now - _last_fetch_ts) < timedelta(hours=MIN_FETCH_INTERVAL_H):
         wait_min = int(
             (timedelta(hours=MIN_FETCH_INTERVAL_H) - (now - _last_fetch_ts)).total_seconds() / 60
@@ -156,25 +128,12 @@ async def fetch(settings: dict) -> list[dict]:
     seen: set[str]   = set()
 
     async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
-        print(f"[FantasticJobs] Fetching data jobs (USA + India, 1 page each = 2 API requests)...")
+        print(f"[FantasticJobs] Fetching... (USA + India, 1 page each = 2 API requests)")
 
         for location in LOCATIONS:
-            # USA: 2 pages (100 jobs, 2 requests) — more coverage for data jobs
-            # India: 1 page (50 jobs, 1 request)
-            pages = 2 if location == "United States" else 1
-            hits = []
-            for page in range(pages):
-                batch = await _fetch_page(client, location, offset=page * 50)
-                hits.extend(batch)
-                if len(batch) < 50:
-                    break
-                await asyncio.sleep(0.3)
+            hits = await _fetch_page(client, location)
             if not hits:
                 continue
-
-            # Debug: print first 10 titles to see what API returns
-            sample_titles = [j.get("title","") for j in hits[:10]]
-            print(f"[FantasticJobs] {location} sample titles: {sample_titles}")
 
             kept = 0
             for job in hits:
@@ -183,15 +142,7 @@ async def fetch(settings: dict) -> list[dict]:
                     continue
 
                 title = (job.get("title") or "").strip()
-                if not title:
-                    continue
-
-                # Strict data-job filter (saves quota — skip irrelevant titles early)
-                if not _is_data_job(title):
-                    continue
-
-                # General title sanity (blocks school intern, etc.)
-                if not is_relevant_title(title):
+                if not title or not is_relevant_title(title):
                     continue
 
                 company = (job.get("organization") or "").strip()
@@ -208,7 +159,6 @@ async def fetch(settings: dict) -> list[dict]:
                     if country not in ("USA", "India", "Remote"):
                         continue
 
-                # Date
                 posted_at = ""
                 raw_date  = job.get("date_posted") or ""
                 if raw_date:
@@ -216,8 +166,7 @@ async def fetch(settings: dict) -> list[dict]:
                         dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
                         if dt.tzinfo is None:
                             dt = dt.replace(tzinfo=timezone.utc)
-                        age_days = (now - dt).days
-                        if 0 <= age_days <= 30:
+                        if 0 <= (now - dt).days <= 30:
                             posted_at = dt.isoformat()
                     except Exception:
                         pass
@@ -240,9 +189,9 @@ async def fetch(settings: dict) -> list[dict]:
                     posted_at=posted_at,
                 ).to_dict())
 
-            print(f"[FantasticJobs] {location}: {len(hits)} total → {kept} data jobs kept")
+            print(f"[FantasticJobs] {location}: {len(hits)} raw → {kept} tech jobs kept")
             await asyncio.sleep(0.3)
 
     _last_fetch_ts = now
-    print(f"[FantasticJobs] Done — {len(jobs)} data jobs (USA+India)")
+    print(f"[FantasticJobs] Done — {len(jobs)} jobs (USA+India)")
     return jobs

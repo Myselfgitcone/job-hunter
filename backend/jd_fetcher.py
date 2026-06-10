@@ -278,6 +278,10 @@ def _adzuna_detail_url(url: str) -> str | None:
 
 async def fetch_full_jd(url: str) -> dict:
     """Returns dict: {'description': str, 'date': str}"""
+    # Skip ATS systems where generic scraping always produces garbage
+    if _is_skip_ats(url):
+        return {"description": "", "date": ""}
+
     try:
         async with httpx.AsyncClient(timeout=25, headers=HEADERS, follow_redirects=True) as client:
             # ATS API Handlers (ordered by prevalence in FJ feed)
@@ -357,6 +361,44 @@ _GARBAGE_LINES = re.compile(
 )
 _NA_VALUES = {"na", "n/a", "n.a.", "not available", "not applicable", "none", "tbd", "-", "—"}
 
+# Patterns that indicate we scraped UI/navigation instead of JD content
+_GARBAGE_JD_PATTERNS = [
+    r'\{0\}',                               # template placeholders like "{0} minutes"
+    r'minutes of inactivity',
+    r'your session will end in',
+    r'go to the main content section',
+    r'return to the home page',
+    r'my applications.*basic search',       # iCIMS navigation
+    r'printable format',
+    r'refer a friend for this job',
+    r'submit a candidate',
+    r'sign in.*career center.*current openings',
+]
+
+# ATS systems that are JS SPAs — generic scraper always fails, skip immediately
+_SKIP_ATS_DOMAINS = [
+    "icims.com",
+    "taleo.net",
+    "successfactors.com",
+    "sap.com/recruit",
+    "oraclecloud.com/hcmUI",
+    "peoplesoft",
+    "kronos",
+]
+
+
+def _is_garbage_jd(text: str) -> bool:
+    """Return True if scraped text looks like navigation/UI, not a real JD."""
+    lower = text.lower()
+    return any(re.search(p, lower) for p in _GARBAGE_JD_PATTERNS)
+
+
+def _is_skip_ats(url: str) -> bool:
+    """Return True for ATS systems where generic HTML scraping always fails."""
+    lower = url.lower()
+    return any(d in lower for d in _SKIP_ATS_DOMAINS)
+
+
 def _extract_clean(raw: str) -> str:
     lines = raw.split("\n")
     kept = []
@@ -377,5 +419,8 @@ def _extract_clean(raw: str) -> str:
 
     # Reject if result is just an NA placeholder or too short to be useful
     if result.lower() in _NA_VALUES or len(result) < 80:
+        return ""
+    # Reject if it looks like navigation/UI garbage
+    if _is_garbage_jd(result):
         return ""
     return result

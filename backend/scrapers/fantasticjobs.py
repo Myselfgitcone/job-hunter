@@ -17,14 +17,16 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 from scrapers.base import JobData, detect_country, is_relevant_title, CUTOFF_HOURS
 
-API_KEY  = os.getenv("FANTASTIC_JOBS_API_KEY", "")
 BASE_ATS = "https://data.fantastic.jobs/v1/active-ats"
 BASE_JB  = "https://data.fantastic.jobs/v1/active-jb"
 
-HEADERS = {
-    "Authorization": f"Bearer {API_KEY}",
-    "Accept": "application/json",
-}
+
+def _get_headers() -> dict:
+    """Build headers at call time so env var is always fresh."""
+    key = os.getenv("FANTASTIC_JOBS_API_KEY", "")
+    if not key:
+        raise RuntimeError("FANTASTIC_JOBS_API_KEY env var not set")
+    return {"Authorization": f"Bearer {key}", "Accept": "application/json"}
 
 # Rate guard — only one real API call every 6 hours (saves trial budget)
 _last_fetch_ts: datetime | None = None
@@ -139,10 +141,16 @@ async def fetch(settings: dict) -> list[dict]:
         print(f"[FantasticJobs] Skipping — last fetch {int((now - _last_fetch_ts).total_seconds()/60)}min ago (next in ~{wait_min}min)")
         return []
 
+    try:
+        headers = _get_headers()
+    except RuntimeError as e:
+        print(f"[FantasticJobs] {e} — skipping scrape")
+        return []
+
     jobs: list[dict] = []
     seen: set[str]   = set()
 
-    async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True) as client:
+    async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
         print(f"[FantasticJobs] Fetching... (trial budget: 500 jobs/week, 50 req/week)")
 
         for location in LOCATIONS:

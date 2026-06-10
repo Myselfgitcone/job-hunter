@@ -118,7 +118,7 @@ def _build_description(job: dict) -> str:
     # 1. Raw description — only trust if long enough to be a real JD
     raw = job.get("description") or ""
     if isinstance(raw, str) and len(raw.strip()) >= 500:
-        return _clean_text(raw)[:8000]
+        return _clean_text(raw)[:25000]
 
     # 2. AI-extracted fields (used as fallback if jd_fetcher also fails)
     parts  = []

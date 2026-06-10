@@ -373,7 +373,7 @@ def _extract_clean(raw: str) -> str:
         kept.append(line)
     result = "\n".join(kept)
     result = re.sub(r"\n{3,}", "\n\n", result)
-    result = result.strip()[:8000]
+    result = result.strip()[:25000]
 
     # Reject if result is just an NA placeholder or too short to be useful
     if result.lower() in _NA_VALUES or len(result) < 80:

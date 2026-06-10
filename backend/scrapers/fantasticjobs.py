@@ -119,7 +119,7 @@ async def _fetch_page(client: httpx.AsyncClient, location: str, offset: int = 0)
         "limit": 50,
         "offset": offset,
         "title_advanced": TITLE_FILTER,        # boolean role filter
-        "location_advanced": location,
+        "location_advanced": f"'{location}'" if " " in location else location,
         "description_format": "text",          # request raw description
         "include_basic_organization_details": "true",  # org logo etc.
     }

@@ -83,14 +83,10 @@ const I = {
 };
 
 const TABS = [
-  { id: "jobinfo",     label: "Job Info" },
-  { id: "companyinfo", label: "Company Info" },
-  { id: "description", label: "Job Description" },
-  { id: "qualify",     label: "Qualify" },
-  { id: "resume",      label: "Tailored Resume" },
-  { id: "fit",         label: "Fit & Tips" },
-  { id: "cover",       label: "Cover Letter" },
-  { id: "notes",       label: "Notes" },
+  { id: "overview", label: "Overview" },
+  { id: "qualify",  label: "Qualify" },
+  { id: "resume",   label: "Resume & Fit" },
+  { id: "cover",    label: "Cover Letter" },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -160,7 +156,7 @@ function JobInfoTab({ job }: { job: Job }) {
   ];
 
   return (
-    <div style={{ padding: "20px 0", display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ padding: "10px 0 20px", display: "flex", flexDirection: "column", gap: 20 }}>
       {/* Posted date */}
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         <span style={{ fontSize: 13, color: "var(--tx-3)", fontWeight: 500 }}>Posted</span>
@@ -222,7 +218,7 @@ function CompanyInfoTab({ job }: { job: Job }) {
   ];
 
   return (
-    <div style={{ padding: "20px 0", display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ padding: "10px 0 20px", display: "flex", flexDirection: "column", gap: 20 }}>
       {/* Company hero */}
       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
         {logoSrc
@@ -671,6 +667,46 @@ function NotesTab({ job, onUpdate, onToast }: {
   );
 }
 
+// ── Overview tab: job info + company info side by side, JD below, notes last ──
+function OverviewTab({ job, onUpdate, onToast }: {
+  job: Job; onUpdate: (patch: Partial<Job>) => void; onToast: (m: string, t?: "success" | "error") => void;
+}) {
+  const sectionLabel = (text: string) => (
+    <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 4 }}>{text}</div>
+  );
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {/* Job + Company info side by side */}
+      <div style={{ display: "flex", gap: 36, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 300 }}>
+          {sectionLabel("Job Info")}
+          <JobInfoTab job={job} />
+        </div>
+        <div style={{ flex: 1, minWidth: 300 }}>
+          {sectionLabel("Company Info")}
+          <CompanyInfoTab job={job} />
+        </div>
+      </div>
+
+      {/* Job description */}
+      <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 20 }}>
+        {sectionLabel("Job Description")}
+        <div style={{ marginTop: 10 }}>
+          <DescriptionTab job={job} onUpdate={onUpdate} onToast={onToast} />
+        </div>
+      </div>
+
+      {/* Notes */}
+      <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 20, marginTop: 16 }}>
+        {sectionLabel("Notes")}
+        <div style={{ marginTop: 10 }}>
+          <NotesTab job={job} onUpdate={onUpdate} onToast={onToast} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main JobDetail ─────────────────────────────────────────────────────────────
 export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction }: {
   job: Job | null; tab: string; setTab: (t: string) => void;
@@ -695,9 +731,10 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
   }
 
   const tabHasContent: Record<string, boolean> = {
-    resume: !!job.tailored_resume, cover: !!job.cover_letter,
-    notes: !!(job.notes || job.deadline || job.interview_date),
-    qualify: !!job.qualify_result, fit: !!job.fit_analysis,
+    resume: !!(job.tailored_resume || job.fit_analysis),
+    cover: !!job.cover_letter,
+    qualify: !!job.qualify_result,
+    overview: !!(job.notes || job.deadline || job.interview_date),
   };
 
   const handleStatusChange = async (s: string) => {
@@ -781,14 +818,18 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
 
         {/* Tab content */}
         <div className="tab-body">
-          {tab === "jobinfo"     && <JobInfoTab job={job} />}
-          {tab === "companyinfo" && <CompanyInfoTab job={job} />}
-          {tab === "description" && <DescriptionTab job={job} onUpdate={onUpdate} onToast={onToast} />}
-          {tab === "qualify"     && <QualifyTab job={job} running={busy === "qualify"} onRun={() => runAction("qualify")} />}
-          {tab === "resume"      && <ResumeTab job={job} tailoring={busy === "resume"} onTailor={() => runAction("resume")} onToast={onToast} />}
-          {tab === "fit"         && <FitTab job={job} running={busy === "fit"} onRun={() => runAction("fit")} />}
-          {tab === "cover"       && <CoverTab job={job} generating={busy === "cover"} onGenerate={() => runAction("cover")} onChange={v => onUpdate({ cover_letter: v })} onToast={onToast} />}
-          {tab === "notes"       && <NotesTab job={job} onUpdate={onUpdate} onToast={onToast} />}
+          {tab === "overview" && <OverviewTab job={job} onUpdate={onUpdate} onToast={onToast} />}
+          {tab === "qualify"  && <QualifyTab job={job} running={busy === "qualify"} onRun={() => runAction("qualify")} />}
+          {tab === "resume"   && (
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <ResumeTab job={job} tailoring={busy === "resume"} onTailor={() => runAction("resume")} onToast={onToast} />
+              <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 20, marginTop: 24 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 12 }}>Fit & Tips</div>
+                <FitTab job={job} running={busy === "fit"} onRun={() => runAction("fit")} />
+              </div>
+            </div>
+          )}
+          {tab === "cover"    && <CoverTab job={job} generating={busy === "cover"} onGenerate={() => runAction("cover")} onChange={v => onUpdate({ cover_letter: v })} onToast={onToast} />}
         </div>
       </div>
     </div>

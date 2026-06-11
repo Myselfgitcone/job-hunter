@@ -38,7 +38,8 @@ TITLE_FILTER = (
     " | 'data analyst' | 'data analytics'"
     " | 'security engineer' | 'security analyst' | 'soc analyst'"
     " | cybersecurity | infosec | 'application security'"
-    " | 'business intelligence' | 'bi developer' | 'bi analyst' | 'power bi')"
+    " | 'business intelligence' | 'bi developer' | 'bi analyst' | 'power bi'"
+    " | 'java developer' | 'java software engineer' | 'backend java' | 'java engineer')"
     " & !(financial | marketing | sales | nurse)"
 )
 

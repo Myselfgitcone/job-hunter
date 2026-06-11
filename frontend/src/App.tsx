@@ -302,6 +302,8 @@ export default function App() {
           const matchesAnyRole = roles.some((r: string) => {
             const term = r.toLowerCase().trim();
             if (term === "bi") return /\bbi\b/.test(title) || /\bbi\b/.test(desc);
+            // word-boundary: "java" must not match "javascript"
+            if (term === "java") return /\bjava\b/.test(title) || /\bjava\b/.test(desc);
             return title.includes(term) || desc.includes(term);
           });
           if (!matchesAnyRole) return false;

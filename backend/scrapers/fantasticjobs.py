@@ -47,16 +47,21 @@ MIN_FETCH_INTERVAL_H    = 1
 MIN_MODIFIED_INTERVAL_H = 6
 
 
-# Boolean title filter — 6 roles, USA + India
+# Boolean title filter — 6 role families, USA + India.
+# Syntax is word-token based (tsquery): "java" matches the word anywhere in
+# the title but NOT "javascript" (different token) and NOT "jakarta".
+# Exec/architect track excluded at API level — never billed, never stored.
+# Re-add "architect" to the OR list if a teammate ever needs that track.
 TITLE_FILTER = (
     "(devops | sre | 'site reliability' | 'platform engineer'"
-    " | 'data engineer' | etl"
+    " | 'data engineer' | etl | 'data platform'"
     " | 'data analyst' | 'data analytics'"
     " | 'security engineer' | 'security analyst' | 'soc analyst'"
     " | cybersecurity | infosec | 'application security'"
     " | 'business intelligence' | 'bi developer' | 'bi analyst' | 'power bi'"
-    " | 'java developer' | 'java software engineer' | 'backend java' | 'java engineer')"
-    " & !(financial | marketing | sales | nurse)"
+    " | (java & !javascript) | 'spring boot' | jakarta)"
+    " & !(financial | marketing | sales | nurse"
+    " | director | 'vice president' | vp | cto | chief | architect)"
 )
 
 

@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import Column, String, Boolean, Integer, Text, DateTime, text
+from sqlalchemy import Column, String, Boolean, Integer, Text, DateTime, text, BigInteger
 from datetime import datetime
 import json
 
@@ -56,7 +56,8 @@ class Job(Base):
     posted_at = Column(String, default="")
     scraped_at = Column(String, default="")
     hc_original_date = Column(String, default="")  # HC estimated_publish_date (raw, unfiltered)
-    status = Column(String, default="new")  # new / applied / skipped / interview
+    status = Column(String, default="new")  # new / applied / skipped / interview / closed
+    fj_id = Column(BigInteger, default=None)  # Fantastic.jobs internal ID
 
     tailored_resume = Column(Text, default=None)
     tailored_at = Column(String, default=None)
@@ -178,6 +179,7 @@ async def init_db():
         "ALTER TABLE jobs ADD COLUMN cover_letter TEXT",
         "ALTER TABLE jobs ADD COLUMN notes TEXT",
         "ALTER TABLE jobs ADD COLUMN tailored_at TEXT",
+        "ALTER TABLE jobs ADD COLUMN fj_id BIGINT",
         "ALTER TABLE jobs ADD COLUMN applied_at TEXT",
         "ALTER TABLE jobs ADD COLUMN deadline TEXT",
         "ALTER TABLE jobs ADD COLUMN interview_date TEXT",
@@ -310,3 +312,14 @@ TECHNICAL SKILLS:
 
 EDUCATION:
 Master of Science in Information Systems @ Saint Louis University"""
+
+async def mark_expired_jobs_closed(fj_ids: list[int]) -> int:
+    """Marks all jobs in the given list of Fantastic.jobs IDs as closed."""
+    if not fj_ids:
+        return 0
+    from sqlalchemy import update
+    async with SessionLocal() as db:
+        stmt = update(Job).where(Job.fj_id.in_(fj_ids)).where(Job.status == "new").values(status="closed")
+        result = await db.execute(stmt)
+        await db.commit()
+        return result.rowcount

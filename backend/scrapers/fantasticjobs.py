@@ -28,7 +28,7 @@ BASE_ATS = "https://data.fantastic.jobs/v1/active-ats"
 LOCATIONS = ["United States", "India"]
 
 _last_fetch_ts: datetime | None = None
-MIN_FETCH_INTERVAL_H = 6
+MIN_FETCH_INTERVAL_H = 1
 
 
 # Boolean title filter — 5 roles, US+India
@@ -234,6 +234,7 @@ async def fetch(settings: dict) -> list[dict]:
                         salary=_fmt_salary(job),
                         remote="remote" in arrangement.lower(),
                         posted_at=posted_at,
+                        fj_id=job.get("id"),
                     ).to_dict())
 
                 if len(hits) < PAGE_SIZE:
@@ -247,3 +248,32 @@ async def fetch(settings: dict) -> list[dict]:
     desc_nil = len(jobs) - desc_ok
     print(f"[FantasticJobs] Done — {len(jobs)} jobs | desc OK: {desc_ok} | still null: {desc_nil}")
     return jobs
+
+async def sync_expired_jobs(settings: dict) -> int:
+    """Fetch expired jobs from the last day and mark them closed in the database."""
+    print("[FantasticJobs] Fetching expired jobs feed for the last 1d...")
+    try:
+        headers = _get_headers()
+    except RuntimeError as e:
+        print(f"[FantasticJobs] {e} — skipping expired sync")
+        return 0
+
+    url = "https://data.fantastic.jobs/v1/expired-ats"
+    params = {"time_frame": "1d"}
+    
+    async with httpx.AsyncClient(headers=headers, timeout=30) as client:
+        try:
+            r = await client.get(url, params=params)
+            r.raise_for_status()
+            expired_ids = r.json()
+            if not expired_ids or not isinstance(expired_ids, list):
+                print("[FantasticJobs] No expired jobs returned.")
+                return 0
+                
+            from database import mark_expired_jobs_closed
+            closed_count = await mark_expired_jobs_closed(expired_ids)
+            print(f"[FantasticJobs] Marked {closed_count} jobs as closed from the 1d expired feed.")
+            return closed_count
+        except Exception as e:
+            print(f"[FantasticJobs] Error fetching expired jobs: {e}")
+            return 0

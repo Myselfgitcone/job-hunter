@@ -290,6 +290,17 @@ async def _auto_scrape():
         print(f"[Scheduler] Auto-scrape failed: {e}")
         import traceback; traceback.print_exc()
 
+async def _sync_expired_wrapper():
+    """Background task to fetch expired jobs from Fantastic.jobs and mark them closed."""
+    print("[Scheduler] Expired sync starting...")
+    try:
+        from scrapers.fantasticjobs import sync_expired_jobs
+        count = await sync_expired_jobs({})
+        print(f"[Scheduler] Expired sync complete: {count} jobs closed.")
+    except Exception as e:
+        print(f"[Scheduler] Expired sync failed: {e}")
+        import traceback; traceback.print_exc()
+
 
 
 
@@ -344,15 +355,17 @@ async def startup():
         #     print(f"[Startup] Company seeder failed: {e}")
 
     asyncio.create_task(_background_init())
-    # Start auto-scraper scheduler (every 6 hours by default)
+    # Start auto-scraper scheduler
     async with SessionLocal() as db:
         result = await db.execute(select(Setting).where(Setting.key == "auto_scrape_cron"))
         row = result.scalar_one_or_none()
         cron_expr = row.value if row and row.value else "0 * * * *"
 
     _scheduler.add_job(_auto_scrape, CronTrigger.from_crontab(cron_expr), id="auto_scrape", replace_existing=True)
+    _scheduler.add_job(_sync_expired_wrapper, CronTrigger.from_crontab("0 0 * * *"), id="sync_expired", replace_existing=True)
     _scheduler.start()
     print(f"[Scheduler] Auto-scrape scheduled: {cron_expr}")
+    print("[Scheduler] Expired jobs sync scheduled: 0 0 * * *")
 
 
 

@@ -47,11 +47,11 @@ MIN_FETCH_INTERVAL_H    = 1
 MIN_MODIFIED_INTERVAL_H = 6
 
 
-# Boolean title filter — 6 role families, USA + India.
-# Syntax is word-token based (tsquery): "java" matches the word anywhere in
-# the title but NOT "javascript" (different token) and NOT "jakarta".
-# Exec/architect track excluded at API level — never billed, never stored.
-# Re-add "architect" to the OR list if a teammate ever needs that track.
+# Boolean title filter — USA + India
+# Java: one broad expression catches all "java *" titles; !javascript avoids false positives.
+# 'spring boot' and jakarta cover Java jobs where "java" doesn't appear in the title.
+# 'data platform' catches Data Platform Engineer (missed by 'data engineer' alone).
+# Exec/arch exclusions: never billed, never stored — saves credits globally.
 TITLE_FILTER = (
     "(devops | sre | 'site reliability' | 'platform engineer'"
     " | 'data engineer' | etl | 'data platform'"
@@ -92,12 +92,11 @@ _JUNK_COMPANIES = (
     "get it recruit", "jobot", "actalent staffing", "jobs via",
 )
 
-# Same exclusions at the API level — excluded jobs are never returned and
-# never billed. The Python check above stays as a backstop.
-ORG_EXCLUDE_FILTER = (
-    "!('jobs via dice' | 'hire feed' | lensa | talentify | jobgether"
-    " | 'get it recruit' | jobot)"
-)
+# NOTE: organization_advanced is intentionally NOT sent — the FJ API consistently
+# returns 400 for this parameter, wasting a retry call per page. The Python
+# _JUNK_COMPANIES check below serves as the backstop filter instead.
+# ORG_EXCLUDE_FILTER kept here for reference if the API ever supports it:
+# ORG_EXCLUDE_FILTER = "!('jobs via dice' | 'hire feed' | lensa | talentify | jobgether | 'get it recruit' | jobot)"
 
 def _detect_jb_source(url: str) -> str:
     """Detect the actual job board from URL for JB feed jobs."""
@@ -219,29 +218,23 @@ async def _fetch_page(
     offset: int = 0,
     base_url: str = BASE_ATS,
     include_org_details: bool = True,
-    time_frame: str = "24h",
+    time_frame: str | None = "24h",
 ) -> list:
-    params = {
-        "time_frame": time_frame,
+    params: dict = {
         "limit": PAGE_SIZE,
         "offset": offset,
         "title_advanced": TITLE_FILTER,
         "location_advanced": f"'{location}'" if " " in location else location,
         "description_format": "html",
-        # Exclude staffing aggregators server-side — saves job credits
-        "organization_advanced": ORG_EXCLUDE_FILTER,
     }
-    # ATS-only param — job board endpoint rejects it
+    # time_frame is supported by active/JB feeds but NOT by modified-ats
+    if time_frame is not None:
+        params["time_frame"] = time_frame
+    # ATS-only param — job board and modified endpoints reject it
     if include_org_details:
         params["include_basic_organization_details"] = "true"
     try:
         r = await client.get(base_url, params=params, timeout=30)
-        # If the org exclusion syntax is rejected, retry without it rather
-        # than losing the whole page (Python junk filter still applies)
-        if r.status_code == 400 and "organization_advanced" in params:
-            print(f"[FantasticJobs] 400 with organization_advanced — retrying without it: {r.text[:150]}")
-            params.pop("organization_advanced")
-            r = await client.get(base_url, params=params, timeout=30)
         if r.status_code == 403:
             print(f"[FantasticJobs] 403 {base_url.split('/')[-1]} {location}: {r.json().get('detail','')}")
             return []
@@ -459,7 +452,8 @@ async def fetch_modified(settings: dict) -> list[dict]:
             offset = 0
 
             for page in range(MAX_PAGES):
-                hits = await _fetch_page(client, location, offset=offset, base_url=BASE_MODIFIED)
+                # modified-ats does NOT support time_frame — omit it
+                hits = await _fetch_page(client, location, offset=offset, base_url=BASE_MODIFIED, include_org_details=False, time_frame=None)
                 if not hits:
                     break
 

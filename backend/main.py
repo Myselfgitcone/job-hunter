@@ -173,11 +173,14 @@ async def _scrape_and_insert(fetch_fn, group_name, settings, cutoff_posted, now_
                 # Resolve experience tray: regex from JD > mapped FJ coarse value
                 job_data["experience_level"] = resolve_experience_level(
                     job_data.get("experience_level") or "", job_data.get("description") or "")
-                db.add(Job(id=str(uuid.uuid4()), scraped_at=now_iso, **job_data))
+                jid = str(uuid.uuid4())
+                db.add(Job(id=jid, scraped_at=now_iso, **job_data))
                 if url:
                     existing_urls.add(url)
                 existing_fps.add(fp)
                 new_count += 1
+                # record the DB id so post-scrape qualify can target exactly these jobs
+                job_data["id"] = jid
                 new_jobs.append(job_data)
                 if new_count % 500 == 0:
                     await db.flush()
@@ -280,7 +283,11 @@ async def _run_scrape_internal() -> dict:
     except Exception as te:
         print(f"[Scrape] Telegram notify failed: {te}")
 
-    asyncio.create_task(_run_qualify_all())
+    # Only qualify the jobs we JUST scraped — not all unqualified historical jobs.
+    # Passing new_job_ids prevents the qualify-all loop from re-processing the
+    # entire DB on every hourly scrape, which was burning AI credits.
+    new_job_ids = [j.get("id") for j in all_new_jobs if j.get("id")] if all_new_jobs else []
+    asyncio.create_task(_run_qualify_all(new_job_ids=new_job_ids))
     asyncio.create_task(_run_exp_ai_sweep())
 
     return {"new_jobs": total_new, "deleted_old": deleted, "scraped_at": now_iso}
@@ -2520,26 +2527,34 @@ async def qualify_job_endpoint(job_id: str, user_id: str = Depends(get_current_u
 
 @app.post("/api/jobs/qualify-all")
 async def qualify_all_jobs(background_tasks: BackgroundTasks, user_id: str = Depends(get_current_user_id)):
-    """Qualify all unanalyzed jobs in the background."""
-    background_tasks.add_task(_run_qualify_all)
-    return {"message": "Qualification running in background"}
+    """Qualify all unanalyzed jobs in the background (backfill mode, capped at QUALIFY_BATCH_CAP)."""
+    background_tasks.add_task(_run_qualify_all, None)  # new_job_ids=None = backfill mode
+    return {"message": f"Qualification running in background (up to {QUALIFY_BATCH_CAP} jobs)"}
 
 
 _qualify_running = False
 
-async def _run_qualify_all():
-    """Standalone qualify-all — usable from scheduler and endpoint."""
+# Max jobs to qualify in a single auto-qualify run.
+# Prevents a single scrape cycle from hammering the AI API with 1000+ calls.
+QUALIFY_BATCH_CAP = 75
+
+async def _run_qualify_all(new_job_ids: list | None = None):
+    """Standalone qualify-all — usable from scheduler and endpoint.
+    
+    new_job_ids: if provided, only qualify those specific jobs (freshly scraped).
+                 If None, qualifies up to QUALIFY_BATCH_CAP unscored jobs from DB.
+    """
     global _qualify_running
     if _qualify_running:
         print("[Qualify] Already running — skipping duplicate trigger")
         return
     _qualify_running = True
     try:
-        await _run_qualify_all_inner()
+        await _run_qualify_all_inner(new_job_ids=new_job_ids)
     finally:
         _qualify_running = False
 
-async def _run_qualify_all_inner():
+async def _run_qualify_all_inner(new_job_ids: list | None = None):
     from ai.qualify import qualify_job
 
     # Get admin's API key + model from UserSettings (not legacy Setting table)
@@ -2549,7 +2564,13 @@ async def _run_qualify_all_inner():
 
     api_key  = (admin_s.ai_api_key  or "") if admin_s else ""
     provider = (admin_s.ai_provider or "openrouter") if admin_s else "openrouter"
+    # Default to a cheap/free model — do NOT use gpt-5 for bulk qualify
     model    = (admin_s.ai_model_qualify or "google/gemini-2.5-flash-lite") if admin_s else "google/gemini-2.5-flash-lite"
+    # Safety override: if the stored model is gpt-5 or o3 (very expensive), fall back
+    _expensive_models = ("gpt-5", "gpt-4o", "o3", "o1", "claude-opus")
+    if any(m in model for m in _expensive_models):
+        print(f"[Qualify] Model '{model}' is expensive — overriding to google/gemini-2.5-flash-lite for auto-qualify")
+        model = "google/gemini-2.5-flash-lite"
 
     profile_raw = profile_row.value if profile_row else "{}"
     try:
@@ -2563,13 +2584,23 @@ async def _run_qualify_all_inner():
         return
 
     async with SessionLocal() as db:
-        result = await db.execute(
-            select(Job).where(Job.qualify_result == None, Job.status == "new")
-        )
+        if new_job_ids:
+            # Only qualify the freshly scraped jobs
+            result = await db.execute(
+                select(Job).where(Job.id.in_(new_job_ids), Job.qualify_result == None)
+            )
+        else:
+            # Backfill mode: qualify up to QUALIFY_BATCH_CAP unscored jobs
+            result = await db.execute(
+                select(Job).where(Job.qualify_result == None, Job.status == "new")
+                .limit(QUALIFY_BATCH_CAP)
+            )
         jobs = result.scalars().all()
 
-    print(f"[Qualify] Auto-qualifying {len(jobs)} new jobsâ€¦")
-    qualified = disqualified = 0
+    total = len(jobs)
+    cap_note = f" (capped at {QUALIFY_BATCH_CAP})" if not new_job_ids and total == QUALIFY_BATCH_CAP else ""
+    print(f"[Qualify] Auto-qualifying {total} jobs{cap_note} using {model}")
+    qualified = disqualified = errors = 0
 
     for job in jobs:
         try:
@@ -2598,10 +2629,17 @@ async def _run_qualify_all_inner():
             else:
                 disqualified += 1
         except Exception as e:
+            err_str = str(e)
             print(f"[Qualify] Error on {job.id}: {e}")
+            errors += 1
+            # 402 = out of credits. Abort immediately — no point retrying 1000+ jobs.
+            if "402" in err_str or "Insufficient credits" in err_str:
+                print(f"[Qualify] ⚠️  HTTP 402 — AI credits exhausted. Aborting qualify run. "
+                      f"Top up credits at openrouter.ai or change ai_model_qualify in Settings.")
+                break
         await asyncio.sleep(0.3)
 
-    print(f"[Qualify] Done. Qualified={qualified} Disqualified={disqualified}")
+    print(f"[Qualify] Done. Qualified={qualified} Disqualified={disqualified} Errors={errors}")
 
 
 

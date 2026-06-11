@@ -41,6 +41,7 @@ export const ROLE_GROUPS: { group: string; items: string[] }[] = [
   { group: "Business Intelligence", items: ["Business Intelligence", "BI Developer", "BI Analyst", "Power BI", "Tableau Developer"] },
   { group: "DevOps / SRE",          items: ["DevOps", "SRE", "Site Reliability", "Platform Engineer", "Cloud Engineer"] },
   { group: "Security",              items: ["Security Engineer", "Security Analyst", "SOC Analyst", "Cybersecurity", "Infosec", "Application Security"] },
+  // "Java" = word-boundary match on title, catches ALL java titles incl. "Software Engineer (Java)"
   { group: "Java",                  items: ["Java", "Spring Boot", "Jakarta"] },
 ];
 

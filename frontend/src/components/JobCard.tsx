@@ -107,10 +107,13 @@ export function JobCard({ job, selected, onClick, onSkip, mode = "compact", inde
         </div>
         {mode === "cards" && (
           <div className="jc-tags">
-            <span className="badge-src">
-              <span className="sw" style={{ background: srcVar ? `var(${srcVar})` : "var(--tx-3)" }} />
-              {job.source}
-            </span>
+            {/* FantasticJobs is the default pipeline — only badge exceptions (LinkedIn, Indeed...) */}
+            {job.source !== "FantasticJobs" && (
+              <span className="badge-src">
+                <span className="sw" style={{ background: srcVar ? `var(${srcVar})` : "var(--tx-3)" }} />
+                {job.source}
+              </span>
+            )}
             {job.country === "USA" && job.visa_sponsorship === true && (
               <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 5, background: "rgba(22,163,74,0.12)", color: "#16a34a", fontWeight: 600 }}>Visa ✓</span>
             )}

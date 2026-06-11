@@ -80,6 +80,7 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
   const [cron, setCron]       = useState("0 * * * *");
   const [scraping, setScraping] = useState(false);
   const [jdFix, setJdFix] = useState<{ running: boolean; total: number; done: number; fixed: number; failed: number } | null>(null);
+  const [qualHealth, setQualHealth] = useState<{ admin_settings_found: boolean; api_key_set: boolean; profile_set: boolean; qualify_model: string | null; scored_jobs: number; pending_jobs: number; running: boolean } | null>(null);
 
   useEffect(() => {
     api.getSettings().then((s: any) => {
@@ -97,6 +98,7 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
       setChatId(s.telegram_chat_id || "");
       setCron(s.auto_scrape_cron || "0 * * * *");
     }).catch(() => {});
+    api.qualifyHealth().then(setQualHealth).catch(() => {});
   }, []);
 
   const saveSettings = async () => {
@@ -293,6 +295,30 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
             </button>
             {scraping && <span className="test-res" style={{ color: "var(--tx-3)" }}><span className="mini-spin" /> scraping sources…</span>}
           </div>
+
+          {/* Auto-qualify health */}
+          {qualHealth && (
+            <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 10, background: "var(--bg-elevated)", border: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", fontSize: 12.5 }}>
+              <span style={{ fontWeight: 700, color: "var(--tx)" }}>Auto-Qualify</span>
+              <span style={{ color: qualHealth.api_key_set ? "#16a34a" : "#dc2626", fontWeight: 600 }}>
+                {qualHealth.api_key_set ? "✓ API key" : "✗ API key missing"}
+              </span>
+              <span style={{ color: qualHealth.profile_set ? "#16a34a" : "#dc2626", fontWeight: 600 }}>
+                {qualHealth.profile_set ? "✓ Profile" : "✗ Profile missing"}
+              </span>
+              <span style={{ color: "var(--tx-2)" }}>Scored: <b>{qualHealth.scored_jobs}</b></span>
+              <span style={{ color: "var(--tx-2)" }}>Pending: <b>{qualHealth.pending_jobs}</b></span>
+              {qualHealth.running && <span style={{ color: "var(--violet)", fontWeight: 600 }}>running…</span>}
+              <button className="act" style={{ height: 26, fontSize: 11.5 }}
+                disabled={qualHealth.running || !qualHealth.api_key_set || !qualHealth.profile_set}
+                onClick={async () => {
+                  try { await api.qualifyAll(); toast("Qualify started in background", "success"); }
+                  catch (e: any) { toast(e.message, "error"); }
+                }}>
+                Run Qualify Now
+              </button>
+            </div>
+          )}
         </section>
 
         <div className="form-foot">

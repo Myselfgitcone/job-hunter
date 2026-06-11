@@ -1376,6 +1376,32 @@ async def _run_jd_fix():
     _jd_fix_state["running"] = False
     print(f"[JD-Fix] Done — fixed {_jd_fix_state['fixed']}, failed {_jd_fix_state['failed']} of {_jd_fix_state['total']}")
 
+@app.get("/api/qualify/health")
+async def qualify_health(user_id: str = Depends(get_current_user_id)):
+    """Admin diagnostic: why is auto-qualify (not) running?"""
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        admin_s = await _get_admin_settings(db)
+        profile_row = await db.get(Setting, "profile")
+        scored_r  = await db.execute(select(func.count()).select_from(Job).where(Job.qualify_result != None))
+        pending_r = await db.execute(select(func.count()).select_from(Job).where(
+            Job.qualify_result == None, Job.status == "new"))
+    profile_ok = False
+    try:
+        profile_ok = bool(json.loads(profile_row.value)) if profile_row else False
+    except Exception:
+        pass
+    return {
+        "admin_settings_found": admin_s is not None,
+        "api_key_set": bool(admin_s.ai_api_key) if admin_s else False,
+        "profile_set": profile_ok,
+        "qualify_model": (admin_s.ai_model_qualify or "(default)") if admin_s else None,
+        "scored_jobs": scored_r.scalar() or 0,
+        "pending_jobs": pending_r.scalar() or 0,
+        "running": _qualify_running,
+    }
+
+
 @app.post("/api/jobs/fix-descriptions")
 async def fix_broken_descriptions(background_tasks: BackgroundTasks,
                                   user_id: str = Depends(get_current_user_id)):
@@ -2532,7 +2558,8 @@ async def _run_qualify_all_inner():
         profile = {}
 
     if not api_key or not profile:
-        print("[Qualify] No API key or profile — skipping auto-qualify")
+        print(f"[Qualify] Skipping — admin_settings={'found' if admin_s else 'MISSING'} "
+              f"api_key={'set' if api_key else 'MISSING'} profile={'set' if profile else 'MISSING'}")
         return
 
     async with SessionLocal() as db:

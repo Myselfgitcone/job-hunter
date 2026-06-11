@@ -141,6 +141,9 @@ export const api = {
 
   clearAllJobs: () => req<{ deleted: number }>("/api/jobs/all", { method: "DELETE" }),
 
+  qualifyHealth: () =>
+    req<{ admin_settings_found: boolean; api_key_set: boolean; profile_set: boolean; qualify_model: string | null; scored_jobs: number; pending_jobs: number; running: boolean }>("/api/qualify/health"),
+
   fixDescriptions: () => req<{ message: string }>("/api/jobs/fix-descriptions", { method: "POST" }),
   fixDescriptionsStatus: () =>
     req<{ running: boolean; total: number; done: number; fixed: number; failed: number }>("/api/jobs/fix-descriptions/status"),

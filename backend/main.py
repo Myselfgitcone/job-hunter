@@ -793,8 +793,14 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
             s = UserSettings(user_id=user_id)
             db.add(s)
             await db.commit()
+        # Fall back to Setting(key="resume") if UserSettings.resume is empty
+        resume_val = s.resume or ""
+        if not resume_val:
+            resume_row = await db.get(Setting, "resume")
+            resume_val = resume_row.value if resume_row else ""
+
         data = {
-            "resume": s.resume or "",
+            "resume": resume_val,
             "job_roles": json.loads(s.job_roles or '["Data Engineer"]'),
             "countries": json.loads(s.countries or '["USA","Remote"]'),
             "visa_filter": bool(s.visa_filter),

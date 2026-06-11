@@ -26,7 +26,7 @@ type Filters = {
   type: string[];
   country: string[];
   source: string[];
-  years: string[];  // experience buckets: "0-2" | "2-5" | "5-10" | "10+"
+  years: string[];  // experience trays: "0-2","2-4","4-5","5-6","6-7","7-8","8-10","10-13","13-15","15+"
   score: "any" | "60" | "70" | "80" | "90";
   time: "any" | "24" | "48" | "72" | "168";
   hcAge: "any" | "fresh" | "recent" | "old";  // HiringCafe original post age filter
@@ -991,7 +991,7 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, activeRoleVie
   const timeOpts: [Filters["time"], string][] = [["any","Any"],["24","24h"],["48","48h"],["72","72h"],["168","7d"]];
   const groups: [keyof typeof draft, string, string[]][] = [
     ["level",    "Experience Level", ["Internship","Entry Level","Mid Level","Senior","Lead"]],
-    ["years",    "Years of Experience", ["0-2","2-5","5-10","10+"]],
+    ["years",    "Years of Experience", ["0-2","2-4","4-5","5-6","6-7","7-8","8-10","10-13","13-15","15+"]],
     ["type",     "Work Type",["Remote","Onsite","Hybrid"]],
     ...(isAdmin ? [["source", "Source", SOURCES && SOURCES.length ? SOURCES : ["Greenhouse","Lever","Ashby","Workday","HiringCafe"]] as [keyof typeof draft, string, string[]]] : []),
     ["country",  "Country",  COUNTRIES.length ? COUNTRIES : ["USA","Canada","United Kingdom","Germany","France","India","Remote"]],

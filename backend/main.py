@@ -33,7 +33,7 @@ from pdf_gen import generate_pdf
 from docx_gen import generate_docx
 from jd_docx_gen import generate_jd_docx
 from jd_fetcher import fetch_full_jd
-from experience import extract_experience_level
+from experience import extract_experience_level, resolve_experience_level, infer_experience_ai, TRAYS as EXP_TRAYS
 
 app = FastAPI(title="Job Hunter API")
 
@@ -170,9 +170,9 @@ async def _scrape_and_insert(fetch_fn, group_name, settings, cutoff_posted, now_
                 fp = f"{(job_data.get('title', '') or '').lower().strip()}|||{(job_data.get('company', '') or '').lower().strip()}"
                 if (url and url in existing_urls) or fp in existing_fps:
                     continue
-                # Fill experience bucket from JD text when the source didn't supply it
-                if not job_data.get("experience_level") and job_data.get("description"):
-                    job_data["experience_level"] = extract_experience_level(job_data["description"])
+                # Resolve experience tray: regex from JD > mapped FJ coarse value
+                job_data["experience_level"] = resolve_experience_level(
+                    job_data.get("experience_level") or "", job_data.get("description") or "")
                 db.add(Job(id=str(uuid.uuid4()), scraped_at=now_iso, **job_data))
                 if url:
                     existing_urls.add(url)
@@ -281,6 +281,7 @@ async def _run_scrape_internal() -> dict:
         print(f"[Scrape] Telegram notify failed: {te}")
 
     asyncio.create_task(_run_qualify_all())
+    asyncio.create_task(_run_exp_ai_sweep())
 
     return {"new_jobs": total_new, "deleted_old": deleted, "scraped_at": now_iso}
 
@@ -322,6 +323,61 @@ async def _sync_modified_wrapper():
         import traceback; traceback.print_exc()
 
 
+
+
+# ── AI experience inference sweep ─────────────────────────────────────────────
+# For jobs whose JD states no years requirement: ask the cheap parse model to
+# estimate from title + JD. Runs after scrapes and once at startup.
+_exp_sweep_running = False
+
+async def _run_exp_ai_sweep(limit: int = 400):
+    global _exp_sweep_running
+    if _exp_sweep_running:
+        return
+    _exp_sweep_running = True
+    try:
+        async with SessionLocal() as db:
+            admin_s = await _get_admin_settings(db)
+        api_key  = (admin_s.ai_api_key  or "") if admin_s else ""
+        provider = (admin_s.ai_provider or "openrouter") if admin_s else "openrouter"
+        model    = (admin_s.ai_model_parse or "google/gemini-2.5-flash-lite") if admin_s else "google/gemini-2.5-flash-lite"
+        if not api_key:
+            print("[ExpSweep] No API key — skipping AI experience inference")
+            return
+
+        async with SessionLocal() as db:
+            rows = await db.execute(
+                select(Job.id, Job.title, Job.description).where(
+                    or_(Job.experience_level == None, Job.experience_level == ""),
+                    Job.description != None, Job.description != "",
+                    Job.status != "closed",
+                ).limit(limit))
+            pending = rows.fetchall()
+        if not pending:
+            return
+        print(f"[ExpSweep] AI-inferring experience for {len(pending)} jobs...")
+
+        sem = asyncio.Semaphore(3)
+        done = {"n": 0, "ok": 0}
+
+        async def infer_one(jid: str, title: str, desc: str):
+            async with sem:
+                level = await infer_experience_ai(title or "", desc or "", api_key, provider, model)
+                if level:
+                    async with SessionLocal() as db:
+                        await db.execute(update(Job).where(Job.id == jid).values(experience_level=level))
+                        await db.commit()
+                    done["ok"] += 1
+                done["n"] += 1
+                if done["n"] % 50 == 0:
+                    print(f"[ExpSweep] {done['n']}/{len(pending)} ({done['ok']} inferred)")
+
+        await asyncio.gather(*(infer_one(jid, t, d) for jid, t, d in pending))
+        print(f"[ExpSweep] Done — {done['ok']}/{len(pending)} jobs inferred")
+    except Exception as e:
+        print(f"[ExpSweep] Failed: {e}")
+    finally:
+        _exp_sweep_running = False
 
 
 @app.on_event("startup")
@@ -368,25 +424,26 @@ async def startup():
                     await telegram_bot.init_bot(row[0], row[1])
         except Exception as e:
             print(f"[Startup] Telegram init skipped: {e}")
-        # Backfill experience_level from JD text for jobs missing it (idempotent)
+        # Backfill experience trays: recompute any job not already in a fine
+        # tray (empty or old coarse FJ value), then AI-infer the leftovers
         try:
             async with SessionLocal() as db:
-                rows = await db.execute(select(Job.id, Job.description).where(
-                    or_(Job.experience_level == None, Job.experience_level == ""),
-                    Job.description != None, Job.description != ""))
-                pending = rows.fetchall()
+                rows = await db.execute(select(Job.id, Job.experience_level, Job.description))
+                pending = [(jid, cur, desc) for jid, cur, desc in rows.fetchall()
+                           if (cur or "") not in EXP_TRAYS]
             filled = 0
             if pending:
                 async with SessionLocal() as db:
-                    for jid, desc in pending:
-                        level = extract_experience_level(desc or "")
-                        if level:
+                    for jid, cur, desc in pending:
+                        level = resolve_experience_level(cur or "", desc or "")
+                        if level and level != (cur or ""):
                             await db.execute(update(Job).where(Job.id == jid).values(experience_level=level))
                             filled += 1
                             if filled % 200 == 0:
                                 await db.commit()
                     await db.commit()
-                print(f"[Startup] Experience backfill: {filled}/{len(pending)} jobs filled")
+                print(f"[Startup] Experience backfill: {filled}/{len(pending)} jobs re-bucketed")
+            asyncio.create_task(_run_exp_ai_sweep())
         except Exception as e:
             print(f"[Startup] Experience backfill skipped: {e}")
         # try:

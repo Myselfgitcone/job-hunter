@@ -27,8 +27,9 @@ BASE_MODIFIED   = "https://data.fantastic.jobs/v1/modified-ats"
 BASE_EXPIRED_ATS = "https://data.fantastic.jobs/v1/expired-ats"
 BASE_EXPIRED_JB  = "https://data.fantastic.jobs/v1/expired-jb"
 
-# Feeds to scrape for new jobs (ATS + job boards)
-ACTIVE_FEEDS = [BASE_ATS, BASE_JB]
+# ATS-only: direct career pages (Greenhouse, Lever, Workday, etc.)
+# Job board feed (BASE_JB) excluded — it sources from LinkedIn/Indeed (not direct ATS)
+ACTIVE_FEEDS = [BASE_ATS]
 
 LOCATIONS = ["United States", "India"]
 

@@ -27,9 +27,12 @@ BASE_MODIFIED   = "https://data.fantastic.jobs/v1/modified-ats"
 BASE_EXPIRED_ATS = "https://data.fantastic.jobs/v1/expired-ats"
 BASE_EXPIRED_JB  = "https://data.fantastic.jobs/v1/expired-jb"
 
-# ATS-only: direct career pages (Greenhouse, Lever, Workday, etc.)
-# Job board feed (BASE_JB) excluded — it sources from LinkedIn/Indeed (not direct ATS)
-ACTIVE_FEEDS = [BASE_ATS]
+# ATS feed: direct career pages (Greenhouse, Lever, Workday, etc.) — both USA + India
+# JB feed: job board aggregator (LinkedIn, Indeed, etc.)
+#   USA: ATS-only — Western ATS platforms cover USA well; JB = LinkedIn reposts
+#   India: ATS + JB — many Indian companies post on LinkedIn only, ATS coverage is thin
+ACTIVE_FEEDS = [BASE_ATS, BASE_JB]
+LOCATIONS_FOR_JB = {"India"}  # only run JB feed for these locations
 
 LOCATIONS = ["United States", "India"]
 
@@ -253,9 +256,14 @@ async def fetch(settings: dict) -> list[dict]:
         for feed_url in ACTIVE_FEEDS:
             feed_label  = "ATS" if feed_url == BASE_ATS else "JobBoard"
             org_details = feed_url == BASE_ATS  # only ATS supports include_basic_organization_details
-            print(f"[FantasticJobs/{feed_label}] Fetching USA + India with title filter...")
+            locations_label = "+".join(LOCATIONS) if feed_url == BASE_ATS else "+".join(LOCATIONS_FOR_JB)
+            print(f"[FantasticJobs/{feed_label}] Fetching {locations_label} with title filter...")
 
             for location in LOCATIONS:
+                # JB feed only runs for India — USA ATS coverage is strong, JB = LinkedIn reposts
+                if feed_url == BASE_JB and location not in LOCATIONS_FOR_JB:
+                    continue
+
                 offset    = 0
                 total_raw = 0
                 kept      = 0

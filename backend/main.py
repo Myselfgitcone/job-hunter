@@ -793,6 +793,7 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
             s = UserSettings(user_id=user_id)
             db.add(s)
             await db.commit()
+            await db.refresh(s)  # prevent expired-object lazy load in async context
         # Fall back to Setting(key="resume") if UserSettings.resume is empty
         resume_val = s.resume or ""
         if not resume_val:

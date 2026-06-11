@@ -116,9 +116,10 @@ async def _fetch_page(client: httpx.AsyncClient, location: str, offset: int = 0)
         "time_frame": "24h",
         "limit": 50,
         "offset": offset,
-        "title_advanced": TITLE_FILTER,        # boolean role filter
+        "title_advanced": TITLE_FILTER,
         "location_advanced": f"'{location}'" if " " in location else location,
-                "include_basic_organization_details": "true",  # org logo etc.
+        "description_format": "html",
+        "include_basic_organization_details": "true",
     }
     try:
         r = await client.get(BASE_ATS, params=params, timeout=30)
@@ -157,79 +158,90 @@ async def fetch(settings: dict) -> list[dict]:
         print(f"[FantasticJobs] {e} — skipping")
         return []
 
+    _last_fetch_ts = now  # record BEFORE fetch so concurrent calls skip
+
     jobs: list[dict] = []
     seen: set[str]   = set()
 
     async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
         print(f"[FantasticJobs] Fetching (USA + India, title filter, desc+logo included)...")
 
+        PAGE_SIZE = 50
+        MAX_PAGES = 30  # safety cap: 30 × 50 = 1,500 jobs per location max
+
         for location in LOCATIONS:
-            hits = await _fetch_page(client, location)
-            if not hits:
-                continue
+            offset      = 0
+            total_raw   = 0
+            kept        = 0
 
-            kept = 0
-            for job in hits:
-                url = job.get("url") or ""
-                if not url or url in seen:
-                    continue
+            for page in range(MAX_PAGES):
+                hits = await _fetch_page(client, location, offset=offset)
+                if not hits:
+                    break
 
-                title = (job.get("title") or "").strip()
-                if not title or not is_relevant_title(title):
-                    continue
+                total_raw += len(hits)
 
-                company = (job.get("organization") or "").strip()
-                if not company:
-                    continue
-
-                countries   = job.get("countries_derived") or []
-                arrangement = job.get("ai_work_arrangement") or ""
-                country     = _map_country(countries, arrangement)
-                if country not in ("USA", "India", "Remote"):
-                    locs    = job.get("locations_derived") or []
-                    loc_str = locs[0] if locs else ""
-                    country = detect_country(loc_str, default="")
-                    if country not in ("USA", "India", "Remote"):
+                for job in hits:
+                    url = job.get("url") or ""
+                    if not url or url in seen:
                         continue
 
-                posted_at = ""
-                raw_date  = job.get("date_posted") or ""
-                if raw_date:
-                    try:
-                        dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
-                        if dt.tzinfo is None:
-                            dt = dt.replace(tzinfo=timezone.utc)
-                        if 0 <= (now - dt).days <= 30:
-                            posted_at = dt.isoformat()
-                    except Exception:
-                        pass
+                    title = (job.get("title") or "").strip()
+                    if not title or not is_relevant_title(title):
+                        continue
 
-                locs_derived = job.get("locations_derived") or []
-                location_str = locs_derived[0] if locs_derived else ""
+                    company = (job.get("organization") or "").strip()
+                    if not company:
+                        continue
 
-                # Logo from organization details
-                logo_url = (job.get("org_logo_permalink") or "")
+                    countries   = job.get("countries_derived") or []
+                    arrangement = job.get("ai_work_arrangement") or ""
+                    country     = _map_country(countries, arrangement)
+                    if country not in ("USA", "India", "Remote"):
+                        locs    = job.get("locations_derived") or []
+                        loc_str = locs[0] if locs else ""
+                        country = detect_country(loc_str, default="")
+                        if country not in ("USA", "India", "Remote"):
+                            continue
 
-                seen.add(url)
-                kept += 1
+                    posted_at = ""
+                    raw_date  = job.get("date_posted") or ""
+                    if raw_date:
+                        try:
+                            dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+                            if dt.tzinfo is None:
+                                dt = dt.replace(tzinfo=timezone.utc)
+                            if 0 <= (now - dt).days <= 30:
+                                posted_at = dt.isoformat()
+                        except Exception:
+                            pass
 
-                description = _build_description(job)
+                    locs_derived = job.get("locations_derived") or []
+                    location_str = locs_derived[0] if locs_derived else ""
+                    logo_url     = (job.get("org_logo_permalink") or "")
 
-                jobs.append(JobData(
-                    title=title,
-                    company=company,
-                    url=url,
-                    source="FantasticJobs",
-                    description=description,
-                    location=location_str,
-                    country=country,
-                    salary=_fmt_salary(job),
-                    remote="remote" in arrangement.lower(),
-                    posted_at=posted_at,
-                ).to_dict())
+                    seen.add(url)
+                    kept += 1
 
-            print(f"[FantasticJobs] {location}: {len(hits)} raw -> {kept} kept")
-            await asyncio.sleep(0.3)
+                    jobs.append(JobData(
+                        title=title,
+                        company=company,
+                        url=url,
+                        source="FantasticJobs",
+                        description=_build_description(job),
+                        location=location_str,
+                        country=country,
+                        salary=_fmt_salary(job),
+                        remote="remote" in arrangement.lower(),
+                        posted_at=posted_at,
+                    ).to_dict())
+
+                if len(hits) < PAGE_SIZE:
+                    break  # last page — no more results
+                offset += PAGE_SIZE
+                await asyncio.sleep(0.4)  # polite pause between pages
+
+            print(f"[FantasticJobs] {location}: {total_raw} raw ({page+1} pages) → {kept} kept")
 
     desc_ok  = sum(1 for j in jobs if j.get("description"))
     desc_nil = len(jobs) - desc_ok

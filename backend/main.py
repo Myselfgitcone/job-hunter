@@ -337,11 +337,11 @@ async def startup():
                     await telegram_bot.init_bot(row[0], row[1])
         except Exception as e:
             print(f"[Startup] Telegram init skipped: {e}")
-        try:
-            from scrapers.company_seeder import seed_companies_if_empty
-            await seed_companies_if_empty()
-        except Exception as e:
-            print(f"[Startup] Company seeder failed: {e}")
+        # try:
+        #     from scrapers.company_seeder import seed_companies_if_empty
+        #     await seed_companies_if_empty()
+        # except Exception as e:
+        #     print(f"[Startup] Company seeder failed: {e}")
 
     asyncio.create_task(_background_init())
     # Start auto-scraper scheduler (every 6 hours by default)

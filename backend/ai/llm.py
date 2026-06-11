@@ -57,22 +57,14 @@ async def chat(
 
     models_to_try = [model]
     if provider == "openrouter":
-        if "lite" in model or "flash" in model:
-            fallback_models = [
-                "google/gemini-2.5-flash",
-                "google/gemini-2.5-flash-lite",
-                "anthropic/claude-haiku-4.5",
-                "openai/gpt-5"
-            ]
-        else:
-            fallback_models = [
-                "anthropic/claude-opus-4-8",
-                "anthropic/claude-haiku-4.5",
-                "google/gemini-2.5-flash",
-                "google/gemini-2.5-flash-lite",
-                "openai/gpt-5"
-            ]
-        
+        # Fallbacks are CHEAP models only — never silently escalate a failed
+        # call to gpt-5/opus pricing. Premium models run only when explicitly
+        # selected in Settings.
+        fallback_models = [
+            "google/gemini-2.5-flash",
+            "google/gemini-2.5-flash-lite",
+            "anthropic/claude-haiku-4.5",
+        ]
         for fm in fallback_models:
             if fm not in models_to_try:
                 models_to_try.append(fm)

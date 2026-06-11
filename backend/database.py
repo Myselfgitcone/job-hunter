@@ -348,3 +348,50 @@ async def mark_expired_jobs_closed(fj_ids: list[int]) -> int:
         result = await db.execute(stmt)
         await db.commit()
         return result.rowcount
+
+
+async def update_modified_jobs(job_updates: list[dict]) -> int:
+    """
+    Update existing DB jobs with fresh data from the modified-ats feed.
+    Matches by fj_id (preferred) then URL. Only overwrites non-None values.
+    Never changes: title, company, url, source, location, country, posted_at, status.
+    """
+    if not job_updates:
+        return 0
+
+    from sqlalchemy import select
+
+    UPDATEABLE = [
+        "description", "salary", "visa_sponsorship", "experience_level",
+        "employment_type", "benefits", "job_expiry", "logo_url",
+        "company_size", "company_industry", "company_hq", "company_funding",
+        "ai_keywords",
+    ]
+
+    updated = 0
+    async with SessionLocal() as db:
+        for jdata in job_updates:
+            fj_id = jdata.get("fj_id")
+            url   = jdata.get("url")
+
+            job = None
+            if fj_id is not None:
+                r = await db.execute(select(Job).where(Job.fj_id == fj_id))
+                job = r.scalar_one_or_none()
+            if not job and url:
+                r = await db.execute(select(Job).where(Job.url == url))
+                job = r.scalar_one_or_none()
+
+            if not job:
+                continue  # job not in our DB — skip (don't insert from modified feed)
+
+            for field in UPDATEABLE:
+                val = jdata.get(field)
+                if val is not None:  # only overwrite when FJ provided a value
+                    setattr(job, field, val)
+            updated += 1
+
+        if updated:
+            await db.commit()
+
+    return updated

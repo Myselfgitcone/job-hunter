@@ -291,7 +291,7 @@ async def _auto_scrape():
         import traceback; traceback.print_exc()
 
 async def _sync_expired_wrapper():
-    """Background task to fetch expired jobs from Fantastic.jobs and mark them closed."""
+    """Fetch expired jobs (ATS + job-board) from Fantastic.jobs and mark them closed."""
     print("[Scheduler] Expired sync starting...")
     try:
         from scrapers.fantasticjobs import sync_expired_jobs
@@ -299,6 +299,20 @@ async def _sync_expired_wrapper():
         print(f"[Scheduler] Expired sync complete: {count} jobs closed.")
     except Exception as e:
         print(f"[Scheduler] Expired sync failed: {e}")
+        import traceback; traceback.print_exc()
+
+
+async def _sync_modified_wrapper():
+    """Fetch ATS jobs modified in last 24h and update their DB records."""
+    print("[Scheduler] Modified jobs sync starting...")
+    try:
+        from scrapers.fantasticjobs import fetch_modified
+        from database import update_modified_jobs
+        updates = await fetch_modified({})
+        count = await update_modified_jobs(updates)
+        print(f"[Scheduler] Modified sync complete: {count} jobs updated.")
+    except Exception as e:
+        print(f"[Scheduler] Modified sync failed: {e}")
         import traceback; traceback.print_exc()
 
 
@@ -361,11 +375,13 @@ async def startup():
         row = result.scalar_one_or_none()
         cron_expr = row.value if row and row.value else "0 * * * *"
 
-    _scheduler.add_job(_auto_scrape, CronTrigger.from_crontab(cron_expr), id="auto_scrape", replace_existing=True)
-    _scheduler.add_job(_sync_expired_wrapper, CronTrigger.from_crontab("0 0 * * *"), id="sync_expired", replace_existing=True)
+    _scheduler.add_job(_auto_scrape,         CronTrigger.from_crontab(cron_expr),    id="auto_scrape",    replace_existing=True)
+    _scheduler.add_job(_sync_expired_wrapper, CronTrigger.from_crontab("0 0 * * *"),   id="sync_expired",   replace_existing=True)
+    _scheduler.add_job(_sync_modified_wrapper,CronTrigger.from_crontab("0 */6 * * *"), id="sync_modified",  replace_existing=True)
     _scheduler.start()
-    print(f"[Scheduler] Auto-scrape scheduled: {cron_expr}")
-    print("[Scheduler] Expired jobs sync scheduled: 0 0 * * *")
+    print(f"[Scheduler] Auto-scrape scheduled:        {cron_expr}")
+    print("[Scheduler] Expired jobs sync scheduled:   0 0 * * * (daily midnight)")
+    print("[Scheduler] Modified jobs sync scheduled:  0 */6 * * * (every 6h)")
 
 
 

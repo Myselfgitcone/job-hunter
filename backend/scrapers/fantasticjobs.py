@@ -52,22 +52,32 @@ def _get_headers() -> dict:
 
 
 def _fmt_salary(job: dict) -> str:
-    mn   = job.get("ai_salary_min_value")
-    mx   = job.get("ai_salary_max_value")
+    try:
+        mn = float(job.get("ai_salary_min_value")) if job.get("ai_salary_min_value") else None
+        mx = float(job.get("ai_salary_max_value")) if job.get("ai_salary_max_value") else None
+    except ValueError:
+        mn, mx = None, None
+
     curr = (job.get("ai_salary_currency") or "USD").upper()
     unit = (job.get("ai_salary_unit_text") or "").upper()
     sym  = "$" if curr == "USD" else f"{curr} "
+    
     if unit == "HOUR":
         if mn and mx: return f"{sym}{mn:.0f}–{mx:.0f}/hr"
         if mn:        return f"{sym}{mn:.0f}+/hr"
     else:
         if mn and mx: return f"{sym}{int(mn/1000)}k–{int(mx/1000)}k"
         if mn:        return f"{sym}{int(mn/1000)}k+"
+        
     sal = job.get("salary")
     if sal:
         v = (sal.get("value") or {})
-        lo = v.get("minValue"); hi = v.get("maxValue")
-        if lo and hi: return f"${int(lo/1000)}k–${int(hi/1000)}k"
+        try:
+            lo = float(v.get("minValue")) if v.get("minValue") else None
+            hi = float(v.get("maxValue")) if v.get("maxValue") else None
+            if lo and hi: return f"${int(lo/1000)}k–${int(hi/1000)}k"
+        except ValueError:
+            pass
     return ""
 
 

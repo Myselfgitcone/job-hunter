@@ -952,7 +952,7 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
             "profile_github": s.profile_github or "",
             "profile_website": s.profile_website or "",
             "profile_summary": s.profile_summary or "",
-            "telegram_bot_token": "â€¢â€¢â€¢â€¢" if s.telegram_bot_token else "",
+            "telegram_bot_token": "••••" if s.telegram_bot_token else "",
             "telegram_chat_id": s.telegram_chat_id or "",
             "telegram_configured": bool(s.telegram_bot_token and s.telegram_chat_id),
             # Legacy fields for backward compat
@@ -980,7 +980,13 @@ async def update_settings(body: dict = Body(...), user_id: str = Depends(get_cur
                        "profile_github", "profile_website", "profile_summary",
                        "telegram_chat_id", "ai_api_key", "telegram_bot_token"]:
             if field in body:
-                setattr(s, field, body[field])
+                val = body[field]
+                # Secrets are returned masked by GET /api/settings; the UI echoes
+                # them back on save. Never overwrite a stored secret with the mask.
+                if field in ("telegram_bot_token", "ai_api_key") and isinstance(val, str) \
+                        and ("•" in val or "â€¢" in val):
+                    continue
+                setattr(s, field, val)
 
         if "job_roles" in body:
             s.job_roles = json.dumps(body["job_roles"] if isinstance(body["job_roles"], list) else [body["job_roles"]])
@@ -991,6 +997,15 @@ async def update_settings(body: dict = Body(...), user_id: str = Depends(get_cur
         if "level_filter" in body:
             s.level_filter = bool(body["level_filter"])
         await db.commit()
+        saved_token   = s.telegram_bot_token or ""
+        saved_chat_id = s.telegram_chat_id or ""
+
+    # Re-init the Telegram bot immediately when a real token is on file —
+    # otherwise a corrected token wouldn't work until the next restart
+    new_token = body.get("telegram_bot_token", "")
+    if new_token and "•" not in new_token and saved_token and saved_chat_id:
+        asyncio.create_task(telegram_bot.init_bot(saved_token, saved_chat_id))
+
     return {"ok": True}
 
 

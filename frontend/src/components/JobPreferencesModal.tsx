@@ -33,6 +33,18 @@ const ALL_ROLES = [
   "Financial Analyst", "Accountant", "Finance Manager", "Human Resources Manager", "HR Generalist", "Recruiter", "Talent Acquisition Specialist", "Operations Manager"
 ];
 
+// Roles the scraper actually targets — mirrors TITLE_FILTER in
+// backend/scrapers/fantasticjobs.py. Only these exist in the DB, so the
+// default suggestions show exactly what can be matched.
+const SCRAPED_ROLES = [
+  "Data Engineer", "ETL",
+  "Data Analyst", "Data Analytics",
+  "DevOps", "SRE", "Site Reliability", "Platform Engineer",
+  "Security Engineer", "Security Analyst", "SOC Analyst", "Cybersecurity", "Infosec", "Application Security",
+  "Business Intelligence", "BI Developer", "BI Analyst", "Power BI",
+  "Java Developer", "Java Engineer",
+];
+
 function TagInput({ tags, setTags, placeholder, suggestions, externalSuggestions = [] }: {
   tags: string[]; setTags: (t: string[]) => void; placeholder?: string; suggestions?: string[]; externalSuggestions?: string[];
 }) {
@@ -41,7 +53,7 @@ function TagInput({ tags, setTags, placeholder, suggestions, externalSuggestions
   
   const displaySuggestions = React.useMemo(() => {
     if (!val.trim()) {
-      return ["Data Engineer", "Software Engineer", "Product Manager", "Backend Engineer", "Full Stack Engineer"].filter(s => !tags.includes(s));
+      return SCRAPED_ROLES.filter(s => !tags.includes(s));
     }
     const lower = val.toLowerCase();
     
@@ -195,7 +207,7 @@ export default function JobPreferencesModal({
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <label style={{ fontSize: 13.5, fontWeight: 600, color: "var(--tx)", display: "flex", alignItems: "center", gap: 6 }}>
                 Target Roles
-                <span style={{ background: "rgba(124,58,237,0.1)", color: "var(--violet)", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{roles.length} / 5</span>
+                <span style={{ background: "rgba(124,58,237,0.1)", color: "var(--violet)", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{roles.length} selected</span>
               </label>
               <TagInput
                 tags={roles}

@@ -797,14 +797,18 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
         )}
         {/* Country quick-switch — left of Job Preferences */}
         {countries && countryFilter && setCountryFilter && (
-          <div className="segchips" style={{ marginRight: 14 }}>
-            <button className={countryFilter.length === 0 ? "on" : ""} onClick={() => setCountryFilter([])}>All</button>
-            {countries.slice(0, 4).map(c => (
-              <button key={c} className={countryFilter.length === 1 && countryFilter[0] === c ? "on" : ""}
-                onClick={() => setCountryFilter(countryFilter.length === 1 && countryFilter[0] === c ? [] : [c])}>
-                {c}
-              </button>
-            ))}
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--bg-surface)", border: "1px solid var(--line)", borderRadius: 10, padding: "4px 10px", marginRight: 14, boxShadow: "var(--sh-sm)" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--violet)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/>
+            </svg>
+            <select
+              value={countryFilter.length === 1 ? countryFilter[0] : ""}
+              onChange={e => setCountryFilter(e.target.value ? [e.target.value] : [])}
+              style={{ background: "none", border: "none", color: "var(--tx)", fontWeight: 600, fontSize: 13, cursor: "pointer", outline: "none", fontFamily: "inherit" }}
+            >
+              <option value="">All Countries</option>
+              {countries.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
         )}
         <div style={{ position: "relative" }}>

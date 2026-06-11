@@ -2321,26 +2321,26 @@ async def qualify_all_jobs(background_tasks: BackgroundTasks, user_id: str = Dep
 
 
 async def _run_qualify_all():
-    “””Standalone qualify-all — usable from scheduler and endpoint.”””
+    """Standalone qualify-all — usable from scheduler and endpoint."""
     from ai.qualify import qualify_job
 
     # Get admin's API key + model from UserSettings (not legacy Setting table)
     async with SessionLocal() as db:
         admin_s = await _get_admin_settings(db)
-        profile_row = await db.get(Setting, “profile”)
+        profile_row = await db.get(Setting, "profile")
 
-    api_key  = (admin_s.ai_api_key  or “”) if admin_s else “”
-    provider = (admin_s.ai_provider or “openrouter”) if admin_s else “openrouter”
-    model    = (admin_s.ai_model_qualify or “google/gemini-2.5-flash-lite”) if admin_s else “google/gemini-2.5-flash-lite”
+    api_key  = (admin_s.ai_api_key  or "") if admin_s else ""
+    provider = (admin_s.ai_provider or "openrouter") if admin_s else "openrouter"
+    model    = (admin_s.ai_model_qualify or "google/gemini-2.5-flash-lite") if admin_s else "google/gemini-2.5-flash-lite"
 
-    profile_raw = profile_row.value if profile_row else “{}”
+    profile_raw = profile_row.value if profile_row else "{}"
     try:
         profile = json.loads(profile_raw)
     except Exception:
         profile = {}
 
     if not api_key or not profile:
-        print(“[Qualify] No API key or profile — skipping auto-qualify”)
+        print("[Qualify] No API key or profile — skipping auto-qualify")
         return
 
     async with SessionLocal() as db:

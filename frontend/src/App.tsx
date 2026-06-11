@@ -44,7 +44,6 @@ type Filters = {
   years: string[];  // experience trays: "0-2","2-4","4-5","5-6","6-7","7-8","8-10","10-13","13-15","15+"
   score: "any" | "60" | "70" | "80" | "90";
   time: "any" | "24" | "48" | "72" | "168";
-  hcAge: "any" | "fresh" | "recent" | "old";  // HiringCafe original post age filter
 };
 
 function Ic({ d, size = 16, color, style }: { d: string; size?: number; color?: string; style?: React.CSSProperties }) {
@@ -224,7 +223,7 @@ export default function App() {
     setJobs([]); setAllJobs([]);
   };
 
-  const DEFAULT_FILTERS: Filters = { q: "", category: [], level: [], type: [], country: [], source: [], years: [], score: "any", time: "any", hcAge: "any" };
+  const DEFAULT_FILTERS: Filters = { q: "", category: [], level: [], type: [], country: [], source: [], years: [], score: "any", time: "any" };
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [myRolesOnly, setMyRolesOnly] = useState(false);
   const [activeRoleView, setActiveRoleView] = useState<string>("");
@@ -360,16 +359,6 @@ export default function App() {
       if (filters.time !== "any") {
         const t = parseMs(j.posted_at) ?? parseMs(j.scraped_at);
         if (t !== null && now - t > parseInt(filters.time) * 3600000 + 6 * 3600000) return false;
-      }
-      // hcAge: filter HiringCafe jobs by original estimated post age
-      if (filters.hcAge !== "any" && j.source === "HiringCafe") {
-        const orig = parseMs(j.hc_original_date);
-        if (orig !== null) {
-          const ageDays = (now - orig) / 86400000;
-          if (filters.hcAge === "fresh"  && ageDays > 14)  return false;
-          if (filters.hcAge === "recent" && ageDays > 90)  return false;
-          if (filters.hcAge === "old"    && ageDays <= 90) return false;
-        }
       }
       // Visa filter — only relevant for USA jobs (India roles don't require US visa sponsorship)
       if (visaFilter && j.country === "USA" && j.visa_sponsorship === false) return false;
@@ -780,8 +769,8 @@ function deptTerms(dept: string): string[] {
   return [phrase, ...words];
 }
 
-function countPanelFilters(f: { category: string[]; level: string[]; type: string[]; country: string[]; source: string[]; years?: string[]; score: string; hcAge?: string }) {
-  return f.category.length + f.level.length + f.type.length + f.country.length + f.source.length + (f.years?.length || 0) + (f.score !== "any" ? 1 : 0) + (f.hcAge && f.hcAge !== "any" ? 1 : 0);
+function countPanelFilters(f: { category: string[]; level: string[]; type: string[]; country: string[]; source: string[]; years?: string[]; score: string }) {
+  return f.category.length + f.level.length + f.type.length + f.country.length + f.source.length + (f.years?.length || 0) + (f.score !== "any" ? 1 : 0);
 }
 
 // ── Topbar (exact match to shell.jsx TopBar) ────────────────────────────────────
@@ -1160,13 +1149,6 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, activeRoleVie
         ))}
       </div>
 
-      <div className="fb-divider" />
-      <span className="fb-time-label">HC Job Age</span>
-      <div className="segchips">
-        {([ ["any","Any"], ["fresh","Fresh ≤14d"], ["recent","Recent ≤90d"], ["old","Old 90d+"] ] as [Filters["hcAge"], string][]).map(([v, l]) => (
-          <button key={v} className={filters.hcAge === v ? "on" : ""} onClick={() => set("hcAge", v)}>{l}</button>
-        ))}
-      </div>
     </div>
   );
 }

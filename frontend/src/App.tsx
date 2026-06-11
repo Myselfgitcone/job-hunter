@@ -2,7 +2,22 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import type { Job, JobStatus, QualifyResult } from "./types";
 import { api } from "./api";
 
-import JobPreferencesModal from './components/JobPreferencesModal';
+import JobPreferencesModal, { ROLE_GROUPS } from './components/JobPreferencesModal';
+
+// Collapse a flat role list for display: when an entire family is selected,
+// show just the family name; partially-selected families show their children.
+function collapseRoles(roles: string[]): string[] {
+  const out: string[] = [];
+  const consumed = new Set<string>();
+  for (const g of ROLE_GROUPS) {
+    if (g.items.length && g.items.every(i => roles.includes(i))) {
+      out.push(g.group);
+      g.items.forEach(i => consumed.add(i));
+    }
+  }
+  for (const r of roles) if (!consumed.has(r)) out.push(r);
+  return out;
+}
 import { isLevelMatch } from "./utils/levelCheck";
 import { JobCard } from "./components/JobCard";
 import { JobList } from "./components/JobList";
@@ -830,7 +845,7 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
 
             <div style={{ display: "flex", alignItems: "center", gap: 6, paddingRight: 6 }}>
               {userRoles && userRoles.length > 0 ? (
-                userRoles.map(role => (
+                collapseRoles(userRoles).map(role => (
                   <span key={role} style={{ background: "var(--bg-elevated)", border: "1px solid var(--line)", color: "var(--tx-2)", fontSize: 11.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6 }}>
                     {role}
                   </span>

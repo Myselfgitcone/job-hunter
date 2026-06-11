@@ -37,8 +37,13 @@ LOCATIONS_FOR_JB = {"India"}  # only run JB feed for these locations
 LOCATIONS = ["United States", "India"]
 
 # Pagination constants (module-level so fetch_modified can use them)
-PAGE_SIZE = 50
-MAX_PAGES = 200  # safety cap only; natural break = last page < PAGE_SIZE
+PAGE_SIZE = 100   # FJ recommends 100-1000; bigger pages = fewer request credits
+MAX_PAGES = 200   # safety cap only; natural break = last page < PAGE_SIZE
+
+# Credit guard: count endpoints are FREE (request credits only). We pre-check
+# expected volume per feed+location; anything above this cap means a filter
+# regression or window bug — skip rather than bill thousands of job credits.
+MAX_EXPECTED_PER_FETCH = 3000
 
 # Rate guards
 _last_fetch_ts: datetime | None = None
@@ -251,6 +256,35 @@ async def _fetch_page(
         return []
 
 
+async def _fetch_expected_count(client: httpx.AsyncClient, location: str,
+                                base_url: str, time_frame: str) -> int | None:
+    """Pre-flight volume check via the free *-count endpoint (request credits
+    only, zero job credits). Returns None if the endpoint is unavailable."""
+    params = {
+        "time_frame": time_frame,
+        "title_advanced": TITLE_FILTER,
+        "location_advanced": f"'{location}'" if " " in location else location,
+    }
+    try:
+        r = await client.get(base_url + "-count", params=params, timeout=30)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        if isinstance(data, (int, float)):
+            return int(data)
+        if isinstance(data, dict):
+            for k in ("count", "total", "jobs", "result"):
+                if k in data:
+                    return int(data[k])
+        if isinstance(data, list) and data and isinstance(data[0], dict):
+            vals = list(data[0].values())
+            if vals:
+                return int(vals[0])
+    except Exception as e:
+        print(f"[FantasticJobs] count check failed for {location}: {e}")
+    return None
+
+
 async def fetch(settings: dict) -> list[dict]:
     """Fetch new jobs from ATS + job-board feeds. Called every hour."""
     global _last_fetch_ts
@@ -316,6 +350,18 @@ async def fetch(settings: dict) -> list[dict]:
                 # JB feed only runs for India — USA ATS coverage is strong, JB = LinkedIn reposts
                 if feed_url == BASE_JB and location not in LOCATIONS_FOR_JB:
                     continue
+
+                # Credit guard: free pre-flight count before paying per job
+                expected = await _fetch_expected_count(client, location, feed_url, time_frame)
+                if expected is not None:
+                    print(f"[FantasticJobs/{feed_label}] {location}: ~{expected} jobs expected ({time_frame})")
+                    if expected == 0:
+                        continue  # nothing new — skip pagination entirely
+                    if expected > MAX_EXPECTED_PER_FETCH:
+                        print(f"[FantasticJobs/{feed_label}] {location}: {expected} > safety cap "
+                              f"{MAX_EXPECTED_PER_FETCH} — SKIPPING to protect job credits "
+                              f"(check TITLE_FILTER / time_frame for regressions)")
+                        continue
 
                 offset    = 0
                 total_raw = 0

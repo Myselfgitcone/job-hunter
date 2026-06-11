@@ -185,7 +185,7 @@ async def fetch(settings: dict) -> list[dict]:
         print(f"[FantasticJobs] Fetching (USA + India, title filter, desc+logo included)...")
 
         PAGE_SIZE = 50
-        MAX_PAGES = 30  # safety cap: 30 × 50 = 1,500 jobs per location max
+        MAX_PAGES = 200  # safety against infinite loop only; natural break = last page < PAGE_SIZE
 
         for location in LOCATIONS:
             offset      = 0

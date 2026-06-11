@@ -450,6 +450,21 @@ async def startup():
             asyncio.create_task(_run_exp_ai_sweep())
         except Exception as e:
             print(f"[Startup] Experience backfill skipped: {e}")
+        # Purge USA job-board reposts (LinkedIn/Indeed/Dice...) — USA is
+        # direct-ATS only; these leaked in via FJ's ATS feed. Keeps applied/interview.
+        try:
+            from sqlalchemy import delete as sa_delete
+            board_domains = ("linkedin.com", "indeed.com", "dice.com", "glassdoor.com",
+                             "ziprecruiter", "monster.com", "lensa.com")
+            async with SessionLocal() as db:
+                cond = or_(*[Job.url.ilike(f"%{d}%") for d in board_domains])
+                res = await db.execute(sa_delete(Job).where(
+                    Job.country == "USA", Job.status.in_(["new", "skipped"]), cond))
+                await db.commit()
+            if res.rowcount:
+                print(f"[Startup] Purged {res.rowcount} USA job-board reposts")
+        except Exception as e:
+            print(f"[Startup] USA board purge skipped: {e}")
         # try:
         #     from scrapers.company_seeder import seed_companies_if_empty
         #     await seed_companies_if_empty()

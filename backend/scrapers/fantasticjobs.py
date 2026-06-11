@@ -76,7 +76,16 @@ _JB_SOURCE_MAP = {
     "monster.com":    "Monster",
     "simplyhired.":   "SimplyHired",
     "careerbuilder.": "CareerBuilder",
+    "dice.com":       "Dice",
+    "jooble.":        "Jooble",
+    "lensa.com":      "Lensa",
 }
+
+# Staffing/repost aggregator "companies" — they relist other employers' jobs
+_JUNK_COMPANIES = (
+    "jobs via dice", "hire feed", "lensa", "talentify", "jobgether",
+    "get it recruit", "jobot", "actalent staffing", "jobs via",
+)
 
 def _detect_jb_source(url: str) -> str:
     """Detect the actual job board from URL for JB feed jobs."""
@@ -288,6 +297,9 @@ async def fetch(settings: dict) -> list[dict]:
                         company = (job.get("organization") or job.get("company") or "").strip()
                         if not company:
                             continue
+                        # Staffing/repost aggregator accounts — never real employers
+                        if any(b in company.lower() for b in _JUNK_COMPANIES):
+                            continue
 
                         countries   = job.get("countries_derived") or []
                         arrangement = job.get("ai_work_arrangement") or ""
@@ -316,11 +328,16 @@ async def fetch(settings: dict) -> list[dict]:
 
                         enrich = _extract_enrichment(job)
 
+                        # Detect actual hosting board by URL — the ATS feed also
+                        # contains LinkedIn-hosted listings for companies w/o an ATS
+                        job_source = _detect_jb_source(url)
+                        # USA policy: direct career pages only — board-hosted posts
+                        # (LinkedIn/Indeed/Dice) are reposts. India keeps them (thin ATS coverage).
+                        if job_source != "FantasticJobs" and country == "USA":
+                            continue
+
                         seen.add(url)
                         kept += 1
-
-                        # For JB jobs, show the actual source board (LinkedIn, Indeed, etc.)
-                        job_source = _detect_jb_source(url) if feed_url == BASE_JB else "FantasticJobs"
 
                         jobs.append(JobData(
                             title=title,

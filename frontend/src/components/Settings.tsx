@@ -79,6 +79,7 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
 
   const [cron, setCron]       = useState("0 * * * *");
   const [scraping, setScraping] = useState(false);
+  const [jdFix, setJdFix] = useState<{ running: boolean; total: number; done: number; fixed: number; failed: number } | null>(null);
 
   useEffect(() => {
     api.getSettings().then((s: any) => {
@@ -133,6 +134,25 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
     try { await (api as any).runScraperNow(); toast("+jobs found", "success"); }
     catch { toast("Scrape failed", "error"); }
     finally { setScraping(false); }
+  };
+
+  const runJdFix = async () => {
+    if (jdFix?.running) return;
+    try {
+      await api.fixDescriptions();
+      toast("JD cleanup started", "info" as any);
+      setJdFix({ running: true, total: 0, done: 0, fixed: 0, failed: 0 });
+      const poll = setInterval(async () => {
+        try {
+          const s = await api.fixDescriptionsStatus();
+          setJdFix(s);
+          if (!s.running) {
+            clearInterval(poll);
+            toast(`JD cleanup done — ${s.fixed} fixed, ${s.failed} failed of ${s.total}`, "success");
+          }
+        } catch { clearInterval(poll); }
+      }, 3000);
+    } catch (e: any) { toast(e.message, "error"); }
   };
 
   const cronDesc = CRON_PRESETS[cron] || "Custom schedule";
@@ -267,6 +287,9 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
               catch (e: any) { toast(e.message, "error"); }
             }}>
               <Ic d={I.x} size={14} /> Clear All Jobs
+            </button>
+            <button className="act" onClick={runJdFix} disabled={!!jdFix?.running}>
+              <Ic d={I.check} size={14} /> {jdFix?.running ? `Fixing JDs… ${jdFix.done}/${jdFix.total || "?"}` : "Fix Broken JDs"}
             </button>
             {scraping && <span className="test-res" style={{ color: "var(--tx-3)" }}><span className="mini-spin" /> scraping sources…</span>}
           </div>

@@ -1214,6 +1214,76 @@ async def clear_all_jobs(user_id: str = Depends(get_current_user_id)):
         return {"deleted": result.rowcount}
 
 
+# ── Fix broken JDs (one-time cleanup) ─────────────────────────────────────────
+# Descriptions saved by the old page-scrape fetcher are flat text full of page
+# chrome ("Share on:", "Powered by ..."). Re-fetch only those with the new
+# HTML fetcher; FJ/ATS HTML descriptions are left untouched.
+
+_jd_fix_state = {"running": False, "total": 0, "done": 0, "fixed": 0, "failed": 0}
+
+def _is_broken_jd(desc: str) -> bool:
+    if not desc or len(desc.strip()) < 100:
+        return False  # empty/short — nothing to fix, user can fetch manually
+    has_html = bool(re.search(r"<(p|ul|ol|li|h[1-6]|div|br|strong)\b", desc, re.I))
+    if has_html:
+        return False  # already structured
+    junk = ("Powered by Rippling" in desc or "Share on:" in desc
+            or "Terms of service" in desc or "Cookie" in desc)
+    return junk or "\n" in desc  # flat multi-line text = old fetcher output
+
+async def _run_jd_fix():
+    global _jd_fix_state
+    async with SessionLocal() as db:
+        rows = await db.execute(
+            select(Job.id, Job.url, Job.description).where(Job.status != "closed"))
+        broken = [(jid, url) for jid, url, desc in rows.fetchall() if _is_broken_jd(desc or "")]
+
+    _jd_fix_state = {"running": True, "total": len(broken), "done": 0, "fixed": 0, "failed": 0}
+    print(f"[JD-Fix] {len(broken)} broken descriptions to re-fetch")
+
+    sem = asyncio.Semaphore(5)  # be polite to career sites
+
+    async def fix_one(jid: str, url: str):
+        async with sem:
+            try:
+                r = await fetch_full_jd(url)
+                if r and r.get("description"):
+                    async with SessionLocal() as db:
+                        job = await db.get(Job, jid)
+                        if job:
+                            job.description = r["description"]
+                            await db.commit()
+                    _jd_fix_state["fixed"] += 1
+                else:
+                    _jd_fix_state["failed"] += 1
+            except Exception as e:
+                _jd_fix_state["failed"] += 1
+                print(f"[JD-Fix] {url}: {e}")
+            finally:
+                _jd_fix_state["done"] += 1
+                if _jd_fix_state["done"] % 25 == 0:
+                    print(f"[JD-Fix] {_jd_fix_state['done']}/{_jd_fix_state['total']} "
+                          f"(fixed {_jd_fix_state['fixed']}, failed {_jd_fix_state['failed']})")
+
+    await asyncio.gather(*(fix_one(jid, url) for jid, url in broken))
+    _jd_fix_state["running"] = False
+    print(f"[JD-Fix] Done — fixed {_jd_fix_state['fixed']}, failed {_jd_fix_state['failed']} of {_jd_fix_state['total']}")
+
+@app.post("/api/jobs/fix-descriptions")
+async def fix_broken_descriptions(background_tasks: BackgroundTasks,
+                                  user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    if _jd_fix_state["running"]:
+        return {"message": "Already running", **_jd_fix_state}
+    background_tasks.add_task(_run_jd_fix)
+    return {"message": "JD fix started in background. Poll /api/jobs/fix-descriptions/status."}
+
+@app.get("/api/jobs/fix-descriptions/status")
+async def fix_descriptions_status(user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    return _jd_fix_state
+
+
 # â”€â”€ Debug JobSpy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.get("/api/debug/jobspy")

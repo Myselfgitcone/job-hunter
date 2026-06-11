@@ -141,6 +141,10 @@ export const api = {
 
   clearAllJobs: () => req<{ deleted: number }>("/api/jobs/all", { method: "DELETE" }),
 
+  fixDescriptions: () => req<{ message: string }>("/api/jobs/fix-descriptions", { method: "POST" }),
+  fixDescriptionsStatus: () =>
+    req<{ running: boolean; total: number; done: number; fixed: number; failed: number }>("/api/jobs/fix-descriptions/status"),
+
   quickTailor: (jd: string, company: string) =>
     req<{ tailored_resume: string }>("/api/quick-tailor", { method: "POST", body: JSON.stringify({ jd, company }) }),
 

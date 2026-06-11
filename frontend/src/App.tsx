@@ -219,7 +219,7 @@ export default function App() {
     setJobs([]); setAllJobs([]);
   };
 
-  const DEFAULT_FILTERS: Filters = { q: "", category: [], level: [], type: [], country: [], source: [], years: [], score: "any", time: "any" };
+  const DEFAULT_FILTERS: Filters = { q: "", category: [], level: [], type: [], country: ["USA"], source: [], years: [], score: "any", time: "any" };
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
 
   // ── Theme toggle ──────────────────────────────────────────────────────────
@@ -283,14 +283,15 @@ export default function App() {
   }, [allJobs]);
 
 
-  const filteredJobs = useMemo(() => {
+  const { filteredJobs, yearsCounts } = useMemo(() => {
     const now = Date.now();
+    const yc: Record<string, number> = {};
     const parseMs = (s: string): number | null => {
       if (!s) return null;
       const t = new Date(s.replace(/(\.\d{3})\d+/, "$1")).getTime();
       return isNaN(t) ? null : t;
     };
-    return jobs.filter(j => {
+    const list = jobs.filter(j => {
       // 1. Base Pool (Job Preferences)
       const rawRoles = userSettings?.job_roles;
       if (rawRoles) {
@@ -336,9 +337,6 @@ export default function App() {
       if (filters.country.length && !filters.country.includes(j.country || "")) return false;
       // source
       if (filters.source.length && !filters.source.includes(j.source)) return false;
-      // years of experience — matches the structured experience_level bucket
-      // (FJ AI-extracted or regex-extracted from JD; jobs without it are hidden when active)
-      if (filters.years.length && !filters.years.includes(j.experience_level || "")) return false;
       // score
       if (filters.score !== "any") {
         const sc = (j.qualify_result as any)?.score ?? null;
@@ -353,6 +351,13 @@ export default function App() {
       if (visaFilter && j.country === "USA" && j.visa_sponsorship === false) return false;
       // Level filter — hide overqualified roles
       if (expFilter  && !isLevelMatch(j.title)) return false;
+      // Job passed everything except years — count its tray so the Years
+      // dropdown can show how many jobs sit in each bucket
+      const tray = j.experience_level || "";
+      if (tray) yc[tray] = (yc[tray] || 0) + 1;
+      // years of experience — structured tray (FJ AI or regex/AI extracted);
+      // jobs without a stated requirement are hidden when the filter is active
+      if (filters.years.length && !filters.years.includes(tray)) return false;
       return true;
     }).sort((a, b) => {
       if (sortBy === "score") {
@@ -365,6 +370,7 @@ export default function App() {
       const tB = parseMs(b.posted_at) ?? parseMs(b.scraped_at) ?? 0;
       return tB - tA;
     });
+    return { filteredJobs: list, yearsCounts: yc };
   }, [jobs, filters, userSettings, sortBy, visaFilter, expFilter]);
 
   const selectedJob = jobs.find(j => j.id === selectedId) || null;
@@ -607,7 +613,7 @@ export default function App() {
             />
             <FilterBar
               filters={filters} setFilters={setFilters}
-              SOURCES={SOURCES}
+              SOURCES={SOURCES} yearsCounts={yearsCounts}
               visaFilter={visaFilter} setVisaFilter={(v) => { setVisaFilter(v); saveFilterToggle(v, expFilter); }}
               expFilter={expFilter}   setExpFilter={(v) => { setExpFilter(v); saveFilterToggle(visaFilter, v); }}
               isAdmin={isAdmin}
@@ -973,8 +979,9 @@ function DeptSelector({ selected, onChange }: { selected: string[]; onChange: (v
 }
 
 // Compact inline multi-select dropdown for the filter bar
-function InlineMultiFilter({ label, options, selected, onChange }: {
+function InlineMultiFilter({ label, options, selected, onChange, counts }: {
   label: string; options: string[]; selected: string[]; onChange: (v: string[]) => void;
+  counts?: Record<string, number>;
 }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
@@ -1004,6 +1011,7 @@ function InlineMultiFilter({ label, options, selected, onChange }: {
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
                 </span>
                 {o}
+                {counts && <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--tx-3)", fontFamily: "var(--f-mono)" }}>{counts[o] || 0}</span>}
               </label>
             ))}
           </div>
@@ -1013,9 +1021,9 @@ function InlineMultiFilter({ label, options, selected, onChange }: {
   );
 }
 
-function FilterBar({ filters, setFilters, SOURCES, visaFilter, setVisaFilter, expFilter, setExpFilter, isAdmin, sidebarCollapsed }: {
+function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setVisaFilter, expFilter, setExpFilter, isAdmin, sidebarCollapsed }: {
   filters: Filters; setFilters: React.Dispatch<React.SetStateAction<Filters>>;
-  SOURCES?: string[];
+  SOURCES?: string[]; yearsCounts?: Record<string, number>;
   visaFilter: boolean; setVisaFilter: (v: boolean) => void;
   expFilter: boolean; setExpFilter: (v: boolean) => void;
   isAdmin: boolean;
@@ -1051,7 +1059,7 @@ function FilterBar({ filters, setFilters, SOURCES, visaFilter, setVisaFilter, ex
       {/* Inline quick filters — applied immediately */}
       <InlineMultiFilter label="Years of Exp"
         options={["0-2","2-4","4-5","5-6","6-7","7-8","8-10","10-13","13-15","15+"]}
-        selected={filters.years} onChange={v => set("years", v)} />
+        selected={filters.years} onChange={v => set("years", v)} counts={yearsCounts} />
       <InlineMultiFilter label="Work Type"
         options={["Remote","Onsite","Hybrid"]}
         selected={filters.type} onChange={v => set("type", v)} />

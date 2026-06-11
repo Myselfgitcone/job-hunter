@@ -765,8 +765,15 @@ async def _get_user_settings(user_id: str) -> dict:
         if not s and not admin_s:
             return {}
 
+        # UserSettings.resume is the per-user raw text field.
+        # Fall back to Setting(key="resume") which is auto-generated from Profile page.
+        resume_text = (s.resume or "") if s else ""
+        if not resume_text:
+            resume_row = await db.get(Setting, "resume")
+            resume_text = resume_row.value if resume_row else ""
+
         return {
-            "resume": s.resume if s else "",
+            "resume": resume_text,
             "ai_provider": ai_source.ai_provider if ai_source else "openrouter",
             "ai_api_key": ai_source.ai_api_key if ai_source else "",
             "ai_model_parse": ai_source.ai_model_parse if ai_source else "",
@@ -2103,11 +2110,21 @@ async def save_profile(body: ProfileData, user_id: str = Depends(get_current_use
         # Auto-sync plain-text resume for AI tailoring
         resume_text = _profile_to_resume_text(body.model_dump())
         if resume_text:
+            # Save to Setting table (legacy/global)
             resume_row = await db.get(Setting, "resume")
             if resume_row:
                 resume_row.value = resume_text
             else:
                 db.add(Setting(key="resume", value=resume_text))
+
+            # Also sync to UserSettings.resume for the current user
+            us_result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+            us = us_result.scalar_one_or_none()
+            if us:
+                us.resume = resume_text
+            else:
+                us = UserSettings(user_id=user_id, resume=resume_text)
+                db.add(us)
 
         await db.commit()
     return {"ok": True}

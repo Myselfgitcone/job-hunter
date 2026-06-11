@@ -174,6 +174,7 @@ async def _fetch_page(
     location: str,
     offset: int = 0,
     base_url: str = BASE_ATS,
+    include_org_details: bool = True,
 ) -> list:
     params = {
         "time_frame": "24h",
@@ -182,8 +183,10 @@ async def _fetch_page(
         "title_advanced": TITLE_FILTER,
         "location_advanced": f"'{location}'" if " " in location else location,
         "description_format": "html",
-        "include_basic_organization_details": "true",
     }
+    # ATS-only param — job board endpoint rejects it
+    if include_org_details:
+        params["include_basic_organization_details"] = "true"
     try:
         r = await client.get(base_url, params=params, timeout=30)
         if r.status_code == 403:
@@ -228,7 +231,8 @@ async def fetch(settings: dict) -> list[dict]:
 
     async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
         for feed_url in ACTIVE_FEEDS:
-            feed_label = "ATS" if feed_url == BASE_ATS else "JobBoard"
+            feed_label  = "ATS" if feed_url == BASE_ATS else "JobBoard"
+            org_details = feed_url == BASE_ATS  # only ATS supports include_basic_organization_details
             print(f"[FantasticJobs/{feed_label}] Fetching USA + India with title filter...")
 
             for location in LOCATIONS:
@@ -237,7 +241,7 @@ async def fetch(settings: dict) -> list[dict]:
                 kept      = 0
 
                 for page in range(MAX_PAGES):
-                    hits = await _fetch_page(client, location, offset=offset, base_url=feed_url)
+                    hits = await _fetch_page(client, location, offset=offset, base_url=feed_url, include_org_details=org_details)
                     if not hits:
                         break
 

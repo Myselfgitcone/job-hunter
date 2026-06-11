@@ -4,6 +4,7 @@ Sends job alerts, daily digests, and supports basic commands.
 """
 import asyncio
 import logging
+import re
 from typing import Optional
 from datetime import datetime
 
@@ -41,6 +42,27 @@ async def send_message(text: str, parse_mode: str = "HTML"):
         logger.warning(f"[Telegram] Failed to send message: {e}")
 
 
+# Role families (mirrors scraper TITLE_FILTER) — first match wins
+_ROLE_FAMILIES: list[tuple[str, list[str]]] = [
+    ("Data Engineer", ["data engineer", "etl", "data platform", "big data"]),
+    ("Data Analyst",  ["data analyst", "data analytics", "analytics engineer", "reporting analyst"]),
+    ("BI",            ["business intelligence", "bi developer", "bi analyst", "power bi", "tableau"]),
+    ("DevOps/SRE",    ["devops", "sre", "site reliability", "platform engineer", "cloud engineer"]),
+    ("Security",      ["security", "cybersecurity", "infosec", "soc analyst"]),
+    ("Java",          ["spring boot", "jakarta"]),  # plus \bjava\b regex below
+]
+_JAVA_RE = re.compile(r"\bjava\b", re.I)
+
+def _role_family(title: str) -> str:
+    t = (title or "").lower()
+    for fam, kws in _ROLE_FAMILIES:
+        if any(kw in t for kw in kws):
+            return fam
+    if _JAVA_RE.search(t):
+        return "Java"
+    return "Other"
+
+
 async def send_scrape_digest(new_jobs: list, total_jobs: int):
     """Send a digest after a scrape completes."""
     if not _bot or not _chat_id or not new_jobs:
@@ -51,12 +73,22 @@ async def send_scrape_digest(new_jobs: list, total_jobs: int):
     india  = sum(1 for j in new_jobs if j.get("country") == "India")
     remote = sum(1 for j in new_jobs if j.get("remote"))
 
+    # Per-role-family breakdown
+    fam_counts: dict = {}
+    for j in new_jobs:
+        fam = _role_family(j.get("title", ""))
+        fam_counts[fam] = fam_counts.get(fam, 0) + 1
+    fam_order = [f for f, _ in _ROLE_FAMILIES] + ["Other"]
+    fam_lines = [f"{fam}: <b>{fam_counts[fam]}</b>" for fam in fam_order if fam_counts.get(fam)]
+
     lines = [
         "🔍 <b>Scrape complete</b>",
         "",
         f"🇺🇸 USA: <b>{usa}</b>",
         f"🇮🇳 India: <b>{india}</b>",
         f"🏠 Remote: <b>{remote}</b>",
+        "",
+        *fam_lines,
         "",
         f"This run total: <b>{count}</b>",
         f"Total in DB: <b>{total_jobs:,}</b>",

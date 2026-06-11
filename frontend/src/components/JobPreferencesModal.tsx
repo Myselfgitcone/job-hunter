@@ -33,17 +33,80 @@ const ALL_ROLES = [
   "Financial Analyst", "Accountant", "Finance Manager", "Human Resources Manager", "HR Generalist", "Recruiter", "Talent Acquisition Specialist", "Operations Manager"
 ];
 
-// Roles the scraper actually targets — mirrors TITLE_FILTER in
-// backend/scrapers/fantasticjobs.py. Only these exist in the DB, so the
-// default suggestions show exactly what can be matched.
-const SCRAPED_ROLES = [
-  "Data Engineer", "ETL",
-  "Data Analyst", "Data Analytics",
-  "DevOps", "SRE", "Site Reliability", "Platform Engineer",
-  "Security Engineer", "Security Analyst", "SOC Analyst", "Cybersecurity", "Infosec", "Application Security",
-  "Business Intelligence", "BI Developer", "BI Analyst", "Power BI",
-  "Java Developer", "Java Engineer",
+// Role families the scraper targets — mirrors TITLE_FILTER in
+// backend/scrapers/fantasticjobs.py. Clicking a family selects all its roles.
+const ROLE_GROUPS: { group: string; items: string[] }[] = [
+  { group: "Data Engineer",         items: ["Data Engineer", "Snowflake Data Engineer", "Azure Data Engineer", "AWS Data Engineer", "GCP Data Engineer", "Big Data Engineer", "ETL Developer", "Data Platform Engineer"] },
+  { group: "Data Analyst",          items: ["Data Analyst", "Data Analytics", "Analytics Engineer", "Reporting Analyst"] },
+  { group: "Business Intelligence", items: ["Business Intelligence", "BI Developer", "BI Analyst", "Power BI", "Tableau Developer"] },
+  { group: "DevOps / SRE",          items: ["DevOps", "SRE", "Site Reliability", "Platform Engineer", "Cloud Engineer"] },
+  { group: "Security",              items: ["Security Engineer", "Security Analyst", "SOC Analyst", "Cybersecurity", "Infosec", "Application Security"] },
+  { group: "Java",                  items: ["Java Developer", "Java Engineer", "Java Software Engineer", "Backend Java", "Java Admin"] },
 ];
+
+// Hierarchical selector: group header click = select/deselect entire family
+function RoleGroupSelector({ selected, onChange }: { selected: string[]; onChange: (v: string[]) => void }) {
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const toggleItem = (it: string) =>
+    onChange(selected.includes(it) ? selected.filter(x => x !== it) : [...selected, it]);
+  const toggleGroup = (g: { group: string; items: string[] }) => {
+    const allOn = g.items.every(i => selected.includes(i));
+    if (allOn) onChange(selected.filter(x => !g.items.includes(x)));
+    else onChange([...selected, ...g.items.filter(i => !selected.includes(i))]);
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
+      {ROLE_GROUPS.map(g => {
+        const selCount = g.items.filter(i => selected.includes(i)).length;
+        const allOn = selCount === g.items.length;
+        const isOpen = open[g.group] ?? false;
+        return (
+          <div key={g.group} style={{ border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden", background: "var(--bg-elevated)" }}>
+            <div style={{ display: "flex", alignItems: "center" }}>
+              <button onClick={() => toggleGroup(g)}
+                style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
+                <span style={{ width: 16, height: 16, borderRadius: 4, flexShrink: 0, display: "grid", placeItems: "center",
+                  border: allOn ? "none" : "1.5px solid var(--line-hi)",
+                  background: allOn ? "var(--violet)" : selCount > 0 ? "rgba(124,58,237,0.25)" : "transparent" }}>
+                  {(allOn || selCount > 0) && (
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round"><path d={allOn ? "M20 6 9 17l-5-5" : "M5 12h14"} /></svg>
+                  )}
+                </span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--tx)" }}>{g.group}</span>
+                {selCount > 0 && (
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--violet)", background: "rgba(124,58,237,0.1)", padding: "1px 7px", borderRadius: 999 }}>
+                    {selCount}/{g.items.length}
+                  </span>
+                )}
+              </button>
+              <button onClick={() => setOpen(o => ({ ...o, [g.group]: !isOpen }))}
+                style={{ background: "none", border: "none", cursor: "pointer", padding: "9px 12px", color: "var(--tx-3)", display: "flex" }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+                  style={{ transition: "transform .15s", transform: isOpen ? "rotate(0deg)" : "rotate(-90deg)" }}><path d="M6 9l6 6 6-6" /></svg>
+              </button>
+            </div>
+            {isOpen && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "2px 12px 10px 36px" }}>
+                {g.items.map(it => {
+                  const on = selected.includes(it);
+                  return (
+                    <button key={it} onClick={() => toggleItem(it)}
+                      style={{ fontSize: 12, fontWeight: 500, padding: "4px 11px", borderRadius: 999, cursor: "pointer",
+                        border: on ? "1px solid rgba(124,58,237,0.4)" : "1px dashed var(--line-hi)",
+                        background: on ? "var(--grad-soft)" : "transparent",
+                        color: on ? "var(--violet)" : "var(--tx-3)" }}>
+                      {on ? "✓ " : "+ "}{it}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function TagInput({ tags, setTags, placeholder, suggestions, externalSuggestions = [] }: {
   tags: string[]; setTags: (t: string[]) => void; placeholder?: string; suggestions?: string[]; externalSuggestions?: string[];
@@ -53,7 +116,7 @@ function TagInput({ tags, setTags, placeholder, suggestions, externalSuggestions
   
   const displaySuggestions = React.useMemo(() => {
     if (!val.trim()) {
-      return SCRAPED_ROLES.filter(s => !tags.includes(s));
+      return [];  // grouped family selector below handles discovery
     }
     const lower = val.toLowerCase();
     
@@ -216,6 +279,7 @@ export default function JobPreferencesModal({
                 suggestions={ALL_ROLES}
                 externalSuggestions={extRoles}
               />
+              <RoleGroupSelector selected={roles} onChange={setRoles} />
             </div>
           )}
         </div>

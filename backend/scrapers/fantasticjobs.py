@@ -207,9 +207,10 @@ async def _fetch_page(
     offset: int = 0,
     base_url: str = BASE_ATS,
     include_org_details: bool = True,
+    time_frame: str = "24h",
 ) -> list:
     params = {
-        "time_frame": "24h",
+        "time_frame": time_frame,
         "limit": PAGE_SIZE,
         "offset": offset,
         "title_advanced": TITLE_FILTER,
@@ -256,6 +257,13 @@ async def fetch(settings: dict) -> list[dict]:
         print(f"[FantasticJobs] {e} — skipping")
         return []
 
+    # Credits are billed PER JOB RETURNED — hourly runs must use the 1h window
+    # or every job gets re-fetched (and re-billed) up to 24 times a day.
+    # 24h window only for catch-up (first run after restart / missed cycles).
+    prev_fetch_ts = _last_fetch_ts
+    time_frame = "1h" if prev_fetch_ts and (now - prev_fetch_ts) <= timedelta(hours=2) else "24h"
+    print(f"[FantasticJobs] time_frame={time_frame} (last fetch: {prev_fetch_ts or 'never this boot'})")
+
     _last_fetch_ts = now  # record BEFORE fetch so concurrent calls skip
 
     jobs: list[dict] = []
@@ -278,7 +286,7 @@ async def fetch(settings: dict) -> list[dict]:
                 kept      = 0
 
                 for page in range(MAX_PAGES):
-                    hits = await _fetch_page(client, location, offset=offset, base_url=feed_url, include_org_details=org_details)
+                    hits = await _fetch_page(client, location, offset=offset, base_url=feed_url, include_org_details=org_details, time_frame=time_frame)
                     if not hits:
                         break
 

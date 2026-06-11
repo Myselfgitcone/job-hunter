@@ -33,6 +33,7 @@ from pdf_gen import generate_pdf
 from docx_gen import generate_docx
 from jd_docx_gen import generate_jd_docx
 from jd_fetcher import fetch_full_jd
+from experience import extract_experience_level
 
 app = FastAPI(title="Job Hunter API")
 
@@ -169,6 +170,9 @@ async def _scrape_and_insert(fetch_fn, group_name, settings, cutoff_posted, now_
                 fp = f"{(job_data.get('title', '') or '').lower().strip()}|||{(job_data.get('company', '') or '').lower().strip()}"
                 if (url and url in existing_urls) or fp in existing_fps:
                     continue
+                # Fill experience bucket from JD text when the source didn't supply it
+                if not job_data.get("experience_level") and job_data.get("description"):
+                    job_data["experience_level"] = extract_experience_level(job_data["description"])
                 db.add(Job(id=str(uuid.uuid4()), scraped_at=now_iso, **job_data))
                 if url:
                     existing_urls.add(url)
@@ -364,6 +368,27 @@ async def startup():
                     await telegram_bot.init_bot(row[0], row[1])
         except Exception as e:
             print(f"[Startup] Telegram init skipped: {e}")
+        # Backfill experience_level from JD text for jobs missing it (idempotent)
+        try:
+            async with SessionLocal() as db:
+                rows = await db.execute(select(Job.id, Job.description).where(
+                    or_(Job.experience_level == None, Job.experience_level == ""),
+                    Job.description != None, Job.description != ""))
+                pending = rows.fetchall()
+            filled = 0
+            if pending:
+                async with SessionLocal() as db:
+                    for jid, desc in pending:
+                        level = extract_experience_level(desc or "")
+                        if level:
+                            await db.execute(update(Job).where(Job.id == jid).values(experience_level=level))
+                            filled += 1
+                            if filled % 200 == 0:
+                                await db.commit()
+                    await db.commit()
+                print(f"[Startup] Experience backfill: {filled}/{len(pending)} jobs filled")
+        except Exception as e:
+            print(f"[Startup] Experience backfill skipped: {e}")
         # try:
         #     from scrapers.company_seeder import seed_companies_if_empty
         #     await seed_companies_if_empty()

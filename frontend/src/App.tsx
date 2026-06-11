@@ -26,6 +26,7 @@ type Filters = {
   type: string[];
   country: string[];
   source: string[];
+  years: string[];  // experience buckets: "0-2" | "2-5" | "5-10" | "10+"
   score: "any" | "60" | "70" | "80" | "90";
   time: "any" | "24" | "48" | "72" | "168";
   hcAge: "any" | "fresh" | "recent" | "old";  // HiringCafe original post age filter
@@ -208,7 +209,7 @@ export default function App() {
     setJobs([]); setAllJobs([]);
   };
 
-  const DEFAULT_FILTERS: Filters = { q: "", category: [], level: [], type: [], country: [], source: [], score: "any", time: "any", hcAge: "any" };
+  const DEFAULT_FILTERS: Filters = { q: "", category: [], level: [], type: [], country: [], source: [], years: [], score: "any", time: "any", hcAge: "any" };
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [myRolesOnly, setMyRolesOnly] = useState(false);
   const [activeRoleView, setActiveRoleView] = useState<string>("");
@@ -332,6 +333,9 @@ export default function App() {
       if (filters.country.length && !filters.country.includes(j.country || "")) return false;
       // source
       if (filters.source.length && !filters.source.includes(j.source)) return false;
+      // years of experience — matches the structured experience_level bucket
+      // (FJ AI-extracted or regex-extracted from JD; jobs without it are hidden when active)
+      if (filters.years.length && !filters.years.includes(j.experience_level || "")) return false;
       // score
       if (filters.score !== "any") {
         const sc = (j.qualify_result as any)?.score ?? null;
@@ -460,7 +464,7 @@ export default function App() {
   // Expose nav to Settings component for "Go to Profile" link
   useEffect(() => { (window as any).__navToProfile = () => setView("profile"); }, []);
   const handleNav = (v: string) => { if (v === "tailor") { setTailorOpen(true); return; } setView(v as View); };
-  const activeFilterCount = filters.category.length + filters.level.length + filters.type.length + filters.country.length + filters.source.length + (filters.score !== "any" ? 1 : 0);
+  const activeFilterCount = filters.category.length + filters.level.length + filters.type.length + filters.country.length + filters.source.length + filters.years.length + (filters.score !== "any" ? 1 : 0);
   const filtersActive = activeFilterCount > 0 || filters.q !== "" || !myRolesOnly;
   const isAdmin = currentUser?.email?.toLowerCase() === "jaggubhai8766@gmail.com";
   
@@ -758,8 +762,8 @@ function deptTerms(dept: string): string[] {
   return [phrase, ...words];
 }
 
-function countPanelFilters(f: { category: string[]; level: string[]; type: string[]; country: string[]; source: string[]; score: string; hcAge?: string }) {
-  return f.category.length + f.level.length + f.type.length + f.country.length + f.source.length + (f.score !== "any" ? 1 : 0) + (f.hcAge && f.hcAge !== "any" ? 1 : 0);
+function countPanelFilters(f: { category: string[]; level: string[]; type: string[]; country: string[]; source: string[]; years?: string[]; score: string; hcAge?: string }) {
+  return f.category.length + f.level.length + f.type.length + f.country.length + f.source.length + (f.years?.length || 0) + (f.score !== "any" ? 1 : 0) + (f.hcAge && f.hcAge !== "any" ? 1 : 0);
 }
 
 // ── Topbar (exact match to shell.jsx TopBar) ────────────────────────────────────
@@ -961,11 +965,11 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, activeRoleVie
 }) {
   const set = (k: keyof Filters, v: any) => setFilters(f => ({ ...f, [k]: v }));
   const [open, setOpen] = React.useState(false);
-  const [draft, setDraft] = React.useState({ category: [] as string[], level: [] as string[], type: [] as string[], country: [] as string[], source: [] as string[], score: "any" as string });
+  const [draft, setDraft] = React.useState({ category: [] as string[], level: [] as string[], type: [] as string[], country: [] as string[], source: [] as string[], years: [] as string[], score: "any" as string });
   const ref = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
-    if (open) setDraft({ category: filters.category, level: filters.level, type: filters.type, country: filters.country, source: filters.source, score: filters.score });
+    if (open) setDraft({ category: filters.category, level: filters.level, type: filters.type, country: filters.country, source: filters.source, years: filters.years, score: filters.score });
   }, [open]);
 
   React.useEffect(() => {
@@ -979,7 +983,7 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, activeRoleVie
     const arr = d[key] as string[];
     return { ...d, [key]: arr.includes(val) ? arr.filter((x: string) => x !== val) : [...arr, val] };
   });
-  const resetAll = () => setDraft({ category: [], level: [], type: [], country: [], source: [], score: "any" });
+  const resetAll = () => setDraft({ category: [], level: [], type: [], country: [], source: [], years: [], score: "any" });
   const apply = () => { setFilters(f => ({ ...f, ...draft, score: draft.score as Filters["score"] })); setOpen(false); };
 
   const committed = countPanelFilters(filters);
@@ -987,6 +991,7 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, activeRoleVie
   const timeOpts: [Filters["time"], string][] = [["any","Any"],["24","24h"],["48","48h"],["72","72h"],["168","7d"]];
   const groups: [keyof typeof draft, string, string[]][] = [
     ["level",    "Experience Level", ["Internship","Entry Level","Mid Level","Senior","Lead"]],
+    ["years",    "Years of Experience", ["0-2","2-5","5-10","10+"]],
     ["type",     "Work Type",["Remote","Onsite","Hybrid"]],
     ...(isAdmin ? [["source", "Source", SOURCES && SOURCES.length ? SOURCES : ["Greenhouse","Lever","Ashby","Workday","HiringCafe"]] as [keyof typeof draft, string, string[]]] : []),
     ["country",  "Country",  COUNTRIES.length ? COUNTRIES : ["USA","Canada","United Kingdom","Germany","France","India","Remote"]],

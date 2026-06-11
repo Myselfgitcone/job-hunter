@@ -600,6 +600,9 @@ export default function App() {
               userRoles={userSettings?.job_roles ? (Array.isArray(userSettings.job_roles) ? userSettings.job_roles : JSON.parse(userSettings.job_roles)) : []}
               sidebarCollapsed={sidebarCollapsed}
               setSidebarCollapsed={setSidebarCollapsed}
+              countries={COUNTRIES}
+              countryFilter={filters.country}
+              setCountryFilter={(v: string[]) => setFilters(f => ({ ...f, country: v }))}
               preferencesNode={
                 <JobPreferencesModal 
                   open={preferencesOpen} 
@@ -767,12 +770,13 @@ function countPanelFilters(f: { category: string[]; level: string[]; type: strin
 }
 
 // ── Topbar (exact match to shell.jsx TopBar) ────────────────────────────────────
-function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, setViewMode, IC, isAdmin, onOpenPreferences, userRoles, sidebarCollapsed, setSidebarCollapsed, preferencesNode }: {
+function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, setViewMode, IC, isAdmin, onOpenPreferences, userRoles, sidebarCollapsed, setSidebarCollapsed, preferencesNode, countries, countryFilter, setCountryFilter }: {
   scraping: boolean; lastScraped: string; onScrape: () => void;
   count: number; totalJobs: number; viewMode: string; setViewMode: (m: ViewMode) => void;
   IC: Record<string, string>; isAdmin: boolean; onOpenPreferences?: () => void; userRoles?: string[];
   sidebarCollapsed: boolean; setSidebarCollapsed: (v: boolean) => void;
   preferencesNode?: React.ReactNode;
+  countries?: string[]; countryFilter?: string[]; setCountryFilter?: (v: string[]) => void;
 }) {
   return (
     <div className="topbar" style={{ paddingLeft: sidebarCollapsed ? 18 : 20 }}>
@@ -791,9 +795,21 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
             </div>
           </div>
         )}
+        {/* Country quick-switch — left of Job Preferences */}
+        {countries && countryFilter && setCountryFilter && (
+          <div className="segchips" style={{ marginRight: 14 }}>
+            <button className={countryFilter.length === 0 ? "on" : ""} onClick={() => setCountryFilter([])}>All</button>
+            {countries.slice(0, 4).map(c => (
+              <button key={c} className={countryFilter.length === 1 && countryFilter[0] === c ? "on" : ""}
+                onClick={() => setCountryFilter(countryFilter.length === 1 && countryFilter[0] === c ? [] : [c])}>
+                {c}
+              </button>
+            ))}
+          </div>
+        )}
         <div style={{ position: "relative" }}>
-          <div 
-            onClick={onOpenPreferences} 
+          <div
+            onClick={onOpenPreferences}
             style={{ display: "inline-flex", alignItems: "center", background: "var(--bg-surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 4, cursor: "pointer", transition: "all 0.2s", boxShadow: "var(--sh-sm)" }}
             onMouseOver={e => { e.currentTarget.style.borderColor = "rgba(124,58,237,0.4)"; e.currentTarget.style.boxShadow = "0 4px 14px -2px rgba(124,58,237,0.12)"; }}
             onMouseOut={e => { e.currentTarget.style.borderColor = "var(--line)"; e.currentTarget.style.boxShadow = "var(--sh-sm)"; }}

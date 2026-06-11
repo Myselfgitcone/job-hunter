@@ -250,7 +250,7 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
             <button className="act ai" onClick={testTelegram} disabled={testState === "loading"}>
               {testState === "loading" ? <span className="mini-spin" /> : <Ic d={I.enter} size={14} />}
-              Send Test Message
+              Send
             </button>
             {testState === "ok"   && <span className="test-res ok"><Ic d={I.check} size={13} /> Delivered</span>}
             {testState === "fail" && <span className="test-res fail"><Ic d={I.x} size={13} /> Failed</span>}

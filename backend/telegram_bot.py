@@ -46,26 +46,18 @@ async def send_scrape_digest(new_jobs: list, total_jobs: int):
     if not _bot or not _chat_id or not new_jobs:
         return
 
-    count = len(new_jobs)
-    lines = [f"🔍 <b>Scrape complete</b> — {count} new job{'s' if count != 1 else ''} found\n"]
+    count  = len(new_jobs)
+    usa    = sum(1 for j in new_jobs if j.get("country") == "USA")
+    india  = sum(1 for j in new_jobs if j.get("country") == "India")
+    remote = sum(1 for j in new_jobs if j.get("remote"))
 
-    # Show top 5 new jobs
-    for job in new_jobs[:5]:
-        title = job.get("title", "Unknown")
-        company = job.get("company", "")
-        location = job.get("location", "")
-        source = job.get("source", "")
-        url = job.get("url", "")
-        loc_str = f" · {location}" if location else ""
-        lines.append(f"• <b>{title}</b> @ {company}{loc_str}")
-        if url:
-            lines.append(f"  <a href='{url}'>Apply →</a>")
-
-    if count > 5:
-        lines.append(f"\n<i>...and {count - 5} more. Open Job Hunter to see all.</i>")
-
-    lines.append(f"\n📊 Total jobs in DB: <b>{total_jobs}</b>")
-    lines.append(f"🕐 {datetime.now().strftime('%b %d, %H:%M')}")
+    lines = [
+        "🔍 <b>Scrape complete</b>",
+        f"🇺🇸 USA: <b>{usa}</b>   🇮🇳 India: <b>{india}</b>",
+        f"✨ New this run: <b>{count}</b>" + (f"   🏠 Remote: <b>{remote}</b>" if remote else ""),
+        f"🗄 Total in DB: <b>{total_jobs:,}</b>",
+        f"🕐 {datetime.now().strftime('%b %d, %H:%M')}",
+    ]
 
     await send_message("\n".join(lines))
 

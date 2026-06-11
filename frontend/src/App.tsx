@@ -783,6 +783,21 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
   preferencesNode?: React.ReactNode;
   countries?: string[]; countryFilter?: string[]; setCountryFilter?: (v: string[]) => void;
 }) {
+  // Live countdown to next hourly scrape (cron fires at minute 0)
+  const [nowTs, setNowTs] = React.useState(Date.now());
+  React.useEffect(() => {
+    const t = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const nextScrape = new Date(nowTs);
+  nextScrape.setMinutes(60, 0, 0); // rolls over to the next full hour
+  const diffMs = Math.max(0, nextScrape.getTime() - nowTs);
+  const cdH = Math.floor(diffMs / 3600000);
+  const cdM = Math.floor((diffMs % 3600000) / 60000);
+  const cdS = Math.floor((diffMs % 60000) / 1000);
+  const countdown = (cdH > 0 ? `${String(cdH).padStart(2, "0")}:` : "") +
+    `${String(cdM).padStart(2, "0")}:${String(cdS).padStart(2, "0")}`;
+
   return (
     <div className="topbar" style={{ paddingLeft: sidebarCollapsed ? 18 : 20 }}>
       <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
@@ -859,8 +874,15 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
             <span className="dot-sep" style={{ marginRight: 8 }} />
           </>
         )}
-        <div className="live-pip" />
-        Last scraped <b>{lastScraped || "never"}</b>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, lineHeight: 1.25 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div className="live-pip" />
+            Last scraped <b>{lastScraped || "never"}</b>
+          </span>
+          <span style={{ fontSize: 11, color: "var(--tx-3)", paddingLeft: 14 }}>
+            Next scrape in <b style={{ fontFamily: "var(--f-mono)", color: "var(--tx-2)" }}>{countdown}</b>
+          </span>
+        </div>
         <span className="dot-sep" />
         <span className="job-count"><b>{totalJobs.toLocaleString()}</b> jobs indexed</span>
       </div>

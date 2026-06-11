@@ -53,10 +53,14 @@ async def send_scrape_digest(new_jobs: list, total_jobs: int):
 
     lines = [
         "🔍 <b>Scrape complete</b>",
-        f"🇺🇸 USA: <b>{usa}</b>   🇮🇳 India: <b>{india}</b>",
-        f"✨ New this run: <b>{count}</b>" + (f"   🏠 Remote: <b>{remote}</b>" if remote else ""),
-        f"🗄 Total in DB: <b>{total_jobs:,}</b>",
-        f"🕐 {datetime.now().strftime('%b %d, %H:%M')}",
+        "",
+        f"🇺🇸 USA: <b>{usa}</b>",
+        f"🇮🇳 India: <b>{india}</b>",
+        f"🏠 Remote: <b>{remote}</b>",
+        "",
+        f"This run total: <b>{count}</b>",
+        f"Total in DB: <b>{total_jobs:,}</b>",
+        datetime.now().strftime("%b %d, %H:%M"),
     ]
 
     await send_message("\n".join(lines))

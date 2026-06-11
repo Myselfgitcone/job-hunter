@@ -340,7 +340,11 @@ async def _run_exp_ai_sweep(limit: int = 400):
             admin_s = await _get_admin_settings(db)
         api_key  = (admin_s.ai_api_key  or "") if admin_s else ""
         provider = (admin_s.ai_provider or "openrouter") if admin_s else "openrouter"
-        model    = (admin_s.ai_model_parse or "google/gemini-2.5-flash-lite") if admin_s else "google/gemini-2.5-flash-lite"
+        # Use the parse model, but upgrade flash-lite to full flash for better
+        # seniority judgement (still cheap; any non-lite setting is respected)
+        model = (admin_s.ai_model_parse or "") if admin_s else ""
+        if not model or "flash-lite" in model:
+            model = "google/gemini-2.5-flash"
         if not api_key:
             print("[ExpSweep] No API key — skipping AI experience inference")
             return

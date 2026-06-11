@@ -304,25 +304,20 @@ export default function App() {
       }
       // q — free text (design: title + company)
       if (filters.q && !(j.title + " " + j.company).toLowerCase().includes(filters.q.toLowerCase())) return false;
-      // category
+      // category — department names from the filter panel mapped to title keywords
       if (filters.category.length) {
-        const CAT: Record<string, string[]> = {
-          Engineering: ["engineer","developer","devops","sre","platform","infrastructure","backend","frontend","fullstack"],
-          Data:        ["data","analytics","analyst","scientist","ml","machine learning","ai","etl","pipeline","bi"],
-          Product:     ["product","pm ","product owner","program manager"],
-          Design:      ["design","ux","ui","figma","creative"],
-        };
-        const terms = filters.category.flatMap(c => CAT[c] || []);
+        const terms = filters.category.flatMap(c => deptTerms(c));
         if (!terms.some(t => j.title.toLowerCase().includes(t))) return false;
       }
-      // level
+      // level — keys must match the panel labels exactly
       if (filters.level.length) {
         const t = j.title.toLowerCase();
         const EXP: Record<string, RegExp> = {
-          Entry: /(entry|junior|jr\.?|associate|intern)/i,
-          Mid: /(mid|\bii\b|\b2\b|intermediate)/i,
-          Senior: /(senior|sr\.?)/i,
-          Lead: /(lead|principal|staff|director)/i,
+          "Internship":  /(intern|internship|co-?op)/i,
+          "Entry Level": /(entry|junior|jr\.?|associate|graduate)/i,
+          "Mid Level":   /(mid|\bii\b|\b2\b|intermediate)/i,
+          "Senior":      /(senior|sr\.?|\biii\b)/i,
+          "Lead":        /(lead|principal|staff|director|head of)/i,
         };
         if (!filters.level.some(e => EXP[e]?.test(t))) return false;
       }
@@ -616,6 +611,7 @@ export default function App() {
               activeRoleView={activeRoleView} setActiveRoleView={setActiveRoleView}
               searchRef={searchRef}
               COUNTRIES={COUNTRIES}
+              SOURCES={SOURCES}
               visaFilter={visaFilter} setVisaFilter={(v) => { setVisaFilter(v); saveFilterToggle(v, expFilter); }}
               expFilter={expFilter}   setExpFilter={(v) => { setExpFilter(v); saveFilterToggle(visaFilter, v); }}
               isAdmin={isAdmin} userRoles={userSettings?.job_roles ? (Array.isArray(userSettings.job_roles) ? userSettings.job_roles : JSON.parse(userSettings.job_roles)) : []}
@@ -726,6 +722,40 @@ export default function App() {
       )}
     </div>
   );
+}
+
+// Department → job-title keywords. Explicit maps for tech/data (precise);
+// other departments fall back to phrase + significant words from the name.
+const DEPT_TERMS: Record<string, string[]> = {
+  "Software Engineering":      ["software engineer", "swe", "backend", "frontend", "full stack", "fullstack", "developer"],
+  "Data Engineering":          ["data engineer", "etl", "data platform", "data pipeline", "data infrastructure"],
+  "ML / AI Engineering":       ["machine learning", "ml engineer", "ai engineer", "deep learning", "llm", "mlops"],
+  "DevOps / Infrastructure":   ["devops", "sre", "site reliability", "infrastructure engineer", "platform engineer", "cloud engineer"],
+  "Mobile Engineering":        ["mobile", "ios", "android", "react native", "flutter"],
+  "QA / Testing":              ["qa ", "quality assurance", "test engineer", "sdet", "quality engineer"],
+  "Cybersecurity":             ["security engineer", "cybersecurity", "infosec", "security analyst"],
+  "IT Support":                ["it support", "help desk", "desktop support", "technical support"],
+  "Systems Administration":    ["system admin", "sysadmin", "systems engineer"],
+  "Data Science":              ["data scientist", "data science"],
+  "Data Analysis":             ["data analyst", "business analyst", "analytics analyst", "reporting analyst"],
+  "Business Intelligence":     ["business intelligence", "bi developer", "bi analyst", "bi engineer", "power bi", "tableau", "looker"],
+  "Analytics Engineering":     ["analytics engineer"],
+  "Data Architecture":         ["data architect"],
+  "Database Administration":   ["dba", "database admin", "database engineer"],
+  "Product Management":        ["product manager", "product owner"],
+  "Technical Product Management": ["technical product manager", "technical pm"],
+  "Program Management":        ["program manager", "tpm"],
+  "UX Design":                 ["ux design", "ux engineer", "user experience"],
+  "UI Design":                 ["ui design", "user interface"],
+  "Product Design":            ["product design"],
+  "UX Research":               ["ux research", "user research"],
+};
+const _DEPT_STOPWORDS = new Set(["and", "the", "of", "services", "general"]);
+function deptTerms(dept: string): string[] {
+  if (DEPT_TERMS[dept]) return DEPT_TERMS[dept];
+  const phrase = dept.toLowerCase().replace(/\s*\/\s*/g, " ").replace(/\s+-\s+/g, " ");
+  const words = phrase.split(/\s+/).filter(w => w.length >= 4 && !_DEPT_STOPWORDS.has(w));
+  return [phrase, ...words];
 }
 
 function countPanelFilters(f: { category: string[]; level: string[]; type: string[]; country: string[]; source: string[]; score: string; hcAge?: string }) {
@@ -919,11 +949,11 @@ function DeptSelector({ selected, onChange }: { selected: string[]; onChange: (v
   );
 }
 
-function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, activeRoleView, setActiveRoleView, searchRef, COUNTRIES, visaFilter, setVisaFilter, expFilter, setExpFilter, isAdmin, userRoles, sidebarCollapsed }: {
+function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, activeRoleView, setActiveRoleView, searchRef, COUNTRIES, SOURCES, visaFilter, setVisaFilter, expFilter, setExpFilter, isAdmin, userRoles, sidebarCollapsed }: {
   filters: Filters; setFilters: React.Dispatch<React.SetStateAction<Filters>>;
   role: string; roleOn: boolean; setRoleOn: (v: boolean) => void;
   activeRoleView: string; setActiveRoleView: (v: string) => void;
-  searchRef: React.RefObject<HTMLInputElement>; COUNTRIES: string[];
+  searchRef: React.RefObject<HTMLInputElement>; COUNTRIES: string[]; SOURCES?: string[];
   visaFilter: boolean; setVisaFilter: (v: boolean) => void;
   expFilter: boolean; setExpFilter: (v: boolean) => void;
   isAdmin: boolean; userRoles?: string[];
@@ -958,7 +988,7 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, activeRoleVie
   const groups: [keyof typeof draft, string, string[]][] = [
     ["level",    "Experience Level", ["Internship","Entry Level","Mid Level","Senior","Lead"]],
     ["type",     "Work Type",["Remote","Onsite","Hybrid"]],
-    ...(isAdmin ? [["source", "Source", ["Greenhouse","Lever","Ashby","Workday","HiringCafe"]] as [keyof typeof draft, string, string[]]] : []),
+    ...(isAdmin ? [["source", "Source", SOURCES && SOURCES.length ? SOURCES : ["Greenhouse","Lever","Ashby","Workday","HiringCafe"]] as [keyof typeof draft, string, string[]]] : []),
     ["country",  "Country",  COUNTRIES.length ? COUNTRIES : ["USA","Canada","United Kingdom","Germany","France","India","Remote"]],
   ];
   const scoreOpts: [string, string][] = [["any","Any"],["60","≥60%"],["70","≥70%"],["80","≥80%"],["90","≥90%"]];

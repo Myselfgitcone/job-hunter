@@ -244,6 +244,18 @@ async def fetch(settings: dict) -> list[dict]:
 
     now = datetime.now(timezone.utc)
 
+    # Restore last-fetch time from DB after a restart — otherwise every
+    # redeploy triggers a 24h catch-up window and re-bills a day of jobs
+    if _last_fetch_ts is None:
+        try:
+            from database import SessionLocal, Setting
+            async with SessionLocal() as db:
+                row = await db.get(Setting, "fj_last_fetch")
+            if row and row.value:
+                _last_fetch_ts = datetime.fromisoformat(row.value)
+        except Exception as e:
+            print(f"[FantasticJobs] last-fetch restore failed: {e}")
+
     if _last_fetch_ts and (now - _last_fetch_ts) < timedelta(hours=MIN_FETCH_INTERVAL_H):
         wait_min = int(
             (timedelta(hours=MIN_FETCH_INTERVAL_H) - (now - _last_fetch_ts)).total_seconds() / 60
@@ -265,6 +277,17 @@ async def fetch(settings: dict) -> list[dict]:
     print(f"[FantasticJobs] time_frame={time_frame} (last fetch: {prev_fetch_ts or 'never this boot'})")
 
     _last_fetch_ts = now  # record BEFORE fetch so concurrent calls skip
+    try:
+        from database import SessionLocal, Setting
+        async with SessionLocal() as db:
+            row = await db.get(Setting, "fj_last_fetch")
+            if row:
+                row.value = now.isoformat()
+            else:
+                db.add(Setting(key="fj_last_fetch", value=now.isoformat()))
+            await db.commit()
+    except Exception as e:
+        print(f"[FantasticJobs] last-fetch persist failed: {e}")
 
     jobs: list[dict] = []
     seen: set[str]   = set()

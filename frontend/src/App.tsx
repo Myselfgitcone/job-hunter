@@ -357,8 +357,8 @@ export default function App() {
           if (filters.hcAge === "old"    && ageDays <= 90) return false;
         }
       }
-      // Visa filter — hide jobs explicitly not sponsoring (null = unknown = show)
-      if (visaFilter && j.visa_sponsorship === false) return false;
+      // Visa filter — only relevant for USA jobs (India roles don't require US visa sponsorship)
+      if (visaFilter && j.country === "USA" && j.visa_sponsorship === false) return false;
       // Level filter — hide overqualified roles
       if (expFilter  && !isLevelMatch(j.title)) return false;
       return true;

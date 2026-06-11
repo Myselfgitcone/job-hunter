@@ -64,6 +64,25 @@ _EMP_TYPE_MAP = {
 }
 
 
+_JB_SOURCE_MAP = {
+    "linkedin.com":   "LinkedIn",
+    "indeed.com":     "Indeed",
+    "glassdoor.com":  "Glassdoor",
+    "ziprecruiter.":  "ZipRecruiter",
+    "monster.com":    "Monster",
+    "simplyhired.":   "SimplyHired",
+    "careerbuilder.": "CareerBuilder",
+}
+
+def _detect_jb_source(url: str) -> str:
+    """Detect the actual job board from URL for JB feed jobs."""
+    lower = url.lower()
+    for domain, label in _JB_SOURCE_MAP.items():
+        if domain in lower:
+            return label
+    return "FantasticJobs"
+
+
 def _get_headers() -> dict:
     key = os.getenv("FANTASTIC_JOBS_API_KEY", "")
     if not key:
@@ -291,11 +310,14 @@ async def fetch(settings: dict) -> list[dict]:
                         seen.add(url)
                         kept += 1
 
+                        # For JB jobs, show the actual source board (LinkedIn, Indeed, etc.)
+                        job_source = _detect_jb_source(url) if feed_url == BASE_JB else "FantasticJobs"
+
                         jobs.append(JobData(
                             title=title,
                             company=company,
                             url=url,
-                            source="FantasticJobs",
+                            source=job_source,
                             description=_build_description(job),
                             location=location_str,
                             country=country,

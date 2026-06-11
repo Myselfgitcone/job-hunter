@@ -1334,7 +1334,12 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
         raise HTTPException(400, "No AI API key set. Add one in Settings.")
 
     base_resume = user_cfg.get("resume", "")
+    if not base_resume or not base_resume.strip():
+        raise HTTPException(400, "No resume found. Upload your resume in Profile → Resume section first.")
+
     jd = job.description
+    if not jd or not jd.strip():
+        raise HTTPException(400, "This job has no description yet. Try refreshing the job.")
 
     ats_before = score_ats(base_resume, jd)
 

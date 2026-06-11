@@ -120,7 +120,7 @@ export default function App() {
   const [jobs, setJobs]             = useState<Job[]>([]);
   const [allJobs, setAllJobs]       = useState<Job[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [tab, setTab]               = useState("overview");
+  const [tab, setTab]               = useState("description");
   const [loading, setLoading]       = useState(false);
   const [scraping, setScraping]     = useState(false);
   const [scrapeMsg, setScrapeMsg]   = useState("");
@@ -461,7 +461,7 @@ export default function App() {
     finally { setBusy(null); }
   };
 
-  const handleSelect = (id: string) => { setSelectedId(id); setTab("overview"); };
+  const handleSelect = (id: string) => { setSelectedId(id); setTab("description"); };
   // Expose nav to Settings component for "Go to Profile" link
   useEffect(() => { (window as any).__navToProfile = () => setView("profile"); }, []);
   const handleNav = (v: string) => { if (v === "tailor") { setTailorOpen(true); return; } setView(v as View); };

@@ -83,10 +83,11 @@ const I = {
 };
 
 const TABS = [
-  { id: "overview", label: "Overview" },
-  { id: "qualify",  label: "Qualify" },
-  { id: "resume",   label: "Resume & Fit" },
-  { id: "cover",    label: "Cover Letter" },
+  { id: "description", label: "Job Description" },
+  { id: "info",        label: "Job & Company Info" },
+  { id: "qualify",     label: "Qualify" },
+  { id: "resume",      label: "Resume & Fit" },
+  { id: "cover",       label: "Cover Letter" },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -667,8 +668,8 @@ function NotesTab({ job, onUpdate, onToast }: {
   );
 }
 
-// ── Overview tab: job info + company info side by side, JD below, notes last ──
-function OverviewTab({ job, onUpdate, onToast }: {
+// ── Info tab: job info + company info side by side, notes at bottom ───────────
+function InfoTab({ job, onUpdate, onToast }: {
   job: Job; onUpdate: (patch: Partial<Job>) => void; onToast: (m: string, t?: "success" | "error") => void;
 }) {
   const sectionLabel = (text: string) => (
@@ -685,14 +686,6 @@ function OverviewTab({ job, onUpdate, onToast }: {
         <div style={{ flex: 1, minWidth: 300 }}>
           {sectionLabel("Company Info")}
           <CompanyInfoTab job={job} />
-        </div>
-      </div>
-
-      {/* Job description */}
-      <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 20 }}>
-        {sectionLabel("Job Description")}
-        <div style={{ marginTop: 10 }}>
-          <DescriptionTab job={job} onUpdate={onUpdate} onToast={onToast} />
         </div>
       </div>
 
@@ -734,7 +727,7 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
     resume: !!(job.tailored_resume || job.fit_analysis),
     cover: !!job.cover_letter,
     qualify: !!job.qualify_result,
-    overview: !!(job.notes || job.deadline || job.interview_date),
+    info: !!(job.notes || job.deadline || job.interview_date),
   };
 
   const handleStatusChange = async (s: string) => {
@@ -818,7 +811,8 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
 
         {/* Tab content */}
         <div className="tab-body">
-          {tab === "overview" && <OverviewTab job={job} onUpdate={onUpdate} onToast={onToast} />}
+          {tab === "description" && <DescriptionTab job={job} onUpdate={onUpdate} onToast={onToast} />}
+          {tab === "info"     && <InfoTab job={job} onUpdate={onUpdate} onToast={onToast} />}
           {tab === "qualify"  && <QualifyTab job={job} running={busy === "qualify"} onRun={() => runAction("qualify")} />}
           {tab === "resume"   && (
             <div style={{ display: "flex", flexDirection: "column" }}>

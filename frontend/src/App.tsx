@@ -301,9 +301,10 @@ export default function App() {
           const desc = (j.description || "").toLowerCase();
           const matchesAnyRole = roles.some((r: string) => {
             const term = r.toLowerCase().trim();
-            if (term === "bi") return /\bbi\b/.test(title) || /\bbi\b/.test(desc);
-            // word-boundary: "java" must not match "javascript"
-            if (term === "java") return /\bjava\b/.test(title) || /\bjava\b/.test(desc);
+            // Single-word tech terms match TITLE ONLY — descriptions mention
+            // java/bi incidentally in every stack list, pulling in wrong roles
+            if (term === "bi")   return /\bbi\b/.test(title);
+            if (term === "java") return /\bjava\b/.test(title);  // \b excludes "javascript"
             return title.includes(term) || desc.includes(term);
           });
           if (!matchesAnyRole) return false;

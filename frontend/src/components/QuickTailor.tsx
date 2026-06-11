@@ -44,10 +44,14 @@ export function QuickTailor({ open = true, onClose, onToast }: Props & { open?: 
     if (!jd.trim()) return;
     setDownloading(format);
     try {
-      const url  = format === "pdf" ? api.quickTailorPdfUrl() : api.quickTailorDocxUrl();
+      const url   = format === "pdf" ? api.quickTailorPdfUrl() : api.quickTailorDocxUrl();
+      const token = localStorage.getItem("jh_token");
       const resp = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ jd, company: company || "Company" }),
       });
       if (!resp.ok) throw new Error(await resp.text());

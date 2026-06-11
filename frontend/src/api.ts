@@ -40,6 +40,29 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// Authenticated file download — fetch with Bearer token, save blob via anchor.
+// Plain <a href> can't send Authorization headers → backend returns 401.
+export async function downloadFile(url: string, fallbackName: string): Promise<void> {
+  const token = localStorage.getItem("jh_token");
+  const res = await fetch(url, {
+    headers: token ? { "Authorization": `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || "Download failed");
+  }
+  // Prefer filename from Content-Disposition
+  const cd = res.headers.get("Content-Disposition") || "";
+  const m = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+  const filename = m ? decodeURIComponent(m[1]) : fallbackName;
+  const blob = await res.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 let _profileCache: ProfileData | null = null;
 
 export const api = {

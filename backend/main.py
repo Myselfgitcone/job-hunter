@@ -58,6 +58,7 @@ _CORS_HEADERS = [
     (b"access-control-allow-origin",  b"*"),
     (b"access-control-allow-methods", b"GET, POST, PUT, DELETE, OPTIONS, PATCH"),
     (b"access-control-allow-headers", b"*"),
+    (b"access-control-expose-headers", b"Content-Disposition"),
     (b"access-control-max-age",        b"86400"),
 ]
 
@@ -99,6 +100,7 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
 )
 
 # â”€â”€ Global exception handlers â€” always include CORS headers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

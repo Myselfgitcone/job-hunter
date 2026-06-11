@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { Job, JobStatus } from "../types";
-import { api } from "../api";
+import { api, downloadFile } from "../api";
 import { ATSBar, Spinner, CompanyLogo } from "./primitives";
 
 function relTimeDetail(iso: string): string {
@@ -485,12 +485,12 @@ function ResumeTab({ job, tailoring, onTailor, onToast }: {
         <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 8 }}>Tailored Resume</div>
         <pre className="mono" style={{ flex: 1, background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, padding: 18, fontSize: 11.5, lineHeight: 1.7, color: "var(--text-secondary)", overflow: "auto", whiteSpace: "pre-wrap", maxHeight: 500 }}>{job.tailored_resume}</pre>
         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-          <a href={api.pdfUrl(job.id)} target="_blank" rel="noreferrer" className="btn btn-ghost"><Ic d={I.download} size={14} /> PDF</a>
-          <a href={api.docxUrl(job.id)} target="_blank" rel="noreferrer" className="btn btn-ghost"><Ic d={I.download} size={14} /> DOCX</a>
+          <button className="btn btn-ghost" onClick={() => downloadFile(api.pdfUrl(job.id), "resume.pdf").catch(e => onToast(e.message, "error"))}><Ic d={I.download} size={14} /> PDF</button>
+          <button className="btn btn-ghost" onClick={() => downloadFile(api.docxUrl(job.id), "resume.docx").catch(e => onToast(e.message, "error"))}><Ic d={I.download} size={14} /> DOCX</button>
           <button className="btn btn-ghost" onClick={() => { navigator.clipboard.writeText(job.tailored_resume || ""); onToast("Copied!", "success"); }}><Ic d={I.copy} size={14} /> Copy</button>
-          <a href={api.savePackageUrl(job.id)} download className="btn btn-subtle" style={{ textDecoration: "none" }}>
+          <button className="btn btn-subtle" onClick={() => downloadFile(api.savePackageUrl(job.id), "package.zip").catch(e => onToast(e.message, "error"))}>
             <Ic d={I.folder} size={14} /> Save Package
-          </a>
+          </button>
         </div>
 
         {/* ATS keywords */}

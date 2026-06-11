@@ -457,6 +457,28 @@ async def startup():
             asyncio.create_task(_run_exp_ai_sweep())
         except Exception as e:
             print(f"[Startup] Experience backfill skipped: {e}")
+        # Remap legacy country="Remote" rows — remote is a work type, not a
+        # country. Must run BEFORE the board purge so remote-USA LinkedIn
+        # rows get caught by it.
+        try:
+            from scrapers.base import detect_country as _detect_c
+            async with SessionLocal() as db:
+                rows = await db.execute(select(Job.id, Job.location).where(Job.country == "Remote"))
+                remote_rows = rows.fetchall()
+            if remote_rows:
+                fixed = 0
+                async with SessionLocal() as db:
+                    for jid, loc in remote_rows:
+                        c = _detect_c(loc or "", default="")
+                        if c not in ("USA", "India"):
+                            # most "Remote" rows came from US-centric feeds; default USA
+                            c = "USA"
+                        await db.execute(update(Job).where(Job.id == jid).values(country=c, remote=True))
+                        fixed += 1
+                    await db.commit()
+                print(f"[Startup] Remapped {fixed} country='Remote' rows to real countries")
+        except Exception as e:
+            print(f"[Startup] Remote-country remap skipped: {e}")
         # Purge USA job-board reposts (LinkedIn/Indeed/Dice...) — USA is
         # direct-ATS only; these leaked in via FJ's ATS feed. Keeps applied/interview.
         try:

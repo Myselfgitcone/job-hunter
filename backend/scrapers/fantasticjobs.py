@@ -152,9 +152,10 @@ def _fmt_salary(job: dict) -> str:
 
 
 def _map_country(countries: list, arrangement: str) -> str:
-    arr = (arrangement or "").lower()
-    if "remote" in arr:
-        return "Remote"
+    # NOTE: remote is a work arrangement, NOT a country. The remote flag is
+    # carried separately on JobData.remote — country must stay the real one,
+    # otherwise remote USA jobs dodge USA-only policies (e.g. the LinkedIn
+    # repost guard) and pollute the country filter.
     if not countries:
         return ""
     c = countries[0].lower()
@@ -397,11 +398,11 @@ async def fetch(settings: dict) -> list[dict]:
                         countries   = job.get("countries_derived") or []
                         arrangement = job.get("ai_work_arrangement") or ""
                         country     = _map_country(countries, arrangement)
-                        if country not in ("USA", "India", "Remote"):
+                        if country not in ("USA", "India"):
                             locs    = job.get("locations_derived") or []
                             loc_str = locs[0] if locs else ""
                             country = detect_country(loc_str, default="")
-                            if country not in ("USA", "India", "Remote"):
+                            if country not in ("USA", "India"):
                                 continue
 
                         posted_at = ""

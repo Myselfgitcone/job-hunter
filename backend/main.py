@@ -1740,6 +1740,18 @@ def _job_to_dict(job: Job) -> dict:
         "interview_date": getattr(job, "interview_date", None) or "",
         "priority": getattr(job, "priority", 0) or 0,
         "qualify_result": json.loads(job.qualify_result) if getattr(job, "qualify_result", None) else None,
+        # FJ enrichment
+        "visa_sponsorship":  getattr(job, "visa_sponsorship", None),
+        "experience_level":  getattr(job, "experience_level", "") or "",
+        "employment_type":   getattr(job, "employment_type",  "") or "",
+        "benefits":          json.loads(job.benefits)     if getattr(job, "benefits",     None) else [],
+        "job_expiry":        getattr(job, "job_expiry",    "") or "",
+        "logo_url":          getattr(job, "logo_url",      "") or "",
+        "company_size":      getattr(job, "company_size",  "") or "",
+        "company_industry":  getattr(job, "company_industry", "") or "",
+        "company_hq":        getattr(job, "company_hq",    "") or "",
+        "company_funding":   getattr(job, "company_funding", None),
+        "ai_keywords":       json.loads(job.ai_keywords)  if getattr(job, "ai_keywords",  None) else [],
     }
 
 # â”€â”€ Deadline / Interview Date / Priority â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

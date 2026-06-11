@@ -14,17 +14,16 @@ Description priority:
   2. AI-extracted fields: ai_requirements_summary + ai_core_responsibilities + ai_key_skills (absolute fallback)
 """
 import os
+import json
 import asyncio
 from datetime import datetime, timezone, timedelta
 
 import httpx
-from bs4 import BeautifulSoup
 
 from scrapers.base import JobData, detect_country, is_relevant_title, CUTOFF_HOURS
 
 BASE_ATS = "https://data.fantastic.jobs/v1/active-ats"
 
-# USA + India, 1 page each = 2 API requests per scrape
 LOCATIONS = ["United States", "India"]
 
 _last_fetch_ts: datetime | None = None
@@ -42,6 +41,14 @@ TITLE_FILTER = (
     " | 'java developer' | 'java software engineer' | 'backend java' | 'java engineer')"
     " & !(financial | marketing | sales | nurse)"
 )
+
+
+_EMP_TYPE_MAP = {
+    "FULL_TIME": "Full-time", "PART_TIME": "Part-time",
+    "CONTRACT":  "Contract",  "INTERN":    "Internship",
+    "PER_DIEM":  "Per Diem",  "TEMPORARY": "Temporary",
+    "VOLUNTEER": "Volunteer", "OTHER":     "Other",
+}
 
 
 def _get_headers() -> dict:
@@ -100,10 +107,11 @@ def _map_country(countries: list, arrangement: str) -> str:
 def _build_description(job: dict) -> str:
     """
     Priority:
-      1. `description_html` (paid plan, full ATS JD)
+      1. Full HTML JD from API (description_format=html → stored in `description` key;
+         paid plan may also expose `description_html` — check both)
       2. AI-extracted fields as minimal fallback
     """
-    html = job.get("description_html")
+    html = job.get("description_html") or job.get("description") or ""
     if html and len(html.strip()) >= 100:
         return html[:25000]
 
@@ -228,7 +236,25 @@ async def fetch(settings: dict) -> list[dict]:
 
                     locs_derived = job.get("locations_derived") or []
                     location_str = locs_derived[0] if locs_derived else ""
-                    logo_url     = (job.get("org_logo_permalink") or "")
+
+                    # ── FJ enrichment ─────────────────────────────────────
+                    visa_sponsorship = job.get("ai_visa_sponsorship")  # bool|None
+
+                    emp_raw = job.get("ai_employment_type") or []
+                    emp_code = emp_raw[0] if emp_raw else ""
+                    employment_type = _EMP_TYPE_MAP.get(emp_code, emp_code)
+
+                    benefits_list = job.get("ai_benefits") or []
+                    benefits = json.dumps(benefits_list) if benefits_list else ""
+
+                    keywords_list = job.get("ai_keywords") or []
+                    ai_keywords = json.dumps(keywords_list) if keywords_list else ""
+
+                    funding_raw = job.get("org_crunchbase_total_investment")
+                    try:
+                        company_funding = int(funding_raw) if funding_raw is not None else None
+                    except (TypeError, ValueError):
+                        company_funding = None
 
                     seen.add(url)
                     kept += 1
@@ -245,6 +271,17 @@ async def fetch(settings: dict) -> list[dict]:
                         remote="remote" in arrangement.lower(),
                         posted_at=posted_at,
                         fj_id=job.get("id"),
+                        visa_sponsorship=visa_sponsorship,
+                        experience_level=job.get("ai_experience_level") or "",
+                        employment_type=employment_type,
+                        benefits=benefits,
+                        job_expiry=job.get("date_valid_through") or "",
+                        logo_url=job.get("org_logo_permalink") or "",
+                        company_size=job.get("org_linkedin_size") or "",
+                        company_industry=job.get("org_linkedin_industry") or "",
+                        company_hq=job.get("org_linkedin_headquarters") or "",
+                        company_funding=company_funding,
+                        ai_keywords=ai_keywords,
                     ).to_dict())
 
                 if len(hits) < PAGE_SIZE:

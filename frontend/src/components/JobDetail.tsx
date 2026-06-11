@@ -145,18 +145,23 @@ function JobInfoTab({ job }: { job: Job }) {
   const hcOrigLabel = hcOrig ? relTimeDetail(hcOrig) : "";
   const showOriginal = hcOrig && hcOrigLabel && hcOrigLabel !== postedLabel;
 
-  const rows: [string, string][] = [
-    ["Location",   job.location || "—"],
-    ["Country",    job.country  || "—"],
-    ["Work Type",  job.remote || (job.location||"").toLowerCase().includes("remote") ? "Remote" : "Onsite"],
-    ["Salary",     job.salary   || "—"],
-    ["Source",     job.source   || "—"],
-    ["Status",     job.status   || "new"],
+  const visaVal = job.visa_sponsorship === true ? "✓ Sponsors" : job.visa_sponsorship === false ? "✗ No sponsorship" : "—";
+  const visaColor = job.visa_sponsorship === true ? "#16a34a" : job.visa_sponsorship === false ? "#dc2626" : "var(--tx-1)";
+
+  const rows: [string, string, string?][] = [
+    ["Location",      job.location || "—"],
+    ["Country",       job.country  || "—"],
+    ["Work Type",     job.remote || (job.location||"").toLowerCase().includes("remote") ? "Remote" : job.employment_type ? "" : "Onsite"],
+    ["Employment",    job.employment_type || "—"],
+    ["Experience",    job.experience_level ? `${job.experience_level} yrs` : "—"],
+    ["Salary",        job.salary   || "—"],
+    ["Source",        job.source   || "—"],
+    ["Expires",       job.job_expiry ? new Date(job.job_expiry).toLocaleDateString() : "—"],
   ];
 
   return (
     <div style={{ padding: "20px 0", display: "flex", flexDirection: "column", gap: 20 }}>
-      {/* Posted date — hero element matching screenshot */}
+      {/* Posted date */}
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         <span style={{ fontSize: 13, color: "var(--tx-3)", fontWeight: 500 }}>Posted</span>
         <span style={{ fontSize: 22, fontWeight: 700, color: "var(--tx-1)" }}>
@@ -169,9 +174,16 @@ function JobInfoTab({ job }: { job: Job }) {
         )}
       </div>
 
+      {/* Visa sponsorship — highlight */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10,
+        background: job.visa_sponsorship === true ? "rgba(22,163,74,0.08)" : job.visa_sponsorship === false ? "rgba(220,38,38,0.08)" : "var(--bg-2)" }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: visaColor }}>{visaVal}</span>
+        <span style={{ fontSize: 12, color: "var(--tx-3)" }}>Visa Sponsorship</span>
+      </div>
+
       {/* Metadata grid */}
       <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: "10px 16px" }}>
-        {rows.map(([k, v]) => (
+        {rows.filter(([,v]) => v).map(([k, v]) => (
           <>
             <span key={k+"-k"} style={{ fontSize: 13, color: "var(--tx-3)", fontWeight: 500 }}>{k}</span>
             <span key={k+"-v"} style={{ fontSize: 13, color: "var(--tx-1)" }}>{v}</span>
@@ -193,31 +205,60 @@ function CompanyInfoTab({ job }: { job: Job }) {
   let careerDomain = "";
   try { careerDomain = new URL(job.url).hostname.replace("www.", ""); } catch {}
 
+  const logoSrc = job.logo_url || "";
+  const funding = job.company_funding && job.company_funding > 0
+    ? job.company_funding >= 1_000_000_000
+      ? `$${(job.company_funding / 1_000_000_000).toFixed(1)}B`
+      : `$${(job.company_funding / 1_000_000).toFixed(0)}M`
+    : "";
+
+  const companyRows: [string, string][] = [
+    ["Headquarters", job.company_hq      || "—"],
+    ["Industry",     job.company_industry || "—"],
+    ["Size",         job.company_size     || "—"],
+    ["Funding",      funding              || "—"],
+    ["ATS Platform", job.source],
+    ["Career Page",  careerDomain],
+  ];
+
   return (
     <div style={{ padding: "20px 0", display: "flex", flexDirection: "column", gap: 20 }}>
       {/* Company hero */}
       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <CompanyLogo url={job.url} company={job.company} size={56} />
+        {logoSrc
+          ? <img src={logoSrc} alt={job.company} style={{ width: 56, height: 56, borderRadius: 10, objectFit: "contain", background: "var(--bg-2)", padding: 4 }} />
+          : <CompanyLogo url={job.url} company={job.company} size={56} />
+        }
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <span style={{ fontSize: 20, fontWeight: 700, color: "var(--tx-1)" }}>{job.company}</span>
-          <span style={{ fontSize: 13, color: "var(--tx-3)" }}>Hiring via {job.source}</span>
+          {job.company_industry && <span style={{ fontSize: 12, color: "var(--tx-3)" }}>{job.company_industry}</span>}
         </div>
       </div>
 
-      {/* Details */}
+      {/* Company details */}
       <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: "10px 16px" }}>
-        <span style={{ fontSize: 13, color: "var(--tx-3)", fontWeight: 500 }}>Location</span>
-        <span style={{ fontSize: 13, color: "var(--tx-1)" }}>{job.location || "—"}</span>
-        <span style={{ fontSize: 13, color: "var(--tx-3)", fontWeight: 500 }}>Country</span>
-        <span style={{ fontSize: 13, color: "var(--tx-1)" }}>{job.country || "—"}</span>
-        <span style={{ fontSize: 13, color: "var(--tx-3)", fontWeight: 500 }}>ATS Platform</span>
-        <span style={{ fontSize: 13, color: "var(--tx-1)" }}>{job.source}</span>
-        <span style={{ fontSize: 13, color: "var(--tx-3)", fontWeight: 500 }}>Career Page</span>
-        <a href={job.url} target="_blank" rel="noreferrer"
-          style={{ fontSize: 13, color: "var(--accent)", textDecoration: "none" }}>
-          {careerDomain}
-        </a>
+        {companyRows.map(([k, v]) => (
+          <>
+            <span key={k+"-k"} style={{ fontSize: 13, color: "var(--tx-3)", fontWeight: 500 }}>{k}</span>
+            {k === "Career Page"
+              ? <a key={k+"-v"} href={job.url} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: "var(--accent)", textDecoration: "none" }}>{v}</a>
+              : <span key={k+"-v"} style={{ fontSize: 13, color: "var(--tx-1)" }}>{v}</span>
+            }
+          </>
+        ))}
       </div>
+
+      {/* Benefits */}
+      {job.benefits && job.benefits.length > 0 && (
+        <div>
+          <span style={{ fontSize: 13, color: "var(--tx-3)", fontWeight: 500, display: "block", marginBottom: 8 }}>Benefits</span>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {job.benefits.map((b, i) => (
+              <span key={i} style={{ fontSize: 12, padding: "3px 8px", borderRadius: 6, background: "var(--bg-2)", color: "var(--tx-2)" }}>{b}</span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -204,6 +204,18 @@ class JobData:
     posted_at: str = ""
     hc_original_date: str = ""  # HC estimated_publish_date (raw, only set for HiringCafe jobs)
     fj_id: Optional[int] = None
+    # FJ enrichment fields
+    visa_sponsorship: Optional[bool] = None
+    experience_level: str = ""
+    employment_type:  str = ""
+    benefits:         str = ""   # JSON list
+    job_expiry:       str = ""
+    logo_url:         str = ""
+    company_size:     str = ""
+    company_industry: str = ""
+    company_hq:       str = ""
+    company_funding:  Optional[int] = None
+    ai_keywords:      str = ""   # JSON list
 
     def to_dict(self) -> dict:
         return {
@@ -219,4 +231,15 @@ class JobData:
             "posted_at": self.posted_at,
             "hc_original_date": self.hc_original_date,
             "fj_id": self.fj_id,
+            "visa_sponsorship":  self.visa_sponsorship,
+            "experience_level":  self.experience_level,
+            "employment_type":   self.employment_type,
+            "benefits":          self.benefits,
+            "job_expiry":        self.job_expiry,
+            "logo_url":          self.logo_url,
+            "company_size":      self.company_size,
+            "company_industry":  self.company_industry,
+            "company_hq":        self.company_hq,
+            "company_funding":   self.company_funding,
+            "ai_keywords":       self.ai_keywords,
         }

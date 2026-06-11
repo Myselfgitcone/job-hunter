@@ -73,6 +73,18 @@ export interface Job {
   interview_date: string;
   priority: number;
   qualify_result: QualifyResult | null;
+  // FJ enrichment
+  visa_sponsorship: boolean | null;
+  experience_level: string;
+  employment_type: string;
+  benefits: string[];
+  job_expiry: string;
+  logo_url: string;
+  company_size: string;
+  company_industry: string;
+  company_hq: string;
+  company_funding: number | null;
+  ai_keywords: string[];
 }
 
 export interface Settings {

@@ -57,7 +57,20 @@ class Job(Base):
     scraped_at = Column(String, default="")
     hc_original_date = Column(String, default="")  # HC estimated_publish_date (raw, unfiltered)
     status = Column(String, default="new")  # new / applied / skipped / interview / closed
-    fj_id = Column(BigInteger, default=None)  # Fantastic.jobs internal ID
+    fj_id = Column(BigInteger, default=None)   # Fantastic.jobs internal ID
+
+    # ── FJ enrichment fields ──────────────────────────────────────────────────
+    visa_sponsorship  = Column(Boolean, default=None)   # ai_visa_sponsorship
+    experience_level  = Column(String,  default="")     # "0-2","2-5","5-10","10+"
+    employment_type   = Column(String,  default="")     # "Full-time","Contract", etc.
+    benefits          = Column(Text,    default="")     # JSON list of benefit strings
+    job_expiry        = Column(String,  default="")     # date_valid_through (ISO)
+    logo_url          = Column(String,  default="")     # org_logo_permalink (S3)
+    company_size      = Column(String,  default="")     # org_linkedin_size
+    company_industry  = Column(String,  default="")     # org_linkedin_industry
+    company_hq        = Column(String,  default="")     # org_linkedin_headquarters
+    company_funding   = Column(BigInteger, default=None)# org_crunchbase_total_investment
+    ai_keywords       = Column(Text,    default="")     # JSON list for ATS matching
 
     tailored_resume = Column(Text, default=None)
     tailored_at = Column(String, default=None)
@@ -186,6 +199,18 @@ async def init_db():
         "ALTER TABLE jobs ADD COLUMN priority INTEGER DEFAULT 0",
         "ALTER TABLE jobs ADD COLUMN qualify_result TEXT",
         "ALTER TABLE jobs ADD COLUMN hc_original_date TEXT DEFAULT ''",
+        # FJ enrichment
+        "ALTER TABLE jobs ADD COLUMN visa_sponsorship BOOLEAN",
+        "ALTER TABLE jobs ADD COLUMN experience_level TEXT DEFAULT ''",
+        "ALTER TABLE jobs ADD COLUMN employment_type TEXT DEFAULT ''",
+        "ALTER TABLE jobs ADD COLUMN benefits TEXT DEFAULT ''",
+        "ALTER TABLE jobs ADD COLUMN job_expiry TEXT DEFAULT ''",
+        "ALTER TABLE jobs ADD COLUMN logo_url TEXT DEFAULT ''",
+        "ALTER TABLE jobs ADD COLUMN company_size TEXT DEFAULT ''",
+        "ALTER TABLE jobs ADD COLUMN company_industry TEXT DEFAULT ''",
+        "ALTER TABLE jobs ADD COLUMN company_hq TEXT DEFAULT ''",
+        "ALTER TABLE jobs ADD COLUMN company_funding BIGINT",
+        "ALTER TABLE jobs ADD COLUMN ai_keywords TEXT DEFAULT ''",
     ]
     for stmt in migrations:
         try:

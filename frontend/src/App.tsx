@@ -3,7 +3,6 @@ import type { Job, JobStatus, QualifyResult } from "./types";
 import { api } from "./api";
 
 import JobPreferencesModal from './components/JobPreferencesModal';
-import { checkVisa } from "./utils/visaCheck";
 import { isLevelMatch } from "./utils/levelCheck";
 import { JobCard } from "./components/JobCard";
 import { JobList } from "./components/JobList";
@@ -235,19 +234,12 @@ export default function App() {
     return () => document.removeEventListener("keydown", h);
   }, []);
 
-  // Visa / level filters — live toggles from filter panel
-  const filterJob = useCallback((j: Job) => {
-    if (visaFilter && !checkVisa(j.title + " " + (j.description || "")).eligible) return false;
-    if (expFilter  && !isLevelMatch(j.title)) return false;
-    return true;
-  }, [visaFilter, expFilter]);
-
   const loadJobs = useCallback(async () => {
     if (!isAuthenticated) return;
     setLoading(true);
-    try { const raw = await api.getJobs(); const f = raw.filter(filterJob); setJobs(f); setAllJobs(f); }
+    try { const raw = await api.getJobs(); setJobs(raw); setAllJobs(raw); }
     catch {} finally { setLoading(false); }
-  }, [filterJob, isAuthenticated]);
+  }, [isAuthenticated]);
 
   useEffect(() => { loadJobs(); }, [loadJobs]);
 
@@ -365,6 +357,10 @@ export default function App() {
           if (filters.hcAge === "old"    && ageDays <= 90) return false;
         }
       }
+      // Visa filter — hide jobs explicitly not sponsoring (null = unknown = show)
+      if (visaFilter && j.visa_sponsorship === false) return false;
+      // Level filter — hide overqualified roles
+      if (expFilter  && !isLevelMatch(j.title)) return false;
       return true;
     }).sort((a, b) => {
       if (sortBy === "score") {
@@ -377,7 +373,7 @@ export default function App() {
       const tB = parseMs(b.posted_at) ?? parseMs(b.scraped_at) ?? 0;
       return tB - tA;
     });
-  }, [jobs, filters, myRolesOnly, activeRoleView, userSettings, sortBy]);
+  }, [jobs, filters, myRolesOnly, activeRoleView, userSettings, sortBy, visaFilter, expFilter]);
 
   const selectedJob = jobs.find(j => j.id === selectedId) || null;
 
@@ -620,7 +616,8 @@ export default function App() {
               activeRoleView={activeRoleView} setActiveRoleView={setActiveRoleView}
               searchRef={searchRef}
               COUNTRIES={COUNTRIES}
-              visaFilter={visaFilter} setVisaFilter={(v) => { setVisaFilter(v); saveFilterToggle(v, false); }}
+              visaFilter={visaFilter} setVisaFilter={(v) => { setVisaFilter(v); saveFilterToggle(v, expFilter); }}
+              expFilter={expFilter}   setExpFilter={(v) => { setExpFilter(v); saveFilterToggle(visaFilter, v); }}
               isAdmin={isAdmin} userRoles={userSettings?.job_roles ? (Array.isArray(userSettings.job_roles) ? userSettings.job_roles : JSON.parse(userSettings.job_roles)) : []}
               sidebarCollapsed={sidebarCollapsed}
             />
@@ -922,12 +919,13 @@ function DeptSelector({ selected, onChange }: { selected: string[]; onChange: (v
   );
 }
 
-function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, activeRoleView, setActiveRoleView, searchRef, COUNTRIES, visaFilter, setVisaFilter, isAdmin, userRoles, sidebarCollapsed }: {
+function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, activeRoleView, setActiveRoleView, searchRef, COUNTRIES, visaFilter, setVisaFilter, expFilter, setExpFilter, isAdmin, userRoles, sidebarCollapsed }: {
   filters: Filters; setFilters: React.Dispatch<React.SetStateAction<Filters>>;
   role: string; roleOn: boolean; setRoleOn: (v: boolean) => void;
   activeRoleView: string; setActiveRoleView: (v: string) => void;
   searchRef: React.RefObject<HTMLInputElement>; COUNTRIES: string[];
   visaFilter: boolean; setVisaFilter: (v: boolean) => void;
+  expFilter: boolean; setExpFilter: (v: boolean) => void;
   isAdmin: boolean; userRoles?: string[];
   sidebarCollapsed?: boolean;
 }) {
@@ -1054,9 +1052,18 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, activeRoleVie
               <div className="fp-toggle-row">
                 <div>
                   <div className="fp-toggle-name">Visa filter</div>
-                  <div className="fp-toggle-desc">Only show roles matching your visa status</div>
+                  <div className="fp-toggle-desc">Only show roles that sponsor visas</div>
                 </div>
                 <button className={`toggle${visaFilter ? " on" : ""}`} onClick={() => setVisaFilter(!visaFilter)}>
+                  <span className="toggle-knob" />
+                </button>
+              </div>
+              <div className="fp-toggle-row">
+                <div>
+                  <div className="fp-toggle-name">Experience filter</div>
+                  <div className="fp-toggle-desc">Hide overqualified roles (Principal, Director, VP+)</div>
+                </div>
+                <button className={`toggle${expFilter ? " on" : ""}`} onClick={() => setExpFilter(!expFilter)}>
                   <span className="toggle-knob" />
                 </button>
               </div>

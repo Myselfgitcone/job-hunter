@@ -206,10 +206,6 @@ export default function App() {
 
   // Dynamic user display from auth
   const profileName = currentUser?.name || userSettings?.profile_name || "";
-  const userRole = (() => {
-    const roles = Array.isArray(userSettings?.job_roles) ? userSettings.job_roles : JSON.parse(userSettings?.job_roles || "[]");
-    return roles[0] || "My Role";
-  })();
   const initials    = profileName
     ? profileName.split(" ").map((w: string) => w[0]).slice(0, 2).join("").toUpperCase()
     : "?";
@@ -225,8 +221,6 @@ export default function App() {
 
   const DEFAULT_FILTERS: Filters = { q: "", category: [], level: [], type: [], country: [], source: [], years: [], score: "any", time: "any" };
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
-  const [myRolesOnly, setMyRolesOnly] = useState(false);
-  const [activeRoleView, setActiveRoleView] = useState<string>("");
 
   // ── Theme toggle ──────────────────────────────────────────────────────────
   const [isDark, setIsDark] = useState<boolean>(() => {
@@ -310,11 +304,6 @@ export default function App() {
             return title.includes(term) || desc.includes(term);
           });
           if (!matchesAnyRole) return false;
-
-          // 2. View Filter (Dropdown)
-          if (myRolesOnly && activeRoleView) {
-            if (!title.includes(activeRoleView.toLowerCase())) return false;
-          }
         }
       }
       // q — free text (design: title + company)
@@ -376,7 +365,7 @@ export default function App() {
       const tB = parseMs(b.posted_at) ?? parseMs(b.scraped_at) ?? 0;
       return tB - tA;
     });
-  }, [jobs, filters, myRolesOnly, activeRoleView, userSettings, sortBy, visaFilter, expFilter]);
+  }, [jobs, filters, userSettings, sortBy, visaFilter, expFilter]);
 
   const selectedJob = jobs.find(j => j.id === selectedId) || null;
 
@@ -427,7 +416,7 @@ export default function App() {
     catch (e: any) { toast(e.message, "error"); }
   };
 
-  const handleResetFilters = () => { setFilters(DEFAULT_FILTERS); setMyRolesOnly(false); };
+  const handleResetFilters = () => { setFilters(DEFAULT_FILTERS); };
 
   const handleStatusChange = async (id: string, status: JobStatus) => {
     await api.setStatus(id, status); updateJob(id, { status }); toast("Moved to " + status, "success");
@@ -469,7 +458,7 @@ export default function App() {
   useEffect(() => { (window as any).__navToProfile = () => setView("profile"); }, []);
   const handleNav = (v: string) => { if (v === "tailor") { setTailorOpen(true); return; } setView(v as View); };
   const activeFilterCount = filters.category.length + filters.level.length + filters.type.length + filters.country.length + filters.source.length + filters.years.length + (filters.score !== "any" ? 1 : 0);
-  const filtersActive = activeFilterCount > 0 || filters.q !== "" || !myRolesOnly;
+  const filtersActive = activeFilterCount > 0 || filters.q !== "";
   const isAdmin = currentUser?.email?.toLowerCase() === "jaggubhai8766@gmail.com";
   
   const navItems = [
@@ -618,14 +607,10 @@ export default function App() {
             />
             <FilterBar
               filters={filters} setFilters={setFilters}
-              role={userRole} roleOn={myRolesOnly} setRoleOn={setMyRolesOnly}
-              activeRoleView={activeRoleView} setActiveRoleView={setActiveRoleView}
-              searchRef={searchRef}
-              COUNTRIES={COUNTRIES}
               SOURCES={SOURCES}
               visaFilter={visaFilter} setVisaFilter={(v) => { setVisaFilter(v); saveFilterToggle(v, expFilter); }}
               expFilter={expFilter}   setExpFilter={(v) => { setExpFilter(v); saveFilterToggle(visaFilter, v); }}
-              isAdmin={isAdmin} userRoles={userSettings?.job_roles ? (Array.isArray(userSettings.job_roles) ? userSettings.job_roles : JSON.parse(userSettings.job_roles)) : []}
+              isAdmin={isAdmin}
               sidebarCollapsed={sidebarCollapsed}
             />
               {scraping && (
@@ -654,6 +639,13 @@ export default function App() {
                         </select>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", right: 7, color: "var(--tx-3)", pointerEvents: "none" }}><path d="m6 9 6 6 6-6"/></svg>
                       </div>
+                    </div>
+                    <div className="search-wrap" style={{ flex: 1, marginLeft: 10, minWidth: 0 }}>
+                      <svg className="s-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
+                      </svg>
+                      <input ref={searchRef} className="search-input" type="text" value={filters.q}
+                        onChange={e => setFilters(f => ({ ...f, q: e.target.value }))} placeholder="Search…" />
                     </div>
                   </div>
                   <div className={`list-scroll${listMode === "cards" ? " cards" : ""}`}>
@@ -980,23 +972,62 @@ function DeptSelector({ selected, onChange }: { selected: string[]; onChange: (v
   );
 }
 
-function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, activeRoleView, setActiveRoleView, searchRef, COUNTRIES, SOURCES, visaFilter, setVisaFilter, expFilter, setExpFilter, isAdmin, userRoles, sidebarCollapsed }: {
+// Compact inline multi-select dropdown for the filter bar
+function InlineMultiFilter({ label, options, selected, onChange }: {
+  label: string; options: string[]; selected: string[]; onChange: (v: string[]) => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const fn = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+  }, [open]);
+  const toggle = (o: string) => onChange(selected.includes(o) ? selected.filter(x => x !== o) : [...selected, o]);
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button className={`filters-btn${selected.length > 0 ? " has" : ""}`} onClick={() => setOpen(v => !v)}>
+        {label}
+        {selected.length > 0 && <span className="fb-count">{selected.length}</span>}
+        <svg className="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      {open && (
+        <div className="filter-panel" style={{ minWidth: 170, padding: 10 }}>
+          {selected.length > 0 && (
+            <button className="fp-reset" style={{ marginBottom: 6 }} onClick={() => onChange([])}>Clear</button>
+          )}
+          <div className="acc-opts">
+            {options.map(o => (
+              <label key={o} className={`fp-check${selected.includes(o) ? " on" : ""}`} onClick={() => toggle(o)}>
+                <span className="fp-box">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
+                </span>
+                {o}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FilterBar({ filters, setFilters, SOURCES, visaFilter, setVisaFilter, expFilter, setExpFilter, isAdmin, sidebarCollapsed }: {
   filters: Filters; setFilters: React.Dispatch<React.SetStateAction<Filters>>;
-  role: string; roleOn: boolean; setRoleOn: (v: boolean) => void;
-  activeRoleView: string; setActiveRoleView: (v: string) => void;
-  searchRef: React.RefObject<HTMLInputElement>; COUNTRIES: string[]; SOURCES?: string[];
+  SOURCES?: string[];
   visaFilter: boolean; setVisaFilter: (v: boolean) => void;
   expFilter: boolean; setExpFilter: (v: boolean) => void;
-  isAdmin: boolean; userRoles?: string[];
+  isAdmin: boolean;
   sidebarCollapsed?: boolean;
 }) {
   const set = (k: keyof Filters, v: any) => setFilters(f => ({ ...f, [k]: v }));
   const [open, setOpen] = React.useState(false);
-  const [draft, setDraft] = React.useState({ category: [] as string[], level: [] as string[], type: [] as string[], country: [] as string[], source: [] as string[], years: [] as string[], score: "any" as string });
+  const [draft, setDraft] = React.useState({ source: [] as string[], score: "any" as string });
   const ref = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
-    if (open) setDraft({ category: filters.category, level: filters.level, type: filters.type, country: filters.country, source: filters.source, years: filters.years, score: filters.score });
+    if (open) setDraft({ source: filters.source, score: filters.score });
   }, [open]);
 
   React.useEffect(() => {
@@ -1006,64 +1037,26 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, activeRoleVie
     return () => document.removeEventListener("mousedown", fn);
   }, [open]);
 
-  const toggle = (key: keyof typeof draft, val: string) => setDraft(d => {
-    const arr = d[key] as string[];
-    return { ...d, [key]: arr.includes(val) ? arr.filter((x: string) => x !== val) : [...arr, val] };
-  });
-  const resetAll = () => setDraft({ category: [], level: [], type: [], country: [], source: [], years: [], score: "any" });
+  const resetAll = () => setDraft({ source: [], score: "any" });
   const apply = () => { setFilters(f => ({ ...f, ...draft, score: draft.score as Filters["score"] })); setOpen(false); };
 
-  const committed = countPanelFilters(filters);
-  const draftCount = countPanelFilters(draft);
+  const committed = filters.source.length + (filters.score !== "any" ? 1 : 0);
+  const draftCount = draft.source.length + (draft.score !== "any" ? 1 : 0);
   const timeOpts: [Filters["time"], string][] = [["any","Any"],["24","24h"],["48","48h"],["72","72h"],["168","7d"]];
-  const groups: [keyof typeof draft, string, string[]][] = [
-    ["level",    "Experience Level", ["Internship","Entry Level","Mid Level","Senior","Lead"]],
-    ["years",    "Years of Experience", ["0-2","2-4","4-5","5-6","6-7","7-8","8-10","10-13","13-15","15+"]],
-    ["type",     "Work Type",["Remote","Onsite","Hybrid"]],
-    ...(isAdmin ? [["source", "Source", SOURCES && SOURCES.length ? SOURCES : ["Greenhouse","Lever","Ashby","Workday","HiringCafe"]] as [keyof typeof draft, string, string[]]] : []),
-    ["country",  "Country",  COUNTRIES.length ? COUNTRIES : ["USA","Canada","United Kingdom","Germany","France","India","Remote"]],
-  ];
+  const sourceOpts = SOURCES && SOURCES.length ? SOURCES : ["FantasticJobs","LinkedIn","Indeed"];
   const scoreOpts: [string, string][] = [["any","Any"],["60","≥60%"],["70","≥70%"],["80","≥80%"],["90","≥90%"]];
 
   return (
     <div className="filterbar" style={{ paddingLeft: sidebarCollapsed ? 248 : 20 }}>
-      {/* Role chip - hybrid toggle/dropdown */}
-      {userRoles && userRoles.length > 0 && (
-        <div className="chip" style={{ display: "flex", alignItems: "center", padding: 0, opacity: roleOn ? 1 : 0.6, background: roleOn ? "var(--bg-hover)" : "transparent", transition: "opacity 0.2s" }}>
-          <button onClick={() => {
-            const nextState = !roleOn;
-            setRoleOn(nextState);
-            if (!nextState) setActiveRoleView("");
-          }} style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px 0 10px", height: "100%", background: "none", border: "none", cursor: "pointer", color: "var(--tx)", borderRight: "1px solid var(--line)", borderTopLeftRadius: "var(--r-sm)", borderBottomLeftRadius: "var(--r-sm)" }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--violet)" }}>
-              <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>
-            </svg>
-            My Role:
-          </button>
-          <select 
-            value={activeRoleView} 
-            onChange={(e) => {
-              setActiveRoleView(e.target.value);
-              if (e.target.value) setRoleOn(true);
-            }}
-            style={{ background: "none", border: "none", color: "var(--violet)", fontWeight: 600, padding: "0 10px 0 8px", cursor: "pointer", outline: "none", height: "100%", fontFamily: "inherit", fontSize: 13 }}
-          >
-            <option value="">All My Roles</option>
-            {userRoles.map((r: string) => <option key={r} value={r}>{r}</option>)}
-          </select>
-        </div>
-      )}
+      {/* Inline quick filters — applied immediately */}
+      <InlineMultiFilter label="Years of Exp"
+        options={["0-2","2-4","4-5","5-6","6-7","7-8","8-10","10-13","13-15","15+"]}
+        selected={filters.years} onChange={v => set("years", v)} />
+      <InlineMultiFilter label="Work Type"
+        options={["Remote","Onsite","Hybrid"]}
+        selected={filters.type} onChange={v => set("type", v)} />
 
-      {/* Search */}
-      <div className="search-wrap">
-        <svg className="s-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
-        </svg>
-        <input ref={searchRef} className="search-input" type="text" value={filters.q} onChange={e => set("q", e.target.value)} placeholder="Search titles, companies…" />
-
-      </div>
-
-      {/* Single Filters button + panel */}
+      {/* Filters panel — Source, Match Score, toggles */}
       <div ref={ref}>
         <button className={`filters-btn${committed > 0 ? " has" : ""}`} onClick={() => setOpen(o => !o)}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1080,26 +1073,21 @@ function FilterBar({ filters, setFilters, role, roleOn, setRoleOn, activeRoleVie
               <button className="fp-reset" onClick={resetAll}>Reset all</button>
             </div>
             <div className="fp-accordion">
-              <AccordionSection label="Department" count={draft.category.length}>
-                <DeptSelector selected={draft.category} onChange={v => setDraft(d => ({ ...d, category: v }))} />
-              </AccordionSection>
-              {groups.map(([key, label, opts]) => (
-                <AccordionSection key={key} label={label} count={(draft[key] as string[]).length}>
+              {isAdmin && (
+                <AccordionSection label="Source" count={draft.source.length}>
                   <div className="acc-opts">
-                    {opts.map(o => {
-                      const arr = draft[key] as string[];
-                      return (
-                        <label key={o} className={`fp-check${arr.includes(o) ? " on" : ""}`} onClick={() => toggle(key, o)}>
-                          <span className="fp-box">
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
-                          </span>
-                          {o}
-                        </label>
-                      );
-                    })}
+                    {sourceOpts.map(o => (
+                      <label key={o} className={`fp-check${draft.source.includes(o) ? " on" : ""}`}
+                        onClick={() => setDraft(d => ({ ...d, source: d.source.includes(o) ? d.source.filter(x => x !== o) : [...d.source, o] }))}>
+                        <span className="fp-box">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
+                        </span>
+                        {o}
+                      </label>
+                    ))}
                   </div>
                 </AccordionSection>
-              ))}
+              )}
               <AccordionSection label="Match Score" count={draft.score !== "any" ? 1 : 0}>
                 <div className="acc-opts acc-pills">
                   {scoreOpts.map(([v, l]) => (

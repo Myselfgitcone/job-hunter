@@ -1090,6 +1090,11 @@ async def public_today_stats():
             select(func.max(Job.ats_score_before)).select_from(Job)
         )
         best_score = score_r.scalar()
+        # Qualify coverage — how many jobs have an AI match score
+        scored_r = await db.execute(
+            select(func.count()).select_from(Job).where(Job.qualify_result != None)
+        )
+        scored_jobs = scored_r.scalar() or 0
 
     mins_ago = None
     if last_scraped_at:
@@ -1103,6 +1108,7 @@ async def public_today_stats():
         "added_today": added_today,
         "last_scrape_mins_ago": mins_ago,
         "best_match_score": best_score,
+        "scored_jobs": scored_jobs,
     }
 
 @app.get("/api/jobs")
@@ -2493,8 +2499,21 @@ async def qualify_all_jobs(background_tasks: BackgroundTasks, user_id: str = Dep
     return {"message": "Qualification running in background"}
 
 
+_qualify_running = False
+
 async def _run_qualify_all():
     """Standalone qualify-all — usable from scheduler and endpoint."""
+    global _qualify_running
+    if _qualify_running:
+        print("[Qualify] Already running — skipping duplicate trigger")
+        return
+    _qualify_running = True
+    try:
+        await _run_qualify_all_inner()
+    finally:
+        _qualify_running = False
+
+async def _run_qualify_all_inner():
     from ai.qualify import qualify_job
 
     # Get admin's API key + model from UserSettings (not legacy Setting table)

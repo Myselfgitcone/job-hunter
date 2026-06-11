@@ -60,11 +60,13 @@ MIN_MODIFIED_INTERVAL_H = 6
 # 'data platform' catches Data Platform Engineer (missed by 'data engineer' alone).
 # Exec/arch exclusions: never billed, never stored — saves credits globally.
 TITLE_FILTER = (
-    "(devops | sre | 'site reliability' | 'platform engineer'"
-    " | 'data engineer' | etl | 'data platform'"
+    # DevOps/SRE — disabled (re-enable by uncommenting the line below)
+    # "(devops | sre | 'site reliability' | 'platform engineer'"
+    "('data engineer' | etl | 'data platform'"
     " | 'data analyst' | 'data analytics'"
-    " | 'security engineer' | 'security analyst' | 'soc analyst'"
-    " | cybersecurity | infosec | 'application security'"
+    # Security — disabled (re-enable by uncommenting the line below)
+    # " | 'security engineer' | 'security analyst' | 'soc analyst'"
+    # " | cybersecurity | infosec | 'application security'"
     " | 'business intelligence' | 'bi developer' | 'bi analyst' | 'power bi'"
     " | (java & !javascript) | 'spring boot' | jakarta)"
     " & !(financial | marketing | sales | nurse"

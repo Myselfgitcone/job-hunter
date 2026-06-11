@@ -752,7 +752,6 @@ textarea { resize: none; }
 .jd-html em,.jd-html i { font-style: italic; }
 .jd-html a { color: var(--cyan); text-decoration: none; }
 .jd-html a:hover { text-decoration: underline; }
-.jd-html br { display: none; }
 .jd-html div { margin-bottom: 4px; }
 
 /* qualify breakdown */

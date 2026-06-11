@@ -105,7 +105,7 @@ def _build_description(job: dict) -> str:
     """
     html = job.get("description_html")
     if html and len(html.strip()) >= 100:
-        return BeautifulSoup(html, "lxml").get_text(separator="\n", strip=True)[:25000]
+        return html[:25000]
 
     # AI-extracted fallback
     parts = []

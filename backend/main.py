@@ -225,7 +225,7 @@ async def _run_scrape_internal() -> dict:
         old_jobs_result = await db.execute(
             select(Job).where(
                 Job.scraped_at < cutoff_old,
-                Job.status.in_(["new", "skipped"]),
+                Job.status.in_(["new", "skipped", "closed"]),
             )
         )
         old_jobs = old_jobs_result.scalars().all()

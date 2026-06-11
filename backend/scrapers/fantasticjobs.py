@@ -41,9 +41,11 @@ PAGE_SIZE = 100   # FJ recommends 100-1000; bigger pages = fewer request credits
 MAX_PAGES = 200   # safety cap only; natural break = last page < PAGE_SIZE
 
 # Credit guard: count endpoints are FREE (request credits only). We pre-check
-# expected volume per feed+location; anything above this cap means a filter
+# expected volume per feed+location; anything above the cap means a filter
 # regression or window bug — skip rather than bill thousands of job credits.
-MAX_EXPECTED_PER_FETCH = 3000
+# Caps scale with the window: hourly runs see <200 jobs in practice (500 is
+# generous); a 24h catch-up after downtime can legitimately reach a few K.
+MAX_EXPECTED_BY_WINDOW = {"1h": 500, "24h": 3000}
 
 # Rate guards
 _last_fetch_ts: datetime | None = None
@@ -354,12 +356,13 @@ async def fetch(settings: dict) -> list[dict]:
                 # Credit guard: free pre-flight count before paying per job
                 expected = await _fetch_expected_count(client, location, feed_url, time_frame)
                 if expected is not None:
-                    print(f"[FantasticJobs/{feed_label}] {location}: ~{expected} jobs expected ({time_frame})")
+                    cap = MAX_EXPECTED_BY_WINDOW.get(time_frame, 500)
+                    print(f"[FantasticJobs/{feed_label}] {location}: ~{expected} jobs expected ({time_frame}, cap {cap})")
                     if expected == 0:
                         continue  # nothing new — skip pagination entirely
-                    if expected > MAX_EXPECTED_PER_FETCH:
+                    if expected > cap:
                         print(f"[FantasticJobs/{feed_label}] {location}: {expected} > safety cap "
-                              f"{MAX_EXPECTED_PER_FETCH} — SKIPPING to protect job credits "
+                              f"{cap} — SKIPPING to protect job credits "
                               f"(check TITLE_FILTER / time_frame for regressions)")
                         continue
 

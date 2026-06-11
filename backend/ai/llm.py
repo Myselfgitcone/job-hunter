@@ -45,6 +45,9 @@ async def chat(
     model: str = "anthropic/claude-sonnet-4-5",
     max_tokens: int = 4096,
 ) -> str:
+    # Settings UI stores display names ("OpenRouter") — normalize once here
+    # so every caller works regardless of casing
+    provider = (provider or "openrouter").lower().strip()
     if provider == "anthropic":
         return await _call_anthropic(system, user, api_key, model, max_tokens)
 

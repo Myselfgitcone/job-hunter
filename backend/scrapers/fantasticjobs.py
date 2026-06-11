@@ -87,6 +87,13 @@ _JUNK_COMPANIES = (
     "get it recruit", "jobot", "actalent staffing", "jobs via",
 )
 
+# Same exclusions at the API level — excluded jobs are never returned and
+# never billed. The Python check above stays as a backstop.
+ORG_EXCLUDE_FILTER = (
+    "!('jobs via dice' | 'hire feed' | lensa | talentify | jobgether"
+    " | 'get it recruit' | jobot)"
+)
+
 def _detect_jb_source(url: str) -> str:
     """Detect the actual job board from URL for JB feed jobs."""
     lower = url.lower()
@@ -216,12 +223,20 @@ async def _fetch_page(
         "title_advanced": TITLE_FILTER,
         "location_advanced": f"'{location}'" if " " in location else location,
         "description_format": "html",
+        # Exclude staffing aggregators server-side — saves job credits
+        "organization_advanced": ORG_EXCLUDE_FILTER,
     }
     # ATS-only param — job board endpoint rejects it
     if include_org_details:
         params["include_basic_organization_details"] = "true"
     try:
         r = await client.get(base_url, params=params, timeout=30)
+        # If the org exclusion syntax is rejected, retry without it rather
+        # than losing the whole page (Python junk filter still applies)
+        if r.status_code == 400 and "organization_advanced" in params:
+            print(f"[FantasticJobs] 400 with organization_advanced — retrying without it: {r.text[:150]}")
+            params.pop("organization_advanced")
+            r = await client.get(base_url, params=params, timeout=30)
         if r.status_code == 403:
             print(f"[FantasticJobs] 403 {base_url.split('/')[-1]} {location}: {r.json().get('detail','')}")
             return []

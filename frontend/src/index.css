@@ -38,16 +38,16 @@
   --border-strong:  rgba(255, 255, 255, 0.18);
 
   /* — Text — */
-  --tx:           #e9ebf1;
-  --tx-2:         #9aa1b2;
-  --tx-3:         #646b7d;
-  --tx-faint:     #454b59;
+  --tx:           #eef0f5;
+  --tx-2:         #b0b7c6;
+  --tx-3:         #7d8496;
+  --tx-faint:     #545b6b;
 
   /* Compat aliases */
-  --text-primary:   #e9ebf1;
-  --text-secondary: #9aa1b2;
-  --text-muted:     #646b7d;
-  --text-disabled:  #454b59;
+  --text-primary:   #eef0f5;
+  --text-secondary: #b0b7c6;
+  --text-muted:     #7d8496;
+  --text-disabled:  #545b6b;
 
   /* — Accents — */
   --violet:       #8b5cf6;
@@ -147,15 +147,15 @@ html.light {
   --border-default: rgba(0, 0, 0, 0.14);
   --border-strong:  rgba(0, 0, 0, 0.22);
 
-  /* Text */
+  /* Text — darkened one step for stronger contrast on light bg */
   --tx:           #0f172a;
-  --tx-2:         #475569;
-  --tx-3:         #94a3b8;
-  --tx-faint:     #cbd5e1;
+  --tx-2:         #334155;
+  --tx-3:         #64748b;
+  --tx-faint:     #94a3b8;
   --text-primary:   #0f172a;
-  --text-secondary: #475569;
-  --text-muted:     #94a3b8;
-  --text-disabled:  #cbd5e1;
+  --text-secondary: #334155;
+  --text-muted:     #64748b;
+  --text-disabled:  #94a3b8;
 
   /* Shadows */
   --sh-1: 0 1px 3px rgba(0,0,0,0.10);

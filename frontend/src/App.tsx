@@ -795,18 +795,21 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
             </div>
           </div>
         )}
-        {/* Country quick-switch — left of Job Preferences */}
+        {/* Country quick-switch — left of Job Preferences, styled to match it */}
         {countries && countryFilter && setCountryFilter && (
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--bg-surface)", border: "1px solid var(--line)", borderRadius: 10, padding: "4px 10px", marginRight: 14, boxShadow: "var(--sh-sm)" }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--violet)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/>
-            </svg>
+          <div style={{ display: "inline-flex", alignItems: "center", background: "var(--bg-surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 4, marginRight: 12, boxShadow: "var(--sh-sm)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px 4px 6px", color: "var(--tx)", fontSize: 13, fontWeight: 600, borderRight: "1px solid var(--line)" }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--violet)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/>
+              </svg>
+              Country
+            </div>
             <select
               value={countryFilter.length === 1 ? countryFilter[0] : ""}
               onChange={e => setCountryFilter(e.target.value ? [e.target.value] : [])}
-              style={{ background: "none", border: "none", color: "var(--tx)", fontWeight: 600, fontSize: 13, cursor: "pointer", outline: "none", fontFamily: "inherit" }}
+              style={{ background: "none", border: "none", color: "var(--violet)", fontWeight: 600, fontSize: 13, cursor: "pointer", outline: "none", fontFamily: "inherit", padding: "0 10px 0 8px", height: "100%" }}
             >
-              <option value="">All Countries</option>
+              <option value="">All</option>
               {countries.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>

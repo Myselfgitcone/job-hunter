@@ -864,13 +864,27 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
             <div style={{ width: 1, height: 18, background: "var(--line)", margin: "0 6px 0 2px" }} />
 
             <div style={{ display: "flex", alignItems: "center", gap: 6, paddingRight: 6 }}>
-              {userRoles && userRoles.length > 0 ? (
-                collapseRoles(userRoles).map(role => (
-                  <span key={role} style={{ background: "var(--bg-elevated)", border: "1px solid var(--line)", color: "var(--tx-2)", fontSize: 11.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6 }}>
-                    {role}
-                  </span>
-                ))
-              ) : (
+              {userRoles && userRoles.length > 0 ? (() => {
+                // Cap visible chips — long selections squeezed the whole topbar
+                const collapsed = collapseRoles(userRoles);
+                const shown = collapsed.slice(0, 3);
+                const extra = collapsed.length - shown.length;
+                return (
+                  <>
+                    {shown.map(role => (
+                      <span key={role} style={{ background: "var(--bg-elevated)", border: "1px solid var(--line)", color: "var(--tx-2)", fontSize: 11.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6, whiteSpace: "nowrap" }}>
+                        {role}
+                      </span>
+                    ))}
+                    {extra > 0 && (
+                      <span title={collapsed.slice(3).join(", ")}
+                        style={{ background: "rgba(124,58,237,0.1)", color: "var(--violet)", fontSize: 11.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6, whiteSpace: "nowrap" }}>
+                        +{extra} more
+                      </span>
+                    )}
+                  </>
+                );
+              })() : (
                 <span style={{ fontSize: 12, color: "var(--tx-3)", padding: "0 6px", fontWeight: 500 }}>All jobs shown</span>
               )}
             </div>

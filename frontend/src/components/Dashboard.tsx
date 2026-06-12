@@ -410,13 +410,17 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
             }
           </div>
 
-          <div className="chart-card">
-            <div className="chart-head"><span className="chart-title">Jobs by Country</span></div>
-            {byCountry.length > 0
-              ? <HBars data={byCountry} />
-              : <div style={{ height: 100, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No country data yet</div>
-            }
-          </div>
+          {/* Country/Source are scraper-ops metrics — admin only; users get a
+              clean dashboard: stats, trends, status, 30-day activity */}
+          {isAdmin && (
+            <div className="chart-card">
+              <div className="chart-head"><span className="chart-title">Jobs by Country</span></div>
+              {byCountry.length > 0
+                ? <HBars data={byCountry} />
+                : <div style={{ height: 100, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No country data yet</div>
+              }
+            </div>
+          )}
 
           {isAdmin && (
             <div className="chart-card span2">

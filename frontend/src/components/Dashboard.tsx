@@ -248,35 +248,90 @@ function VBars({ data }: { data: Array<{ source: string; count: number; color: s
 }
 
 // ── Resume history list ───────────────────────────────────────────────────────
-function ResumeList({ title, accent, items, icon }: {
+function _fmtFullDate(iso: string): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso.replace(/(\.\d{3})\d+/, "$1")).toLocaleDateString("en-US",
+      { timeZone: "America/New_York", month: "short", day: "numeric", year: "numeric" });
+  } catch { return ""; }
+}
+
+// ResumeVar-style column: search, big cards, status pill, pagination
+function ResumeList({ title, accent, items, icon, badge }: {
   title: string; accent: string;
-  items: Array<{ company: string; title: string; when: string; location: string }>;
-  icon: string;
+  items: Array<{ company: string; title: string; when: string; whenFull: string; location: string; exp: string }>;
+  icon: string; badge: string;
 }) {
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const PER = 5;
   const PATH: Record<string, string> = {
     applied:   '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
     sparkles:  '<path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/>',
   };
+  const filtered = items.filter(it => (it.title + " " + it.company).toLowerCase().includes(q.toLowerCase()));
+  const pages = Math.max(1, Math.ceil(filtered.length / PER));
+  const cur = Math.min(page, pages);
+  const shown = filtered.slice((cur - 1) * PER, cur * PER);
+  const pageBtn = (p: number) => (
+    <button key={p} onClick={() => setPage(p)}
+      style={{ minWidth: 30, height: 30, borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+        border: cur === p ? `1px solid ${accent}` : "1px solid var(--line)",
+        background: cur === p ? accent + "18" : "transparent",
+        color: cur === p ? accent : "var(--tx-2)" }}>{p}</button>
+  );
   return (
-    <div className="rh-col">
+    <div className="rh-col" style={{ minWidth: 0 }}>
       <div className="rh-head" style={{ color: accent }}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: PATH[icon] || PATH.applied }} />
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: PATH[icon] || PATH.applied }} />
         {title}
         <span className="rh-count">{items.length}</span>
       </div>
-      <div className="rh-list">
-        {items.length === 0 && <div style={{ padding: "16px 8px", fontSize: 12, color: "var(--tx-3)" }}>None yet</div>}
-        {items.map((it, i) => (
-          <div className="rh-item" key={i}>
-            <span className="rh-num" style={{ color: accent, borderColor: accent + "55", background: accent + "18" }}>{i + 1}</span>
-            <div className="rh-main">
-              <div className="rh-title">{it.title}</div>
-              <div className="rh-sub">{it.company} · {it.location}</div>
+
+      <input value={q} onChange={e => { setQ(e.target.value); setPage(1); }}
+        placeholder="Search by company or title"
+        style={{ width: "100%", height: 38, padding: "0 14px", borderRadius: 10, border: "1px solid var(--line)",
+          background: "var(--bg-elevated)", color: "var(--tx)", fontSize: 13, marginBottom: 10, outline: "none" }} />
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, minHeight: 120 }}>
+        {shown.length === 0 && <div style={{ padding: "24px 8px", fontSize: 12.5, color: "var(--tx-3)", textAlign: "center" }}>None yet</div>}
+        {shown.map((it, i) => (
+          <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "14px 16px",
+            borderRadius: 12, border: "1px solid var(--line)", background: "var(--bg-elevated)" }}>
+            <span style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, display: "grid", placeItems: "center",
+              background: accent + "18", color: accent }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 3v5h5"/><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
+            </span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--tx)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <span style={{ color: "var(--tx-3)", fontFamily: "var(--f-mono)", fontWeight: 600, marginRight: 6 }}>#{(cur - 1) * PER + i + 1}</span>
+                {it.company} – {it.title}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--tx-3)", marginTop: 4 }}>
+                {badge}: <b style={{ color: "var(--tx-2)" }}>{it.whenFull}</b>{it.when && <span> ({it.when} ago)</span>}
+              </div>
+              {it.location && <div style={{ fontSize: 12, color: "var(--tx-3)", marginTop: 2 }}>Location: {it.location}</div>}
+              {it.exp && <div style={{ fontSize: 12, color: "var(--tx-3)", marginTop: 2 }}>Exp Needed: {it.exp} yrs</div>}
             </div>
-            <span className="rh-when">{it.when}</span>
+            <span style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 700, padding: "4px 12px", borderRadius: 999,
+              background: accent + "1c", color: accent }}>✓ {badge}</span>
           </div>
         ))}
       </div>
+
+      {pages > 1 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 12 }}>
+          <button onClick={() => setPage(Math.max(1, cur - 1))} disabled={cur === 1}
+            style={{ background: "none", border: "none", color: cur === 1 ? "var(--tx-faint)" : "var(--tx-2)", fontSize: 12.5, fontWeight: 600, cursor: cur === 1 ? "default" : "pointer" }}>‹ Previous</button>
+          {pageBtn(1)}
+          {cur > 3 && <span style={{ color: "var(--tx-3)" }}>…</span>}
+          {[cur - 1, cur, cur + 1].filter(p => p > 1 && p < pages).map(pageBtn)}
+          {cur < pages - 2 && <span style={{ color: "var(--tx-3)" }}>…</span>}
+          {pages > 1 && pageBtn(pages)}
+          <button onClick={() => setPage(Math.min(pages, cur + 1))} disabled={cur === pages}
+            style={{ background: "none", border: "none", color: cur === pages ? "var(--tx-faint)" : "var(--tx-2)", fontSize: 12.5, fontWeight: 600, cursor: cur === pages ? "default" : "pointer" }}>Next ›</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -397,8 +452,14 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
   }));
 
   // Resume history
-  const appliedJobs  = (data.applied_jobs  || []).map((j: any) => ({ company: j.company, title: j.title, when: timeAgo(j.applied_at || j.scraped_at), location: j.location || "" }));
-  const tailoredJobs = (data.tailored_jobs || []).map((j: any) => ({ company: j.company, title: j.title, when: timeAgo(j.tailored_at || j.scraped_at), location: j.location || "" }));
+  const appliedJobs  = (data.applied_jobs  || []).map((j: any) => ({
+    company: j.company, title: j.title, location: j.location || "", exp: j.experience_level || "",
+    when: timeAgo(j.applied_at || j.scraped_at), whenFull: _fmtFullDate(j.applied_at || j.scraped_at),
+  }));
+  const tailoredJobs = (data.tailored_jobs || []).map((j: any) => ({
+    company: j.company, title: j.title, location: j.location || "", exp: j.experience_level || "",
+    when: timeAgo(j.tailored_at || j.scraped_at), whenFull: _fmtFullDate(j.tailored_at || j.scraped_at),
+  }));
 
   // Reminders mapped
   const remList = (reminders || []).map((r: any) => ({
@@ -533,8 +594,8 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
         <div className="resume-history">
           <div className="rh-section-head">Resume History</div>
           <div className="rh-cols">
-            <ResumeList title="Applied Resumes"  accent="#10b981" items={appliedJobs}  icon="applied"   />
-            <ResumeList title="Tailored Resumes" accent="#7c3aed" items={tailoredJobs} icon="sparkles"  />
+            <ResumeList title="Applied Resumes"  accent="#10b981" items={appliedJobs}  icon="applied"  badge="Applied"  />
+            <ResumeList title="Tailored Resumes" accent="#7c3aed" items={tailoredJobs} icon="sparkles" badge="Tailored" />
           </div>
         </div>
 

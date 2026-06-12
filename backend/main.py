@@ -2073,6 +2073,7 @@ async def get_analytics(user_id: str = Depends(get_current_user_id)):
             Job.title,
             Job.company,
             Job.location,
+            Job.experience_level,
             UserJob.status,
             UserJob.applied_at,
             UserJob.tailored_at
@@ -2094,7 +2095,7 @@ async def get_analytics(user_id: str = Depends(get_current_user_id)):
     tailored_jobs = []
 
     for r in rows:
-        j_id, j_src, j_country, j_scraped, j_title, j_company, j_location, u_status, u_applied, u_tailored = r
+        j_id, j_src, j_country, j_scraped, j_title, j_company, j_location, j_exp, u_status, u_applied, u_tailored = r
         status = u_status or "new"
         
         by_status[status] += 1
@@ -2112,8 +2113,9 @@ async def get_analytics(user_id: str = Depends(get_current_user_id)):
                 applied_by_day[day] += 1
                 by_month[month]["applied"] += 1
             applied_jobs.append({
-                "id": j_id, "title": j_title, "company": j_company, 
-                "location": j_location, "applied_at": u_applied or j_scraped
+                "id": j_id, "title": j_title, "company": j_company,
+                "location": j_location, "applied_at": u_applied or j_scraped,
+                "experience_level": j_exp or "",
             })
             
         if u_tailored:
@@ -2122,7 +2124,8 @@ async def get_analytics(user_id: str = Depends(get_current_user_id)):
                 by_month[month]["tailored"] += 1
             tailored_jobs.append({
                 "id": j_id, "title": j_title, "company": j_company,
-                "location": j_location, "tailored_at": u_tailored
+                "location": j_location, "tailored_at": u_tailored,
+                "experience_level": j_exp or "",
             })
 
     today = date.today()

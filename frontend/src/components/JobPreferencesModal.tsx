@@ -196,18 +196,25 @@ export default function JobPreferencesModal({
   onSaved: (newSettings: any) => void;
 }) {
   const [roles, setRoles] = useState<string[]>([]);
-  const [saving, setSaving] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [loading, setLoading] = useState(true);
   const [extRoles, setExtRoles] = useState<string[]>(externalRolesCache);
+  const settingsRef = React.useRef<any>(null);
+  const popRef = React.useRef<HTMLDivElement>(null);
+  const saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadedRef = React.useRef(false);
 
   useEffect(() => {
     if (open) {
       setLoading(true);
+      loadedRef.current = false;
+      setSaveState("idle");
       api.getSettings().then((s: any) => {
         if (!s) return;
+        settingsRef.current = s;
         const r = Array.isArray(s.job_roles) ? s.job_roles : JSON.parse(s.job_roles || "[]");
         setRoles(r);
-      }).finally(() => setLoading(false));
+      }).finally(() => { setLoading(false); loadedRef.current = true; });
 
       // Fetch massive job dictionary if not cached
       if (externalRolesCache.length === 0 && !fetchingExternalRoles) {
@@ -227,30 +234,42 @@ export default function JobPreferencesModal({
     }
   }, [open]);
 
-  if (!open) return null;
+  // Auto-save: debounce 600ms after any role change
+  useEffect(() => {
+    if (!open || loading || !loadedRef.current) return;
+    setSaveState("saving");
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      try {
+        const s = settingsRef.current || {};
+        await api.saveSettings({ ...s, job_roles: roles } as any);
+        onSaved({ ...s, job_roles: roles });
+        setSaveState("saved");
+      } catch {
+        setSaveState("idle");
+        onToast("Failed to save preferences", "error");
+      }
+    }, 600);
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roles]);
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const s: any = await api.getSettings();
-      await api.saveSettings({
-        ...s,
-        job_roles: roles,
-      } as any);
-      onToast("Job Preferences saved", "success");
-      onSaved({ ...s, job_roles: roles });
-      onClose();
-    } catch {
-      onToast("Failed to save preferences", "error");
-    } finally {
-      setSaving(false);
-    }
-  };
+  // Close on click outside the popover
+  useEffect(() => {
+    if (!open) return;
+    const fn = (e: MouseEvent) => {
+      if (popRef.current && !popRef.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  if (!open) return null;
 
   return (
     <>
-      <div style={{ position: "fixed", inset: 0, zIndex: 999 }} onClick={onClose} />
-      <div style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, zIndex: 1000, background: "var(--bg-surface)", border: "1px solid var(--line)", borderRadius: 16, width: 420, boxShadow: "0 12px 30px -10px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05)", animation: "modalIn 200ms cubic-bezier(0.16, 1, 0.3, 1)", overflow: "hidden",
+      <div ref={popRef} style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, zIndex: 1000, background: "var(--bg-surface)", border: "1px solid var(--line)", borderRadius: 16, width: 420, boxShadow: "0 12px 30px -10px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05)", animation: "modalIn 200ms cubic-bezier(0.16, 1, 0.3, 1)", overflow: "hidden",
         // Never grow past the viewport — header/footer stay pinned, middle scrolls
         maxHeight: "calc(100vh - 110px)", display: "flex", flexDirection: "column" }}>
         
@@ -285,38 +304,17 @@ export default function JobPreferencesModal({
                 suggestions={ALL_ROLES}
                 externalSuggestions={extRoles}
               />
-              {/* Scrollable role group picker */}
-              <div style={{ position: "relative" }}>
-                <div
-                  style={{
-                    maxHeight: 340,
-                    overflowY: "auto",
-                    overflowX: "hidden",
-                    borderRadius: 10,
-                    paddingRight: 2,
-                    scrollbarWidth: "thin",
-                    scrollbarColor: "var(--line-hi) transparent",
-                  }}
-                >
-                  <RoleGroupSelector selected={roles} onChange={setRoles} />
-                </div>
-                {/* Fade-out hint that more content is below */}
-                <div style={{
-                  position: "absolute", bottom: 0, left: 0, right: 0, height: 32,
-                  background: "linear-gradient(to bottom, transparent, var(--bg-surface))",
-                  borderRadius: "0 0 10px 10px", pointerEvents: "none",
-                }} />
-              </div>
+              <RoleGroupSelector selected={roles} onChange={setRoles} />
             </div>
           )}
         </div>
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, padding: "18px 28px", borderTop: "1px solid var(--line)", background: "var(--bg-base)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.02)", flexShrink: 0 }}>
-          <button onClick={onClose} style={{ height: 40, padding: "0 20px", borderRadius: 10, background: "transparent", border: "1px solid var(--line)", color: "var(--tx-2)", fontSize: 14, fontWeight: 600, cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => { e.currentTarget.style.background = "var(--bg-elevated)"; e.currentTarget.style.color = "var(--tx)"; }} onMouseOut={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--tx-2)"; }}>
-            Cancel
-          </button>
-          <button onClick={handleSave} disabled={saving} style={{ height: 40, padding: "0 24px", borderRadius: 10, background: "var(--grad)", border: "none", color: "#fff", fontSize: 14, fontWeight: 600, cursor: saving ? "default" : "pointer", opacity: saving ? 0.7 : 1, boxShadow: "0 4px 14px 0 rgba(124,58,237,0.39)", transition: "transform 0.1s" }} onMouseDown={e => !saving && (e.currentTarget.style.transform = "scale(0.97)")} onMouseUp={e => !saving && (e.currentTarget.style.transform = "scale(1)")} onMouseLeave={e => !saving && (e.currentTarget.style.transform = "scale(1)")}>
-            {saving ? "Saving..." : "Save Preferences"}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "14px 28px", borderTop: "1px solid var(--line)", background: "var(--bg-base)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.02)", flexShrink: 0 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: saveState === "saved" ? "#16a34a" : "var(--tx-3)" }}>
+            {saveState === "saving" ? "Saving…" : saveState === "saved" ? "✓ Saved" : "Changes save automatically"}
+          </span>
+          <button onClick={onClose} style={{ height: 38, padding: "0 22px", borderRadius: 10, background: "var(--grad)", border: "none", color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", boxShadow: "0 4px 14px 0 rgba(124,58,237,0.39)" }}>
+            Done
           </button>
         </div>
 

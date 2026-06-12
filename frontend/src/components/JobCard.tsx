@@ -16,18 +16,12 @@ const SRC_VAR: Record<string, string> = {
   Workday: "--src-workday", HiringCafe: "--src-hiringcafe",
 };
 
-// Absolute posted stamp: "06/11 - 8:55pm" (time omitted when source gave date only)
+// Posted date stamp: "06/11" (FJ's date_posted field, stored as posted_at)
 function fmtPosted(iso: string): string {
   if (!iso) return "";
   const d = new Date(iso.replace(/(\.\d{3})\d+/, "$1"));
   if (isNaN(d.getTime())) return "";
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  if (d.getHours() === 0 && d.getMinutes() === 0) return `${mm}/${dd}`;
-  let h = d.getHours();
-  const ap = h < 12 ? "am" : "pm";
-  h = h % 12 || 12;
-  return `${mm}/${dd} - ${h}:${String(d.getMinutes()).padStart(2, "0")}${ap}`;
+  return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function scoreClass(s: number): string {

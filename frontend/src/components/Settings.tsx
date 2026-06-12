@@ -239,7 +239,13 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
               <span className="field-label">Bot Token</span>
               <div className="input-reveal">
                 <input type={showToken ? "text" : "password"} value={botToken} onChange={e => setBotToken(e.target.value)} placeholder="123456:ABC-DEF…" />
-                <button onClick={() => setShowToken(s => !s)}>{showToken ? "Hide" : "Show"}</button>
+                <button onClick={async () => {
+                  // Field holds the mask — fetch the real token (admin-only) on reveal
+                  if (!showToken && botToken.includes("•")) {
+                    try { const r = await api.revealTelegramToken(); if (r.token) setBotToken(r.token); } catch {}
+                  }
+                  setShowToken(s => !s);
+                }}>{showToken ? "Hide" : "Show"}</button>
               </div>
             </label>
             <label className="field">

@@ -141,6 +141,8 @@ export const api = {
 
   clearAllJobs: () => req<{ deleted: number }>("/api/jobs/all", { method: "DELETE" }),
 
+  revealTelegramToken: () => req<{ token: string }>("/api/settings/telegram-token"),
+
   qualifyHealth: () =>
     req<{ admin_settings_found: boolean; api_key_set: boolean; profile_set: boolean; qualify_model: string | null; scored_jobs: number; pending_jobs: number; running: boolean }>("/api/qualify/health"),
 

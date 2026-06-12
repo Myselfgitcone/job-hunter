@@ -1026,6 +1026,16 @@ async def update_settings(body: dict = Body(...), user_id: str = Depends(get_cur
     return {"ok": True}
 
 
+@app.get("/api/settings/telegram-token")
+async def reveal_telegram_token(user_id: str = Depends(get_current_user_id)):
+    """Admin-only: reveal the stored bot token (UI 'Show' button)."""
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+        s = result.scalar_one_or_none()
+    return {"token": (s.telegram_bot_token or "") if s else ""}
+
+
 @app.post("/api/telegram/test")
 async def test_telegram(body: dict = Body(...), user_id: str = Depends(get_current_user_id)):
     """Test Telegram bot connection and send a test message."""

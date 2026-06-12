@@ -123,11 +123,13 @@ function AreaChart({ scrape, applied, points }: { scrape: number[]; applied: num
           </rect>
         ))}
       </svg>
-      {/* Date axis — every ~5th day */}
+      {/* Date axis — every day, angled like ResumeVar's */}
       {points && points.length > 1 && (
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 10, color: "var(--tx-3)", fontFamily: "var(--f-mono)" }}>
-          {points.filter((_, i) => i % 5 === 0 || i === points.length - 1).map((p, i) => (
-            <span key={i}>{_fmtDay(p.date || p.label)}</span>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, paddingBottom: 14 }}>
+          {points.map((p, i) => (
+            <span key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, color: "var(--tx-3)", fontFamily: "var(--f-mono)", transform: "rotate(-45deg)", whiteSpace: "nowrap" }}>
+              {_fmtDay(p.date || p.label)}
+            </span>
           ))}
         </div>
       )}

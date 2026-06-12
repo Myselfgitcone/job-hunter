@@ -44,7 +44,7 @@ type Filters = {
   years: string[];  // experience trays: "0-2","2-4","4-5","5-6","6-7","7-8","8-10","10-13","13-15","15+"
   visa: string[];   // "Sponsors" | "No Visa" | "Unknown"
   score: "any" | "60" | "70" | "80" | "90";
-  time: "any" | "24" | "48" | "72" | "168";
+  time: "any" | "0-24" | "24-48" | "48-72" | "72-168";  // discrete age bands in hours
 };
 
 function Ic({ d, size = 16, color, style }: { d: string; size?: number; color?: string; style?: React.CSSProperties }) {
@@ -346,10 +346,13 @@ export default function App() {
         const sc = (j.qualify_result as any)?.score ?? null;
         if (sc === null || sc < parseInt(filters.score)) return false;
       }
-      // time (posted within N hours)
+      // time — discrete age band (e.g. "24-48" = posted between 24h and 48h ago)
       if (filters.time !== "any") {
         const t = parseMs(j.posted_at) ?? parseMs(j.scraped_at);
-        if (t !== null && now - t > parseInt(filters.time) * 3600000 + 6 * 3600000) return false;
+        if (t === null) return false;  // can't band-match an unknown date
+        const ageH = (now - t) / 3600000;
+        const [lo, hi] = filters.time.split("-").map(Number);
+        if (ageH < lo || ageH >= hi) return false;
       }
       // Visa filter — FJ semantics: true = JD explicitly mentions sponsorship,
       // false = JD doesn't mention it (NOT a refusal), null = not checked
@@ -1083,7 +1086,7 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
 
   const committed = filters.source.length + (filters.score !== "any" ? 1 : 0);
   const draftCount = draft.source.length + (draft.score !== "any" ? 1 : 0);
-  const timeOpts: [Filters["time"], string][] = [["any","Any"],["24","24h"],["48","48h"],["72","72h"],["168","7d"]];
+  const timeOpts: [Filters["time"], string][] = [["any","Any"],["0-24","0-24h"],["24-48","24-48h"],["48-72","48-72h"],["72-168","3-7d"]];
   const sourceOpts = SOURCES && SOURCES.length ? SOURCES : ["FantasticJobs","LinkedIn","Indeed"];
   const scoreOpts: [string, string][] = [["any","Any"],["60","≥60%"],["70","≥70%"],["80","≥80%"],["90","≥90%"]];
 

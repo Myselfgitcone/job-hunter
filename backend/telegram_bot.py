@@ -78,8 +78,10 @@ def _role_family(title: str) -> str:
 
 
 async def send_scrape_digest(new_jobs: list, total_jobs: int):
-    """Send a digest after a scrape completes."""
-    if not _bot or not _chat_id or not new_jobs:
+    """Send a digest after a scrape completes — including zero-job runs,
+    so a missing message always means something is actually broken."""
+    if not _bot or not _chat_id:
+        print("[Telegram] digest skipped — bot not initialized")
         return
 
     count = len(new_jobs)

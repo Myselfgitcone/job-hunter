@@ -30,9 +30,10 @@ BASE_EXPIRED_JB  = "https://data.fantastic.jobs/v1/expired-jb"
 # ATS feed: direct career pages (Greenhouse, Lever, Workday, etc.) — both USA + India
 # JB feed: job board aggregator (LinkedIn, Indeed, etc.)
 #   USA: ATS-only — Western ATS platforms cover USA well; JB = LinkedIn reposts
-#   India: ATS + JB — many Indian companies post on LinkedIn only, ATS coverage is thin
-ACTIVE_FEEDS = [BASE_ATS, BASE_JB]
-LOCATIONS_FOR_JB = {"India"}  # only run JB feed for these locations
+#   India JB DISABLED 2026-06-12: was ~35% of all job credits (~8.5K of 24K).
+#   Re-enable: ACTIVE_FEEDS = [BASE_ATS, BASE_JB]
+ACTIVE_FEEDS = [BASE_ATS]
+LOCATIONS_FOR_JB = {"India"}  # only run JB feed for these locations (when JB active)
 
 LOCATIONS = ["United States", "India"]
 

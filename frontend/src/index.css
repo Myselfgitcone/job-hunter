@@ -122,40 +122,40 @@ html, body, #root { height: 100%; }
 
 /* ── LIGHT THEME ──────────────────────────────────────────── */
 html.light {
-  /* Surfaces — LIGHT (warm off-white, never pure white except elevated) */
-  --bg-base:      #f5f4f1;
-  --bg-base-2:    #efeeea;
-  --bg-surface:   #fbfaf8;
+  /* Surfaces — LIGHT (pure white base, light grey only for hover/active) */
+  --bg-base:      #ffffff;
+  --bg-base-2:    #ffffff;
+  --bg-surface:   #ffffff;
   --bg-elevated:  #ffffff;
-  --bg-hover:     #eeece8;
-  --bg-active:    #e5e2dc;
-  --bg-selected:  #e5e2dc; /* Compat */
+  --bg-hover:     #f1f5f9;
+  --bg-active:    #e2e8f0;
+  --bg-selected:  #e2e8f0; /* Compat */
 
   /* Glass */
   --glass:        rgba(255, 255, 255, 0.66);
   --glass-hi:     rgba(255, 255, 255, 0.86);
   --glass-border: rgba(24, 24, 33, 0.09);
   --glass-blur:   14px;
-  --bg-topbar:    linear-gradient(180deg, rgba(255,255,255,.8), rgba(255,255,255,.5));
-  --bg-filterbar: rgba(239,238,234,.6);
+  --bg-topbar:    #ffffff;
+  --bg-filterbar: #ffffff;
 
   /* Borders */
-  --line:         rgba(0, 0, 0, 0.08);
-  --line-hi:      rgba(0, 0, 0, 0.14);
-  --line-soft:    rgba(0, 0, 0, 0.05);
-  --border-subtle:  rgba(0, 0, 0, 0.08);
-  --border-default: rgba(0, 0, 0, 0.14);
-  --border-strong:  rgba(0, 0, 0, 0.22);
+  --line:         rgba(0, 0, 0, 0.10);
+  --line-hi:      rgba(0, 0, 0, 0.16);
+  --line-soft:    rgba(0, 0, 0, 0.06);
+  --border-subtle:  rgba(0, 0, 0, 0.10);
+  --border-default: rgba(0, 0, 0, 0.16);
+  --border-strong:  rgba(0, 0, 0, 0.24);
 
-  /* Text — darkened one step for stronger contrast on light bg */
-  --tx:           #0f172a;
-  --tx-2:         #334155;
-  --tx-3:         #64748b;
-  --tx-faint:     #94a3b8;
-  --text-primary:   #0f172a;
-  --text-secondary: #334155;
-  --text-muted:     #64748b;
-  --text-disabled:  #94a3b8;
+  /* Text — dark for strong contrast on white */
+  --tx:           #0b1220;
+  --tx-2:         #1e293b;
+  --tx-3:         #475569;
+  --tx-faint:     #64748b;
+  --text-primary:   #0b1220;
+  --text-secondary: #1e293b;
+  --text-muted:     #475569;
+  --text-disabled:  #64748b;
 
   /* Shadows */
   --sh-1: 0 1px 3px rgba(0,0,0,0.10);

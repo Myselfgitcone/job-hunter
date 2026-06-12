@@ -337,7 +337,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
 
         {/* Chart grid */}
         <div className="chart-grid">
-          <div className="chart-card span2">
+          <div className="chart-card span3">
             <div className="chart-head">
               <span className="chart-title">Monthly Trends</span>
               <div className="legend">
@@ -352,7 +352,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
             }
           </div>
 
-          <div className="chart-card">
+          <div className="chart-card span3">
             <div className="chart-head"><span className="chart-title">Status Breakdown</span></div>
             {statusData.some(d => d.value > 0)
               ? <>
@@ -367,7 +367,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
             }
           </div>
 
-          <div className="chart-card span3">
+          <div className="chart-card span4">
             <div className="chart-head">
               <span className="chart-title">30-Day Activity</span>
               <div className="legend">
@@ -390,7 +390,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
           </div>
 
           {isAdmin && (
-            <div className="chart-card">
+            <div className="chart-card span2">
               <div className="chart-head"><span className="chart-title">Jobs by Source</span></div>
               {bySource.length > 0
                 ? <VBars data={bySource} />

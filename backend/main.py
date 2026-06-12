@@ -479,6 +479,23 @@ async def startup():
                 print(f"[Startup] Remapped {fixed} country='Remote' rows to real countries")
         except Exception as e:
             print(f"[Startup] Remote-country remap skipped: {e}")
+        # Purge disabled role families (DevOps/SRE + Security) — scraping for
+        # them is commented out; clear the existing rows instead of waiting for
+        # 7-day retention. Keeps applied/interview. Idempotent (no new ones arrive).
+        try:
+            from telegram_bot import _role_family
+            async with SessionLocal() as db:
+                rows = await db.execute(select(Job.id, Job.title).where(Job.status.in_(["new", "skipped"])))
+                victim_ids = [jid for jid, title in rows.fetchall()
+                              if _role_family(title or "") in ("DevOps/SRE", "Security")]
+            if victim_ids:
+                from sqlalchemy import delete as sa_delete
+                async with SessionLocal() as db:
+                    res = await db.execute(sa_delete(Job).where(Job.id.in_(victim_ids)))
+                    await db.commit()
+                print(f"[Startup] Purged {res.rowcount} DevOps/Security jobs (families disabled)")
+        except Exception as e:
+            print(f"[Startup] Disabled-family purge skipped: {e}")
         # Purge USA job-board reposts (LinkedIn/Indeed/Dice...) — USA is
         # direct-ATS only; these leaked in via FJ's ATS feed. Keeps applied/interview.
         try:

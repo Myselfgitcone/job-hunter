@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { api } from "../api";
 
 // ── StatCard with count-up animation ─────────────────────────────────────────
@@ -87,58 +87,126 @@ function _fmtDay(iso: string): string {
   return `${_MONTHS[(m || 1) - 1]} ${d}`;
 }
 
+// ResumeVar-style activity chart: y-axis, gridlines, smooth curves, dots,
+// styled hover tooltip with a vertical guide. No chart library.
 function AreaChart({ scrape, applied, points }: { scrape: number[]; applied: number[]; points?: any[] }) {
-  const w = 520, h = 160, max = Math.max(...scrape, 1);
-  const xy = (arr: number[], scale: number) =>
-    arr.map((v, i) => [(i / (arr.length - 1)) * w, h - (v / max) * h * scale] as [number, number]);
-  const lineXY = xy(scrape, 0.92);
-  const line = lineXY.map(p => p.join(","));
-  const area = `0,${h} ${line.join(" ")} ${w},${h}`;
-  const appXY = xy(applied.map(v => v * 3), 0.92);
-  const colW = w / Math.max(scrape.length - 1, 1);
-  // round dots that stay circular despite the stretched viewBox
-  const dot = (x: number, y: number, color: string, sw: number, key: string) => (
-    <path key={key} d={`M ${x} ${y} l 0 0.01`} stroke={color} strokeWidth={sw}
+  const [hover, setHover] = useState<number | null>(null);
+  const wrapRef = React.useRef<HTMLDivElement>(null);
+  const pts = points || [];
+  const n = Math.max(pts.length, 2);
+
+  // Nice y-axis max (1/2/5 × 10^k above the data peak)
+  const peak = Math.max(...scrape, ...applied, 4);
+  const pow = Math.pow(10, Math.floor(Math.log10(peak)));
+  const niceMax = [1, 2, 5, 10].map(m => m * pow).find(m => m >= peak) || peak;
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(niceMax * f));
+
+  const W = 1000, H = 300;
+  const x = (i: number) => (i / (n - 1)) * W;
+  const y = (v: number) => 8 + (1 - v / niceMax) * (H - 16);
+
+  // Smooth path (Catmull-Rom → cubic bezier)
+  const smooth = (vals: number[]) => {
+    const P = vals.map((v, i) => [x(i), y(v)]);
+    if (P.length < 2) return "";
+    let d = `M ${P[0][0]} ${P[0][1]}`;
+    for (let i = 0; i < P.length - 1; i++) {
+      const p0 = P[Math.max(i - 1, 0)], p1 = P[i], p2 = P[i + 1], p3 = P[Math.min(i + 2, P.length - 1)];
+      const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
+      const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+      d += ` C ${c1[0]} ${c1[1]}, ${c2[0]} ${c2[1]}, ${p2[0]} ${p2[1]}`;
+    }
+    return d;
+  };
+  const scrapePath = smooth(scrape);
+  const appliedPath = smooth(applied);
+  const areaPath = `${scrapePath} L ${W} ${H} L 0 ${H} Z`;
+
+  const dot = (cx: number, cy: number, color: string, sw: number, key: string) => (
+    <path key={key} d={`M ${cx} ${cy} l 0 0.01`} stroke={color} strokeWidth={sw}
       strokeLinecap="round" vectorEffect="non-scaling-stroke" fill="none" />
   );
+
+  const onMove = (e: React.MouseEvent) => {
+    const box = wrapRef.current?.getBoundingClientRect();
+    if (!box) return;
+    const idx = Math.round(((e.clientX - box.left) / box.width) * (n - 1));
+    setHover(Math.min(Math.max(idx, 0), n - 1));
+  };
+
+  const hp = hover != null ? pts[hover] : null;
+  const hoverLeftPct = hover != null ? (hover / (n - 1)) * 100 : 0;
+
   return (
-    <div>
-      <svg className="area-chart" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
-        <defs>
-          <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="rgba(124,58,237,.4)" />
-            <stop offset="100%" stopColor="rgba(124,58,237,0)" />
-          </linearGradient>
-        </defs>
-        <polygon points={area} fill="url(#areaGrad)" />
-        <polyline points={line.join(" ")} fill="none" stroke="#7c3aed" strokeWidth="3.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-        <polyline points={appXY.map(p => p.join(",")).join(" ")} fill="none" stroke="#22d3ee" strokeWidth="3" strokeLinejoin="round" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
-        {/* Visible dots on each data point */}
-        {lineXY.map(([x, y], i) => dot(x, y, "#7c3aed", 10, `s${i}`))}
-        {appXY.map(([x, y], i) => (applied[i] > 0 ? dot(x, y, "#22d3ee", 8, `a${i}`) : null))}
-        {/* Invisible hover columns — native tooltip with exact counts per day */}
-        {points && points.map((p, i) => (
-          <rect key={i} x={i * colW - colW / 2} y={0} width={colW} height={h} fill="transparent">
-            <title>{`${_fmtDay(p.date || p.label)}\nScraped: ${p.scraped}${p.scraped_usa != null ? ` (USA ${p.scraped_usa} / India ${p.scraped_india ?? 0})` : ""}\nApplied: ${p.applied}`}</title>
-          </rect>
+    <div style={{ display: "flex", gap: 8 }}>
+      {/* Y axis */}
+      <div style={{ position: "relative", width: 30, height: 300, flexShrink: 0 }}>
+        {ticks.map(t => (
+          <span key={t} style={{ position: "absolute", right: 4, top: `${(y(t) / H) * 100}%`, transform: "translateY(-50%)",
+            fontSize: 10.5, color: "var(--tx-3)", fontFamily: "var(--f-mono)" }}>{t}</span>
         ))}
-      </svg>
-      {/* Date axis — every day, angled like ResumeVar's.
-          Each cell is flex-basis 0 / min-width 0 so the rotated text never
-          contributes layout width (it previously forced the card to ~1200px
-          and blew up the dashboard grid). */}
-      {points && points.length > 1 && (
-        <div style={{ display: "flex", marginTop: 10, height: 34 }}>
-          {points.map((p, i) => (
-            <span key={i} style={{ flex: "1 1 0", minWidth: 0, display: "flex", justifyContent: "center", overflow: "visible" }}>
-              <span style={{ fontSize: points.length > 20 ? 9.5 : 11, color: "var(--tx-3)", fontFamily: "var(--f-mono)",
-                transform: points.length > 12 ? "rotate(-45deg)" : "none", whiteSpace: "nowrap" }}>
-                {_fmtDay(p.date || p.label)}
-              </span>
-            </span>
-          ))}
+      </div>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div ref={wrapRef} style={{ position: "relative" }} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+          <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: 300, display: "block" }}>
+            <defs>
+              <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="rgba(124,58,237,.35)" />
+                <stop offset="100%" stopColor="rgba(124,58,237,0)" />
+              </linearGradient>
+            </defs>
+            {/* gridlines */}
+            {ticks.map(t => (
+              <line key={t} x1={0} x2={W} y1={y(t)} y2={y(t)} stroke="var(--line)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+            ))}
+            <path d={areaPath} fill="url(#areaGrad)" />
+            <path d={scrapePath} fill="none" stroke="#7c3aed" strokeWidth="3" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+            <path d={appliedPath} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+            {/* hover guide */}
+            {hover != null && (
+              <line x1={x(hover)} x2={x(hover)} y1={0} y2={H} stroke="var(--tx-3)" strokeWidth="1" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
+            )}
+            {/* dots */}
+            {scrape.map((v, i) => dot(x(i), y(v), "#7c3aed", hover === i ? 13 : 9, `s${i}`))}
+            {applied.map((v, i) => dot(x(i), y(v), "#3b82f6", hover === i ? 11 : 7, `a${i}`))}
+          </svg>
+
+          {/* styled tooltip */}
+          {hp && (
+            <div style={{ position: "absolute", top: 12, left: `${hoverLeftPct}%`,
+              transform: hoverLeftPct > 70 ? "translateX(calc(-100% - 12px))" : "translateX(12px)",
+              background: "var(--bg-surface)", border: "1px solid var(--line)", borderRadius: 10,
+              boxShadow: "0 8px 24px rgba(0,0,0,.12)", padding: "10px 14px", pointerEvents: "none", zIndex: 5, whiteSpace: "nowrap" }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--tx)", marginBottom: 6 }}>{_fmtDay(hp.date || hp.label)}</div>
+              <div style={{ fontSize: 12, color: "var(--tx-2)", display: "flex", alignItems: "center", gap: 6 }}>
+                <i style={{ width: 9, height: 9, borderRadius: 3, background: "#7c3aed", display: "inline-block" }} />
+                Scraped: <b>{hp.scraped}</b>{hp.scraped_usa != null && <span style={{ color: "var(--tx-3)" }}>(US {hp.scraped_usa} / IN {hp.scraped_india ?? 0})</span>}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--tx-2)", display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
+                <i style={{ width: 9, height: 9, borderRadius: 3, background: "#3b82f6", display: "inline-block" }} />
+                Applied: <b>{hp.applied}</b>
+              </div>
+            </div>
+          )}
         </div>
-      )}
+
+        {/* Date axis — horizontal, full names; cells are zero-width so labels
+            can never blow up the dashboard grid */}
+        {pts.length > 1 && (
+          <div style={{ display: "flex", marginTop: 8, height: pts.length > 16 ? 34 : 18 }}>
+            {pts.map((p, i) => (
+              <span key={i} style={{ flex: "1 1 0", minWidth: 0, display: "flex", justifyContent: "center", overflow: "visible" }}>
+                <span style={{ fontSize: pts.length > 16 ? 10 : 11.5, color: hover === i ? "var(--tx)" : "var(--tx-3)",
+                  fontFamily: "var(--f-mono)", whiteSpace: "nowrap",
+                  transform: pts.length > 16 ? "rotate(-45deg)" : "none" }}>
+                  {_fmtDay(p.date || p.label)}
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

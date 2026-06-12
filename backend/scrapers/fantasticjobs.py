@@ -65,8 +65,8 @@ MIN_MODIFIED_INTERVAL_H = 6
 #   'security engineer' | 'security analyst' | 'soc analyst' | cybersecurity | infosec | 'application security'
 _TERMS_COMMON = (
     "'data engineer' | etl | 'data platform'"
-    " | 'data analyst' | 'data analytics'"
-    " | 'business intelligence' | 'bi developer' | 'bi analyst' | 'power bi'"
+    " | 'data analyst' | 'data analytics' | 'analytics engineer' | 'reporting analyst'"
+    " | 'business intelligence' | 'bi developer' | 'bi analyst' | 'power bi' | tableau"
 )
 # Java family — USA only (India team doesn't hunt Java roles)
 _TERMS_JAVA = "(java & !javascript) | 'spring boot' | jakarta"

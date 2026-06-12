@@ -212,6 +212,29 @@ function ResumeList({ title, accent, items, icon }: {
   );
 }
 
+// "Last scraped Xmin ago" + live countdown to the next hourly scrape
+function ScrapeStatus({ lastScrapedAt }: { lastScrapedAt?: string }) {
+  const [nowTs, setNowTs] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const next = new Date(nowTs);
+  next.setMinutes(60, 0, 0);
+  const diff = Math.max(0, next.getTime() - nowTs);
+  const mm = String(Math.floor(diff / 60000)).padStart(2, "0");
+  const ss = String(Math.floor((diff % 60000) / 1000)).padStart(2, "0");
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "flex-end", fontSize: 12, color: "var(--tx-3)" }}>
+      <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span className="live-pip" />
+        Last scraped <b style={{ color: "var(--tx-2)", fontFamily: "var(--f-mono)" }}>{lastScrapedAt ? `${timeAgo(lastScrapedAt)} ago` : "never"}</b>
+      </span>
+      <span>Next scrape in <b style={{ color: "var(--tx-2)", fontFamily: "var(--f-mono)" }}>{mm}:{ss}</b></span>
+    </div>
+  );
+}
+
 function timeAgo(iso: string) {
   if (!iso) return "";
   try {
@@ -327,7 +350,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
             <h1 className="dash-title">Dashboard</h1>
             <p className="dash-sub">Your job search at a glance</p>
           </div>
-          <div className="dash-updated"><span className="live-pip" />{data.last_scraped_at ? `Updated ${timeAgo(data.last_scraped_at)} ago` : "Not yet scraped"}</div>
+          <ScrapeStatus lastScrapedAt={data.last_scraped_at} />
         </div>
 
         {/* Stat cards */}

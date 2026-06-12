@@ -123,12 +123,17 @@ function AreaChart({ scrape, applied, points }: { scrape: number[]; applied: num
           </rect>
         ))}
       </svg>
-      {/* Date axis — every day, angled like ResumeVar's */}
+      {/* Date axis — every day, angled like ResumeVar's.
+          Each cell is flex-basis 0 / min-width 0 so the rotated text never
+          contributes layout width (it previously forced the card to ~1200px
+          and blew up the dashboard grid). */}
       {points && points.length > 1 && (
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, paddingBottom: 14 }}>
+        <div style={{ display: "flex", marginTop: 6, paddingBottom: 16, overflow: "hidden" }}>
           {points.map((p, i) => (
-            <span key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, color: "var(--tx-3)", fontFamily: "var(--f-mono)", transform: "rotate(-45deg)", whiteSpace: "nowrap" }}>
-              {_fmtDay(p.date || p.label)}
+            <span key={i} style={{ flex: "1 1 0", minWidth: 0, display: "flex", justifyContent: "center" }}>
+              <span style={{ fontSize: 9, color: "var(--tx-3)", fontFamily: "var(--f-mono)", transform: "rotate(-45deg)", whiteSpace: "nowrap" }}>
+                {_fmtDay(p.date || p.label)}
+              </span>
             </span>
           ))}
         </div>

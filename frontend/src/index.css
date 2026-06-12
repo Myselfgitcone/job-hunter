@@ -1145,7 +1145,7 @@ input.field::placeholder, textarea.field::placeholder { color: var(--tx-faint); 
 .rem-tag.urgent { color: var(--amber); font-weight: 600; }
 
 .chart-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
-.chart-card { padding: 18px; border-radius: var(--r-lg); background: var(--glass); border: 1px solid var(--line); display: flex; flex-direction: column; }
+.chart-card { padding: 18px; border-radius: var(--r-lg); background: var(--glass); border: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
 .chart-card.span2 { grid-column: span 2; }
 .chart-card.span3 { grid-column: span 3; }
 .chart-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }

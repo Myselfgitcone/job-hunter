@@ -15,6 +15,10 @@ _bot = None
 _chat_id: Optional[str] = None
 
 
+def is_ready() -> bool:
+    return _bot is not None and bool(_chat_id)
+
+
 async def init_bot(token: str, chat_id: str):
     """Initialize the Telegram bot with token and chat_id."""
     global _bot, _chat_id

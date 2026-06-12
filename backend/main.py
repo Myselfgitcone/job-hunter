@@ -279,7 +279,20 @@ async def _run_scrape_internal() -> dict:
 
     try:
         import telegram_bot
-        await telegram_bot.send_scrape_digest(all_new_jobs, total_count)
+        # Self-heal: deploys reset the bot — re-init from stored settings if needed
+        if not telegram_bot.is_ready():
+            async with SessionLocal() as db:
+                row = await db.execute(text(
+                    "SELECT telegram_bot_token, telegram_chat_id FROM user_settings "
+                    "WHERE telegram_bot_token IS NOT NULL AND telegram_bot_token != '' "
+                    "AND telegram_bot_token NOT LIKE '%•%' LIMIT 1"))
+                cred = row.fetchone()
+            if cred and cred[0] and cred[1]:
+                await telegram_bot.init_bot(cred[0], cred[1])
+        if telegram_bot.is_ready():
+            await telegram_bot.send_scrape_digest(all_new_jobs, total_count)
+        else:
+            print("[Scrape] Telegram digest SKIPPED — bot not initialized (check token in Settings)")
     except Exception as te:
         print(f"[Scrape] Telegram notify failed: {te}")
 

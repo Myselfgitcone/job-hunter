@@ -264,7 +264,7 @@ function ResumeList({ title, accent, items, icon, badge }: {
 }) {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
-  const PER = 5;
+  const PER = 10;  // 10 per page inside a fixed scrollbox, like ResumeVar
   const PATH: Record<string, string> = {
     applied:   '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
     sparkles:  '<path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/>',
@@ -293,7 +293,9 @@ function ResumeList({ title, accent, items, icon, badge }: {
         style={{ width: "100%", height: 38, padding: "0 14px", borderRadius: 10, border: "1px solid var(--line)",
           background: "var(--bg-elevated)", color: "var(--tx)", fontSize: 13, marginBottom: 10, outline: "none" }} />
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, minHeight: 120 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, minHeight: 120,
+        maxHeight: 430, overflowY: "auto", paddingRight: 4,
+        scrollbarWidth: "thin", scrollbarColor: "var(--line-hi) transparent" }}>
         {shown.length === 0 && <div style={{ padding: "24px 8px", fontSize: 12.5, color: "var(--tx-3)", textAlign: "center" }}>None yet</div>}
         {shown.map((it, i) => (
           <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "14px 16px",
@@ -521,9 +523,9 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
           </div>
         )}
 
-        {/* Chart grid */}
-        <div className="chart-grid">
-          <div className="chart-card span2">
+        {/* Chart grid — Row 1: Monthly Trends (2/3) + Status Breakdown (1/3) */}
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 14, marginBottom: 14 }}>
+          <div className="chart-card">
             <div className="chart-head">
               <span className="chart-title">Monthly Trends</span>
               <div className="legend">
@@ -538,22 +540,27 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
             }
           </div>
 
-          <div className="chart-card">
+          <div className="chart-card" style={{ display: "flex", flexDirection: "column" }}>
             <div className="chart-head"><span className="chart-title">Status Breakdown</span></div>
             {statusData.some(d => d.value > 0)
               ? <>
-                  <Donut data={statusData.filter(d => d.value > 0)} />
+                  <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+                    <Donut data={statusData.filter(d => d.value > 0)} />
+                  </div>
                   <div className="donut-legend">
                     {statusData.map(s => (
                       <span key={s.label}><i style={{ background: s.color }} />{s.label} <b>{s.value}</b></span>
                     ))}
                   </div>
                 </>
-              : <div style={{ height: 140, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No jobs tracked yet</div>
+              : <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No jobs tracked yet</div>
             }
           </div>
+        </div>
 
-          <div className="chart-card span3">
+        {/* Row 2: 30-Day Activity full width */}
+        <div style={{ marginBottom: 14 }}>
+          <div className="chart-card">
             <div className="chart-head">
               <span className="chart-title">30-Day Activity</span>
               <div className="legend">
@@ -566,10 +573,11 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
               : <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No activity data yet</div>
             }
           </div>
+        </div>
 
-          {/* Country/Source are scraper-ops metrics — admin only; users get a
-              clean dashboard: stats, trends, status, 30-day activity */}
-          {isAdmin && (
+        {/* Row 3 (admin only): Jobs by Country + Jobs by Source */}
+        {isAdmin && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 14, marginBottom: 14 }}>
             <div className="chart-card">
               <div className="chart-head"><span className="chart-title">Jobs by Country</span></div>
               {byCountry.length > 0
@@ -577,18 +585,15 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
                 : <div style={{ height: 100, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No country data yet</div>
               }
             </div>
-          )}
-
-          {isAdmin && (
-            <div className="chart-card span2">
+            <div className="chart-card">
               <div className="chart-head"><span className="chart-title">Jobs by Source</span></div>
               {bySource.length > 0
                 ? <VBars data={bySource} />
                 : <div style={{ height: 100, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No source data yet</div>
               }
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Resume history — always show */}
         <div className="resume-history">

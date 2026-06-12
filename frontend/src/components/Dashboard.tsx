@@ -185,7 +185,7 @@ function timeAgo(iso: string) {
 }
 
 // ── Main Dashboard ────────────────────────────────────────────────────────────
-export function Dashboard() {
+export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
   const [data, setData]       = useState<any>(null);
   const [reminders, setReminders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -378,13 +378,15 @@ export function Dashboard() {
             }
           </div>
 
-          <div className="chart-card">
-            <div className="chart-head"><span className="chart-title">Jobs by Source</span></div>
-            {bySource.length > 0
-              ? <VBars data={bySource} />
-              : <div style={{ height: 100, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No source data yet</div>
-            }
-          </div>
+          {isAdmin && (
+            <div className="chart-card">
+              <div className="chart-head"><span className="chart-title">Jobs by Source</span></div>
+              {bySource.length > 0
+                ? <VBars data={bySource} />
+                : <div style={{ height: 100, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No source data yet</div>
+              }
+            </div>
+          )}
         </div>
 
         {/* Resume history — always show */}

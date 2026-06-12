@@ -786,6 +786,18 @@ async def reset_password_with_token(body: ResetPasswordBody):
         await db.commit()
         return {"ok": True, "message": "Password reset successfully. You can now log in.", "email": user.email}
 
+@app.delete("/api/account")
+async def delete_account(user_id: str = Depends(get_current_user_id)):
+    from sqlalchemy import delete as sa_delete
+    from database import PasswordResetToken, UserSettings, UserJob, User
+    async with SessionLocal() as db:
+        await db.execute(sa_delete(PasswordResetToken).where(PasswordResetToken.user_id == user_id))
+        await db.execute(sa_delete(UserSettings).where(UserSettings.user_id == user_id))
+        await db.execute(sa_delete(UserJob).where(UserJob.user_id == user_id))
+        await db.execute(sa_delete(User).where(User.id == user_id))
+        await db.commit()
+    return {"message": "Account deleted successfully"}
+
 # ── OAuth (Google / GitHub) ───────────────────────────────────────────────────
 import urllib.parse
 from fastapi.responses import RedirectResponse

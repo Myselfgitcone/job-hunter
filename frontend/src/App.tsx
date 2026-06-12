@@ -602,7 +602,7 @@ export default function App() {
           </div>
         )}
         
-        {view === "dashboard" && <Dashboard />}
+        {view === "dashboard" && <Dashboard isAdmin={isAdmin} />}
         {view === "profile"   && <Profile />}
         {view === "settings"  && (isAdmin ? <Settings onToast={toast} /> : <div style={{padding: 40, color: "#f87171", fontSize: 16}}>Restricted Access. Only the Master Admin can view Settings.</div>)}
 
@@ -698,55 +698,7 @@ export default function App() {
       <QuickTailor open={tailorOpen} onClose={() => setTailorOpen(false)} onToast={toast} />
       <Toasts toasts={toasts} />
 
-      {/* Welcome modal — first time only */}
-      {showWelcome && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 24 }}>
-          <div style={{ background: "var(--glass-hi)", backdropFilter: "blur(22px)", border: "1px solid var(--glass-border)", borderRadius: 20, padding: "36px 40px", maxWidth: 520, width: "100%", boxShadow: "var(--sh-pop)", animation: "modalIn 220ms var(--ease)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 13, marginBottom: 24 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 13, background: "var(--grad)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 20px -6px var(--violet-glow)" }}>
-                <Ic d={IC.target} size={22} color="#fff" />
-              </div>
-              <div>
-                <div style={{ fontFamily: "var(--f-display)", fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em" }}>Welcome to Job<span style={{ color: "var(--cyan)" }}>.</span>Hunter</div>
-                <div style={{ fontSize: 13, color: "var(--tx-3)", marginTop: 2 }}>Your AI-powered job search assistant</div>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 24 }}>
-              {[
-                { step: "1", icon: IC.settings, color: "#8b5cf6", title: "Add your AI API key", desc: "Settings → pick OpenRouter, Nvidia NIM, or Anthropic → paste your key. Required for all AI features." },
-                { step: "2", icon: IC.user, color: "#06b6d4", title: "Set up your Profile", desc: "Upload your resume — AI extracts experience, skills, education automatically into your profile." },
-                { step: "3", icon: IC.refresh, color: "#10b981", title: "Scrape & apply", desc: "Click 'Scrape Now' to fetch fresh jobs. AI qualifies each one. Tailor resume per job in one click." },
-              ].map(s => (
-                <div key={s.step} style={{ display: "flex", gap: 13, alignItems: "flex-start" }}>
-                  <div style={{ width: 34, height: 34, borderRadius: 9, background: `${s.color}20`, border: `1px solid ${s.color}40`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <Ic d={s.icon} size={15} color={s.color} />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--tx)", marginBottom: 3 }}>{s.title}</div>
-                    <div style={{ fontSize: 12, color: "var(--tx-2)", lineHeight: 1.55 }}>{s.desc}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: 9, padding: "10px 14px", marginBottom: 22, fontSize: 12, color: "#34d399" }}>
-              ⚡ Jobs auto-fetch every hour 24/7 — even when your laptop is off (Railway cloud).
-            </div>
-
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => { localStorage.setItem("jh_welcomed", "1"); setShowWelcome(false); setView("settings"); }}
-                className="btn btn-accent" style={{ flex: 1, height: 42, fontSize: 13.5, borderRadius: 11 }}>
-                Add API Key →
-              </button>
-              <button onClick={() => { localStorage.setItem("jh_welcomed", "1"); setShowWelcome(false); }}
-                className="btn btn-subtle" style={{ height: 42, padding: "0 18px", borderRadius: 11 }}>
-                Skip
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Welcome modal removed */}
     </div>
   );
 }

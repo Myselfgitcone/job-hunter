@@ -138,6 +138,23 @@ function TagInput({ tags, setTags, placeholder, suggestions }: {
 const VISA_OPTIONS = ["US Citizen", "Green Card", "H1B", "OPT / CPT", "TN Visa", "Need Sponsorship"];
 
 export function Profile() {
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true);
+    try {
+      await api.deleteAccount();
+      localStorage.removeItem("jh_token");
+      localStorage.removeItem("jh_user");
+      window.location.reload();
+    } catch (err: any) {
+      alert("Failed to delete account: " + err.message);
+      setIsDeleting(false);
+      setShowDeleteModal(false);
+    }
+  };
+
   const [profile, _setProfile] = useState<any>({
     personal: { firstName: "", lastName: "", email: "", phone: "", address: "", linkedin: "", github: "", visa: "" },
     experience: [] as any[],
@@ -556,6 +573,20 @@ export function Profile() {
             suggestions={["AWS Certified Solutions Architect", "Certified Kubernetes Administrator", "PMP"]} />
         </section>
 
+        <section className="form-section" style={{ border: "1px solid rgba(239, 68, 64, 0.3)", background: "rgba(239, 68, 64, 0.02)" }}>
+          <div className="section-label" style={{ color: "#ef4440" }}>
+            <Ic d={I.x} size={16} /> Danger Zone
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ fontSize: 13, color: "var(--tx-2)" }}>
+              Permanently delete your account and all associated data. This action cannot be undone.
+            </div>
+            <button className="act" onClick={() => setShowDeleteModal(true)} style={{ background: "#ef4440", color: "#fff", border: "none" }}>
+              Delete Account
+            </button>
+          </div>
+        </section>
+
         <div className="form-foot" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <button className="act" onClick={clearAll} style={{ background: "rgba(239,68,64,0.1)", color: "#ef4440", border: "1px solid rgba(239,68,64,0.2)" }}>
             Clear All
@@ -574,6 +605,35 @@ export function Profile() {
           </div>
         </div>
       </div>
+
+      {showDeleteModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 24 }}>
+          <div style={{ background: "var(--glass-hi)", backdropFilter: "blur(22px)", border: "1px solid var(--glass-border)", borderRadius: 20, padding: "32px", maxWidth: 440, width: "100%", boxShadow: "var(--sh-pop)", animation: "modalIn 220ms var(--ease)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 13, background: "rgba(239,68,64,0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "#ef4440" }}>
+                <Ic d={I.x} size={24} />
+              </div>
+              <div>
+                <div style={{ fontFamily: "var(--f-display)", fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em", color: "#ef4440" }}>Delete Account?</div>
+                <div style={{ fontSize: 13, color: "var(--tx-3)", marginTop: 2 }}>This action is permanent</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 14, color: "var(--tx-2)", lineHeight: 1.6, marginBottom: 24 }}>
+              Are you sure you want to delete your account? All your profile data, tailored resumes, and saved jobs will be permanently wiped from our database.
+              <br /><br />
+              <strong>You will need to register as a fresh user to use the app again.</strong>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={handleDeleteAccount} disabled={isDeleting} className="btn" style={{ flex: 1, height: 42, fontSize: 13.5, borderRadius: 11, background: "#ef4440", color: "#fff", border: "none" }}>
+                {isDeleting ? "Deleting..." : "Yes, Delete Everything"}
+              </button>
+              <button onClick={() => setShowDeleteModal(false)} disabled={isDeleting} className="btn btn-subtle" style={{ height: 42, padding: "0 18px", borderRadius: 11 }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -91,6 +91,8 @@ export const api = {
       }),
   },
 
+  deleteAccount: () => req<{ message: string }>("/api/account", { method: "DELETE" }),
+
   // ── Companies ────────────────────────────────────────────────────────────
   companies: {
     list: () => req<Company[]>("/api/companies"),

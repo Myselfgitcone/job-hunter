@@ -36,9 +36,10 @@ const ALL_ROLES = [
 // Role families the scraper targets — mirrors TITLE_FILTER in
 // backend/scrapers/fantasticjobs.py. Clicking a family selects all its roles.
 export const ROLE_GROUPS: { group: string; items: string[] }[] = [
-  { group: "Data Engineer",         items: ["Data Engineer", "Snowflake Data Engineer", "Azure Data Engineer", "AWS Data Engineer", "GCP Data Engineer", "Big Data Engineer", "ETL Developer", "Data Platform"] },
+  // "Data Engineer" chip = wide net: any title with both data + engineer
+  { group: "Data Engineer",         items: ["Data Engineer", "ETL Developer", "Data Platform", "Data Warehouse", "Data Architect", "Database Engineer", "Database Developer", "SQL Developer", "Software Engineer (Data)"] },
   { group: "Data Analyst",          items: ["Data Analyst", "Data Analytics", "Analytics Engineer", "Reporting Analyst"] },
-  { group: "Business Intelligence", items: ["Business Intelligence", "BI Developer", "BI Analyst", "Power BI", "Tableau Developer"] },
+  { group: "Business Intelligence", items: ["Business Intelligence", "BI Developer", "BI Analyst", "BI Engineer", "Power BI", "Tableau"] },
   // DevOps/SRE + Security scraping disabled — uncomment here AND in
   // backend/scrapers/fantasticjobs.py TITLE_FILTER to re-enable
   // { group: "DevOps / SRE",          items: ["DevOps", "SRE", "Site Reliability", "Platform Engineer", "Cloud Engineer"] },

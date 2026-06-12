@@ -306,6 +306,9 @@ export default function App() {
             // java/bi incidentally in every stack list, pulling in wrong roles
             if (term === "bi")   return /\bbi\b/.test(title);
             if (term === "java") return /\bjava\b/.test(title);  // \b excludes "javascript"
+            // Wide nets mirroring the scraper's (word & word) queries
+            if (term === "data engineer") return /\bdata\b/.test(title) && /engineer/.test(title);
+            if (term === "software engineer (data)") return /software engineer/.test(title) && /\bdata\b/.test(title);
             return title.includes(term) || desc.includes(term);
           });
           if (!matchesAnyRole) return false;

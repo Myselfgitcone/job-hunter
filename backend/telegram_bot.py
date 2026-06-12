@@ -52,20 +52,26 @@ async def send_message(text: str, parse_mode: str = "HTML"):
 
 # Role families (mirrors scraper TITLE_FILTER) — first match wins
 _ROLE_FAMILIES: list[tuple[str, list[str]]] = [
-    ("Data Engineer", ["data engineer", "etl", "data platform", "big data"]),
     ("Data Analyst",  ["data analyst", "data analytics", "analytics engineer", "reporting analyst"]),
-    ("BI",            ["business intelligence", "bi developer", "bi analyst", "power bi", "tableau"]),
+    ("BI",            ["business intelligence", "bi developer", "bi analyst", "bi engineer", "power bi", "tableau"]),
+    ("Data Engineer", ["data engineer", "etl", "data platform", "data warehouse", "data architect",
+                       "database engineer", "database developer", "sql developer", "big data"]),
     ("DevOps/SRE",    ["devops", "sre", "site reliability", "platform engineer", "cloud engineer"]),
     ("Security",      ["security", "cybersecurity", "infosec", "soc analyst"]),
     ("Java",          ["spring boot", "jakarta"]),  # plus \bjava\b regex below
 ]
 _JAVA_RE = re.compile(r"\bjava\b", re.I)
+_DATA_RE = re.compile(r"\bdata\b", re.I)
 
 def _role_family(title: str) -> str:
     t = (title or "").lower()
     for fam, kws in _ROLE_FAMILIES:
         if any(kw in t for kw in kws):
             return fam
+    # Wide DE net: both "data" + "engineer" anywhere (Data Systems Engineer etc.),
+    # or "Software Engineer, Data Platform" style titles
+    if _DATA_RE.search(t) and ("engineer" in t or "software engineer" in t):
+        return "Data Engineer"
     if _JAVA_RE.search(t):
         return "Java"
     return "Other"

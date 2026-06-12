@@ -15,7 +15,7 @@ const OVERQUALIFIED_PATTERNS: RegExp[] = [
   /\bfellow\b/i,
   /\bdistinguished\b/i,
   /\bchief\b/i,           // Chief Data Officer, etc.
-  /\barchitect\b/i,       // Data Architect (typically 10+ years)
+  /(?<!data )architect/i, // architects are 10+ yrs — except Data Architect (6-8yr DE target)
 ];
 
 export function isLevelMatch(title: string): boolean {

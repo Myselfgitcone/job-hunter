@@ -64,16 +64,26 @@ MIN_MODIFIED_INTERVAL_H = 6
 #   devops | sre | 'site reliability' | 'platform engineer'
 #   'security engineer' | 'security analyst' | 'soc analyst' | cybersecurity | infosec | 'application security'
 _TERMS_COMMON = (
-    "'data engineer' | etl | 'data platform'"
+    # DE net: any title containing both "data" + "engineer" — catches every
+    # "Data ___ Engineer" variant (Systems/Migration/Operations/Cloud/AI/...)
+    "(data & engineer)"
+    " | etl | 'data platform' | 'data warehouse'"
+    " | 'data architect' | 'database engineer' | 'database developer' | 'sql developer'"
+    " | ('software engineer' & data)"  # both words in title: "SWE - Data Infrastructure"
     " | 'data analyst' | 'data analytics' | 'analytics engineer' | 'reporting analyst'"
-    " | 'business intelligence' | 'bi developer' | 'bi analyst' | 'power bi' | tableau"
+    " | 'business intelligence' | 'bi developer' | 'bi analyst' | 'bi engineer' | 'power bi' | tableau"
 )
 # Java family — USA only (India team doesn't hunt Java roles)
 _TERMS_JAVA = "(java & !javascript) | 'spring boot' | jakarta"
 
+# Architect exclusion is surgical: Data Architect is a valid 6-8yr DE target,
+# but system/org-level architect tracks are 10+ years — keep those out.
 _GLOBAL_NOT = (
     " & !(financial | marketing | sales | nurse"
-    " | director | 'vice president' | vp | cto | chief | architect)"
+    " | director | 'vice president' | vp | cto | chief"
+    " | 'solutions architect' | 'enterprise architect' | 'cloud architect'"
+    " | 'software architect' | 'technical architect' | 'application architect'"
+    " | 'integration architect' | 'security architect')"
 )
 
 TITLE_FILTER_USA   = f"({_TERMS_COMMON} | {_TERMS_JAVA})" + _GLOBAL_NOT

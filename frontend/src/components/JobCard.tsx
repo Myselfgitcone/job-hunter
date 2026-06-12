@@ -16,16 +16,18 @@ const SRC_VAR: Record<string, string> = {
   Workday: "--src-workday", HiringCafe: "--src-hiringcafe",
 };
 
-function relTime(iso: string): string {
+// Absolute posted stamp: "06/11 - 8:55pm" (time omitted when source gave date only)
+function fmtPosted(iso: string): string {
   if (!iso) return "";
-  const diff = Date.now() - new Date(iso.replace(/(\.\d{3})\d+/, "$1")).getTime();
-  if (isNaN(diff) || diff < 0) return "";
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return "now";
-  if (m < 60) return `${m}min ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+  const d = new Date(iso.replace(/(\.\d{3})\d+/, "$1"));
+  if (isNaN(d.getTime())) return "";
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  if (d.getHours() === 0 && d.getMinutes() === 0) return `${mm}/${dd}`;
+  let h = d.getHours();
+  const ap = h < 12 ? "am" : "pm";
+  h = h % 12 || 12;
+  return `${mm}/${dd} - ${h}:${String(d.getMinutes()).padStart(2, "0")}${ap}`;
 }
 
 function scoreClass(s: number): string {
@@ -71,7 +73,7 @@ interface Props {
 export function JobCard({ job, selected, onClick, onSkip, mode = "compact", index = 0 }: Props) {
   const qr      = job.qualify_result as any;
   const score   = qr?.score ?? null;
-  const _postedRaw = relTime(job.posted_at || job.scraped_at || "");
+  const _postedRaw = fmtPosted(job.posted_at || job.scraped_at || "");
   const posted  = _postedRaw ? `Posted ${_postedRaw}` : "";
   const stColor = STATUS_COLOR[job.status] || "var(--st-new)";
   const srcVar  = SRC_VAR[job.source];

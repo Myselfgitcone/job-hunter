@@ -68,27 +68,26 @@ async def send_scrape_digest(new_jobs: list, total_jobs: int):
     if not _bot or not _chat_id or not new_jobs:
         return
 
-    count  = len(new_jobs)
-    usa    = sum(1 for j in new_jobs if j.get("country") == "USA")
-    india  = sum(1 for j in new_jobs if j.get("country") == "India")
-    remote = sum(1 for j in new_jobs if j.get("remote"))
-
-    # Per-role-family breakdown
-    fam_counts: dict = {}
-    for j in new_jobs:
-        fam = _role_family(j.get("title", ""))
-        fam_counts[fam] = fam_counts.get(fam, 0) + 1
+    count = len(new_jobs)
     fam_order = [f for f, _ in _ROLE_FAMILIES] + ["Other"]
-    fam_lines = [f"{fam}: <b>{fam_counts[fam]}</b>" for fam in fam_order if fam_counts.get(fam)]
 
-    lines = [
-        "🔍 <b>Scrape complete</b>",
-        "",
-        f"🇺🇸 USA: <b>{usa}</b>",
-        f"🇮🇳 India: <b>{india}</b>",
-        f"🏠 Remote: <b>{remote}</b>",
-        "",
-        *fam_lines,
+    def _country_section(flag: str, name: str, jobs: list) -> list:
+        fam_counts: dict = {}
+        for j in jobs:
+            fam = _role_family(j.get("title", ""))
+            fam_counts[fam] = fam_counts.get(fam, 0) + 1
+        section = [f"{flag} <b>{name}: {len(jobs)}</b>", "——"]
+        section += [f"{fam}: <b>{fam_counts[fam]}</b>" for fam in fam_order if fam_counts.get(fam)]
+        return section
+
+    usa_jobs   = [j for j in new_jobs if j.get("country") == "USA"]
+    india_jobs = [j for j in new_jobs if j.get("country") == "India"]
+
+    lines = ["🔍 <b>Scrape complete</b>", ""]
+    lines += _country_section("🇺🇸", "USA", usa_jobs)
+    lines += [""]
+    lines += _country_section("🇮🇳", "India", india_jobs)
+    lines += [
         "",
         f"This run total: <b>{count}</b>",
         f"Total in DB: <b>{total_jobs:,}</b>",

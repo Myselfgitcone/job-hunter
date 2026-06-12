@@ -59,19 +59,30 @@ MIN_MODIFIED_INTERVAL_H = 6
 # 'spring boot' and jakarta cover Java jobs where "java" doesn't appear in the title.
 # 'data platform' catches Data Platform Engineer (missed by 'data engineer' alone).
 # Exec/arch exclusions: never billed, never stored — saves credits globally.
-TITLE_FILTER = (
-    # DevOps/SRE — disabled (re-enable by uncommenting the line below)
-    # "(devops | sre | 'site reliability' | 'platform engineer'"
-    "('data engineer' | etl | 'data platform'"
+# Common families: Data Engineer, Data Analyst, BI (scraped for ALL countries)
+# DevOps/SRE + Security disabled — re-add their terms here to re-enable:
+#   devops | sre | 'site reliability' | 'platform engineer'
+#   'security engineer' | 'security analyst' | 'soc analyst' | cybersecurity | infosec | 'application security'
+_TERMS_COMMON = (
+    "'data engineer' | etl | 'data platform'"
     " | 'data analyst' | 'data analytics'"
-    # Security — disabled (re-enable by uncommenting the line below)
-    # " | 'security engineer' | 'security analyst' | 'soc analyst'"
-    # " | cybersecurity | infosec | 'application security'"
     " | 'business intelligence' | 'bi developer' | 'bi analyst' | 'power bi'"
-    " | (java & !javascript) | 'spring boot' | jakarta)"
+)
+# Java family — USA only (India team doesn't hunt Java roles)
+_TERMS_JAVA = "(java & !javascript) | 'spring boot' | jakarta"
+
+_GLOBAL_NOT = (
     " & !(financial | marketing | sales | nurse"
     " | director | 'vice president' | vp | cto | chief | architect)"
 )
+
+TITLE_FILTER_USA   = f"({_TERMS_COMMON} | {_TERMS_JAVA})" + _GLOBAL_NOT
+TITLE_FILTER_INDIA = f"({_TERMS_COMMON})" + _GLOBAL_NOT
+# Default (modified-ats sync etc.) — widest filter
+TITLE_FILTER = TITLE_FILTER_USA
+
+def title_filter_for(location: str) -> str:
+    return TITLE_FILTER_INDIA if location == "India" else TITLE_FILTER_USA
 
 
 _EMP_TYPE_MAP = {
@@ -233,7 +244,7 @@ async def _fetch_page(
     params: dict = {
         "limit": PAGE_SIZE,
         "offset": offset,
-        "title_advanced": TITLE_FILTER,
+        "title_advanced": title_filter_for(location),
         "location_advanced": f"'{location}'" if " " in location else location,
         "description_format": "html",
     }
@@ -267,7 +278,7 @@ async def _fetch_expected_count(client: httpx.AsyncClient, location: str,
     only, zero job credits). Returns None if the endpoint is unavailable."""
     params = {
         "time_frame": time_frame,
-        "title_advanced": TITLE_FILTER,
+        "title_advanced": title_filter_for(location),
         "location_advanced": f"'{location}'" if " " in location else location,
     }
     try:

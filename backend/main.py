@@ -1031,6 +1031,13 @@ async def test_telegram(body: dict = Body(...), user_id: str = Depends(get_curre
     """Test Telegram bot connection and send a test message."""
     token = body.get("token", "")
     chat_id = body.get("chat_id", "")
+    # UI shows the stored token masked — when the mask is echoed back,
+    # test with the real stored token instead
+    if "•" in token or "â€¢" in token:
+        async with SessionLocal() as db:
+            result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+            s = result.scalar_one_or_none()
+        token = (s.telegram_bot_token or "") if s else ""
     if not token or not chat_id:
         raise HTTPException(status_code=400, detail="Bot token and Chat ID are required")
     ok, msg = await telegram_bot.test_connection(token, chat_id)

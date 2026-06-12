@@ -969,7 +969,7 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
             "profile_github": s.profile_github or "",
             "profile_website": s.profile_website or "",
             "profile_summary": s.profile_summary or "",
-            "telegram_bot_token": "••••" if s.telegram_bot_token else "",
+            "telegram_bot_token": "•" * len(s.telegram_bot_token) if s.telegram_bot_token else "",
             "telegram_chat_id": s.telegram_chat_id or "",
             "telegram_configured": bool(s.telegram_bot_token and s.telegram_chat_id),
             # Legacy fields for backward compat

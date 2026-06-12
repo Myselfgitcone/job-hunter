@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { Job, JobStatus } from "../types";
 import { api, downloadFile } from "../api";
-import { ATSBar, Spinner, CompanyLogo } from "./primitives";
+import { ATSBar, Spinner, CompanyLogo, AtsLogo } from "./primitives";
 
 function relTimeDetail(iso: string): string {
   if (!iso) return "";
@@ -764,7 +764,7 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
                   <span className="meta-i"><Ic d={I.briefcase} size={13} />{job.salary}</span>
                 )}
                 <span className="badge-src">
-                  <span className="sw" style={{ background: `var(--src-${job.source.toLowerCase()}, var(--tx-3))` }} />
+                  <AtsLogo source={job.source} size={13} />
                   {job.source}
                 </span>
                 {(job.posted_at || job.scraped_at) && (

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import type { Job } from "../types";
-import { CompanyLogo } from "./primitives";
+import { CompanyLogo, AtsLogo } from "./primitives";
 
 // Status → CSS var for left border
 const STATUS_COLOR: Record<string, string> = {
@@ -106,7 +106,7 @@ export function JobCard({ job, selected, onClick, onSkip, mode = "compact", inde
             {/* FantasticJobs is the default pipeline — only badge exceptions (LinkedIn, Indeed...) */}
             {job.source !== "FantasticJobs" && (
               <span className="badge-src">
-                <span className="sw" style={{ background: srcVar ? `var(${srcVar})` : "var(--tx-3)" }} />
+                <AtsLogo source={job.source} size={11} />
                 {job.source}
               </span>
             )}

@@ -164,6 +164,38 @@ export function CompanyLogo({ url, company, size = 28 }: { url: string; company:
   );
 }
 
+// ── ATS platform logo (favicon-based, no assets to maintain) ──────────────────
+const ATS_DOMAINS: Record<string, string> = {
+  Greenhouse: "greenhouse.io", Lever: "lever.co", Ashby: "ashbyhq.com",
+  Workday: "workday.com", iCIMS: "icims.com", ADP: "adp.com",
+  SmartRecruiters: "smartrecruiters.com", BambooHR: "bamboohr.com",
+  Workable: "workable.com", Recruitee: "recruitee.com", Jobvite: "jobvite.com",
+  Taleo: "oracle.com", SuccessFactors: "sap.com", Oracle: "oracle.com",
+  Rippling: "rippling.com", JazzHR: "jazzhr.com", Breezy: "breezy.hr",
+  Teamtailor: "teamtailor.com", Personio: "personio.com",
+  Paylocity: "paylocity.com", Paycom: "paycom.com", UKG: "ukg.com",
+  Dayforce: "dayforce.com", Eightfold: "eightfold.ai", Phenom: "phenom.com",
+  LinkedIn: "linkedin.com", Indeed: "indeed.com", Glassdoor: "glassdoor.com",
+  Dice: "dice.com", ZipRecruiter: "ziprecruiter.com", Monster: "monster.com",
+  HiringCafe: "hiring.cafe", FantasticJobs: "fantastic.jobs",
+};
+
+export function AtsLogo({ source, size = 12 }: { source: string; size?: number }) {
+  const [failed, setFailed] = useState(false);
+  const domain = ATS_DOMAINS[source];
+  if (!domain || failed) return null;
+  return (
+    <img
+      src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`}
+      alt={source}
+      width={size}
+      height={size}
+      style={{ borderRadius: 3, objectFit: "contain", flexShrink: 0 }}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 // ── Spinner ──────────────────────────────────────────────────────────────────
 export function Spinner({ size = 14, color = "currentColor" }: { size?: number; color?: string }) {
   return (

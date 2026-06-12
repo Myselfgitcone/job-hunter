@@ -472,6 +472,27 @@ async def startup():
                     await telegram_bot.init_bot(row[0], row[1])
         except Exception as e:
             print(f"[Startup] Telegram init skipped: {e}")
+        # Migrate legacy global profile/resume to the admin's per-user records
+        # (profile/resume predate multi-user; they were always the admin's)
+        try:
+            async with SessionLocal() as db:
+                res = await db.execute(select(User).where(User.email.ilike(ADMIN_EMAIL)))
+                admin_u = res.scalar_one_or_none()
+                if admin_u:
+                    legacy_p = await db.get(Setting, "profile")
+                    per_user = await db.get(Setting, f"profile:{admin_u.id}")
+                    if legacy_p and legacy_p.value and not per_user:
+                        db.add(Setting(key=f"profile:{admin_u.id}", value=legacy_p.value))
+                        print("[Startup] Migrated legacy profile to admin's per-user profile")
+                    legacy_r = await db.get(Setting, "resume")
+                    us_res = await db.execute(select(UserSettings).where(UserSettings.user_id == admin_u.id))
+                    us = us_res.scalar_one_or_none()
+                    if legacy_r and legacy_r.value and us and not (us.resume or ""):
+                        us.resume = legacy_r.value
+                        print("[Startup] Migrated legacy resume to admin's UserSettings")
+                    await db.commit()
+        except Exception as e:
+            print(f"[Startup] Profile migration skipped: {e}")
         # Backfill experience trays: recompute any job not already in a fine
         # tray (empty or old coarse FJ value), then AI-infer the leftovers
         try:
@@ -1000,6 +1021,22 @@ async def _get_admin_settings(db) -> UserSettings:
     res_s = await db.execute(select(UserSettings).where(UserSettings.user_id == admin.id))
     return res_s.scalar_one_or_none()
 
+
+async def _load_profile(db, user_id: str) -> dict:
+    """Per-user profile (Setting key 'profile:<user_id>').
+    The legacy global 'profile' row predates multi-user — it belongs to the
+    admin account only and is used as the admin's fallback."""
+    row = await db.get(Setting, f"profile:{user_id}")
+    if not row:
+        res = await db.execute(select(User).where(User.id == user_id))
+        usr = res.scalar_one_or_none()
+        if usr and usr.email.lower() == ADMIN_EMAIL.lower():
+            row = await db.get(Setting, "profile")
+    try:
+        return json.loads(row.value) if row and row.value else {}
+    except Exception:
+        return {}
+
 async def _get_user_settings(user_id: str) -> dict:
     """Helper to fetch user's AI/resume settings from user_settings table.
        Falls back to Master Admin's API keys for normal users."""
@@ -1017,10 +1054,10 @@ async def _get_user_settings(user_id: str) -> dict:
         if not s and not admin_s:
             return {}
 
-        # UserSettings.resume is the per-user raw text field.
-        # Fall back to Setting(key="resume") which is auto-generated from Profile page.
+        # Resume is strictly per-user — the legacy global Setting("resume")
+        # belongs to the admin only (migrated at startup)
         resume_text = (s.resume or "") if s else ""
-        if not resume_text:
+        if not resume_text and is_admin:
             resume_row = await db.get(Setting, "resume")
             resume_text = resume_row.value if resume_row else ""
 
@@ -1046,11 +1083,14 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
             db.add(s)
             await db.commit()
             await db.refresh(s)  # prevent expired-object lazy load in async context
-        # Fall back to Setting(key="resume") if UserSettings.resume is empty
+        # Resume is per-user; legacy global Setting("resume") is admin-only
         resume_val = s.resume or ""
         if not resume_val:
-            resume_row = await db.get(Setting, "resume")
-            resume_val = resume_row.value if resume_row else ""
+            u_res = await db.execute(select(User).where(User.id == user_id))
+            u_row = u_res.scalar_one_or_none()
+            if u_row and u_row.email.lower() == ADMIN_EMAIL.lower():
+                resume_row = await db.get(Setting, "resume")
+                resume_val = resume_row.value if resume_row else ""
 
         data = {
             "resume": resume_val,
@@ -1563,15 +1603,10 @@ async def qualify_health(user_id: str = Depends(get_current_user_id)):
     await _verify_admin(user_id)
     async with SessionLocal() as db:
         admin_s = await _get_admin_settings(db)
-        profile_row = await db.get(Setting, "profile")
+        profile_ok = bool(await _load_profile(db, user_id))
         scored_r  = await db.execute(select(func.count()).select_from(Job).where(Job.qualify_result != None))
         pending_r = await db.execute(select(func.count()).select_from(Job).where(
             Job.qualify_result == None, Job.status == "new"))
-    profile_ok = False
-    try:
-        profile_ok = bool(json.loads(profile_row.value)) if profile_row else False
-    except Exception:
-        pass
     return {
         "admin_settings_found": admin_s is not None,
         "api_key_set": bool(admin_s.ai_api_key) if admin_s else False,
@@ -2448,10 +2483,7 @@ class ProfileData(BaseModel):
 @app.get("/api/profile")
 async def get_profile(user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
-        row = await db.get(Setting, "profile")
-        if row and row.value:
-            return json.loads(row.value)
-    return {}
+        return await _load_profile(db, user_id)
 
 def _profile_to_resume_text(p: dict) -> str:
     """Convert structured profile to plain-text resume for AI tailoring."""
@@ -2509,32 +2541,25 @@ def _profile_to_resume_text(p: dict) -> str:
 
 @app.put("/api/profile")
 async def save_profile(body: ProfileData, user_id: str = Depends(get_current_user_id)):
+    """Profile is strictly per-user — saving never touches anyone else's data."""
     async with SessionLocal() as db:
-        row = await db.get(Setting, "profile")
+        key = f"profile:{user_id}"
+        row = await db.get(Setting, key)
         val = json.dumps(body.model_dump())
         if row:
             row.value = val
         else:
-            db.add(Setting(key="profile", value=val))
+            db.add(Setting(key=key, value=val))
 
-        # Auto-sync plain-text resume for AI tailoring
+        # Auto-sync plain-text resume for AI tailoring (this user only)
         resume_text = _profile_to_resume_text(body.model_dump())
         if resume_text:
-            # Save to Setting table (legacy/global)
-            resume_row = await db.get(Setting, "resume")
-            if resume_row:
-                resume_row.value = resume_text
-            else:
-                db.add(Setting(key="resume", value=resume_text))
-
-            # Also sync to UserSettings.resume for the current user
             us_result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
             us = us_result.scalar_one_or_none()
             if us:
                 us.resume = resume_text
             else:
-                us = UserSettings(user_id=user_id, resume=resume_text)
-                db.add(us)
+                db.add(UserSettings(user_id=user_id, resume=resume_text))
 
         await db.commit()
     return {"ok": True}
@@ -2670,14 +2695,9 @@ async def qualify_job_endpoint(job_id: str, user_id: str = Depends(get_current_u
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
     model = user_cfg.get("ai_model_qualify", "anthropic/claude-opus-4-8")
-    # Profile still read from global Setting for now
+    # Per-user profile — each user's scores measure THEIR fit
     async with SessionLocal() as db:
-        profile_row = await db.get(Setting, "profile")
-    profile_raw = profile_row.value if profile_row else "{}"
-    try:
-        profile = json.loads(profile_raw)
-    except Exception:
-        profile = {}
+        profile = await _load_profile(db, user_id)
 
     if not api_key:
         raise HTTPException(400, "No AI API key configured in Settings")
@@ -2751,7 +2771,10 @@ async def _run_qualify_all_inner(new_job_ids: list | None = None):
     # Get admin's API key + model from UserSettings (not legacy Setting table)
     async with SessionLocal() as db:
         admin_s = await _get_admin_settings(db)
-        profile_row = await db.get(Setting, "profile")
+        res = await db.execute(select(User).where(User.email.ilike(ADMIN_EMAIL)))
+        admin_u = res.scalar_one_or_none()
+        # Auto-qualify scores against the ADMIN's per-user profile
+        profile = await _load_profile(db, admin_u.id) if admin_u else {}
 
     api_key  = (admin_s.ai_api_key  or "") if admin_s else ""
     provider = (admin_s.ai_provider or "openrouter") if admin_s else "openrouter"
@@ -2762,12 +2785,6 @@ async def _run_qualify_all_inner(new_job_ids: list | None = None):
     if any(m in model for m in _expensive_models):
         print(f"[Qualify] Model '{model}' is expensive — overriding to google/gemini-2.5-flash-lite for auto-qualify")
         model = "google/gemini-2.5-flash-lite"
-
-    profile_raw = profile_row.value if profile_row else "{}"
-    try:
-        profile = json.loads(profile_raw)
-    except Exception:
-        profile = {}
 
     if not api_key or not profile:
         print(f"[Qualify] Skipping — admin_settings={'found' if admin_s else 'MISSING'} "

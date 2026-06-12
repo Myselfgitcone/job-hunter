@@ -511,6 +511,21 @@ async def startup():
                     asyncio.create_task(_run_scrape())
         except Exception as e:
             print(f"[Startup] Catch-up check skipped: {e}")
+        # Blank descriptions poisoned by bot-wall stubs ("unsupported browser"
+        # pages saved by the old Refresh JD) — UI then offers Fetch/Paste again
+        try:
+            from jd_fetcher import looks_like_junk as _junk
+            async with SessionLocal() as db:
+                rows = await db.execute(select(Job.id, Job.description).where(
+                    Job.description != None, Job.description != ""))
+                poisoned = [jid for jid, d in rows.fetchall() if _junk(d or "")]
+            if poisoned:
+                async with SessionLocal() as db:
+                    await db.execute(update(Job).where(Job.id.in_(poisoned)).values(description=""))
+                    await db.commit()
+                print(f"[Startup] Blanked {len(poisoned)} junk descriptions (bot-wall stubs)")
+        except Exception as e:
+            print(f"[Startup] Junk-desc cleanup skipped: {e}")
         # Backfill real ATS names for rows labeled "FantasticJobs" — detect
         # Greenhouse/iCIMS/ADP/... from the job URL (one-time, idempotent)
         try:

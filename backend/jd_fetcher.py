@@ -24,6 +24,22 @@ _CHROME_RE = re.compile(
     r"^(apply now|apply|share on:?|share|terms of service|privacy|cookies|"
     r"powered by .*|back to jobs|see all jobs|©.*)$", re.I)
 
+# Bot-wall / JS-gate stubs — saving these would overwrite a real JD with junk
+_JUNK_RE = re.compile(
+    r"unsupported browser|supported browser listed|use a supported browser|"
+    r"browser is not supported|update your browser|upgrade your browser|"
+    r"enable javascript|javascript is (?:disabled|required|not enabled)|"
+    r"download (?:firefox|chrome|internet explorer)", re.I)
+
+
+def looks_like_junk(text: str) -> bool:
+    """True when extracted content is a bot-wall stub or nav-only shell."""
+    plain = re.sub(r"<[^>]+>", " ", text or "")
+    if _JUNK_RE.search(plain[:5000]):
+        return True
+    # nav-only shells: lots of short link-ish lines, no real paragraphs
+    return len(plain.strip()) < 200
+
 
 def _strip_attrs(node) -> None:
     """Remove all attributes (inline styles, classes) so site CSS can't leak in.
@@ -74,16 +90,21 @@ async def fetch_full_jd(url: str) -> dict | None:
         _strip_attrs(node)
 
         html = str(node).strip()
-        text_len = len(node.get_text(strip=True))
+        plain = node.get_text(separator="\n", strip=True)
+
+        # Bot-wall stub or nav-only shell → fail loudly, never save junk
+        if looks_like_junk(plain):
+            print(f"[jd_fetcher] junk/bot-wall page detected for {url}")
+            return None
+
         # Structured content present → return HTML so headings/bullets render
-        if text_len >= 200 and re.search(r"<(h[1-6]|ul|ol|li|p)\b", html, re.I):
+        if len(plain) >= 200 and re.search(r"<(h[1-6]|ul|ol|li|p)\b", html, re.I):
             return {"description": html[:25000]}
 
         # Fallback: plain text, minus obvious page chrome
-        text = node.get_text(separator="\n", strip=True)
-        lines = [ln for ln in text.split("\n") if not _CHROME_RE.match(ln.strip())]
+        lines = [ln for ln in plain.split("\n") if not _CHROME_RE.match(ln.strip())]
         text = re.sub(r"\n{3,}", "\n\n", "\n".join(lines))
-        return {"description": text[:25000]} if text.strip() else None
+        return {"description": text[:25000]} if len(text.strip()) >= 200 else None
     except Exception as e:
         print(f"[jd_fetcher] error fetching {url}: {e}")
         return None

@@ -186,6 +186,30 @@ async def _scrape_and_insert(fetch_fn, group_name, settings, cutoff_posted, now_
                     await db.flush()
             await db.commit()
 
+    # Durable daily ledger — job rows get deleted by retention, so exact
+    # per-day scrape history must be recorded at insert time
+    if new_count:
+        try:
+            day = now_iso[:10]
+            usa   = sum(1 for j in new_jobs if j.get("country") == "USA")
+            india = sum(1 for j in new_jobs if j.get("country") == "India")
+            async with SessionLocal() as db:
+                row = await db.get(Setting, "daily_scrape_ledger")
+                ledger = json.loads(row.value) if row and row.value else {}
+                d = ledger.get(day, {"total": 0, "USA": 0, "India": 0})
+                d["total"] += new_count; d["USA"] += usa; d["India"] += india
+                ledger[day] = d
+                # keep last 120 days
+                for k in sorted(ledger)[:-120]:
+                    ledger.pop(k, None)
+                if row:
+                    row.value = json.dumps(ledger)
+                else:
+                    db.add(Setting(key="daily_scrape_ledger", value=json.dumps(ledger)))
+                await db.commit()
+        except Exception as e:
+            print(f"[Scrape/{group_name}] ledger update failed: {e}")
+
     print(f"[Scrape/{group_name}] Inserted {new_count} new jobs")
     return new_count, new_jobs
 
@@ -2032,14 +2056,28 @@ async def get_analytics(user_id: str = Depends(get_current_user_id)):
 
     today = date.today()
 
+    # Durable per-day ledger (recorded at insert time) beats DB counts —
+    # retention deletes old rows, undercounting days >7d back
+    ledger: dict = {}
+    try:
+        async with SessionLocal() as db:
+            lrow = await db.get(Setting, "daily_scrape_ledger")
+        if lrow and lrow.value:
+            ledger = json.loads(lrow.value)
+    except Exception:
+        pass
+
     # 30-day timeline
     timeline = []
     for i in range(29, -1, -1):
         d = (today - timedelta(days=i)).isoformat()
+        led = ledger.get(d)
         timeline.append({
             "date": d,
             "label": d[5:],   # MM-DD
-            "scraped":  by_day.get(d, 0),
+            "scraped":  led["total"] if led else by_day.get(d, 0),
+            "scraped_usa":   (led or {}).get("USA"),
+            "scraped_india": (led or {}).get("India"),
             "applied":  applied_by_day.get(d, 0),
             "tailored": tailored_by_day.get(d, 0),
         })

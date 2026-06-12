@@ -80,13 +80,14 @@ function MonthlyBars({ data }: { data: Array<{ m: string; scraped: number; appli
 }
 
 // ── Area chart (SVG) ─────────────────────────────────────────────────────────
-function AreaChart({ scrape, applied }: { scrape: number[]; applied: number[] }) {
+function AreaChart({ scrape, applied, points }: { scrape: number[]; applied: number[]; points?: any[] }) {
   const w = 520, h = 120, max = Math.max(...scrape, 1);
   const pts = (arr: number[], scale: number) =>
     arr.map((v, i) => `${(i / (arr.length - 1)) * w},${h - (v / max) * h * scale}`);
   const line = pts(scrape, 0.92);
   const area = `0,${h} ${line.join(" ")} ${w},${h}`;
   const appLine = pts(applied.map(v => v * 3), 0.92);
+  const colW = w / Math.max(scrape.length - 1, 1);
   return (
     <svg className="area-chart" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
       <defs>
@@ -98,6 +99,12 @@ function AreaChart({ scrape, applied }: { scrape: number[]; applied: number[] })
       <polygon points={area} fill="url(#areaGrad)" />
       <polyline points={line.join(" ")} fill="none" stroke="#7c3aed" strokeWidth="2" vectorEffect="non-scaling-stroke" />
       <polyline points={appLine.join(" ")} fill="none" stroke="#22d3ee" strokeWidth="2" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+      {/* Invisible hover columns — native tooltip with exact counts per day */}
+      {points && points.map((p, i) => (
+        <rect key={i} x={i * colW - colW / 2} y={0} width={colW} height={h} fill="transparent">
+          <title>{`${p.label}\nScraped: ${p.scraped}${p.scraped_usa != null ? ` (USA ${p.scraped_usa} / India ${p.scraped_india ?? 0})` : ""}\nApplied: ${p.applied}`}</title>
+        </rect>
+      ))}
     </svg>
   );
 }
@@ -365,7 +372,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
               </div>
             </div>
             {activity.length > 1
-              ? <AreaChart scrape={activity} applied={activityApplied} />
+              ? <AreaChart scrape={activity} applied={activityApplied} points={timeline} />
               : <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No activity data yet</div>
             }
           </div>

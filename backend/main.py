@@ -2165,8 +2165,11 @@ async def get_analytics(user_id: str = Depends(get_current_user_id)):
         vals  = by_month.get(key, {"scraped": 0, "applied": 0, "tailored": 0})
         monthly.append({"month": label, **vals})
 
+    async with SessionLocal() as db:
+        ls = await db.get(Setting, "last_scraped_at")
     return {
         "total": total,
+        "last_scraped_at": ls.value if ls else "",
         "by_status":  dict(by_status),
         "by_country": sorted(
             [(k, v) for k, v in by_country.items() if k and k not in ("Unknown", "")],

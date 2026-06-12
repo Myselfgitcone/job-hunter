@@ -148,6 +148,67 @@ def _detect_jb_source(url: str) -> str:
     return "FantasticJobs"
 
 
+# FJ's per-job `source` field → display name
+_ATS_PRETTY = {
+    "greenhouse": "Greenhouse", "greenhouse.io": "Greenhouse",
+    "lever": "Lever", "lever.co": "Lever",
+    "ashby": "Ashby", "ashbyhq": "Ashby",
+    "workday": "Workday", "icims": "iCIMS", "adp": "ADP",
+    "smartrecruiters": "SmartRecruiters", "bamboohr": "BambooHR",
+    "workable": "Workable", "recruitee": "Recruitee", "jobvite": "Jobvite",
+    "taleo": "Taleo", "successfactors": "SuccessFactors",
+    "oraclecloud": "Oracle", "rippling": "Rippling", "jazzhr": "JazzHR",
+    "breezy": "Breezy", "teamtailor": "Teamtailor", "personio": "Personio",
+    "paylocity": "Paylocity", "paycom": "Paycom", "ukg": "UKG",
+    "dayforce": "Dayforce", "eightfold": "Eightfold", "phenom": "Phenom",
+}
+
+# URL-domain fallback (also used to backfill existing DB rows)
+ATS_URL_MAP = {
+    "greenhouse.io":      "Greenhouse",
+    "lever.co":           "Lever",
+    "ashbyhq.com":        "Ashby",
+    "myworkdayjobs":      "Workday",
+    "workday":            "Workday",
+    "icims.com":          "iCIMS",
+    "adp.com":            "ADP",
+    "workforcenow":       "ADP",
+    "smartrecruiters":    "SmartRecruiters",
+    "bamboohr.com":       "BambooHR",
+    "workable.com":       "Workable",
+    "recruitee.com":      "Recruitee",
+    "jobvite.com":        "Jobvite",
+    "taleo.net":          "Taleo",
+    "successfactors":     "SuccessFactors",
+    "oraclecloud.com":    "Oracle",
+    "rippling.com":       "Rippling",
+    "applytojob.com":     "JazzHR",
+    "breezy.hr":          "Breezy",
+    "teamtailor.com":     "Teamtailor",
+    "personio":           "Personio",
+    "paylocity.com":      "Paylocity",
+    "paycomonline":       "Paycom",
+    "ukg.com":            "UKG",
+    "dayforcehcm":        "Dayforce",
+    "eightfold.ai":       "Eightfold",
+    "phenompeople":       "Phenom",
+}
+
+def detect_ats_from_url(url: str) -> str:
+    lower = (url or "").lower()
+    for domain, label in ATS_URL_MAP.items():
+        if domain in lower:
+            return label
+    return ""
+
+def resolve_source(fj_source: str, url: str, board_src: str) -> str:
+    """Best display source: FJ's own source field > ATS by URL > board by URL."""
+    s = (fj_source or "").lower().strip()
+    if s:
+        return _ATS_PRETTY.get(s, s.title())
+    return detect_ats_from_url(url) or board_src
+
+
 def _get_headers() -> dict:
     key = os.getenv("FANTASTIC_JOBS_API_KEY", "")
     if not key:
@@ -458,11 +519,13 @@ async def fetch(settings: dict) -> list[dict]:
 
                         # Detect actual hosting board by URL — the ATS feed also
                         # contains LinkedIn-hosted listings for companies w/o an ATS
-                        job_source = _detect_jb_source(url)
+                        board_src = _detect_jb_source(url)
                         # USA policy: direct career pages only — board-hosted posts
                         # (LinkedIn/Indeed/Dice) are reposts. India keeps them (thin ATS coverage).
-                        if job_source != "FantasticJobs" and country == "USA":
+                        if board_src != "FantasticJobs" and country == "USA":
                             continue
+                        # Display source: actual ATS name (Greenhouse/iCIMS/ADP/...)
+                        job_source = resolve_source(job.get("source") or "", url, board_src)
 
                         seen.add(url)
                         kept += 1

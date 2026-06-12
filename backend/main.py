@@ -511,6 +511,27 @@ async def startup():
                     asyncio.create_task(_run_scrape())
         except Exception as e:
             print(f"[Startup] Catch-up check skipped: {e}")
+        # Backfill real ATS names for rows labeled "FantasticJobs" — detect
+        # Greenhouse/iCIMS/ADP/... from the job URL (one-time, idempotent)
+        try:
+            from scrapers.fantasticjobs import detect_ats_from_url
+            async with SessionLocal() as db:
+                rows = await db.execute(select(Job.id, Job.url).where(Job.source == "FantasticJobs"))
+                fj_rows = rows.fetchall()
+            relabeled = 0
+            if fj_rows:
+                async with SessionLocal() as db:
+                    for jid, url in fj_rows:
+                        ats = detect_ats_from_url(url or "")
+                        if ats:
+                            await db.execute(update(Job).where(Job.id == jid).values(source=ats))
+                            relabeled += 1
+                            if relabeled % 200 == 0:
+                                await db.commit()
+                    await db.commit()
+                print(f"[Startup] ATS relabel: {relabeled}/{len(fj_rows)} FantasticJobs rows renamed")
+        except Exception as e:
+            print(f"[Startup] ATS relabel skipped: {e}")
         # Remap legacy country="Remote" rows — remote is a work type, not a
         # country. Must run BEFORE the board purge so remote-USA LinkedIn
         # rows get caught by it.

@@ -497,7 +497,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
               <span className="chart-title">30-Day Activity</span>
               <div className="legend">
                 <span><i style={{ background: "#7c3aed" }} />Scraped</span>
-                <span><i style={{ background: "#22d3ee" }} />Applications</span>
+                <span><i style={{ background: "#3b82f6" }} />Applications</span>
               </div>
             </div>
             {activity.length > 1

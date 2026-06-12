@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 
 // ── StatCard with count-up animation ─────────────────────────────────────────
-function StatCard({ stat }: { stat: { label: string; value: number; delta: string; grad: [string, string]; icon: string } }) {
+function StatCard({ stat }: { stat: { label: string; value: number; delta: string; grad: [string, string] } }) {
   const [n, setN] = useState(0);
   useEffect(() => {
     let raf: number;
@@ -19,17 +19,9 @@ function StatCard({ stat }: { stat: { label: string; value: number; delta: strin
   return (
     <div className="stat-card">
       <div className="stat-glow" style={{ background: `linear-gradient(135deg, ${stat.grad[0]}, ${stat.grad[1]})` }} />
-      <div className="stat-head">
-        <div className="stat-label">{stat.label}</div>
-        <div className="stat-ico" style={{ background: `linear-gradient(135deg, ${stat.grad[0]}, ${stat.grad[1]})` }} dangerouslySetInnerHTML={{ __html: stat.icon }} />
-      </div>
+      <div className="stat-label">{stat.label}</div>
       <div className="stat-value">{n.toLocaleString()}</div>
-      <div className="stat-foot">
-        <div className="stat-delta">
-          {stat.delta.startsWith('+') ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg> : <span style={{width:12,height:12}}/>}
-          <span style={{ color: stat.delta.startsWith('+') ? '#34d399' : 'var(--tx-3)' }}>{stat.delta}</span>
-        </div>
-      </div>
+      <div className="stat-delta">{stat.delta}</div>
     </div>
   );
 }
@@ -50,9 +42,9 @@ function Donut({ data }: { data: Array<{ label: string; value: number; color: st
             const len = show ? frac * C - gap : 0;
             const dash = `${len} ${C - len}`;
             const el = (
-              <circle key={i} cx="70" cy="70" r={R} fill="none" stroke={d.color} strokeWidth="18"
+              <circle key={i} cx="70" cy="70" r={R} fill="none" stroke={d.color} strokeWidth="14"
                 strokeDasharray={dash} strokeDashoffset={-offset}
-                style={{ transition: "stroke-dasharray .9s var(--ease), stroke-dashoffset .9s var(--ease)", filter: "drop-shadow(0 0 6px " + d.color + "40)" }} />
+                style={{ transition: "stroke-dasharray .9s var(--ease), stroke-dashoffset .9s var(--ease)" }} />
             );
             offset += show ? frac * C : 0;
             return el;
@@ -89,27 +81,24 @@ function MonthlyBars({ data }: { data: Array<{ m: string; scraped: number; appli
 
 // ── Area chart (SVG) ─────────────────────────────────────────────────────────
 function AreaChart({ scrape, applied }: { scrape: number[]; applied: number[] }) {
-  const w = 520, h = 140, max = Math.max(...scrape, 1);
+  const w = 520, h = 120, max = Math.max(...scrape, 1);
   const pts = (arr: number[], scale: number) =>
     arr.map((v, i) => `${(i / (arr.length - 1)) * w},${h - (v / max) * h * scale}`);
   const line = pts(scrape, 0.92);
   const area = `0,${h} ${line.join(" ")} ${w},${h}`;
   const appLine = pts(applied.map(v => v * 3), 0.92);
   return (
-    <div className="area-chart-wrap">
-      <div className="area-grid" />
-      <svg className="area-chart" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ position: "relative", zIndex: 1 }}>
-        <defs>
-          <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="rgba(124,58,237,.5)" />
-            <stop offset="100%" stopColor="rgba(124,58,237,0.02)" />
-          </linearGradient>
-        </defs>
-        <polygon points={area} fill="url(#areaGrad)" />
-        <polyline points={line.join(" ")} fill="none" stroke="#7c3aed" strokeWidth="2.5" vectorEffect="non-scaling-stroke" style={{ filter: "drop-shadow(0 4px 6px rgba(124,58,237,0.4))" }} />
-        <polyline points={appLine.join(" ")} fill="none" stroke="#22d3ee" strokeWidth="2" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
-      </svg>
-    </div>
+    <svg className="area-chart" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="rgba(124,58,237,.4)" />
+          <stop offset="100%" stopColor="rgba(124,58,237,0)" />
+        </linearGradient>
+      </defs>
+      <polygon points={area} fill="url(#areaGrad)" />
+      <polyline points={line.join(" ")} fill="none" stroke="#7c3aed" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+      <polyline points={appLine.join(" ")} fill="none" stroke="#22d3ee" strokeWidth="2" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+    </svg>
   );
 }
 
@@ -226,11 +215,11 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
   const tailored = (data.tailored_jobs || []).length;
 
   const stats = [
-    { label: "Total Scraped", value: total,     delta: "+scraping",  grad: ["#475569","#64748b"] as [string,string], icon: '<path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke-width="2.5" fill="none"/>' },
-    { label: "New Jobs",      value: newJobs,   delta: "pending",    grad: ["#6366f1","#818cf8"] as [string,string], icon: '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke-width="2.5" fill="none"/>' },
-    { label: "Applied",       value: applied,   delta: "+this week", grad: ["#3b82f6","#60a5fa"] as [string,string], icon: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3" stroke-width="2.5" fill="none"/>' },
-    { label: "Interviews",    value: interview, delta: "upcoming",   grad: ["#10b981","#34d399"] as [string,string], icon: '<rect x="3" y="7" width="18" height="13" rx="2" stroke-width="2.5" fill="none"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18" stroke-width="2.5" fill="none"/>' },
-    { label: "AI Tailored",   value: tailored,  delta: "+this week", grad: ["#7c3aed","#a78bfa"] as [string,string], icon: '<path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z" stroke-width="2.5" fill="none"/>' },
+    { label: "Total Scraped", value: total,     delta: "+scraping", grad: ["#475569","#64748b"] as [string,string] },
+    { label: "New Jobs",      value: newJobs,   delta: "pending",   grad: ["#6366f1","#818cf8"] as [string,string] },
+    { label: "Applied",       value: applied,   delta: "+this week", grad: ["#3b82f6","#60a5fa"] as [string,string] },
+    { label: "Interviews",    value: interview, delta: "upcoming",   grad: ["#10b981","#34d399"] as [string,string] },
+    { label: "AI Tailored",   value: tailored,  delta: "+this week", grad: ["#7c3aed","#a78bfa"] as [string,string] },
   ];
 
   const statusData = [
@@ -337,7 +326,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
 
         {/* Chart grid */}
         <div className="chart-grid">
-          <div className="chart-card span3">
+          <div className="chart-card span2">
             <div className="chart-head">
               <span className="chart-title">Monthly Trends</span>
               <div className="legend">
@@ -352,7 +341,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
             }
           </div>
 
-          <div className="chart-card span3">
+          <div className="chart-card">
             <div className="chart-head"><span className="chart-title">Status Breakdown</span></div>
             {statusData.some(d => d.value > 0)
               ? <>
@@ -367,7 +356,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
             }
           </div>
 
-          <div className="chart-card span4">
+          <div className="chart-card span3">
             <div className="chart-head">
               <span className="chart-title">30-Day Activity</span>
               <div className="legend">
@@ -390,7 +379,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
           </div>
 
           {isAdmin && (
-            <div className="chart-card span2">
+            <div className="chart-card">
               <div className="chart-head"><span className="chart-title">Jobs by Source</span></div>
               {bySource.length > 0
                 ? <VBars data={bySource} />

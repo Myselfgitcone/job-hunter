@@ -470,6 +470,23 @@ async def startup():
             asyncio.create_task(_run_exp_ai_sweep())
         except Exception as e:
             print(f"[Startup] Experience backfill skipped: {e}")
+        # Catch-up scrape: a deploy/restart during the top of the hour swallows
+        # that hour's cron tick (in-memory scheduler). If the last scrape is
+        # stale, run one now instead of waiting for the next hour.
+        try:
+            row = None
+            async with SessionLocal() as db:
+                row = await db.get(Setting, "last_scraped_at")
+            if row and row.value:
+                last_dt = datetime.fromisoformat(row.value)
+                from datetime import timezone as _tz2
+                now_aware = datetime.now(last_dt.tzinfo) if last_dt.tzinfo else datetime.utcnow()
+                stale_min = (now_aware - last_dt).total_seconds() / 60
+                if stale_min > 65:
+                    print(f"[Startup] Last scrape {int(stale_min)}min ago — running catch-up scrape")
+                    asyncio.create_task(_run_scrape())
+        except Exception as e:
+            print(f"[Startup] Catch-up check skipped: {e}")
         # Remap legacy country="Remote" rows — remote is a work type, not a
         # country. Must run BEFORE the board purge so remote-USA LinkedIn
         # rows get caught by it.

@@ -573,20 +573,6 @@ export function Profile() {
             suggestions={["AWS Certified Solutions Architect", "Certified Kubernetes Administrator", "PMP"]} />
         </section>
 
-        <section className="form-section" style={{ border: "1px solid rgba(239, 68, 64, 0.3)", background: "rgba(239, 68, 64, 0.02)" }}>
-          <div className="section-label" style={{ color: "#ef4440" }}>
-            <Ic d={I.x} size={16} /> Danger Zone
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ fontSize: 13, color: "var(--tx-2)" }}>
-              Permanently delete your account and all associated data. This action cannot be undone.
-            </div>
-            <button className="act" onClick={() => setShowDeleteModal(true)} style={{ background: "#ef4440", color: "#fff", border: "none" }}>
-              Delete Account
-            </button>
-          </div>
-        </section>
-
         <div className="form-foot" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <button className="act" onClick={clearAll} style={{ background: "rgba(239,68,64,0.1)", color: "#ef4440", border: "1px solid rgba(239,68,64,0.2)" }}>
             Clear All
@@ -602,6 +588,22 @@ export function Profile() {
               {saveStatus === "saving" && "Saving..."}
               {saveStatus === "saved" && <><Ic d={I.check} size={14} /> Saved</>}
             </div>
+          </div>
+        </div>
+
+        {/* Danger Zone */}
+        <div style={{ marginTop: 40, paddingTop: 24, borderTop: "1px solid var(--glass-border)", display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ color: "#ef4440", fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+            <Ic d={I.x} size={16} /> Danger Zone
+          </div>
+          <div style={{ background: "rgba(239, 68, 64, 0.04)", border: "1px solid rgba(239, 68, 64, 0.2)", borderRadius: 12, padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ fontSize: 13.5, color: "var(--tx-2)" }}>
+              Permanently delete your account and all associated data.<br/>
+              <span style={{ color: "var(--tx-3)", fontSize: 12.5, marginTop: 4, display: "inline-block" }}>This action cannot be undone. You will lose all saved jobs, tailored resumes, and settings.</span>
+            </div>
+            <button className="btn" onClick={() => setShowDeleteModal(true)} style={{ background: "#ef4440", color: "#fff", border: "none", height: 38, padding: "0 16px", borderRadius: 8, fontSize: 13, fontWeight: 500, boxShadow: "0 2px 8px rgba(239,68,64,0.3)", cursor: "pointer" }}>
+              Delete Account
+            </button>
           </div>
         </div>
       </div>

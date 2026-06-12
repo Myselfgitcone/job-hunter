@@ -88,7 +88,7 @@ function _fmtDay(iso: string): string {
 }
 
 function AreaChart({ scrape, applied, points }: { scrape: number[]; applied: number[]; points?: any[] }) {
-  const w = 520, h = 120, max = Math.max(...scrape, 1);
+  const w = 520, h = 160, max = Math.max(...scrape, 1);
   const xy = (arr: number[], scale: number) =>
     arr.map((v, i) => [(i / (arr.length - 1)) * w, h - (v / max) * h * scale] as [number, number]);
   const lineXY = xy(scrape, 0.92);
@@ -128,10 +128,11 @@ function AreaChart({ scrape, applied, points }: { scrape: number[]; applied: num
           contributes layout width (it previously forced the card to ~1200px
           and blew up the dashboard grid). */}
       {points && points.length > 1 && (
-        <div style={{ display: "flex", marginTop: 6, paddingBottom: 16, overflow: "hidden" }}>
+        <div style={{ display: "flex", marginTop: 10, height: 34 }}>
           {points.map((p, i) => (
-            <span key={i} style={{ flex: "1 1 0", minWidth: 0, display: "flex", justifyContent: "center" }}>
-              <span style={{ fontSize: 9, color: "var(--tx-3)", fontFamily: "var(--f-mono)", transform: "rotate(-45deg)", whiteSpace: "nowrap" }}>
+            <span key={i} style={{ flex: "1 1 0", minWidth: 0, display: "flex", justifyContent: "center", overflow: "visible" }}>
+              <span style={{ fontSize: points.length > 20 ? 9.5 : 11, color: "var(--tx-3)", fontFamily: "var(--f-mono)",
+                transform: points.length > 12 ? "rotate(-45deg)" : "none", whiteSpace: "nowrap" }}>
                 {_fmtDay(p.date || p.label)}
               </span>
             </span>
@@ -301,8 +302,12 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
     tailored: d.tailored || 0,
   }));
 
-  // 30-day activity
-  const timeline = data.timeline || [];
+  // 30-day activity — start at the first day with data (no empty left tail)
+  const fullTimeline = data.timeline || [];
+  const firstDataIdx = fullTimeline.findIndex((d: any) => (d.scraped || 0) > 0 || (d.applied || 0) > 0);
+  const timeline = firstDataIdx > 0 && fullTimeline.length - firstDataIdx >= 2
+    ? fullTimeline.slice(firstDataIdx)
+    : fullTimeline;
   const activity = timeline.map((d: any) => d.scraped || 0);
   const activityApplied = timeline.map((d: any) => d.applied || 0);
 

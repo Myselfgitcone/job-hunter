@@ -410,7 +410,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
             }
           </div>
 
-          <div className="chart-card span2">
+          <div className="chart-card">
             <div className="chart-head"><span className="chart-title">Jobs by Country</span></div>
             {byCountry.length > 0
               ? <HBars data={byCountry} />
@@ -419,7 +419,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
           </div>
 
           {isAdmin && (
-            <div className="chart-card">
+            <div className="chart-card span2">
               <div className="chart-head"><span className="chart-title">Jobs by Source</span></div>
               {bySource.length > 0
                 ? <VBars data={bySource} />

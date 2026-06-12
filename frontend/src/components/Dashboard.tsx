@@ -111,11 +111,11 @@ function AreaChart({ scrape, applied, points }: { scrape: number[]; applied: num
           </linearGradient>
         </defs>
         <polygon points={area} fill="url(#areaGrad)" />
-        <polyline points={line.join(" ")} fill="none" stroke="#7c3aed" strokeWidth="2" vectorEffect="non-scaling-stroke" />
-        <polyline points={appXY.map(p => p.join(",")).join(" ")} fill="none" stroke="#22d3ee" strokeWidth="2" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+        <polyline points={line.join(" ")} fill="none" stroke="#7c3aed" strokeWidth="3.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        <polyline points={appXY.map(p => p.join(",")).join(" ")} fill="none" stroke="#22d3ee" strokeWidth="3" strokeLinejoin="round" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
         {/* Visible dots on each data point */}
-        {lineXY.map(([x, y], i) => dot(x, y, "#7c3aed", 6, `s${i}`))}
-        {appXY.map(([x, y], i) => (applied[i] > 0 ? dot(x, y, "#22d3ee", 5, `a${i}`) : null))}
+        {lineXY.map(([x, y], i) => dot(x, y, "#7c3aed", 10, `s${i}`))}
+        {appXY.map(([x, y], i) => (applied[i] > 0 ? dot(x, y, "#22d3ee", 8, `a${i}`) : null))}
         {/* Invisible hover columns — native tooltip with exact counts per day */}
         {points && points.map((p, i) => (
           <rect key={i} x={i * colW - colW / 2} y={0} width={colW} height={h} fill="transparent">

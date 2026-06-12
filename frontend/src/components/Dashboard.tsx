@@ -80,32 +80,58 @@ function MonthlyBars({ data }: { data: Array<{ m: string; scraped: number; appli
 }
 
 // ── Area chart (SVG) ─────────────────────────────────────────────────────────
+const _MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function _fmtDay(iso: string): string {
+  // "2026-06-12" -> "Jun 12" (string parsing — timezone-safe)
+  const [, m, d] = iso.split("-").map(Number);
+  return `${_MONTHS[(m || 1) - 1]} ${d}`;
+}
+
 function AreaChart({ scrape, applied, points }: { scrape: number[]; applied: number[]; points?: any[] }) {
   const w = 520, h = 120, max = Math.max(...scrape, 1);
-  const pts = (arr: number[], scale: number) =>
-    arr.map((v, i) => `${(i / (arr.length - 1)) * w},${h - (v / max) * h * scale}`);
-  const line = pts(scrape, 0.92);
+  const xy = (arr: number[], scale: number) =>
+    arr.map((v, i) => [(i / (arr.length - 1)) * w, h - (v / max) * h * scale] as [number, number]);
+  const lineXY = xy(scrape, 0.92);
+  const line = lineXY.map(p => p.join(","));
   const area = `0,${h} ${line.join(" ")} ${w},${h}`;
-  const appLine = pts(applied.map(v => v * 3), 0.92);
+  const appXY = xy(applied.map(v => v * 3), 0.92);
   const colW = w / Math.max(scrape.length - 1, 1);
+  // round dots that stay circular despite the stretched viewBox
+  const dot = (x: number, y: number, color: string, sw: number, key: string) => (
+    <path key={key} d={`M ${x} ${y} l 0 0.01`} stroke={color} strokeWidth={sw}
+      strokeLinecap="round" vectorEffect="non-scaling-stroke" fill="none" />
+  );
   return (
-    <svg className="area-chart" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
-      <defs>
-        <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="rgba(124,58,237,.4)" />
-          <stop offset="100%" stopColor="rgba(124,58,237,0)" />
-        </linearGradient>
-      </defs>
-      <polygon points={area} fill="url(#areaGrad)" />
-      <polyline points={line.join(" ")} fill="none" stroke="#7c3aed" strokeWidth="2" vectorEffect="non-scaling-stroke" />
-      <polyline points={appLine.join(" ")} fill="none" stroke="#22d3ee" strokeWidth="2" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
-      {/* Invisible hover columns — native tooltip with exact counts per day */}
-      {points && points.map((p, i) => (
-        <rect key={i} x={i * colW - colW / 2} y={0} width={colW} height={h} fill="transparent">
-          <title>{`${p.label}\nScraped: ${p.scraped}${p.scraped_usa != null ? ` (USA ${p.scraped_usa} / India ${p.scraped_india ?? 0})` : ""}\nApplied: ${p.applied}`}</title>
-        </rect>
-      ))}
-    </svg>
+    <div>
+      <svg className="area-chart" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgba(124,58,237,.4)" />
+            <stop offset="100%" stopColor="rgba(124,58,237,0)" />
+          </linearGradient>
+        </defs>
+        <polygon points={area} fill="url(#areaGrad)" />
+        <polyline points={line.join(" ")} fill="none" stroke="#7c3aed" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+        <polyline points={appXY.map(p => p.join(",")).join(" ")} fill="none" stroke="#22d3ee" strokeWidth="2" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+        {/* Visible dots on each data point */}
+        {lineXY.map(([x, y], i) => dot(x, y, "#7c3aed", 6, `s${i}`))}
+        {appXY.map(([x, y], i) => (applied[i] > 0 ? dot(x, y, "#22d3ee", 5, `a${i}`) : null))}
+        {/* Invisible hover columns — native tooltip with exact counts per day */}
+        {points && points.map((p, i) => (
+          <rect key={i} x={i * colW - colW / 2} y={0} width={colW} height={h} fill="transparent">
+            <title>{`${_fmtDay(p.date || p.label)}\nScraped: ${p.scraped}${p.scraped_usa != null ? ` (USA ${p.scraped_usa} / India ${p.scraped_india ?? 0})` : ""}\nApplied: ${p.applied}`}</title>
+          </rect>
+        ))}
+      </svg>
+      {/* Date axis — every ~5th day */}
+      {points && points.length > 1 && (
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 10, color: "var(--tx-3)", fontFamily: "var(--f-mono)" }}>
+          {points.filter((_, i) => i % 5 === 0 || i === points.length - 1).map((p, i) => (
+            <span key={i}>{_fmtDay(p.date || p.label)}</span>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -554,13 +554,14 @@ async def startup():
         row = result.scalar_one_or_none()
         cron_expr = row.value if row and row.value else "0 * * * *"
 
-    _scheduler.add_job(_auto_scrape,         CronTrigger.from_crontab(cron_expr),    id="auto_scrape",    replace_existing=True)
-    _scheduler.add_job(_sync_expired_wrapper, CronTrigger.from_crontab("0 0 * * *"),   id="sync_expired",   replace_existing=True)
-    _scheduler.add_job(_sync_modified_wrapper,CronTrigger.from_crontab("0 */6 * * *"), id="sync_modified",  replace_existing=True)
+    # All crons pinned to Eastern Time (app-wide standard)
+    _scheduler.add_job(_auto_scrape,         CronTrigger.from_crontab(cron_expr, timezone=EST),    id="auto_scrape",    replace_existing=True)
+    _scheduler.add_job(_sync_expired_wrapper, CronTrigger.from_crontab("0 0 * * *", timezone=EST),  id="sync_expired",   replace_existing=True)
+    _scheduler.add_job(_sync_modified_wrapper,CronTrigger.from_crontab("0 */6 * * *", timezone=EST),id="sync_modified",  replace_existing=True)
     _scheduler.start()
-    print(f"[Scheduler] Auto-scrape scheduled:        {cron_expr}")
-    print("[Scheduler] Expired jobs sync scheduled:   0 0 * * * (daily midnight)")
-    print("[Scheduler] Modified jobs sync scheduled:  0 */6 * * * (every 6h)")
+    print(f"[Scheduler] Auto-scrape scheduled:        {cron_expr} ET")
+    print("[Scheduler] Expired jobs sync scheduled:   0 0 * * * ET (daily midnight ET)")
+    print("[Scheduler] Modified jobs sync scheduled:  0 */6 * * * ET (12am/6am/12pm/6pm ET)")
 
 
 

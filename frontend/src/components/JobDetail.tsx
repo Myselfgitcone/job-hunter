@@ -803,7 +803,7 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
             return (
               <button key={t.id} onClick={() => setTab(t.id)} className={`tab${active ? " on" : ""}`}>
                 {t.label}
-                {tabHasContent[t.id] && <span className="tcount">•</span>}
+                {tabHasContent[t.id] && <span className="tcount" />}
               </button>
             );
           })}

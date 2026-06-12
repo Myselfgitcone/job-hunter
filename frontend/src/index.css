@@ -723,11 +723,15 @@ textarea { resize: none; }
 .tab {
   position: relative; padding: 11px 13px; font-size: 12.5px; font-weight: 500; color: var(--tx-3);
   transition: color .14s; display: inline-flex; align-items: center; gap: 6px;
+  /* No border-bottom here — underline comes solely from ::after to avoid doubling */
+  border-bottom: 2px solid transparent;
 }
 .tab:hover { color: var(--tx-2); }
 .tab.on { color: var(--tx); }
-.tab.on::after { content: ""; position: absolute; left: 11px; right: 11px; bottom: -1px; height: 2px; background: var(--grad); border-radius: 2px; }
-.tab .tcount { font-family: var(--f-mono); font-size: 10px; color: var(--tx-3); background: var(--bg-elevated); border-radius: 8px; padding: 0 5px; }
+.tab.on::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; background: var(--grad); border-radius: 0; }
+/* Dot indicator: shown when tab has content but is NOT the active tab */
+.tab .tcount { width: 5px; height: 5px; border-radius: 50%; background: var(--violet); flex-shrink: 0; opacity: 0.75; }
+.tab.on .tcount { background: var(--cyan); opacity: 1; }
 
 .tab-body { padding: 22px 26px 40px; max-width: 760px; }
 
@@ -1817,27 +1821,9 @@ html.light .tag-pill button:hover { background: rgba(124,58,237,.15); }
 .act.ghost:hover { background: var(--bg-elevated); color: var(--tx-2); }
 .act.disabled { opacity: .55; pointer-events: none; }
 
-/* Tabs */
-.tabs {
-  display: flex; gap: 0;
-  border-bottom: 1px solid var(--line);
-  background: var(--bg-surface);
-  padding: 0 24px;
-  flex-shrink: 0;
-}
-.tab {
-  display: inline-flex; align-items: center; gap: 5px;
-  height: 42px; padding: 0 12px;
-  font-size: 12.5px; font-weight: 500;
-  color: var(--tx-3); border-bottom: 2px solid transparent;
-  transition: color .13s, border-color .13s;
-  position: relative;
-}
-.tab:hover { color: var(--tx-2); }
-.tab.on { color: var(--tx); border-bottom-color: var(--violet); }
-.tcount { font-size: 10px; color: var(--violet); }
-
-/* Tab body */
+/* Tabs — secondary block (kept for context, primary rules above) */
+/* All .tab / .tabs rules are defined once above near line 721. */
+/* .tab-body here overrides padding for screens that need a wider layout */
 .tab-body { padding: 22px 24px 32px; flex: 1; }
 
 /* Empty state */

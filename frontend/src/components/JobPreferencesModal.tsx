@@ -282,7 +282,28 @@ export default function JobPreferencesModal({
                 suggestions={ALL_ROLES}
                 externalSuggestions={extRoles}
               />
-              <RoleGroupSelector selected={roles} onChange={setRoles} />
+              {/* Scrollable role group picker */}
+              <div style={{ position: "relative" }}>
+                <div
+                  style={{
+                    maxHeight: 340,
+                    overflowY: "auto",
+                    overflowX: "hidden",
+                    borderRadius: 10,
+                    paddingRight: 2,
+                    scrollbarWidth: "thin",
+                    scrollbarColor: "var(--line-hi) transparent",
+                  }}
+                >
+                  <RoleGroupSelector selected={roles} onChange={setRoles} />
+                </div>
+                {/* Fade-out hint that more content is below */}
+                <div style={{
+                  position: "absolute", bottom: 0, left: 0, right: 0, height: 32,
+                  background: "linear-gradient(to bottom, transparent, var(--bg-surface))",
+                  borderRadius: "0 0 10px 10px", pointerEvents: "none",
+                }} />
+              </div>
             </div>
           )}
         </div>

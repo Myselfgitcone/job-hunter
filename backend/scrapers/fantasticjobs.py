@@ -51,7 +51,10 @@ MAX_EXPECTED_BY_WINDOW = {"1h": 500, "24h": 3000}
 # Rate guards
 _last_fetch_ts: datetime | None = None
 _last_modified_ts: datetime | None = None
-MIN_FETCH_INTERVAL_H    = 1
+# 45min, not 60: a manual scrape mid-hour must not make the next hourly cron
+# skip — a skipped cron leaves a permanent gap (its 1h window never re-covers
+# the missed minutes). Small overlap re-bills a few jobs; a gap loses them.
+MIN_FETCH_INTERVAL_H    = 0.75
 MIN_MODIFIED_INTERVAL_H = 6
 
 

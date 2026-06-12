@@ -351,10 +351,11 @@ export default function App() {
         const t = parseMs(j.posted_at) ?? parseMs(j.scraped_at);
         if (t !== null && now - t > parseInt(filters.time) * 3600000 + 6 * 3600000) return false;
       }
-      // Visa filter — explicit selection: Sponsors / No Visa / Unknown
+      // Visa filter — FJ semantics: true = JD explicitly mentions sponsorship,
+      // false = JD doesn't mention it (NOT a refusal), null = not checked
       if (filters.visa.length) {
-        const st = j.visa_sponsorship === true ? "Sponsors"
-                 : j.visa_sponsorship === false ? "No Visa" : "Unknown";
+        const st = j.visa_sponsorship === true ? "Sponsors ✓"
+                 : j.visa_sponsorship === false ? "Not mentioned" : "Not checked";
         if (!filters.visa.includes(st)) return false;
       }
       // Legacy toggle (Settings): hide USA no-sponsorship jobs
@@ -1096,7 +1097,7 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
         options={["Remote","Onsite","Hybrid"]}
         selected={filters.type} onChange={v => set("type", v)} />
       <InlineMultiFilter label="Visa"
-        options={["Sponsors","No Visa","Unknown"]}
+        options={["Sponsors ✓","Not mentioned","Not checked"]}
         selected={filters.visa} onChange={v => set("visa", v)} />
 
       {/* Filters panel — Source, Match Score, toggles */}

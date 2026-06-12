@@ -117,8 +117,9 @@ export function JobCard({ job, selected, onClick, onSkip, mode = "compact", inde
             {job.country === "USA" && job.visa_sponsorship === true && (
               <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 5, background: "rgba(22,163,74,0.12)", color: "#16a34a", fontWeight: 600 }}>Visa ✓</span>
             )}
+            {/* false = JD doesn't MENTION sponsorship (not a refusal) — neutral, not red */}
             {job.country === "USA" && job.visa_sponsorship === false && (
-              <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 5, background: "rgba(220,38,38,0.08)", color: "#dc2626" }}>No Visa</span>
+              <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 5, background: "var(--bg-2)", color: "var(--tx-3)" }}>Visa not stated</span>
             )}
             {job.experience_level && (
               <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 5, background: "var(--bg-2)", color: "var(--tx-3)" }}>{job.experience_level}yr</span>

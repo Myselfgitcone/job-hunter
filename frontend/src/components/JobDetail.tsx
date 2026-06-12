@@ -142,8 +142,10 @@ function JobInfoTab({ job }: { job: Job }) {
   const hcOrigLabel = hcOrig ? relTimeDetail(hcOrig) : "";
   const showOriginal = hcOrig && hcOrigLabel && hcOrigLabel !== postedLabel;
 
-  const visaVal = job.visa_sponsorship === true ? "✓ Sponsors" : job.visa_sponsorship === false ? "✗ No sponsorship" : "—";
-  const visaColor = job.visa_sponsorship === true ? "#16a34a" : job.visa_sponsorship === false ? "#dc2626" : "var(--tx-1)";
+  // FJ semantics: false = JD doesn't mention sponsorship (NOT a refusal)
+  const visaVal = job.visa_sponsorship === true ? "✓ Sponsorship mentioned in JD"
+                : job.visa_sponsorship === false ? "Not mentioned in JD — ask recruiter" : "—";
+  const visaColor = job.visa_sponsorship === true ? "#16a34a" : "var(--tx-2)";
 
   const rows: [string, string, string?][] = [
     ["Location",      job.location || "—"],
@@ -173,7 +175,7 @@ function JobInfoTab({ job }: { job: Job }) {
 
       {/* Visa sponsorship — highlight */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10,
-        background: job.visa_sponsorship === true ? "rgba(22,163,74,0.08)" : job.visa_sponsorship === false ? "rgba(220,38,38,0.08)" : "var(--bg-2)" }}>
+        background: job.visa_sponsorship === true ? "rgba(22,163,74,0.08)" : "var(--bg-2)" }}>
         <span style={{ fontSize: 13, fontWeight: 600, color: visaColor }}>{visaVal}</span>
         <span style={{ fontSize: 12, color: "var(--tx-3)" }}>Visa Sponsorship</span>
       </div>

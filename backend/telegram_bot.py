@@ -67,6 +67,10 @@ def _role_family(title: str) -> str:
     t = (title or "").lower()
     for fam, kws in _ROLE_FAMILIES:
         if any(kw in t for kw in kws):
+            # Wide data-nets outrank the dormant DevOps/Security labels:
+            # "Cloud Engineer, Data Platform" is a DE job, not DevOps
+            if fam in ("DevOps/SRE", "Security") and _DATA_RE.search(t):
+                break
             return fam
     # Wide nets: both words anywhere in the title
     if _DATA_RE.search(t) and "analyst" in t:

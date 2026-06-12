@@ -52,7 +52,7 @@ async def send_message(text: str, parse_mode: str = "HTML"):
 
 # Role families (mirrors scraper TITLE_FILTER) — first match wins
 _ROLE_FAMILIES: list[tuple[str, list[str]]] = [
-    ("Data Analyst",  ["data analyst", "data analytics", "analytics engineer", "reporting analyst"]),
+    ("Data Analyst",  ["data analyst", "data analytics", "analytics engineer", "reporting analyst", "business analyst"]),
     ("BI",            ["business intelligence", "bi developer", "bi analyst", "bi engineer", "power bi", "tableau"]),
     ("Data Engineer", ["data engineer", "etl", "data platform", "data warehouse", "data architect",
                        "database engineer", "database developer", "sql developer", "big data"]),
@@ -68,8 +68,9 @@ def _role_family(title: str) -> str:
     for fam, kws in _ROLE_FAMILIES:
         if any(kw in t for kw in kws):
             return fam
-    # Wide DE net: both "data" + "engineer" anywhere (Data Systems Engineer etc.),
-    # or "Software Engineer, Data Platform" style titles
+    # Wide nets: both words anywhere in the title
+    if _DATA_RE.search(t) and "analyst" in t:
+        return "Data Analyst"
     if _DATA_RE.search(t) and ("engineer" in t or "software engineer" in t):
         return "Data Engineer"
     if _JAVA_RE.search(t):

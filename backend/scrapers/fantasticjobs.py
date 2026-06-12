@@ -74,7 +74,11 @@ _TERMS_COMMON = (
     " | etl | 'data platform' | 'data warehouse'"
     " | 'data architect' | 'database engineer' | 'database developer' | 'sql developer'"
     " | ('software engineer' & data)"  # both words in title: "SWE - Data Infrastructure"
-    " | 'data analyst' | 'data analytics' | 'analytics engineer' | 'reporting analyst'"
+    # DA net: any title containing both "data" + "analyst" — catches
+    # Financial/Marketing/Healthcare Data Analyst, Data Science/Operations/
+    # Product Analyst, etc.
+    " | (data & analyst) | 'data analytics' | 'analytics engineer' | 'reporting analyst'"
+    " | 'business analyst'"
     " | 'business intelligence' | 'bi developer' | 'bi analyst' | 'bi engineer' | 'power bi' | tableau"
 )
 # Java family — USA only (India team doesn't hunt Java roles)
@@ -82,8 +86,11 @@ _TERMS_JAVA = "(java & !javascript) | 'spring boot' | jakarta"
 
 # Architect exclusion is surgical: Data Architect is a valid 6-8yr DE target,
 # but system/org-level architect tracks are 10+ years — keep those out.
+# financial/marketing/sales removed from NOT: they were killing valid roles
+# (Financial Data Analyst, Marketing Data Analyst...). Positive terms are all
+# data-anchored, so non-data financial/sales titles can't match anyway.
 _GLOBAL_NOT = (
-    " & !(financial | marketing | sales | nurse"
+    " & !(nurse"
     " | director | 'vice president' | vp | cto | chief"
     " | 'solutions architect' | 'enterprise architect' | 'cloud architect'"
     " | 'software architect' | 'technical architect' | 'application architect'"

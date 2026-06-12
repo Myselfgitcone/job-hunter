@@ -1598,6 +1598,9 @@ async def fetch_jd(job_id: str, user_id: str = Depends(get_current_user_id)):
         existing  = (job.description or "").strip()
 
     res = await fetch_full_jd(url)
+    if res is None:
+        # Site blocked the fetch / JS-rendered / network error
+        raise HTTPException(502, "Could not fetch the job page (blocked or JS-rendered). Paste the JD manually.")
     full_desc = res.get("description", "")
     extracted_date = res.get("date", "")
 

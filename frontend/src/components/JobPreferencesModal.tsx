@@ -250,7 +250,9 @@ export default function JobPreferencesModal({
   return (
     <>
       <div style={{ position: "fixed", inset: 0, zIndex: 999 }} onClick={onClose} />
-      <div style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, zIndex: 1000, background: "var(--bg-surface)", border: "1px solid var(--line)", borderRadius: 16, width: 420, boxShadow: "0 12px 30px -10px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05)", animation: "modalIn 200ms cubic-bezier(0.16, 1, 0.3, 1)", overflow: "hidden" }}>
+      <div style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, zIndex: 1000, background: "var(--bg-surface)", border: "1px solid var(--line)", borderRadius: 16, width: 420, boxShadow: "0 12px 30px -10px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05)", animation: "modalIn 200ms cubic-bezier(0.16, 1, 0.3, 1)", overflow: "hidden",
+        // Never grow past the viewport — header/footer stay pinned, middle scrolls
+        maxHeight: "calc(100vh - 110px)", display: "flex", flexDirection: "column" }}>
         
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "24px 28px 20px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -267,7 +269,7 @@ export default function JobPreferencesModal({
           </button>
         </div>
 
-        <div style={{ padding: "0 28px 28px" }}>
+        <div style={{ padding: "0 28px 28px", overflowY: "auto", flex: 1, minHeight: 0 }}>
           {loading ? (
             <div style={{ color: "var(--tx-3)", fontSize: 14, padding: "20px 0" }}>Loading preferences...</div>
           ) : (
@@ -309,7 +311,7 @@ export default function JobPreferencesModal({
           )}
         </div>
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, padding: "18px 28px", borderTop: "1px solid var(--line)", background: "var(--bg-base)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.02)" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, padding: "18px 28px", borderTop: "1px solid var(--line)", background: "var(--bg-base)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.02)", flexShrink: 0 }}>
           <button onClick={onClose} style={{ height: 40, padding: "0 20px", borderRadius: 10, background: "transparent", border: "1px solid var(--line)", color: "var(--tx-2)", fontSize: 14, fontWeight: 600, cursor: "pointer", transition: "all 0.2s" }} onMouseOver={e => { e.currentTarget.style.background = "var(--bg-elevated)"; e.currentTarget.style.color = "var(--tx)"; }} onMouseOut={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--tx-2)"; }}>
             Cancel
           </button>

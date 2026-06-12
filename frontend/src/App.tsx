@@ -42,6 +42,7 @@ type Filters = {
   country: string[];
   source: string[];
   years: string[];  // experience trays: "0-2","2-4","4-5","5-6","6-7","7-8","8-10","10-13","13-15","15+"
+  visa: string[];   // "Sponsors" | "No Visa" | "Unknown"
   score: "any" | "60" | "70" | "80" | "90";
   time: "any" | "24" | "48" | "72" | "168";
 };
@@ -219,7 +220,7 @@ export default function App() {
     setJobs([]); setAllJobs([]);
   };
 
-  const DEFAULT_FILTERS: Filters = { q: "", category: [], level: [], type: [], country: ["USA"], source: [], years: [], score: "any", time: "any" };
+  const DEFAULT_FILTERS: Filters = { q: "", category: [], level: [], type: [], country: ["USA"], source: [], years: [], visa: [], score: "any", time: "any" };
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
 
   // ── Theme toggle ──────────────────────────────────────────────────────────
@@ -350,8 +351,14 @@ export default function App() {
         const t = parseMs(j.posted_at) ?? parseMs(j.scraped_at);
         if (t !== null && now - t > parseInt(filters.time) * 3600000 + 6 * 3600000) return false;
       }
-      // Visa filter — only relevant for USA jobs (India roles don't require US visa sponsorship)
-      if (visaFilter && j.country === "USA" && j.visa_sponsorship === false) return false;
+      // Visa filter — explicit selection: Sponsors / No Visa / Unknown
+      if (filters.visa.length) {
+        const st = j.visa_sponsorship === true ? "Sponsors"
+                 : j.visa_sponsorship === false ? "No Visa" : "Unknown";
+        if (!filters.visa.includes(st)) return false;
+      }
+      // Legacy toggle (Settings): hide USA no-sponsorship jobs
+      if (visaFilter && !filters.visa.length && j.country === "USA" && j.visa_sponsorship === false) return false;
       // Level filter — hide overqualified roles
       if (expFilter  && !isLevelMatch(j.title)) return false;
       // Job passed everything except years — count its tray so the Years
@@ -466,7 +473,7 @@ export default function App() {
   // Expose nav to Settings component for "Go to Profile" link
   useEffect(() => { (window as any).__navToProfile = () => setView("profile"); }, []);
   const handleNav = (v: string) => { if (v === "tailor") { setTailorOpen(true); return; } setView(v as View); };
-  const activeFilterCount = filters.category.length + filters.level.length + filters.type.length + filters.country.length + filters.source.length + filters.years.length + (filters.score !== "any" ? 1 : 0);
+  const activeFilterCount = filters.category.length + filters.level.length + filters.type.length + filters.country.length + filters.source.length + filters.years.length + filters.visa.length + (filters.score !== "any" ? 1 : 0);
   const filtersActive = activeFilterCount > 0 || filters.q !== "";
   const isAdmin = currentUser?.email?.toLowerCase() === "jaggubhai8766@gmail.com";
   
@@ -1088,6 +1095,9 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
       <InlineMultiFilter label="Work Type"
         options={["Remote","Onsite","Hybrid"]}
         selected={filters.type} onChange={v => set("type", v)} />
+      <InlineMultiFilter label="Visa"
+        options={["Sponsors","No Visa","Unknown"]}
+        selected={filters.visa} onChange={v => set("visa", v)} />
 
       {/* Filters panel — Source, Match Score, toggles */}
       <div ref={ref}>

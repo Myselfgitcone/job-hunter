@@ -16,12 +16,12 @@ const SRC_VAR: Record<string, string> = {
   Workday: "--src-workday", HiringCafe: "--src-hiringcafe",
 };
 
-// Posted date stamp: "06/11" (FJ's date_posted field, stored as posted_at)
+// Posted date stamp: "06/11" in Eastern Time (app-wide standard, same for every viewer)
 function fmtPosted(iso: string): string {
   if (!iso) return "";
   const d = new Date(iso.replace(/(\.\d{3})\d+/, "$1"));
   if (isNaN(d.getTime())) return "";
-  return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+  return d.toLocaleDateString("en-US", { timeZone: "America/New_York", month: "2-digit", day: "2-digit" });
 }
 
 function scoreClass(s: number): string {

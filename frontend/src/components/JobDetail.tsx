@@ -155,7 +155,7 @@ function JobInfoTab({ job }: { job: Job }) {
     ["Experience",    job.experience_level ? `${job.experience_level} yrs` : "—"],
     ["Salary",        job.salary   || "—"],
     ["Source",        job.source   || "—"],
-    ["Expires",       job.job_expiry ? new Date(job.job_expiry).toLocaleDateString() : "—"],
+    ["Expires",       job.job_expiry ? new Date(job.job_expiry).toLocaleDateString("en-US", { timeZone: "America/New_York" }) : "—"],
   ];
 
   return (

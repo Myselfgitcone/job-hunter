@@ -1162,9 +1162,9 @@ input.field::placeholder, textarea.field::placeholder { color: var(--tx-faint); 
 .mbar-label { font-family: var(--f-mono); font-size: 10.5px; color: var(--tx-3); }
 
 .donut-wrap { position: relative; display: grid; place-items: center; margin: 0 auto; }
-.donut-center { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
-.donut-center b { font-family: var(--f-mono); font-size: 22px; font-weight: 700; display: block; }
-.donut-center span { font-size: 10px; color: var(--tx-3); }
+.donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.donut-center b { font-family: var(--f-mono); font-size: 22px; font-weight: 700; line-height: 1; margin-bottom: 2px; }
+.donut-center span { font-size: 10px; color: var(--tx-3); line-height: 1; }
 .donut-legend { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
 .donut-legend span { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--tx-2); }
 .donut-legend i { width: 9px; height: 9px; border-radius: 3px; }

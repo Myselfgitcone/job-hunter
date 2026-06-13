@@ -326,7 +326,8 @@ export default function App() {
         }
       }
       // 1b. Active family chip filter (non-admin role toggle)
-      if (!isAdmin && activeFamily) {
+      const _isAdmin = currentUser?.email?.toLowerCase() === "jaggubhai8766@gmail.com";
+      if (!_isAdmin && activeFamily) {
         const group = ROLE_GROUPS.find(g => g.group === activeFamily);
         if (group) {
           const title = j.title.toLowerCase();
@@ -416,7 +417,7 @@ export default function App() {
       return tB - tA;
     });
     return { filteredJobs: list, yearsCounts: yc };
-  }, [jobs, filters, userSettings, sortBy, visaFilter, expFilter, activeFamily, isAdmin]);
+  }, [jobs, filters, userSettings, sortBy, visaFilter, expFilter, activeFamily, currentUser]);
 
   const selectedJob = jobs.find(j => j.id === selectedId) || null;
 

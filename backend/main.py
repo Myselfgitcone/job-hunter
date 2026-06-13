@@ -1709,6 +1709,27 @@ async def admin_update_user(target_id: str, body: dict = Body(...),
     return {"ok": True}
 
 
+@app.delete("/api/admin/users/{target_id}")
+async def admin_delete_user(target_id: str, user_id: str = Depends(get_current_user_id)):
+    """Permanently remove a user and all their data. Admin cannot delete self."""
+    await _verify_admin(user_id)
+    from sqlalchemy import delete as sa_delete
+    async with SessionLocal() as db:
+        u = await db.get(User, target_id)
+        if not u:
+            raise HTTPException(404, "User not found")
+        if u.email.lower() == ADMIN_EMAIL.lower():
+            raise HTTPException(400, "Cannot delete the admin account")
+        await db.execute(sa_delete(UserJob).where(UserJob.user_id == target_id))
+        await db.execute(sa_delete(UserSettings).where(UserSettings.user_id == target_id))
+        prof = await db.get(Setting, f"profile:{target_id}")
+        if prof:
+            await db.delete(prof)
+        await db.delete(u)
+        await db.commit()
+    return {"ok": True}
+
+
 @app.get("/api/admin/pending-count")
 async def admin_pending_count(user_id: str = Depends(get_current_user_id)):
     await _verify_admin(user_id)

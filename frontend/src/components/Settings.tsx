@@ -39,6 +39,12 @@ function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => v
     catch (e: any) { onToast(e.message, "error"); }
   };
 
+  const remove = async (u: any) => {
+    if (!window.confirm(`PERMANENTLY delete ${u.email}? Their account, settings, profile and job statuses are removed. This cannot be undone.`)) return;
+    try { await api.adminDeleteUser(u.id); onToast(`${u.email} deleted`, "success"); load(); onChanged(); }
+    catch (e: any) { onToast(e.message, "error"); }
+  };
+
   const sorted = [...users].sort((a, b) => (a.status === "pending" ? -1 : 1) - (b.status === "pending" ? -1 : 1));
   const filtered = sorted.filter(u => (u.name + " " + u.email).toLowerCase().includes(q.toLowerCase()));
   const pages = Math.max(1, Math.ceil(filtered.length / PER));
@@ -72,7 +78,9 @@ function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => v
                   {u.is_admin && <span style={{ marginLeft: 8, fontSize: 10.5, color: "var(--violet)", fontWeight: 700 }}>ADMIN</span>}
                 </div>
                 <div style={{ fontSize: 12, color: "var(--tx-3)" }}>{u.email} · joined {(u.created_at || "").slice(0, 10) || "—"}</div>
-                {u.job_roles.length > 0 && (
+                {u.is_admin ? (
+                  <div style={{ fontSize: 11, color: "var(--tx-3)", marginTop: 6 }}>Sees all jobs (admin — preferences only slice the personal feed)</div>
+                ) : u.job_roles.length > 0 && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
                     {u.job_roles.slice(0, 6).map((r: string) => (
                       <span key={r} style={{ fontSize: 10.5, padding: "2px 8px", borderRadius: 999, background: "rgba(124,58,237,0.1)", color: "var(--violet)", fontWeight: 600 }}>{r}</span>
@@ -94,6 +102,10 @@ function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => v
                         <button className="act" style={{ height: 28, fontSize: 12 }} onClick={() => openPicker(u)}>Edit Roles</button>
                         <button className="act fail" style={{ height: 28, fontSize: 12, color: "var(--tx-error, #dc2626)" }} onClick={() => revoke(u)}>Revoke</button>
                       </>}
+                  <button title="Delete permanently" onClick={() => remove(u)}
+                    style={{ height: 28, width: 30, borderRadius: 8, border: "1px solid rgba(220,38,38,0.35)", background: "rgba(220,38,38,0.06)", color: "#dc2626", cursor: "pointer", display: "grid", placeItems: "center" }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  </button>
                 </div>
               )}
             </div>

@@ -151,6 +151,7 @@ export const api = {
   adminUpdateUser: (id: string, body: { status?: string; job_roles?: string[] }) =>
     req<{ ok: boolean }>(`/api/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   adminPendingCount: () => req<{ count: number }>("/api/admin/pending-count"),
+  adminDeleteUser: (id: string) => req<{ ok: boolean }>(`/api/admin/users/${id}`, { method: "DELETE" }),
 
   qualifyHealth: () =>
     req<{ admin_settings_found: boolean; api_key_set: boolean; profile_set: boolean; qualify_model: string | null; scored_jobs: number; pending_jobs: number; running: boolean }>("/api/qualify/health"),

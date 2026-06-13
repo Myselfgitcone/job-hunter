@@ -50,7 +50,7 @@ export const ROLE_GROUPS: { group: string; items: string[] }[] = [
 ];
 
 // Hierarchical selector: group header click = select/deselect entire family
-function RoleGroupSelector({ selected, onChange }: { selected: string[]; onChange: (v: string[]) => void }) {
+function RoleGroupSelector({ selected, onChange, allowedGroups }: { selected: string[]; onChange: (v: string[]) => void; allowedGroups?: string[] }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const toggleItem = (it: string) =>
     onChange(selected.includes(it) ? selected.filter(x => x !== it) : [...selected, it]);
@@ -59,9 +59,10 @@ function RoleGroupSelector({ selected, onChange }: { selected: string[]; onChang
     if (allOn) onChange(selected.filter(x => !g.items.includes(x)));
     else onChange([...selected, ...g.items.filter(i => !selected.includes(i))]);
   };
+  const visibleGroups = allowedGroups ? ROLE_GROUPS.filter(g => allowedGroups.includes(g.group)) : ROLE_GROUPS;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
-      {ROLE_GROUPS.map(g => {
+      {visibleGroups.map(g => {
         const selCount = g.items.filter(i => selected.includes(i)).length;
         const allOn = selCount === g.items.length;
         const isOpen = open[g.group] ?? false;
@@ -190,17 +191,20 @@ export default function JobPreferencesModal({
   onClose,
   onToast,
   onSaved,
+  isAdmin = false,
 }: {
   open: boolean;
   onClose: () => void;
   onToast: (msg: string, type?: "success" | "error") => void;
   onSaved: (newSettings: any) => void;
+  isAdmin?: boolean;
 }) {
   const [roles, setRoles] = useState<string[]>([]);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [loading, setLoading] = useState(true);
   const [extRoles, setExtRoles] = useState<string[]>(externalRolesCache);
   const settingsRef = React.useRef<any>(null);
+  const allowedFamiliesRef = React.useRef<string[]>([]);  // families in admin-assigned roles, fixed on load
   const popRef = React.useRef<HTMLDivElement>(null);
   const saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedRef = React.useRef(false);
@@ -215,6 +219,10 @@ export default function JobPreferencesModal({
         settingsRef.current = s;
         const r = Array.isArray(s.job_roles) ? s.job_roles : JSON.parse(s.job_roles || "[]");
         setRoles(r);
+        // Lock non-admins to families present in their assigned roles
+        allowedFamiliesRef.current = ROLE_GROUPS
+          .filter(g => g.items.some(i => r.includes(i)))
+          .map(g => g.group);
       }).finally(() => { setLoading(false); loadedRef.current = true; });
 
       // Fetch massive job dictionary if not cached
@@ -298,14 +306,25 @@ export default function JobPreferencesModal({
                 Target Roles
                 <span style={{ background: "rgba(124,58,237,0.1)", color: "var(--violet)", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{roles.length} selected</span>
               </label>
-              <TagInput
-                tags={roles}
-                setTags={setRoles}
-                placeholder="Type a role and press Enter…"
-                suggestions={ALL_ROLES}
-                externalSuggestions={extRoles}
+              {isAdmin && (
+                <TagInput
+                  tags={roles}
+                  setTags={setRoles}
+                  placeholder="Type a role and press Enter…"
+                  suggestions={ALL_ROLES}
+                  externalSuggestions={extRoles}
+                />
+              )}
+              {!isAdmin && allowedFamiliesRef.current.length === 0 && (
+                <div style={{ fontSize: 13, color: "var(--tx-3)", padding: "8px 0" }}>
+                  No roles assigned yet — contact admin for access.
+                </div>
+              )}
+              <RoleGroupSelector
+                selected={roles}
+                onChange={setRoles}
+                allowedGroups={isAdmin ? undefined : allowedFamiliesRef.current}
               />
-              <RoleGroupSelector selected={roles} onChange={setRoles} />
             </div>
           )}
         </div>

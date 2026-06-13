@@ -682,11 +682,12 @@ export default function App() {
               countryFilter={filters.country}
               setCountryFilter={(v: string[]) => setFilters(f => ({ ...f, country: v }))}
               preferencesNode={
-                <JobPreferencesModal 
-                  open={preferencesOpen} 
-                  onClose={() => setPreferencesOpen(false)} 
+                <JobPreferencesModal
+                  open={preferencesOpen}
+                  onClose={() => setPreferencesOpen(false)}
                   onToast={toast}
                   onSaved={(s) => setUserSettings(s)}
+                  isAdmin={isAdmin}
                 />
               }
             />

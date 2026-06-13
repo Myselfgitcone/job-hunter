@@ -356,17 +356,17 @@ async def _run_scrape_internal() -> dict:
     return {"new_jobs": total_new, "deleted_old": deleted, "scraped_at": now_iso}
 
 async def _auto_scrape():
-    “””Background auto-scrape task — runs on schedule.”””
-    print(“[Scheduler] Auto-scrape starting…”)
+    """Background auto-scrape task - runs on schedule."""
+    print("[Scheduler] Auto-scrape starting...")
     try:
         result = await asyncio.wait_for(_run_scrape(), timeout=3000)  # 50 min -- covers 3-group max
-        print(f”[Scheduler] Auto-scrape complete: {result}”)
+        print(f"[Scheduler] Auto-scrape complete: {result}")
     except asyncio.TimeoutError:
-        print(“[Scheduler] Auto-scrape timed out after 30 minutes”)
-        await log_event(“ERROR”, “scraper”, “Auto-scrape timed out after 50 minutes”)
+        print("[Scheduler] Auto-scrape timed out after 30 minutes")
+        await log_event("ERROR", "scraper", "Auto-scrape timed out after 50 minutes")
     except Exception as e:
-        print(f”[Scheduler] Auto-scrape failed: {e}”)
-        await log_event(“ERROR”, “scraper”, f”Auto-scrape failed: {e}”)
+        print(f"[Scheduler] Auto-scrape failed: {e}")
+        await log_event("ERROR", "scraper", f"Auto-scrape failed: {e}")
         import traceback; traceback.print_exc()
 
 async def _sync_expired_wrapper():

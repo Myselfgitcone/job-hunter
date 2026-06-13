@@ -672,11 +672,7 @@ export default function App() {
               totalJobs={allJobs.length}
               viewMode={viewMode} setViewMode={setViewMode} IC={IC}
               isAdmin={isAdmin}
-              onOpenPreferences={() => {
-                // Non-admins: roles are assigned by the admin — read-only
-                if (isAdmin) setPreferencesOpen(true);
-                else toast("Your job roles are assigned by the admin", "info" as any);
-              }}
+              onOpenPreferences={() => setPreferencesOpen(true)}
               userRoles={userSettings?.job_roles ? (Array.isArray(userSettings.job_roles) ? userSettings.job_roles : JSON.parse(userSettings.job_roles)) : []}
               activeFamily={isAdmin ? "" : activeFamily}
               setActiveFamily={isAdmin ? undefined : setActiveFamily}

@@ -1,5 +1,125 @@
 import { useState, useEffect } from "react";
 import { api } from "../api";
+import { ROLE_GROUPS } from "./JobPreferencesModal";
+
+// ── User management (admin): approve signups + assign role families ───────────
+function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => void; onChanged: () => void }) {
+  const [users, setUsers] = useState<any[]>([]);
+  const [editing, setEditing] = useState<string | null>(null);   // user id with role picker open
+  const [draftRoles, setDraftRoles] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => api.adminUsers().then(setUsers).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  const openPicker = (u: any) => { setEditing(u.id); setDraftRoles(u.job_roles || []); };
+
+  const toggleFamily = (items: string[]) => {
+    const allOn = items.every(i => draftRoles.includes(i));
+    setDraftRoles(allOn ? draftRoles.filter(r => !items.includes(r))
+                        : [...draftRoles, ...items.filter(i => !draftRoles.includes(i))]);
+  };
+
+  const confirm = async (u: any, approve: boolean) => {
+    setBusy(true);
+    try {
+      await api.adminUpdateUser(u.id, { ...(approve ? { status: "approved" } : {}), job_roles: draftRoles });
+      onToast(approve ? `${u.email} approved` : "Roles updated", "success");
+      setEditing(null); load(); onChanged();
+    } catch (e: any) { onToast(e.message, "error"); }
+    finally { setBusy(false); }
+  };
+
+  const revoke = async (u: any) => {
+    if (!window.confirm(`Revoke access for ${u.email}? They'll be locked out until re-approved.`)) return;
+    try { await api.adminUpdateUser(u.id, { status: "pending" }); onToast("Access revoked", "success"); load(); onChanged(); }
+    catch (e: any) { onToast(e.message, "error"); }
+  };
+
+  const sorted = [...users].sort((a, b) => (a.status === "pending" ? -1 : 1) - (b.status === "pending" ? -1 : 1));
+
+  return (
+    <section className="form-section">
+      <div className="section-label">
+        <Ic d={'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'} size={16} /> Users
+        {users.some(u => u.status === "pending") && (
+          <span style={{ marginLeft: 8, background: "#dc2626", color: "#fff", fontSize: 10.5, fontWeight: 700, borderRadius: 999, padding: "2px 8px" }}>
+            {users.filter(u => u.status === "pending").length} pending
+          </span>
+        )}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {sorted.map(u => (
+          <div key={u.id} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "12px 14px",
+            background: u.status === "pending" ? "rgba(220,38,38,0.04)" : "var(--bg-elevated)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--tx)" }}>
+                  {u.name || u.email.split("@")[0]}
+                  {u.is_admin && <span style={{ marginLeft: 8, fontSize: 10.5, color: "var(--violet)", fontWeight: 700 }}>ADMIN</span>}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--tx-3)" }}>{u.email} · joined {(u.created_at || "").slice(0, 10) || "—"}</div>
+                {u.job_roles.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                    {u.job_roles.slice(0, 6).map((r: string) => (
+                      <span key={r} style={{ fontSize: 10.5, padding: "2px 8px", borderRadius: 999, background: "rgba(124,58,237,0.1)", color: "var(--violet)", fontWeight: 600 }}>{r}</span>
+                    ))}
+                    {u.job_roles.length > 6 && <span style={{ fontSize: 10.5, color: "var(--tx-3)" }}>+{u.job_roles.length - 6} more</span>}
+                  </div>
+                )}
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999,
+                background: u.status === "approved" ? "rgba(22,163,74,0.12)" : "rgba(220,38,38,0.1)",
+                color: u.status === "approved" ? "#16a34a" : "#dc2626" }}>
+                {u.status === "approved" ? "Approved" : "Pending"}
+              </span>
+              {!u.is_admin && (
+                <div style={{ display: "flex", gap: 6 }}>
+                  {u.status === "pending"
+                    ? <button className="act primary" style={{ height: 28, fontSize: 12 }} onClick={() => openPicker(u)}>Approve</button>
+                    : <>
+                        <button className="act" style={{ height: 28, fontSize: 12 }} onClick={() => openPicker(u)}>Edit Roles</button>
+                        <button className="act fail" style={{ height: 28, fontSize: 12, color: "var(--tx-error, #dc2626)" }} onClick={() => revoke(u)}>Revoke</button>
+                      </>}
+                </div>
+              )}
+            </div>
+
+            {editing === u.id && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--tx-2)", marginBottom: 8 }}>
+                  Assign role families — they will only see jobs matching these:
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {ROLE_GROUPS.map(g => {
+                    const on = g.items.every(i => draftRoles.includes(i));
+                    return (
+                      <button key={g.group} onClick={() => toggleFamily(g.items)}
+                        style={{ fontSize: 12.5, fontWeight: 600, padding: "6px 14px", borderRadius: 999, cursor: "pointer",
+                          border: on ? "1px solid var(--violet)" : "1px dashed var(--line-hi)",
+                          background: on ? "rgba(124,58,237,0.12)" : "transparent",
+                          color: on ? "var(--violet)" : "var(--tx-2)" }}>
+                        {on ? "✓ " : "+ "}{g.group}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                  <button className="act primary" disabled={busy || draftRoles.length === 0}
+                    onClick={() => confirm(u, u.status === "pending")}>
+                    {u.status === "pending" ? "Approve with these roles" : "Save roles"}
+                  </button>
+                  <button className="act" onClick={() => setEditing(null)}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+        {users.length === 0 && <div style={{ fontSize: 12.5, color: "var(--tx-3)", padding: "10px 0" }}>Loading users…</div>}
+      </div>
+    </section>
+  );
+}
 
 // ── SVG icon helper ───────────────────────────────────────────────────────────
 function Ic({ d, size = 16, color }: { d: string; size?: number; color?: string }) {
@@ -172,6 +292,8 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
           </button>
         </div>
 
+        {/* User approval & role assignment (admin page) */}
+        <UsersPanel onToast={toast} onChanged={() => {}} />
 
         {/* AI Configuration */}
         <section className="form-section">

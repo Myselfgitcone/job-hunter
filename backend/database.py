@@ -103,6 +103,8 @@ class User(Base):
     name          = Column(String, default="")
     created_at    = Column(String, default="")
     last_seen_at  = Column(String, default="")
+    # Approval workflow: new signups start "pending" until the admin approves
+    status        = Column(String, default="pending")  # pending | approved
 
 
 class PasswordResetToken(Base):

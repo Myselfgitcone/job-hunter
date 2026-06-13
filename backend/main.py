@@ -439,6 +439,7 @@ async def startup():
 
     # — Auto-migrate: add any missing columns safely ————————————————————————————————
     new_columns = [
+        ("users",         "status",            "VARCHAR"),
         ("user_settings", "profile_phone",     "VARCHAR"),
         ("user_settings", "profile_address",    "VARCHAR"),
         ("user_settings", "profile_linkedin",   "VARCHAR"),
@@ -472,6 +473,15 @@ async def startup():
                     await telegram_bot.init_bot(row[0], row[1])
         except Exception as e:
             print(f"[Startup] Telegram init skipped: {e}")
+        # Approval migration: grandfather existing accounts as approved so the
+        # rollout doesn't lock anyone out; only NEW signups start pending
+        try:
+            async with SessionLocal() as db:
+                await db.execute(text(
+                    "UPDATE users SET status = 'approved' WHERE status IS NULL OR status = ''"))
+                await db.commit()
+        except Exception as e:
+            print(f"[Startup] Status migration skipped: {e}")
         # Migrate legacy global profile/resume to the admin's per-user records
         # (profile/resume predate multi-user; they were always the admin's)
         try:
@@ -665,6 +675,8 @@ async def register(body: RegisterBody):
             raise HTTPException(status_code=400, detail="Email already registered")
         user_id = str(_uuid.uuid4())
         now = datetime.utcnow().isoformat()
+        # Admin is auto-approved; everyone else waits for admin approval
+        status = "approved" if body.email.lower().strip() == ADMIN_EMAIL.lower() else "pending"
         user = User(
             id=user_id,
             email=body.email.lower().strip(),
@@ -672,20 +684,21 @@ async def register(body: RegisterBody):
             name=body.name or "",
             created_at=now,
             last_seen_at=now,
+            status=status,
         )
         db.add(user)
-        # Create default user settings
+        # Create default user settings — roles empty; the admin assigns them
         db.add(UserSettings(
             user_id=user_id,
             resume="",
-            job_roles='["Data Engineer"]',
+            job_roles='[]' if status == "pending" else '["Data Engineer"]',
             countries='["USA", "Remote"]',
             visa_filter=False,
             level_filter=False,
         ))
         await db.commit()
     token = create_token(user_id)
-    return {"token": token, "user": {"id": user_id, "email": body.email.lower(), "name": body.name or ""}}
+    return {"token": token, "user": {"id": user_id, "email": body.email.lower(), "name": body.name or "", "status": status}}
 
 
 @app.post("/api/auth/login")
@@ -700,7 +713,7 @@ async def login(body: LoginBody):
             user.last_seen_at = datetime.utcnow().isoformat()
             await db.commit()
         token = create_token(user.id)
-        return {"token": token, "user": {"id": user.id, "email": user.email, "name": user.name}}
+        return {"token": token, "user": {"id": user.id, "email": user.email, "name": user.name, "status": user.status or "approved"}}
     except HTTPException:
         raise
     except Exception as e:
@@ -717,7 +730,7 @@ async def get_me(user_id: str = Depends(get_current_user_id)):
         user = result.scalar_one_or_none()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
-        return {"id": user.id, "email": user.email, "name": user.name, "created_at": user.created_at}
+        return {"id": user.id, "email": user.email, "name": user.name, "created_at": user.created_at, "status": user.status or "approved"}
 
 
 # â”€â”€ Change Password (logged-in users) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -936,13 +949,14 @@ async def google_callback(request: Request, code: str = None, error: str = None,
             if not user:
                 if state != "register":
                     return RedirectResponse(f"{frontend}?error=Account+not+found.+Please+register+first.")
-                user = User(id=str(_uuid.uuid4()), email=email, name=name, password_hash="OAUTH_USER", created_at=datetime.utcnow().isoformat() + "Z")
+                user = User(id=str(_uuid.uuid4()), email=email, name=name, password_hash="OAUTH_USER", created_at=datetime.utcnow().isoformat() + "Z",
+                            status="approved" if email.lower() == ADMIN_EMAIL.lower() else "pending")
                 db.add(user)
                 await db.commit()
                 await db.refresh(user)
             
             token = create_token(user.id)
-            user_json = urllib.parse.quote(json.dumps({"id": user.id, "email": user.email, "name": user.name}))
+            user_json = urllib.parse.quote(json.dumps({"id": user.id, "email": user.email, "name": user.name, "status": user.status or "approved"}))
             return RedirectResponse(f"{frontend}?token={token}&user={user_json}#jobs")
 
 @app.get("/api/auth/github/login")
@@ -999,13 +1013,14 @@ async def github_callback(request: Request, code: str = None, error: str = None,
             if not user:
                 if state != "register":
                     return RedirectResponse(f"{frontend}?error=Account+not+found.+Please+register+first.")
-                user = User(id=str(_uuid.uuid4()), email=email, name=name, password_hash="OAUTH_USER", created_at=datetime.utcnow().isoformat() + "Z")
+                user = User(id=str(_uuid.uuid4()), email=email, name=name, password_hash="OAUTH_USER", created_at=datetime.utcnow().isoformat() + "Z",
+                            status="approved" if email.lower() == ADMIN_EMAIL.lower() else "pending")
                 db.add(user)
                 await db.commit()
                 await db.refresh(user)
             
             token = create_token(user.id)
-            user_json = urllib.parse.quote(json.dumps({"id": user.id, "email": user.email, "name": user.name}))
+            user_json = urllib.parse.quote(json.dumps({"id": user.id, "email": user.email, "name": user.name, "status": user.status or "approved"}))
             return RedirectResponse(f"{frontend}?token={token}&user={user_json}#jobs")
 
 import telegram_bot
@@ -1020,6 +1035,33 @@ async def _get_admin_settings(db) -> UserSettings:
     if not admin: return None
     res_s = await db.execute(select(UserSettings).where(UserSettings.user_id == admin.id))
     return res_s.scalar_one_or_none()
+
+
+_JAVA_WORD_RE = re.compile(r"\bjava\b", re.I)
+_BI_WORD_RE   = re.compile(r"\bbi\b", re.I)
+_DATA_WORD_RE = re.compile(r"\bdata\b", re.I)
+
+def _title_matches_roles(title: str, roles: list) -> bool:
+    """Mirror of the frontend role matcher (App.tsx) — title-only, with the
+    same wide-net special cases, so server and client agree on every job."""
+    t = (title or "").lower()
+    for r in roles:
+        term = (r or "").lower().strip()
+        if not term:
+            continue
+        if term == "bi":
+            if _BI_WORD_RE.search(t): return True
+        elif term == "java":
+            if _JAVA_WORD_RE.search(t): return True
+        elif term == "data engineer":
+            if _DATA_WORD_RE.search(t) and "engineer" in t: return True
+        elif term == "data analyst":
+            if _DATA_WORD_RE.search(t) and "analyst" in t: return True
+        elif term == "software engineer (data)":
+            if "software engineer" in t and _DATA_WORD_RE.search(t): return True
+        elif term in t:
+            return True
+    return False
 
 
 async def _load_profile(db, user_id: str) -> dict:
@@ -1345,6 +1387,20 @@ async def list_jobs(
     now = datetime.now(EST)
 
     async with SessionLocal() as db:
+        # Approval gate + role scope for non-admins
+        u = await db.get(User, user_id)
+        is_admin = bool(u and u.email.lower() == ADMIN_EMAIL.lower())
+        if u and not is_admin and (u.status or "approved") != "approved":
+            raise HTTPException(403, "Account pending approval")
+        user_roles: list = []
+        if not is_admin:
+            s_res = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+            s = s_res.scalar_one_or_none()
+            try:
+                user_roles = json.loads(s.job_roles) if s and s.job_roles else []
+            except Exception:
+                user_roles = []
+
         q = select(Job).order_by(Job.posted_at.desc(), Job.scraped_at.desc())
         if source:
             q = q.where(Job.source == source)
@@ -1354,6 +1410,11 @@ async def list_jobs(
             q = q.where(Job.country == country)
         result = await db.execute(q)
         jobs = result.scalars().all()
+
+        # Server-side role scope (non-admin): same wide-net title matching
+        # the frontend uses, so the two views never disagree
+        if not is_admin and user_roles:
+            jobs = [j for j in jobs if _title_matches_roles(j.title or "", user_roles)]
 
         # Get user's job statuses
         job_ids = [j.id for j in jobs]
@@ -1596,6 +1657,65 @@ async def _run_jd_fix():
     await asyncio.gather(*(fix_one(jid, url) for jid, url in broken))
     _jd_fix_state["running"] = False
     print(f"[JD-Fix] Done — fixed {_jd_fix_state['fixed']}, failed {_jd_fix_state['failed']} of {_jd_fix_state['total']}")
+
+
+# ── Admin: user approval & role assignment ────────────────────────────────────
+
+@app.get("/api/admin/users")
+async def admin_list_users(user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        res = await db.execute(select(User).order_by(User.created_at.desc()))
+        users = res.scalars().all()
+        out = []
+        for u in users:
+            s_res = await db.execute(select(UserSettings).where(UserSettings.user_id == u.id))
+            s = s_res.scalar_one_or_none()
+            try:
+                roles = json.loads(s.job_roles) if s and s.job_roles else []
+            except Exception:
+                roles = []
+            out.append({
+                "id": u.id, "email": u.email, "name": u.name or "",
+                "status": u.status or "approved",
+                "is_admin": u.email.lower() == ADMIN_EMAIL.lower(),
+                "job_roles": roles,
+                "created_at": u.created_at or "",
+                "last_seen_at": u.last_seen_at or "",
+            })
+    return out
+
+
+@app.patch("/api/admin/users/{target_id}")
+async def admin_update_user(target_id: str, body: dict = Body(...),
+                            user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        u = await db.get(User, target_id)
+        if not u:
+            raise HTTPException(404, "User not found")
+        if u.email.lower() == ADMIN_EMAIL.lower() and body.get("status") == "pending":
+            raise HTTPException(400, "Cannot revoke the admin account")
+        if "status" in body and body["status"] in ("pending", "approved"):
+            u.status = body["status"]
+        if "job_roles" in body and isinstance(body["job_roles"], list):
+            s_res = await db.execute(select(UserSettings).where(UserSettings.user_id == target_id))
+            s = s_res.scalar_one_or_none()
+            if s:
+                s.job_roles = json.dumps(body["job_roles"])
+            else:
+                db.add(UserSettings(user_id=target_id, job_roles=json.dumps(body["job_roles"])))
+        await db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/admin/pending-count")
+async def admin_pending_count(user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        res = await db.execute(select(func.count()).select_from(User).where(User.status == "pending"))
+        return {"count": res.scalar() or 0}
+
 
 @app.get("/api/qualify/health")
 async def qualify_health(user_id: str = Depends(get_current_user_id)):

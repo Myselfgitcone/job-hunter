@@ -3,6 +3,7 @@ import type { Job, JobStatus, QualifyResult } from "./types";
 import { api } from "./api";
 
 import JobPreferencesModal, { ROLE_GROUPS } from './components/JobPreferencesModal';
+import PendingApproval from './components/PendingApproval';
 
 // Collapse a flat role list for display: when an entire family is selected,
 // show just the family name; partially-selected families show their children.
@@ -485,7 +486,17 @@ export default function App() {
   const activeFilterCount = filters.category.length + filters.level.length + filters.type.length + filters.country.length + filters.source.length + filters.years.length + filters.visa.length + (filters.score !== "any" ? 1 : 0);
   const filtersActive = activeFilterCount > 0 || filters.q !== "";
   const isAdmin = currentUser?.email?.toLowerCase() === "jaggubhai8766@gmail.com";
-  
+
+  // Pending-approval badge for the admin's Settings nav item
+  const [pendingCount, setPendingCount] = useState(0);
+  useEffect(() => {
+    if (!isAuthenticated || !isAdmin) return;
+    const load = () => api.adminPendingCount().then(r => setPendingCount(r.count)).catch(() => {});
+    load();
+    const t = setInterval(load, 60000);
+    return () => clearInterval(t);
+  }, [isAuthenticated, isAdmin]);
+
   const navItems = [
     { id: "jobs",      label: "Jobs",         ic: IC.search   },
     { id: "dashboard", label: "Dashboard",    ic: IC.dash     },
@@ -505,6 +516,20 @@ export default function App() {
         if (!s.resume && !s.profile_name) setShowOnboarding(true);
       }).catch(() => setShowOnboarding(true));
     }} />;
+  }
+
+  // Approval gate — pending users see a waiting screen until the admin approves
+  if (currentUser && !isAdmin && ((currentUser as any).status || "approved") === "pending") {
+    return <PendingApproval
+      email={currentUser.email}
+      onApproved={() => {
+        const updated = { ...currentUser, status: "approved" } as any;
+        localStorage.setItem("jh_user", JSON.stringify(updated));
+        setCurrentUser(updated);
+        loadJobs();
+      }}
+      onLogout={handleLogout}
+    />;
   }
 
   if (showOnboarding && currentUser) {
@@ -548,6 +573,12 @@ export default function App() {
                 <Ic d={n.ic} size={16} />
                 {n.label}
                 {n.id === "jobs" && <span className="nav-count">{filteredJobs.length}</span>}
+                {n.id === "settings" && pendingCount > 0 && (
+                  <span style={{ marginLeft: "auto", minWidth: 18, height: 18, borderRadius: 999, background: "#dc2626",
+                    color: "#fff", fontSize: 10.5, fontWeight: 700, display: "grid", placeItems: "center", padding: "0 5px" }}>
+                    {pendingCount}
+                  </span>
+                )}
               </a>
             );
           })}
@@ -614,7 +645,12 @@ export default function App() {
               onScrape={handleScrape} count={filteredJobs.length}
               totalJobs={allJobs.length}
               viewMode={viewMode} setViewMode={setViewMode} IC={IC}
-              isAdmin={isAdmin} onOpenPreferences={() => setPreferencesOpen(true)}
+              isAdmin={isAdmin}
+              onOpenPreferences={() => {
+                // Non-admins: roles are assigned by the admin — read-only
+                if (isAdmin) setPreferencesOpen(true);
+                else toast("Your job roles are assigned by the admin", "info" as any);
+              }}
               userRoles={userSettings?.job_roles ? (Array.isArray(userSettings.job_roles) ? userSettings.job_roles : JSON.parse(userSettings.job_roles)) : []}
               sidebarCollapsed={sidebarCollapsed}
               setSidebarCollapsed={setSidebarCollapsed}

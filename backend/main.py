@@ -3,7 +3,7 @@ EST = ZoneInfo('America/New_York')
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, update, or_, text, func
+from sqlalchemy import select, update, delete, or_, text, func
 from pydantic import BaseModel
 from typing import Optional, List
 import asyncio
@@ -21,7 +21,7 @@ load_dotenv()
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from database import init_db, SessionLocal, engine, Job, Setting, User, UserSettings, UserJob, Company
+from database import init_db, SessionLocal, engine, Job, Setting, User, UserSettings, UserJob, Company, AppLog
 from auth import get_current_user_id, get_optional_user_id, hash_password, verify_password, create_token
 from scrapers import run_all_scrapers, run_group_fast, run_group_greenhouse, run_group_hiringcafe, run_group_jobo, run_group_fantasticjobs
 from scrapers.jobspy_scraper import fetch as jobspy_fetch
@@ -214,6 +214,31 @@ async def _scrape_and_insert(fetch_fn, group_name, settings, cutoff_posted, now_
     return new_count, new_jobs
 
 
+async def log_event(level: str, process: str, message: str):
+    """Write to app_logs table. ERROR level also fires a Telegram alert."""
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        async with SessionLocal() as db:
+            db.add(AppLog(timestamp=ts, level=level, process=process, message=message, seen=False))
+            await db.commit()
+            count_r = await db.execute(select(func.count()).select_from(AppLog))
+            total = count_r.scalar() or 0
+            if total > 500:
+                subq = select(AppLog.id).order_by(AppLog.id.asc()).limit(total - 500).subquery()
+                await db.execute(delete(AppLog).where(AppLog.id.in_(select(subq.c.id))))
+                await db.commit()
+    except Exception as e:
+        print(f"[AppLog] Write failed: {e}")
+    if level == "ERROR":
+        try:
+            import telegram_bot as _tb
+            if _tb.is_ready():
+                await _tb.send_message(f"🚨 <b>[{process}] ERROR</b>\n{message[:400]}")
+        except Exception:
+            pass
+
+
 _scrape_running = False
 
 async def _run_scrape() -> dict:
@@ -300,6 +325,7 @@ async def _run_scrape_internal() -> dict:
         await db.commit()
 
     print(f"[Scrape] Done -- {total_new} new jobs saved ({total_count} total in DB)")
+    await log_event("INFO", "scraper", f"Scrape complete: {total_new} new jobs, {total_count} total in DB")
 
     try:
         import telegram_bot
@@ -330,15 +356,17 @@ async def _run_scrape_internal() -> dict:
     return {"new_jobs": total_new, "deleted_old": deleted, "scraped_at": now_iso}
 
 async def _auto_scrape():
-    """Background auto-scrape task â€” runs on schedule."""
-    print("[Scheduler] Auto-scrape startingâ€¦")
+    “””Background auto-scrape task — runs on schedule.”””
+    print(“[Scheduler] Auto-scrape starting…”)
     try:
         result = await asyncio.wait_for(_run_scrape(), timeout=3000)  # 50 min -- covers 3-group max
-        print(f"[Scheduler] Auto-scrape complete: {result}")
+        print(f”[Scheduler] Auto-scrape complete: {result}”)
     except asyncio.TimeoutError:
-        print("[Scheduler] Auto-scrape timed out after 30 minutes")
+        print(“[Scheduler] Auto-scrape timed out after 30 minutes”)
+        await log_event(“ERROR”, “scraper”, “Auto-scrape timed out after 50 minutes”)
     except Exception as e:
-        print(f"[Scheduler] Auto-scrape failed: {e}")
+        print(f”[Scheduler] Auto-scrape failed: {e}”)
+        await log_event(“ERROR”, “scraper”, f”Auto-scrape failed: {e}”)
         import traceback; traceback.print_exc()
 
 async def _sync_expired_wrapper():
@@ -348,8 +376,10 @@ async def _sync_expired_wrapper():
         from scrapers.fantasticjobs import sync_expired_jobs
         count = await sync_expired_jobs({})
         print(f"[Scheduler] Expired sync complete: {count} jobs closed.")
+        await log_event("INFO", "expired-sync", f"Marked {count} expired jobs closed")
     except Exception as e:
         print(f"[Scheduler] Expired sync failed: {e}")
+        await log_event("ERROR", "expired-sync", f"Failed: {e}")
         import traceback; traceback.print_exc()
 
 
@@ -362,8 +392,10 @@ async def _sync_modified_wrapper():
         updates = await fetch_modified({})
         count = await update_modified_jobs(updates)
         print(f"[Scheduler] Modified sync complete: {count} jobs updated.")
+        await log_event("INFO", "modified-sync", f"Updated {count} modified jobs")
     except Exception as e:
         print(f"[Scheduler] Modified sync failed: {e}")
+        await log_event("ERROR", "modified-sync", f"Failed: {e}")
         import traceback; traceback.print_exc()
 
 
@@ -384,46 +416,62 @@ async def _run_exp_ai_sweep(limit: int = 400):
             admin_s = await _get_admin_settings(db)
         api_key  = (admin_s.ai_api_key  or "") if admin_s else ""
         provider = (admin_s.ai_provider or "openrouter") if admin_s else "openrouter"
-        # Use the parse model, but upgrade flash-lite to full flash for better
-        # seniority judgement (still cheap; any non-lite setting is respected)
-        model = (admin_s.ai_model_parse or "") if admin_s else ""
-        if not model or "flash-lite" in model:
-            model = "google/gemini-2.5-flash"
+        # DeepSeek R1 free — better seniority reasoning than flash-lite, zero cost
+        model = "deepseek/deepseek-r1:free"
         if not api_key:
             print("[ExpSweep] No API key — skipping AI experience inference")
+            await log_event("WARNING", "exp-tray", "Skipped — no OpenRouter API key configured")
             return
 
         async with SessionLocal() as db:
             rows = await db.execute(
                 select(Job.id, Job.title, Job.description).where(
-                    or_(Job.experience_level == None, Job.experience_level == ""),
+                    or_(
+                        Job.experience_level == None,
+                        Job.experience_level == "",
+                        Job.experience_level.notin_(EXP_TRAYS),  # also fix off-tray (5-10, 2-5 etc)
+                    ),
                     Job.description != None, Job.description != "",
                     Job.status != "closed",
                 ).limit(limit))
             pending = rows.fetchall()
         if not pending:
             return
-        print(f"[ExpSweep] AI-inferring experience for {len(pending)} jobs...")
+        print(f"[ExpSweep] AI-inferring experience for {len(pending)} jobs (DeepSeek R1 free)...")
+        await log_event("INFO", "exp-tray", f"Starting sweep: {len(pending)} jobs to process")
 
-        sem = asyncio.Semaphore(3)
-        done = {"n": 0, "ok": 0}
+        sem = asyncio.Semaphore(2)  # R1 is slower; 2 concurrent keeps rate-limit safe
+        done = {"n": 0, "ok": 0, "err": 0}
 
         async def infer_one(jid: str, title: str, desc: str):
             async with sem:
-                level = await infer_experience_ai(title or "", desc or "", api_key, provider, model)
-                if level:
-                    async with SessionLocal() as db:
-                        await db.execute(update(Job).where(Job.id == jid).values(experience_level=level))
-                        await db.commit()
-                    done["ok"] += 1
+                try:
+                    level = await infer_experience_ai(title or "", desc or "", api_key, provider, model)
+                    if level:
+                        async with SessionLocal() as db:
+                            await db.execute(update(Job).where(Job.id == jid).values(
+                                experience_level=level,
+                                experience_level_inferred=True,
+                            ))
+                            await db.commit()
+                        done["ok"] += 1
+                except Exception as e:
+                    done["err"] += 1
+                    if done["err"] <= 3:  # log first few errors only
+                        await log_event("ERROR", "exp-tray", f"Failed on job {jid}: {e}")
                 done["n"] += 1
                 if done["n"] % 50 == 0:
                     print(f"[ExpSweep] {done['n']}/{len(pending)} ({done['ok']} inferred)")
+                await asyncio.sleep(1.5)  # ~40 req/min — within free tier limit
 
         await asyncio.gather(*(infer_one(jid, t, d) for jid, t, d in pending))
-        print(f"[ExpSweep] Done — {done['ok']}/{len(pending)} jobs inferred")
+        msg = f"Done — {done['ok']}/{len(pending)} inferred, {done['err']} errors"
+        print(f"[ExpSweep] {msg}")
+        await log_event("INFO", "exp-tray", msg)
     except Exception as e:
-        print(f"[ExpSweep] Failed: {e}")
+        err_msg = f"Sweep failed: {e}"
+        print(f"[ExpSweep] {err_msg}")
+        await log_event("ERROR", "exp-tray", err_msg)
     finally:
         _exp_sweep_running = False
 
@@ -440,6 +488,7 @@ async def startup():
     # — Auto-migrate: add any missing columns safely ————————————————————————————————
     new_columns = [
         ("users",         "status",            "VARCHAR"),
+        ("jobs",          "experience_level_inferred", "BOOLEAN DEFAULT FALSE"),
         ("user_settings", "profile_phone",     "VARCHAR"),
         ("user_settings", "profile_address",    "VARCHAR"),
         ("user_settings", "profile_linkedin",   "VARCHAR"),
@@ -1802,6 +1851,50 @@ async def admin_pending_count(user_id: str = Depends(get_current_user_id)):
         return {"count": pending + role_requests}
 
 
+# ── Admin: system logs ───────────────────────────────────────────────────────
+
+@app.get("/api/admin/logs")
+async def admin_get_logs(limit: int = 100, level: str = "", user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        q = select(AppLog).order_by(AppLog.id.desc()).limit(limit)
+        if level:
+            q = select(AppLog).where(AppLog.level == level.upper()).order_by(AppLog.id.desc()).limit(limit)
+        rows = await db.execute(q)
+        logs = rows.scalars().all()
+    return [{"id": l.id, "timestamp": l.timestamp, "level": l.level,
+             "process": l.process, "message": l.message, "seen": l.seen} for l in logs]
+
+
+@app.get("/api/admin/logs/unseen-count")
+async def admin_unseen_count(user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        r = await db.execute(
+            select(func.count()).select_from(AppLog).where(
+                AppLog.seen == False, AppLog.level == "ERROR"
+            )
+        )
+        return {"count": r.scalar() or 0}
+
+
+@app.post("/api/admin/logs/mark-seen")
+async def admin_mark_logs_seen(user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        await db.execute(update(AppLog).where(AppLog.seen == False).values(seen=True))
+        await db.commit()
+    return {"ok": True}
+
+
+@app.post("/api/admin/backfill-trays")
+async def admin_backfill_trays(user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    asyncio.create_task(_run_exp_ai_sweep(limit=2000))
+    await log_event("INFO", "exp-tray", "Backfill triggered manually by admin")
+    return {"message": "Backfill started — processing up to 2000 jobs in background"}
+
+
 @app.get("/api/qualify/health")
 async def qualify_health(user_id: str = Depends(get_current_user_id)):
     """Admin diagnostic: why is auto-qualify (not) running?"""
@@ -2447,6 +2540,7 @@ def _job_to_dict(job: Job) -> dict:
         # FJ enrichment
         "visa_sponsorship":  getattr(job, "visa_sponsorship", None),
         "experience_level":  getattr(job, "experience_level", "") or "",
+        "experience_level_inferred": bool(getattr(job, "experience_level_inferred", False)),
         "employment_type":   getattr(job, "employment_type",  "") or "",
         "benefits":          json.loads(job.benefits)     if getattr(job, "benefits",     None) else [],
         "job_expiry":        getattr(job, "job_expiry",    "") or "",

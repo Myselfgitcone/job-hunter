@@ -76,6 +76,7 @@ export interface Job {
   // FJ enrichment
   visa_sponsorship: boolean | null;
   experience_level: string;
+  experience_level_inferred: boolean;
   employment_type: string;
   benefits: string[];
   job_expiry: string;

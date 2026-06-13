@@ -118,7 +118,12 @@ export function JobCard({ job, selected, onClick, onSkip, mode = "compact", inde
               <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 5, background: "var(--bg-2)", color: "var(--tx-3)" }}>Visa not stated</span>
             )}
             {job.experience_level && (
-              <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 5, background: "var(--bg-2)", color: "var(--tx-3)" }}>{job.experience_level}yr</span>
+              <span title={job.experience_level_inferred ? "AI-estimated (no explicit years in JD)" : "From job description"} style={{
+                fontSize: 11, padding: "1px 6px", borderRadius: 5,
+                background: job.experience_level_inferred ? "rgba(124,58,237,0.07)" : "var(--bg-2)",
+                color: job.experience_level_inferred ? "var(--violet)" : "var(--tx-3)",
+                border: job.experience_level_inferred ? "1px dashed rgba(124,58,237,0.3)" : "none",
+              }}>{job.experience_level_inferred ? "~" : ""}{job.experience_level}yr</span>
             )}
             <span className="sep" style={{ background: "var(--tx-faint)" }} />
             <span className="jc-time">{posted}</span>

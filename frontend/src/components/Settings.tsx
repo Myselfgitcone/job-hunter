@@ -273,7 +273,102 @@ const CRON_PRESETS: Record<string, string> = {
   "0 9 * * 1":   "Every Monday at 9:00 AM",
 };
 
-export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }) {
+// ── System Logs panel (admin-only) ────────────────────────────────────────────
+const LEVEL_COLOR: Record<string, string> = {
+  ERROR:   "#dc2626",
+  WARNING: "#d97706",
+  INFO:    "#16a34a",
+};
+
+function SystemLogsPanel({ onSeen }: { onSeen?: () => void }) {
+  const [logs, setLogs] = useState<any[]>([]);
+  const [filter, setFilter] = useState<"ALL"|"ERROR"|"WARNING"|"INFO">("ALL");
+  const [loading, setLoading] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
+
+  const load = async (lv = filter) => {
+    setLoading(true);
+    try {
+      const params = lv !== "ALL" ? `?level=${lv}` : "";
+      const r = await fetch(`/api/admin/logs${params}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("jh_token")}` }
+      });
+      setLogs(await r.json());
+      // Mark seen + notify parent to clear badge
+      await fetch("/api/admin/logs/mark-seen", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("jh_token")}` }
+      });
+      onSeen?.();
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const startBackfill = async () => {
+    setBackfilling(true);
+    try {
+      await fetch("/api/admin/backfill-trays", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("jh_token")}` }
+      });
+    } finally {
+      setTimeout(() => setBackfilling(false), 3000);
+      setTimeout(() => load(), 5000);
+    }
+  };
+
+  const fmtTs = (ts: string) => {
+    try { return new Date(ts).toLocaleString(); } catch { return ts; }
+  };
+
+  return (
+    <section style={{ marginTop: 32 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "var(--tx)" }}>System Logs</h3>
+        <div style={{ display: "flex", gap: 6 }}>
+          {(["ALL","ERROR","WARNING","INFO"] as const).map(lv => (
+            <button key={lv} onClick={() => { setFilter(lv); load(lv); }}
+              style={{ fontSize: 11, padding: "2px 10px", borderRadius: 6, fontWeight: 600, cursor: "pointer",
+                background: filter === lv ? (lv === "ALL" ? "var(--violet)" : LEVEL_COLOR[lv]) : "var(--bg-2)",
+                color: filter === lv ? "#fff" : "var(--tx-3)", border: "none" }}>
+              {lv}
+            </button>
+          ))}
+        </div>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <button onClick={() => load()} disabled={loading}
+            style={{ fontSize: 11.5, padding: "4px 12px", borderRadius: 6, cursor: "pointer", background: "var(--bg-2)", color: "var(--tx-2)", border: "1px solid var(--line)", fontWeight: 600 }}>
+            {loading ? "Loading…" : "Refresh"}
+          </button>
+          <button onClick={startBackfill} disabled={backfilling}
+            title="Run AI experience tray sweep on all unlabeled jobs"
+            style={{ fontSize: 11.5, padding: "4px 12px", borderRadius: 6, cursor: "pointer", background: "rgba(124,58,237,0.1)", color: "var(--violet)", border: "1px solid rgba(124,58,237,0.2)", fontWeight: 600 }}>
+            {backfilling ? "Starting…" : "Backfill Trays"}
+          </button>
+        </div>
+      </div>
+
+      <div style={{ maxHeight: 380, overflowY: "auto", borderRadius: 10, border: "1px solid var(--line)", background: "var(--bg-elevated)", fontFamily: "monospace" }}>
+        {logs.length === 0 ? (
+          <div style={{ padding: 24, textAlign: "center", color: "var(--tx-3)", fontSize: 13 }}>
+            {loading ? "Loading…" : "No logs found"}
+          </div>
+        ) : logs.map((l: any) => (
+          <div key={l.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "7px 12px", borderBottom: "1px solid var(--line)", fontSize: 11.5 }}>
+            <span style={{ color: "var(--tx-3)", flexShrink: 0, minWidth: 130 }}>{fmtTs(l.timestamp)}</span>
+            <span style={{ flexShrink: 0, minWidth: 52, fontWeight: 700, color: LEVEL_COLOR[l.level] || "var(--tx-2)" }}>{l.level}</span>
+            <span style={{ flexShrink: 0, minWidth: 80, color: "var(--violet)", fontWeight: 600 }}>[{l.process}]</span>
+            <span style={{ color: "var(--tx-2)", wordBreak: "break-word" }}>{l.message}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+
+export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: any) => void; onErrorsSeen?: () => void }) {
   const toast = onToast || ((m: string) => console.log(m));
 
 
@@ -545,6 +640,8 @@ export function Settings({ onToast }: { onToast?: (m: string, t?: any) => void }
             </div>
           )}
         </section>
+
+        <SystemLogsPanel onSeen={onErrorsSeen} />
 
         <div className="form-foot">
           <button className="save-btn" onClick={saveSettings}>

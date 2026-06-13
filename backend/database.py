@@ -71,6 +71,7 @@ class Job(Base):
     company_hq        = Column(String,  default="")     # org_linkedin_headquarters
     company_funding   = Column(BigInteger, default=None)# org_crunchbase_total_investment
     ai_keywords       = Column(Text,    default="")     # JSON list for ATS matching
+    experience_level_inferred = Column(Boolean, default=False)  # True = AI-inferred, not from JD text
 
     tailored_resume = Column(Text, default=None)
     tailored_at = Column(String, default=None)
@@ -171,6 +172,16 @@ class UserJob(Base):
     saved_at             = Column(String, default="")
 
 
+class AppLog(Base):
+    __tablename__ = "app_logs"
+    id        = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(String, nullable=False)
+    level     = Column(String, nullable=False)   # INFO | WARNING | ERROR
+    process   = Column(String, nullable=False)   # scraper | exp-tray | expired | api
+    message   = Column(Text, nullable=False)
+    seen      = Column(Boolean, default=False)
+
+
 class Company(Base):
     __tablename__ = "companies"
     id          = Column(String, primary_key=True)
@@ -215,6 +226,7 @@ async def init_db():
         "ALTER TABLE jobs ADD COLUMN company_hq TEXT DEFAULT ''",
         "ALTER TABLE jobs ADD COLUMN company_funding BIGINT",
         "ALTER TABLE jobs ADD COLUMN ai_keywords TEXT DEFAULT ''",
+        "ALTER TABLE jobs ADD COLUMN experience_level_inferred BOOLEAN DEFAULT FALSE",
     ]
     for stmt in migrations:
         try:

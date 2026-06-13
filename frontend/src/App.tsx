@@ -575,6 +575,18 @@ export default function App() {
     return () => clearInterval(t);
   }, [isAuthenticated, isAdmin]);
 
+  // Unseen error badge for Settings nav (admin only)
+  const [unseenErrors, setUnseenErrors] = useState(0);
+  useEffect(() => {
+    if (!isAuthenticated || !isAdmin) return;
+    const load = () => fetch("/api/admin/logs/unseen-count", {
+      headers: { Authorization: `Bearer ${localStorage.getItem("jh_token")}` }
+    }).then(r => r.json()).then(d => setUnseenErrors(d.count || 0)).catch(() => {});
+    load();
+    const t = setInterval(load, 60000);
+    return () => clearInterval(t);
+  }, [isAuthenticated, isAdmin]);
+
   const navItems = [
     { id: "jobs",      label: "Jobs",         ic: IC.search   },
     { id: "dashboard", label: "Dashboard",    ic: IC.dash     },
@@ -653,10 +665,21 @@ export default function App() {
                 <Ic d={n.ic} size={16} />
                 {n.label}
                 {n.id === "jobs" && <span className="nav-count">{filteredJobs.length}</span>}
-                {n.id === "settings" && pendingCount > 0 && (
-                  <span style={{ marginLeft: "auto", minWidth: 18, height: 18, borderRadius: 999, background: "#dc2626",
-                    color: "#fff", fontSize: 10.5, fontWeight: 700, display: "grid", placeItems: "center", padding: "0 5px" }}>
-                    {pendingCount}
+                {n.id === "settings" && (pendingCount > 0 || unseenErrors > 0) && (
+                  <span style={{ marginLeft: "auto", display: "flex", gap: 4, alignItems: "center" }}>
+                    {pendingCount > 0 && (
+                      <span style={{ minWidth: 18, height: 18, borderRadius: 999, background: "#dc2626",
+                        color: "#fff", fontSize: 10.5, fontWeight: 700, display: "grid", placeItems: "center", padding: "0 5px" }}>
+                        {pendingCount}
+                      </span>
+                    )}
+                    {unseenErrors > 0 && (
+                      <span title={`${unseenErrors} unseen error${unseenErrors > 1 ? "s" : ""}`}
+                        style={{ minWidth: 18, height: 18, borderRadius: 999, background: "#b45309",
+                        color: "#fff", fontSize: 10.5, fontWeight: 700, display: "grid", placeItems: "center", padding: "0 5px" }}>
+                        {unseenErrors}
+                      </span>
+                    )}
                   </span>
                 )}
               </a>
@@ -716,7 +739,7 @@ export default function App() {
         
         {view === "dashboard" && <Dashboard isAdmin={isAdmin} />}
         {view === "profile"   && <Profile />}
-        {view === "settings"  && (isAdmin ? <Settings onToast={toast} /> : <div style={{padding: 40, color: "#f87171", fontSize: 16}}>Restricted Access. Only the Master Admin can view Settings.</div>)}
+        {view === "settings"  && (isAdmin ? <Settings onToast={toast} onErrorsSeen={() => setUnseenErrors(0)} /> : <div style={{padding: 40, color: "#f87171", fontSize: 16}}>Restricted Access. Only the Master Admin can view Settings.</div>)}
 
         {view === "jobs" && (
           <>

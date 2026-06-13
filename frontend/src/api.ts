@@ -68,9 +68,9 @@ let _profileCache: ProfileData | null = null;
 export const api = {
   // ── Auth ──────────────────────────────────────────────────────────────────
   auth: {
-    register: (email: string, password: string, name: string) =>
+    register: (email: string, password: string, name: string, desired_roles: string[] = []) =>
       req<{ token: string; user: { id: string; email: string; name: string } }>("/api/auth/register", {
-        method: "POST", body: JSON.stringify({ email, password, name })
+        method: "POST", body: JSON.stringify({ email, password, name, desired_roles })
       }),
     login: (email: string, password: string) =>
       req<{ token: string; user: { id: string; email: string; name: string } }>("/api/auth/login", {

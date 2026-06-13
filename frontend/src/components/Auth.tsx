@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { api } from "../api";
+import { ROLE_GROUPS } from "./JobPreferencesModal";
 
 const BASE = (import.meta as any).env?.VITE_API_URL || "";
 
@@ -104,6 +105,8 @@ export default function Auth({ onSuccess }: Props) {
   const [error, setError]       = useState("");
   const [loading, setLoading]   = useState(false);
 
+  const [desiredFamilies, setDesiredFamilies] = useState<string[]>([]);
+
   const [showForgot, setShowForgot]     = useState(false);
   const [forgotEmail, setForgotEmail]   = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
@@ -137,9 +140,13 @@ export default function Auth({ onSuccess }: Props) {
     setLoading(true); setError("");
 
     try {
+      // Expand family names → full role item lists
+      const expandedRoles = ROLE_GROUPS
+        .filter(g => desiredFamilies.includes(g.group))
+        .flatMap(g => g.items);
       const result = mode === "login"
         ? await api.auth.login(email, password)
-        : await api.auth.register(email, password, name);
+        : await api.auth.register(email, password, name, expandedRoles);
 
       if (result?.token && result?.user) {
         localStorage.setItem("jh_token", result.token);
@@ -479,6 +486,42 @@ export default function Auth({ onSuccess }: Props) {
                     )}
                   </div>
                 )}
+
+                {/* Role family picker — register only */}
+                <div style={{
+                  overflow: "hidden",
+                  maxHeight: mode === "register" ? "160px" : "0px",
+                  opacity: mode === "register" ? 1 : 0,
+                  transition: "max-height 0.25s ease, opacity 0.2s ease",
+                }}>
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={S.label}>What roles are you looking for?</label>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
+                      {ROLE_GROUPS.map(g => {
+                        const on = desiredFamilies.includes(g.group);
+                        return (
+                          <button key={g.group} type="button"
+                            onClick={() => setDesiredFamilies(on
+                              ? desiredFamilies.filter(f => f !== g.group)
+                              : [...desiredFamilies, g.group])}
+                            style={{
+                              fontSize: 13, fontWeight: 600, padding: "8px 16px", borderRadius: 999,
+                              cursor: "pointer", fontFamily: "inherit",
+                              border: on ? "1.5px solid #7c3aed" : "1.5px solid #e2e8f0",
+                              background: on ? "rgba(124,58,237,0.1)" : "#fff",
+                              color: on ? "#7c3aed" : "#64748b",
+                              transition: "all 0.15s",
+                            }}>
+                            {on ? "✓ " : ""}{g.group}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: "#94a3b8", marginTop: 6 }}>
+                      Admin uses this to assign your job feed on approval.
+                    </div>
+                  </div>
+                </div>
 
                 {error && <div style={S.errBox}>⚠️ {error}</div>}
 

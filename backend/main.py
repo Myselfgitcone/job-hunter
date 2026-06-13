@@ -662,6 +662,7 @@ class RegisterBody(BaseModel):
     email: str
     password: str
     name: Optional[str] = ""
+    desired_roles: List[str] = []
 
 class LoginBody(BaseModel):
     email: str
@@ -687,11 +688,14 @@ async def register(body: RegisterBody):
             status=status,
         )
         db.add(user)
-        # Create default user settings — roles empty; the admin assigns them
+        # Store desired_roles from signup so admin can see what the user wants
+        initial_roles = json.dumps(body.desired_roles) if body.desired_roles else '[]'
+        if status != "pending":
+            initial_roles = initial_roles if body.desired_roles else '["Data Engineer"]'
         db.add(UserSettings(
             user_id=user_id,
             resume="",
-            job_roles='[]' if status == "pending" else '["Data Engineer"]',
+            job_roles=initial_roles,
             countries='["USA", "Remote"]',
             visa_filter=False,
             level_filter=False,

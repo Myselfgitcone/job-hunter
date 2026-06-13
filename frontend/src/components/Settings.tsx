@@ -80,14 +80,30 @@ function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => v
                 <div style={{ fontSize: 12, color: "var(--tx-3)" }}>{u.email} · joined {(u.created_at || "").slice(0, 10) || "—"}</div>
                 {u.is_admin ? (
                   <div style={{ fontSize: 11, color: "var(--tx-3)", marginTop: 6 }}>Sees all jobs (admin — preferences only slice the personal feed)</div>
-                ) : u.job_roles.length > 0 && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
-                    {u.job_roles.slice(0, 6).map((r: string) => (
-                      <span key={r} style={{ fontSize: 10.5, padding: "2px 8px", borderRadius: 999, background: "rgba(124,58,237,0.1)", color: "var(--violet)", fontWeight: 600 }}>{r}</span>
-                    ))}
-                    {u.job_roles.length > 6 && <span style={{ fontSize: 10.5, color: "var(--tx-3)" }}>+{u.job_roles.length - 6} more</span>}
-                  </div>
-                )}
+                ) : u.job_roles.length > 0 ? (
+                  u.status === "pending" ? (
+                    // Show family names for pending users so admin sees "Requested: Data Engineer, BI"
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6, alignItems: "center" }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: "#d97706", marginRight: 2 }}>Requested:</span>
+                      {ROLE_GROUPS
+                        .filter(g => g.items.some(i => u.job_roles.includes(i)))
+                        .map(g => (
+                          <span key={g.group} style={{ fontSize: 10.5, padding: "2px 10px", borderRadius: 999, fontWeight: 600, background: "rgba(217,119,6,0.1)", color: "#d97706" }}>
+                            {g.group}
+                          </span>
+                        ))}
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                      {u.job_roles.slice(0, 6).map((r: string) => (
+                        <span key={r} style={{ fontSize: 10.5, padding: "2px 8px", borderRadius: 999, background: "rgba(124,58,237,0.1)", color: "var(--violet)", fontWeight: 600 }}>{r}</span>
+                      ))}
+                      {u.job_roles.length > 6 && <span style={{ fontSize: 10.5, color: "var(--tx-3)" }}>+{u.job_roles.length - 6} more</span>}
+                    </div>
+                  )
+                ) : u.status === "pending" ? (
+                  <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 6 }}>No role preference stated</div>
+                ) : null}
               </div>
               <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999,
                 background: u.status === "approved" ? "rgba(22,163,74,0.12)" : "rgba(220,38,38,0.1)",
@@ -114,6 +130,11 @@ function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => v
               <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: "var(--tx-2)", marginBottom: 8 }}>
                   Assign role families — they will only see jobs matching these:
+                  {u.status === "pending" && u.job_roles.length > 0 && (
+                    <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 500, color: "#d97706" }}>
+                      (pre-filled from user's request)
+                    </span>
+                  )}
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                   {ROLE_GROUPS.map(g => {

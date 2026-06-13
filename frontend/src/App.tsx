@@ -180,9 +180,16 @@ export default function App() {
   const [visaFilter, setVisaFilter] = useState(false);
   const [expFilter,  setExpFilter]  = useState(false);
 
-  // Load user settings on auth
+  // Load user settings on auth — first verify token still valid (user not deleted)
   useEffect(() => {
     if (!isAuthenticated) return;
+    api.auth.me().catch(() => {
+      // Token exists but user was deleted — force logout
+      localStorage.removeItem("jh_token");
+      localStorage.removeItem("jh_user");
+      setIsAuthenticated(false);
+      setCurrentUser(null);
+    });
     api.getSettings().then((s: any) => {
       setUserSettings(s);
       if (s.last_scraped_at) setLastScrapedTs(s.last_scraped_at);

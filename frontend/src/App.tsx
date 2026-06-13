@@ -290,7 +290,10 @@ export default function App() {
   const loadJobs = useCallback(async () => {
     if (!isAuthenticated) return;
     setLoading(true);
-    try { const raw = await api.getJobs(); setJobs(raw); setAllJobs(raw); }
+    const storedEmail = (() => { try { return JSON.parse(localStorage.getItem("jh_user") || "{}").email?.toLowerCase(); } catch { return ""; } })();
+    const _adm = storedEmail === "jaggubhai8766@gmail.com";
+    const params = _adm ? {} : { country: "USA" };
+    try { const raw = await api.getJobs(params); setJobs(raw); setAllJobs(raw); }
     catch (e: any) {
       // Backend returns 403 with "revoked" or "pending" when account status changed
       // mid-session. Immediately push the new status into currentUser so the gate fires.

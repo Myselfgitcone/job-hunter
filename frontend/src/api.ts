@@ -147,11 +147,13 @@ export const api = {
 
   // ── Admin: user approval ───────────────────────────────────────────────────
   adminUsers: () =>
-    req<Array<{ id: string; email: string; name: string; status: string; is_admin: boolean; job_roles: string[]; created_at: string; last_seen_at: string }>>("/api/admin/users"),
-  adminUpdateUser: (id: string, body: { status?: string; job_roles?: string[] }) =>
+    req<Array<{ id: string; email: string; name: string; status: string; is_admin: boolean; job_roles: string[]; role_request: string[]; created_at: string; last_seen_at: string }>>("/api/admin/users"),
+  adminUpdateUser: (id: string, body: { status?: string; job_roles?: string[]; grant_role_request?: boolean; dismiss_role_request?: boolean }) =>
     req<{ ok: boolean }>(`/api/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   adminPendingCount: () => req<{ count: number }>("/api/admin/pending-count"),
   adminDeleteUser: (id: string) => req<{ ok: boolean }>(`/api/admin/users/${id}`, { method: "DELETE" }),
+  requestRole: (roles: string[]) =>
+    req<{ ok: boolean }>("/api/settings/request-role", { method: "POST", body: JSON.stringify({ roles }) }),
 
   qualifyHealth: () =>
     req<{ admin_settings_found: boolean; api_key_set: boolean; profile_set: boolean; qualify_model: string | null; scored_jobs: number; pending_jobs: number; running: boolean }>("/api/qualify/health"),

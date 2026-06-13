@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { api } from "../api";
+import { ROLE_GROUPS } from "./JobPreferencesModal";
 
 function calcYears(start: string, end: string) {
   if (!start) return "";
@@ -140,6 +141,21 @@ const VISA_OPTIONS = ["US Citizen", "Green Card", "H1B", "OPT / CPT", "TN Visa",
 export function Profile() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Role access state
+  const [myRoles, setMyRoles] = useState<string[]>([]);
+  const [roleRequest, setRoleRequest] = useState<string[]>([]);
+  const [showRolePicker, setShowRolePicker] = useState(false);
+  const [rolePickerSel, setRolePickerSel] = useState("");
+  const [roleReqSaving, setRoleReqSaving] = useState(false);
+  const [roleReqDone, setRoleReqDone] = useState(false);
+
+  useEffect(() => {
+    api.getSettings().then((s: any) => {
+      setMyRoles(s.job_roles || []);
+      setRoleRequest(s.role_request || []);
+    }).catch(() => {});
+  }, []);
 
   const handleDeleteAccount = async () => {
     setIsDeleting(true);
@@ -589,6 +605,105 @@ export function Profile() {
               {saveStatus === "saved" && <><Ic d={I.check} size={14} /> Saved</>}
             </div>
           </div>
+        </div>
+
+        {/* My Job Access */}
+        <div style={{ marginTop: 32, paddingTop: 24, borderTop: "1px solid var(--glass-border)" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--tx-2)", letterSpacing: ".06em", textTransform: "uppercase", marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+            My Job Access
+          </div>
+
+          {/* Current roles */}
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, color: "var(--tx-3)", marginBottom: 6 }}>Assigned roles:</div>
+            {myRoles.length > 0 ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {ROLE_GROUPS.filter(g => g.items.some(i => myRoles.includes(i))).map(g => (
+                  <span key={g.group} style={{ fontSize: 12, padding: "3px 10px", borderRadius: 999, background: "rgba(124,58,237,0.1)", color: "var(--violet)", fontWeight: 600, border: "1px solid rgba(124,58,237,0.2)" }}>
+                    {g.group}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <span style={{ fontSize: 12, color: "var(--tx-3)" }}>No roles assigned yet</span>
+            )}
+          </div>
+
+          {/* Pending request */}
+          {roleRequest.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, padding: "8px 12px", borderRadius: 8, background: "rgba(217,119,6,0.07)", border: "1px solid rgba(217,119,6,0.2)" }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+              <span style={{ fontSize: 12.5, color: "#d97706", fontWeight: 600 }}>
+                Request pending: {ROLE_GROUPS.filter(g => g.items.some(i => roleRequest.includes(i))).map(g => g.group).join(", ")}
+              </span>
+            </div>
+          )}
+
+          {/* Request button / picker */}
+          {roleReqDone ? (
+            <div style={{ fontSize: 12.5, color: "#059669", fontWeight: 600 }}>Request sent — admin will review it.</div>
+          ) : !showRolePicker ? (
+            <button onClick={() => setShowRolePicker(true)}
+              style={{ fontSize: 13, fontWeight: 600, padding: "7px 16px", borderRadius: 8, cursor: "pointer",
+                border: "1px dashed var(--violet)", background: "rgba(124,58,237,0.05)", color: "var(--violet)", fontFamily: "inherit" }}>
+              + Request additional role
+            </button>
+          ) : (
+            <div style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "14px 16px", marginTop: 4 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--tx-2)", marginBottom: 10 }}>
+                Select role to request:
+                <span style={{ marginLeft: 6, fontWeight: 400, color: "var(--tx-3)" }}>Need more? Contact admin after this is granted.</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {ROLE_GROUPS
+                  .filter(g => !g.items.some(i => myRoles.includes(i))) // only show roles not already assigned
+                  .map(g => {
+                    const on = rolePickerSel === g.group;
+                    return (
+                      <button key={g.group} type="button" onClick={() => setRolePickerSel(on ? "" : g.group)}
+                        style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 8, cursor: "pointer",
+                          border: on ? "1.5px solid var(--violet)" : "1px solid var(--line)",
+                          background: on ? "rgba(124,58,237,0.07)" : "var(--bg-elevated)",
+                          textAlign: "left", fontFamily: "inherit" }}>
+                        <span style={{ width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
+                          border: on ? "5px solid var(--violet)" : "2px solid var(--line-hi)",
+                          background: on ? "var(--violet)" : "transparent" }} />
+                        <span style={{ fontSize: 13, fontWeight: 600, color: on ? "var(--violet)" : "var(--tx)" }}>{g.group}</span>
+                      </button>
+                    );
+                  })}
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                <button disabled={!rolePickerSel || roleReqSaving}
+                  onClick={async () => {
+                    if (!rolePickerSel) return;
+                    setRoleReqSaving(true);
+                    try {
+                      const group = ROLE_GROUPS.find(g => g.group === rolePickerSel);
+                      await api.requestRole(group ? group.items : []);
+                      setRoleRequest(group ? group.items : []);
+                      setRoleReqDone(true);
+                      setShowRolePicker(false);
+                    } catch {}
+                    finally { setRoleReqSaving(false); }
+                  }}
+                  style={{ height: 34, padding: "0 18px", borderRadius: 8, border: "none",
+                    background: rolePickerSel ? "linear-gradient(120deg,#7c3aed,#06b6d4)" : "var(--line)",
+                    color: rolePickerSel ? "#fff" : "var(--tx-3)", fontSize: 13, fontWeight: 600,
+                    cursor: rolePickerSel ? "pointer" : "not-allowed", fontFamily: "inherit",
+                    opacity: roleReqSaving ? 0.7 : 1 }}>
+                  {roleReqSaving ? "Sending…" : "Send Request"}
+                </button>
+                <button onClick={() => { setShowRolePicker(false); setRolePickerSel(""); }}
+                  style={{ height: 34, padding: "0 14px", borderRadius: 8, border: "1px solid var(--line)",
+                    background: "transparent", color: "var(--tx-2)", fontSize: 13, fontWeight: 600,
+                    cursor: "pointer", fontFamily: "inherit" }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Danger Zone */}

@@ -1166,6 +1166,7 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
             "telegram_bot_token": "•" * len(s.telegram_bot_token) if s.telegram_bot_token else "",
             "telegram_chat_id": s.telegram_chat_id or "",
             "telegram_configured": bool(s.telegram_bot_token and s.telegram_chat_id),
+            "role_request": json.loads(s.role_request) if s.role_request else [],
             # Legacy fields for backward compat
             "auto_scrape_cron": "0 * * * *",
         }
@@ -1217,6 +1218,22 @@ async def update_settings(body: dict = Body(...), user_id: str = Depends(get_cur
     if new_token and "•" not in new_token and saved_token and saved_chat_id:
         asyncio.create_task(telegram_bot.init_bot(saved_token, saved_chat_id))
 
+    return {"ok": True}
+
+
+@app.post("/api/settings/request-role")
+async def request_role(body: dict = Body(...), user_id: str = Depends(get_current_user_id)):
+    """Approved user requests additional role families. Saves to role_request for admin review."""
+    roles = body.get("roles", [])
+    if not isinstance(roles, list):
+        raise HTTPException(400, "roles must be a list")
+    async with SessionLocal() as db:
+        s_res = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+        s = s_res.scalar_one_or_none()
+        if not s:
+            raise HTTPException(404, "Settings not found")
+        s.role_request = json.dumps(roles)
+        await db.commit()
     return {"ok": True}
 
 
@@ -1684,11 +1701,16 @@ async def admin_list_users(user_id: str = Depends(get_current_user_id)):
                 roles = json.loads(s.job_roles) if s and s.job_roles else []
             except Exception:
                 roles = []
+            try:
+                role_request = json.loads(s.role_request) if s and s.role_request else []
+            except Exception:
+                role_request = []
             out.append({
                 "id": u.id, "email": u.email, "name": u.name or "",
                 "status": u.status or "approved",
                 "is_admin": u.email.lower() == ADMIN_EMAIL.lower(),
                 "job_roles": roles,
+                "role_request": role_request,
                 "created_at": u.created_at or "",
                 "last_seen_at": u.last_seen_at or "",
             })
@@ -1714,6 +1736,24 @@ async def admin_update_user(target_id: str, body: dict = Body(...),
                 s.job_roles = json.dumps(body["job_roles"])
             else:
                 db.add(UserSettings(user_id=target_id, job_roles=json.dumps(body["job_roles"])))
+        if body.get("grant_role_request"):
+            # Merge pending role_request into job_roles and clear the request
+            s_res = await db.execute(select(UserSettings).where(UserSettings.user_id == target_id))
+            s = s_res.scalar_one_or_none()
+            if s:
+                try:
+                    current = json.loads(s.job_roles) if s.job_roles else []
+                    requested = json.loads(s.role_request) if s.role_request else []
+                except Exception:
+                    current, requested = [], []
+                merged = list(dict.fromkeys(current + requested))  # dedupe, preserve order
+                s.job_roles = json.dumps(merged)
+                s.role_request = ""
+        if body.get("dismiss_role_request"):
+            s_res = await db.execute(select(UserSettings).where(UserSettings.user_id == target_id))
+            s = s_res.scalar_one_or_none()
+            if s:
+                s.role_request = ""
         await db.commit()
     return {"ok": True}
 
@@ -1743,8 +1783,18 @@ async def admin_delete_user(target_id: str, user_id: str = Depends(get_current_u
 async def admin_pending_count(user_id: str = Depends(get_current_user_id)):
     await _verify_admin(user_id)
     async with SessionLocal() as db:
-        res = await db.execute(select(func.count()).select_from(User).where(User.status == "pending"))
-        return {"count": res.scalar() or 0}
+        pending_res = await db.execute(select(func.count()).select_from(User).where(User.status == "pending"))
+        pending = pending_res.scalar() or 0
+        # Also count approved users with a pending role request
+        role_req_res = await db.execute(
+            select(func.count()).select_from(UserSettings).where(
+                UserSettings.role_request != None,
+                UserSettings.role_request != "",
+                UserSettings.role_request != "[]",
+            )
+        )
+        role_requests = role_req_res.scalar() or 0
+        return {"count": pending + role_requests}
 
 
 @app.get("/api/qualify/health")

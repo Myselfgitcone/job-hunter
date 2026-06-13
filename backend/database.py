@@ -143,6 +143,8 @@ class UserSettings(Base):
     # Telegram bot
     telegram_bot_token   = Column(String, default="")
     telegram_chat_id     = Column(String, default="")
+    # Role request: user-submitted request for additional roles (JSON array, cleared on grant)
+    role_request         = Column(Text, default="")
 
 
 class UserJob(Base):

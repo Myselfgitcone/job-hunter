@@ -94,11 +94,30 @@ function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => v
                         ))}
                     </div>
                   ) : (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
-                      {u.job_roles.slice(0, 6).map((r: string) => (
-                        <span key={r} style={{ fontSize: 10.5, padding: "2px 8px", borderRadius: 999, background: "rgba(124,58,237,0.1)", color: "var(--violet)", fontWeight: 600 }}>{r}</span>
-                      ))}
-                      {u.job_roles.length > 6 && <span style={{ fontSize: 10.5, color: "var(--tx-3)" }}>+{u.job_roles.length - 6} more</span>}
+                    <div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                        {u.job_roles.slice(0, 6).map((r: string) => (
+                          <span key={r} style={{ fontSize: 10.5, padding: "2px 8px", borderRadius: 999, background: "rgba(124,58,237,0.1)", color: "var(--violet)", fontWeight: 600 }}>{r}</span>
+                        ))}
+                        {u.job_roles.length > 6 && <span style={{ fontSize: 10.5, color: "var(--tx-3)" }}>+{u.job_roles.length - 6} more</span>}
+                      </div>
+                      {/* Role request from approved user */}
+                      {(u.role_request || []).length > 0 && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 10.5, fontWeight: 700, color: "#d97706" }}>Requesting:</span>
+                          {ROLE_GROUPS.filter(g => g.items.some(i => (u.role_request || []).includes(i))).map(g => (
+                            <span key={g.group} style={{ fontSize: 10.5, padding: "2px 10px", borderRadius: 999, fontWeight: 600, background: "rgba(217,119,6,0.1)", color: "#d97706" }}>{g.group}</span>
+                          ))}
+                          <button onClick={async () => { await api.adminUpdateUser(u.id, { grant_role_request: true }); onToast("Role granted", "success"); load(); }}
+                            style={{ fontSize: 10.5, fontWeight: 700, padding: "2px 10px", borderRadius: 999, border: "1px solid #16a34a", background: "rgba(22,163,74,0.1)", color: "#16a34a", cursor: "pointer" }}>
+                            Grant
+                          </button>
+                          <button onClick={async () => { await api.adminUpdateUser(u.id, { dismiss_role_request: true }); onToast("Request dismissed", "success"); load(); }}
+                            style={{ fontSize: 10.5, fontWeight: 700, padding: "2px 10px", borderRadius: 999, border: "1px solid var(--line-hi)", background: "transparent", color: "var(--tx-3)", cursor: "pointer" }}>
+                            Dismiss
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )
                 ) : u.status === "pending" ? (

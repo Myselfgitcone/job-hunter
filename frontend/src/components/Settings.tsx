@@ -8,6 +8,9 @@ function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => v
   const [editing, setEditing] = useState<string | null>(null);   // user id with role picker open
   const [draftRoles, setDraftRoles] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const PER = 10;
 
   const load = () => api.adminUsers().then(setUsers).catch(() => {});
   useEffect(() => { load(); }, []);
@@ -37,19 +40,29 @@ function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => v
   };
 
   const sorted = [...users].sort((a, b) => (a.status === "pending" ? -1 : 1) - (b.status === "pending" ? -1 : 1));
+  const filtered = sorted.filter(u => (u.name + " " + u.email).toLowerCase().includes(q.toLowerCase()));
+  const pages = Math.max(1, Math.ceil(filtered.length / PER));
+  const cur = Math.min(page, pages);
+  const shown = filtered.slice((cur - 1) * PER, cur * PER);
 
   return (
     <section className="form-section">
       <div className="section-label">
         <Ic d={'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'} size={16} /> Users
+        <span style={{ marginLeft: 6, fontSize: 11.5, color: "var(--tx-3)", fontWeight: 600 }}>{users.length}</span>
         {users.some(u => u.status === "pending") && (
           <span style={{ marginLeft: 8, background: "#dc2626", color: "#fff", fontSize: 10.5, fontWeight: 700, borderRadius: 999, padding: "2px 8px" }}>
             {users.filter(u => u.status === "pending").length} pending
           </span>
         )}
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {sorted.map(u => (
+      <input value={q} onChange={e => { setQ(e.target.value); setPage(1); }}
+        placeholder="Search by name or email"
+        style={{ width: "100%", height: 38, padding: "0 14px", borderRadius: 10, border: "1px solid var(--line)",
+          background: "var(--bg-elevated)", color: "var(--tx)", fontSize: 13, marginBottom: 10, outline: "none" }} />
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 440, overflowY: "auto",
+        paddingRight: 4, scrollbarWidth: "thin", scrollbarColor: "var(--line-hi) transparent" }}>
+        {shown.map(u => (
           <div key={u.id} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "12px 14px",
             background: u.status === "pending" ? "rgba(220,38,38,0.04)" : "var(--bg-elevated)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -116,7 +129,29 @@ function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => v
           </div>
         ))}
         {users.length === 0 && <div style={{ fontSize: 12.5, color: "var(--tx-3)", padding: "10px 0" }}>Loading users…</div>}
+        {users.length > 0 && filtered.length === 0 && <div style={{ fontSize: 12.5, color: "var(--tx-3)", padding: "10px 0" }}>No users match "{q}"</div>}
       </div>
+
+      {pages > 1 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 12 }}>
+          <button onClick={() => setPage(Math.max(1, cur - 1))} disabled={cur === 1}
+            style={{ background: "none", border: "none", color: cur === 1 ? "var(--tx-faint)" : "var(--tx-2)", fontSize: 12.5, fontWeight: 600, cursor: cur === 1 ? "default" : "pointer" }}>‹ Previous</button>
+          {Array.from({ length: pages }, (_, i) => i + 1)
+            .filter(p => p === 1 || p === pages || Math.abs(p - cur) <= 1)
+            .map((p, idx, arr) => (
+              <span key={p} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {idx > 0 && arr[idx - 1] !== p - 1 && <span style={{ color: "var(--tx-3)" }}>…</span>}
+                <button onClick={() => setPage(p)}
+                  style={{ minWidth: 30, height: 30, borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+                    border: cur === p ? "1px solid var(--violet)" : "1px solid var(--line)",
+                    background: cur === p ? "rgba(124,58,237,0.12)" : "transparent",
+                    color: cur === p ? "var(--violet)" : "var(--tx-2)" }}>{p}</button>
+              </span>
+            ))}
+          <button onClick={() => setPage(Math.min(pages, cur + 1))} disabled={cur === pages}
+            style={{ background: "none", border: "none", color: cur === pages ? "var(--tx-faint)" : "var(--tx-2)", fontSize: 12.5, fontWeight: 600, cursor: cur === pages ? "default" : "pointer" }}>Next ›</button>
+        </div>
+      )}
     </section>
   );
 }

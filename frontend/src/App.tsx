@@ -183,7 +183,17 @@ export default function App() {
   // Load user settings on auth — first verify token still valid (user not deleted)
   useEffect(() => {
     if (!isAuthenticated) return;
-    api.auth.me().catch(() => {
+    api.auth.me().then((me: any) => {
+      // Sync status from server — catches revoke/pending applied mid-session
+      if (me.status && me.status !== "approved") {
+        setCurrentUser((prev: any) => {
+          if (!prev) return prev;
+          const updated = { ...prev, status: me.status };
+          localStorage.setItem("jh_user", JSON.stringify(updated));
+          return updated;
+        });
+      }
+    }).catch(() => {
       // Token exists but user was deleted — force logout
       localStorage.removeItem("jh_token");
       localStorage.removeItem("jh_user");

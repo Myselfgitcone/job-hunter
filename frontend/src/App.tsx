@@ -208,6 +208,28 @@ export default function App() {
     }).catch(() => {});
   }, [isAuthenticated]);
 
+  // Poll every 30s for non-admin users — detects revoke/pending applied mid-session
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const stored = localStorage.getItem("jh_user");
+    const email = stored ? JSON.parse(stored).email?.toLowerCase() : "";
+    if (email === "jaggubhai8766@gmail.com") return;
+    const check = () => {
+      api.auth.me().then((me: any) => {
+        if (me.status && me.status !== "approved") {
+          setCurrentUser((prev: any) => {
+            if (!prev) return prev;
+            const updated = { ...prev, status: me.status };
+            localStorage.setItem("jh_user", JSON.stringify(updated));
+            return updated;
+          });
+        }
+      }).catch(() => {});
+    };
+    const t = setInterval(check, 30000);
+    return () => clearInterval(t);
+  }, [isAuthenticated]);
+
   // Persist visa/exp filter toggles to settings whenever they change
   const saveFilterToggle = useCallback((visa: boolean, exp: boolean) => {
     api.saveSettings({ visa_filter: visa, level_filter: exp } as any).catch(() => {});

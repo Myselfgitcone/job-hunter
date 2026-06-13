@@ -1417,8 +1417,12 @@ async def list_jobs(
         # Approval gate + role scope for non-admins
         u = await db.get(User, user_id)
         is_admin = bool(u and u.email.lower() == ADMIN_EMAIL.lower())
-        if u and not is_admin and (u.status or "approved") != "approved":
-            raise HTTPException(403, "Account pending approval")
+        if u and not is_admin:
+            st = u.status or "approved"
+            if st == "revoked":
+                raise HTTPException(403, "Account access revoked")
+            if st == "pending":
+                raise HTTPException(403, "Account pending approval")
         user_roles: list = []
         if not is_admin:
             s_res = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
@@ -1728,7 +1732,7 @@ async def admin_update_user(target_id: str, body: dict = Body(...),
             raise HTTPException(404, "User not found")
         if u.email.lower() == ADMIN_EMAIL.lower() and body.get("status") == "pending":
             raise HTTPException(400, "Cannot revoke the admin account")
-        if "status" in body and body["status"] in ("pending", "approved"):
+        if "status" in body and body["status"] in ("pending", "approved", "revoked"):
             u.status = body["status"]
         if "job_roles" in body and isinstance(body["job_roles"], list):
             s_res = await db.execute(select(UserSettings).where(UserSettings.user_id == target_id))
@@ -2266,6 +2270,17 @@ async def get_analytics(user_id: str = Depends(get_current_user_id)):
     from datetime import date, timedelta
 
     async with SessionLocal() as db:
+        u_row = await db.get(User, user_id)
+        is_admin_analytics = bool(u_row and u_row.email.lower() == ADMIN_EMAIL.lower())
+        user_roles_analytics: list = []
+        if not is_admin_analytics:
+            s_res = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+            s = s_res.scalar_one_or_none()
+            try:
+                user_roles_analytics = json.loads(s.job_roles) if s and s.job_roles else []
+            except Exception:
+                user_roles_analytics = []
+
         q = select(
             Job.id,
             Job.source,
@@ -2279,9 +2294,17 @@ async def get_analytics(user_id: str = Depends(get_current_user_id)):
             UserJob.applied_at,
             UserJob.tailored_at
         ).outerjoin(UserJob, (UserJob.job_id == Job.id) & (UserJob.user_id == user_id))
-        
+
+        # Non-admins: scope to USA + their assigned roles
+        if not is_admin_analytics:
+            q = q.where(Job.country == "USA")
+
         result = await db.execute(q)
         rows = result.fetchall()
+
+        # Filter by assigned roles in Python (reuse title matcher)
+        if not is_admin_analytics and user_roles_analytics:
+            rows = [r for r in rows if _title_matches_roles(r[4] or "", user_roles_analytics)]
 
     total = len(rows)
     by_status  = defaultdict(int)

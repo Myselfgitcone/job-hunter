@@ -35,7 +35,7 @@ function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => v
 
   const revoke = async (u: any) => {
     if (!window.confirm(`Revoke access for ${u.email}? They'll see a "locked" screen until re-approved.`)) return;
-    try { await api.adminUpdateUser(u.id, { status: "revoked", job_roles: [] }); onToast("Access revoked", "success"); load(); onChanged(); }
+    try { await api.adminUpdateUser(u.id, { status: "revoked" }); onToast("Access revoked", "success"); load(); onChanged(); }
     catch (e: any) { onToast(e.message, "error"); }
   };
 

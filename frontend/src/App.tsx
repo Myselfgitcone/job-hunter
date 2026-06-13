@@ -184,10 +184,11 @@ export default function App() {
   useEffect(() => {
     if (!isAuthenticated) return;
     api.auth.me().then((me: any) => {
-      // Sync status from server — catches revoke/pending applied mid-session
-      if (me.status && me.status !== "approved") {
+      // Always sync status — catches both revoke AND re-approve mid-session
+      if (me.status) {
         setCurrentUser((prev: any) => {
           if (!prev) return prev;
+          if ((prev.status || "approved") === me.status) return prev;
           const updated = { ...prev, status: me.status };
           localStorage.setItem("jh_user", JSON.stringify(updated));
           return updated;
@@ -216,9 +217,10 @@ export default function App() {
     if (email === "jaggubhai8766@gmail.com") return;
     const check = () => {
       api.auth.me().then((me: any) => {
-        if (me.status && me.status !== "approved") {
+        if (me.status) {
           setCurrentUser((prev: any) => {
             if (!prev) return prev;
+            if ((prev.status || "approved") === me.status) return prev;
             const updated = { ...prev, status: me.status };
             localStorage.setItem("jh_user", JSON.stringify(updated));
             return updated;

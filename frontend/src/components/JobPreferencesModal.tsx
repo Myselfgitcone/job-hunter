@@ -50,11 +50,14 @@ export const ROLE_GROUPS: { group: string; items: string[] }[] = [
 ];
 
 // Hierarchical selector: group header click = select/deselect entire family
-function RoleGroupSelector({ selected, onChange, allowedGroups }: { selected: string[]; onChange: (v: string[]) => void; allowedGroups?: string[] }) {
+function RoleGroupSelector({ selected, onChange, allowedGroups, readOnly = false }: { selected: string[]; onChange: (v: string[]) => void; allowedGroups?: string[]; readOnly?: boolean }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
-  const toggleItem = (it: string) =>
+  const toggleItem = (it: string) => {
+    if (readOnly) return;
     onChange(selected.includes(it) ? selected.filter(x => x !== it) : [...selected, it]);
+  };
   const toggleGroup = (g: { group: string; items: string[] }) => {
+    if (readOnly) return;
     const allOn = g.items.every(i => selected.includes(i));
     if (allOn) onChange(selected.filter(x => !g.items.includes(x)));
     else onChange([...selected, ...g.items.filter(i => !selected.includes(i))]);
@@ -70,7 +73,7 @@ function RoleGroupSelector({ selected, onChange, allowedGroups }: { selected: st
           <div key={g.group} style={{ border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden", background: "var(--bg-elevated)" }}>
             <div style={{ display: "flex", alignItems: "center" }}>
               <button onClick={() => toggleGroup(g)}
-                style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
+                style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: "none", border: "none", cursor: readOnly ? "default" : "pointer", textAlign: "left" }}>
                 <span style={{ width: 16, height: 16, borderRadius: 4, flexShrink: 0, display: "grid", placeItems: "center",
                   border: allOn ? "none" : "1.5px solid var(--line-hi)",
                   background: allOn ? "var(--violet)" : selCount > 0 ? "rgba(124,58,237,0.25)" : "transparent" }}>
@@ -83,6 +86,9 @@ function RoleGroupSelector({ selected, onChange, allowedGroups }: { selected: st
                   <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--violet)", background: "rgba(124,58,237,0.1)", padding: "1px 7px", borderRadius: 999 }}>
                     {selCount}/{g.items.length}
                   </span>
+                )}
+                {readOnly && (
+                  <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--tx-3)", fontWeight: 500 }}>assigned by admin</span>
                 )}
               </button>
               <button onClick={() => setOpen(o => ({ ...o, [g.group]: !isOpen }))}
@@ -97,11 +103,11 @@ function RoleGroupSelector({ selected, onChange, allowedGroups }: { selected: st
                   const on = selected.includes(it);
                   return (
                     <button key={it} onClick={() => toggleItem(it)}
-                      style={{ fontSize: 12, fontWeight: 500, padding: "4px 11px", borderRadius: 999, cursor: "pointer",
+                      style={{ fontSize: 12, fontWeight: 500, padding: "4px 11px", borderRadius: 999, cursor: readOnly ? "default" : "pointer",
                         border: on ? "1px solid rgba(124,58,237,0.4)" : "1px dashed var(--line-hi)",
                         background: on ? "var(--grad-soft)" : "transparent",
                         color: on ? "var(--violet)" : "var(--tx-3)" }}>
-                      {on ? "✓ " : "+ "}{it}
+                      {on ? "✓ " : ""}{it}
                     </button>
                   );
                 })}
@@ -243,9 +249,9 @@ export default function JobPreferencesModal({
     }
   }, [open]);
 
-  // Auto-save: debounce 600ms after any role change
+  // Auto-save: debounce 600ms after any role change (admin only — non-admin roles are read-only)
   useEffect(() => {
-    if (!open || loading || !loadedRef.current) return;
+    if (!open || loading || !loadedRef.current || !isAdmin) return;
     setSaveState("saving");
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
@@ -324,6 +330,7 @@ export default function JobPreferencesModal({
                 selected={roles}
                 onChange={setRoles}
                 allowedGroups={isAdmin ? undefined : allowedFamiliesRef.current}
+                readOnly={!isAdmin}
               />
             </div>
           )}

@@ -58,7 +58,7 @@ _ROLE_FAMILIES: list[tuple[str, list[str]]] = [
                        "database engineer", "database developer", "sql developer", "big data"]),
     ("DevOps/SRE",    ["devops", "sre", "site reliability", "platform engineer", "cloud engineer"]),
     ("Security",      ["security", "cybersecurity", "infosec", "soc analyst"]),
-    ("Java",          ["spring boot", "jakarta"]),  # plus \bjava\b regex below
+    ("Java",          ["spring boot", "spring framework", "spring developer", "jakarta", "jakarta ee", "hibernate", "jvm engineer"]),  # plus \bjava\b regex below
 ]
 _JAVA_RE = re.compile(r"\bjava\b", re.I)
 _DATA_RE = re.compile(r"\bdata\b", re.I)

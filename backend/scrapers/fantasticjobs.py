@@ -82,7 +82,7 @@ _TERMS_COMMON = (
     " | 'business intelligence' | 'bi developer' | 'bi analyst' | 'bi engineer' | 'power bi' | tableau"
 )
 # Java family — USA only (India team doesn't hunt Java roles)
-_TERMS_JAVA = "(java & !javascript) | 'spring boot' | jakarta"
+_TERMS_JAVA = "(java & !javascript) | 'spring boot' | 'spring framework' | jakarta | hibernate | 'jvm engineer'"
 
 # Architect exclusion is surgical: Data Architect is a valid 6-8yr DE target,
 # but system/org-level architect tracks are 10+ years — keep those out.

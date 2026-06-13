@@ -46,7 +46,21 @@ export const ROLE_GROUPS: { group: string; items: string[] }[] = [
   // { group: "DevOps / SRE",          items: ["DevOps", "SRE", "Site Reliability", "Platform Engineer", "Cloud Engineer"] },
   // { group: "Security",              items: ["Security Engineer", "Security Analyst", "SOC Analyst", "Cybersecurity", "Infosec", "Application Security"] },
   // "Java" = word-boundary match on title, catches ALL java titles incl. "Software Engineer (Java)"
-  { group: "Java",                  items: ["Java", "Spring Boot", "Jakarta"] },
+  { group: "Java",                  items: [
+    // "Java" is a catch-all — \bjava\b regex matches every "Java *" title
+    "Java",
+    // Explicit tiers (for display clarity in modal)
+    "Junior Java Developer", "Java Developer", "Java Engineer", "Java Programmer",
+    "Java Software Engineer", "Backend Java Developer", "Full Stack Java Developer",
+    "Senior Java Developer", "Senior Java Engineer",
+    "Java Tech Lead", "Java Team Lead", "Java Architect", "Java Solutions Architect",
+    "Java Microservices Architect", "Staff Java Engineer", "Principal Java Engineer",
+    "Java Consultant", "Java Security Engineer", "Java Performance Engineer",
+    // Spring / Jakarta / JVM ecosystem — titles where "java" may not appear
+    "Spring Boot", "Spring Framework", "Spring Developer",
+    "Jakarta", "Jakarta EE",
+    "Hibernate", "JVM Engineer",
+  ] },
 ];
 
 // Hierarchical selector: group header click = select/deselect entire family

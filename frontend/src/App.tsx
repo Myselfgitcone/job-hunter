@@ -289,7 +289,21 @@ export default function App() {
     if (!isAuthenticated) return;
     setLoading(true);
     try { const raw = await api.getJobs(); setJobs(raw); setAllJobs(raw); }
-    catch {} finally { setLoading(false); }
+    catch (e: any) {
+      // Backend returns 403 with "revoked" or "pending" when account status changed
+      // mid-session. Immediately push the new status into currentUser so the gate fires.
+      const msg: string = e?.message || "";
+      if (msg.includes("revoked") || msg.includes("pending")) {
+        const newStatus = msg.includes("revoked") ? "revoked" : "pending";
+        setCurrentUser((prev: any) => {
+          if (!prev) return prev;
+          const updated = { ...prev, status: newStatus };
+          localStorage.setItem("jh_user", JSON.stringify(updated));
+          return updated;
+        });
+      }
+    }
+    finally { setLoading(false); }
   }, [isAuthenticated]);
 
   useEffect(() => { loadJobs(); }, [loadJobs]);

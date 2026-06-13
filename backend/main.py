@@ -448,6 +448,7 @@ async def startup():
         ("user_settings", "profile_summary",    "TEXT"),
         ("user_settings", "telegram_bot_token", "VARCHAR"),
         ("user_settings", "telegram_chat_id",   "VARCHAR"),
+        ("user_settings", "role_request",        "TEXT"),
     ]
     try:
         for table, col, typedef in new_columns:

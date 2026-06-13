@@ -205,6 +205,7 @@ export default function App() {
 
   const [tailorOpen, setTailorOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [activeFamily, setActiveFamily] = useState<string>(""); // user role chip filter
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("jh_sidebar") === "1");
   const [busy, setBusy]             = useState<string | null>(null);
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem("jh_welcomed"));
@@ -324,6 +325,23 @@ export default function App() {
           if (!matchesAnyRole) return false;
         }
       }
+      // 1b. Active family chip filter (non-admin role toggle)
+      if (!isAdmin && activeFamily) {
+        const group = ROLE_GROUPS.find(g => g.group === activeFamily);
+        if (group) {
+          const title = j.title.toLowerCase();
+          const familyMatch = group.items.some((r: string) => {
+            const term = r.toLowerCase().trim();
+            if (term === "bi")   return /\bbi\b/.test(title);
+            if (term === "java") return /\bjava\b/.test(title);
+            if (term === "data engineer") return /\bdata\b/.test(title) && /engineer/.test(title);
+            if (term === "data analyst")  return /\bdata\b/.test(title) && /analyst/.test(title);
+            if (term === "software engineer (data)") return /software engineer/.test(title) && /\bdata\b/.test(title);
+            return title.includes(term);
+          });
+          if (!familyMatch) return false;
+        }
+      }
       // q — free text (design: title + company)
       if (filters.q && !(j.title + " " + j.company).toLowerCase().includes(filters.q.toLowerCase())) return false;
       // category — department names from the filter panel mapped to title keywords
@@ -398,7 +416,7 @@ export default function App() {
       return tB - tA;
     });
     return { filteredJobs: list, yearsCounts: yc };
-  }, [jobs, filters, userSettings, sortBy, visaFilter, expFilter]);
+  }, [jobs, filters, userSettings, sortBy, visaFilter, expFilter, activeFamily, isAdmin]);
 
   const selectedJob = jobs.find(j => j.id === selectedId) || null;
 
@@ -659,6 +677,8 @@ export default function App() {
                 else toast("Your job roles are assigned by the admin", "info" as any);
               }}
               userRoles={userSettings?.job_roles ? (Array.isArray(userSettings.job_roles) ? userSettings.job_roles : JSON.parse(userSettings.job_roles)) : []}
+              activeFamily={isAdmin ? "" : activeFamily}
+              setActiveFamily={isAdmin ? undefined : setActiveFamily}
               sidebarCollapsed={sidebarCollapsed}
               setSidebarCollapsed={setSidebarCollapsed}
               countries={COUNTRIES}
@@ -786,10 +806,11 @@ function countPanelFilters(f: { category: string[]; level: string[]; type: strin
 }
 
 // ── Topbar (exact match to shell.jsx TopBar) ────────────────────────────────────
-function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, setViewMode, IC, isAdmin, onOpenPreferences, userRoles, sidebarCollapsed, setSidebarCollapsed, preferencesNode, countries, countryFilter, setCountryFilter }: {
+function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, setViewMode, IC, isAdmin, onOpenPreferences, userRoles, activeFamily, setActiveFamily, sidebarCollapsed, setSidebarCollapsed, preferencesNode, countries, countryFilter, setCountryFilter }: {
   scraping: boolean; lastScraped: string; onScrape: () => void;
   count: number; totalJobs: number; viewMode: string; setViewMode: (m: ViewMode) => void;
   IC: Record<string, string>; isAdmin: boolean; onOpenPreferences?: () => void; userRoles?: string[];
+  activeFamily?: string; setActiveFamily?: (f: string) => void;
   sidebarCollapsed: boolean; setSidebarCollapsed: (v: boolean) => void;
   preferencesNode?: React.ReactNode;
   countries?: string[]; countryFilter?: string[]; setCountryFilter?: (v: string[]) => void;
@@ -861,17 +882,29 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
 
             <div style={{ display: "flex", alignItems: "center", gap: 6, paddingRight: 6 }}>
               {userRoles && userRoles.length > 0 ? (() => {
-                // Cap visible chips — long selections squeezed the whole topbar
                 const collapsed = collapseRoles(userRoles);
                 const shown = collapsed.slice(0, 3);
                 const extra = collapsed.length - shown.length;
                 return (
                   <>
-                    {shown.map(role => (
-                      <span key={role} style={{ background: "var(--bg-elevated)", border: "1px solid var(--line)", color: "var(--tx-2)", fontSize: 11.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6, whiteSpace: "nowrap" }}>
-                        {role}
-                      </span>
-                    ))}
+                    {shown.map(role => {
+                      const isActive = activeFamily === role;
+                      const canFilter = !!setActiveFamily;
+                      return (
+                        <button key={role} type="button"
+                          onClick={() => canFilter && setActiveFamily(isActive ? "" : role)}
+                          style={{
+                            fontSize: 11.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6, whiteSpace: "nowrap",
+                            cursor: canFilter ? "pointer" : "default", fontFamily: "inherit",
+                            border: isActive ? "1.5px solid var(--violet)" : "1px solid var(--line)",
+                            background: isActive ? "rgba(124,58,237,0.12)" : "var(--bg-elevated)",
+                            color: isActive ? "var(--violet)" : "var(--tx-2)",
+                            transition: "all 0.15s",
+                          }}>
+                          {role}
+                        </button>
+                      );
+                    })}
                     {extra > 0 && (
                       <span title={collapsed.slice(3).join(", ")}
                         style={{ background: "rgba(124,58,237,0.1)", color: "var(--violet)", fontSize: 11.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6, whiteSpace: "nowrap" }}>

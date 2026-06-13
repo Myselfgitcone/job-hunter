@@ -369,8 +369,9 @@ export default function App() {
           (t === "Remote" && isRemote) || (t === "Onsite" && !isRemote) || (t === "Hybrid" && (j.location || "").toLowerCase().includes("hybrid")));
         if (!ok) return false;
       }
-      // country
-      if (filters.country.length && !filters.country.includes(j.country || "")) return false;
+      // country — non-admins always see USA only
+      const effectiveCountry = _isAdmin ? filters.country : ["USA"];
+      if (effectiveCountry.length && !effectiveCountry.includes(j.country || "")) return false;
       // source
       if (filters.source.length && !filters.source.includes(j.source)) return false;
       // score
@@ -544,10 +545,12 @@ export default function App() {
     }} />;
   }
 
-  // Approval gate — pending users see a waiting screen until the admin approves
-  if (currentUser && !isAdmin && ((currentUser as any).status || "approved") === "pending") {
+  // Approval/revoke gate — pending and revoked users see a waiting/locked screen
+  const _gateStatus = (currentUser as any)?.status || "approved";
+  if (currentUser && !isAdmin && (_gateStatus === "pending" || _gateStatus === "revoked")) {
     return <PendingApproval
       email={currentUser.email}
+      isRevoked={_gateStatus === "revoked"}
       onApproved={() => {
         const updated = { ...currentUser, status: "approved" } as any;
         localStorage.setItem("jh_user", JSON.stringify(updated));
@@ -678,9 +681,9 @@ export default function App() {
               setActiveFamily={isAdmin ? undefined : setActiveFamily}
               sidebarCollapsed={sidebarCollapsed}
               setSidebarCollapsed={setSidebarCollapsed}
-              countries={COUNTRIES}
-              countryFilter={filters.country}
-              setCountryFilter={(v: string[]) => setFilters(f => ({ ...f, country: v }))}
+              countries={isAdmin ? COUNTRIES : undefined}
+              countryFilter={isAdmin ? filters.country : undefined}
+              setCountryFilter={isAdmin ? (v: string[]) => setFilters(f => ({ ...f, country: v })) : undefined}
               preferencesNode={
                 <JobPreferencesModal
                   open={preferencesOpen}

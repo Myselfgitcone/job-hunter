@@ -34,8 +34,13 @@ function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => v
   };
 
   const revoke = async (u: any) => {
-    if (!window.confirm(`Revoke access for ${u.email}? They'll be locked out until re-approved.`)) return;
-    try { await api.adminUpdateUser(u.id, { status: "pending" }); onToast("Access revoked", "success"); load(); onChanged(); }
+    if (!window.confirm(`Revoke access for ${u.email}? They'll see a "locked" screen until re-approved.`)) return;
+    try { await api.adminUpdateUser(u.id, { status: "revoked" }); onToast("Access revoked", "success"); load(); onChanged(); }
+    catch (e: any) { onToast(e.message, "error"); }
+  };
+
+  const reapprove = async (u: any) => {
+    try { await api.adminUpdateUser(u.id, { status: "approved" }); onToast(`${u.email} re-approved`, "success"); load(); onChanged(); }
     catch (e: any) { onToast(e.message, "error"); }
   };
 
@@ -45,7 +50,10 @@ function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => v
     catch (e: any) { onToast(e.message, "error"); }
   };
 
-  const sorted = [...users].sort((a, b) => (a.status === "pending" ? -1 : 1) - (b.status === "pending" ? -1 : 1));
+  const sorted = [...users].sort((a, b) => {
+    const rank = (s: string) => s === "pending" ? 0 : s === "revoked" ? 1 : 2;
+    return rank(a.status) - rank(b.status);
+  });
   const filtered = sorted.filter(u => (u.name + " " + u.email).toLowerCase().includes(q.toLowerCase()));
   const pages = Math.max(1, Math.ceil(filtered.length / PER));
   const cur = Math.min(page, pages);
@@ -70,7 +78,7 @@ function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => v
         paddingRight: 4, scrollbarWidth: "thin", scrollbarColor: "var(--line-hi) transparent" }}>
         {shown.map(u => (
           <div key={u.id} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "12px 14px",
-            background: u.status === "pending" ? "rgba(220,38,38,0.04)" : "var(--bg-elevated)" }}>
+            background: u.status === "pending" ? "rgba(220,38,38,0.04)" : u.status === "revoked" ? "rgba(100,116,139,0.06)" : "var(--bg-elevated)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--tx)" }}>
@@ -125,14 +133,16 @@ function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => v
                 ) : null}
               </div>
               <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999,
-                background: u.status === "approved" ? "rgba(22,163,74,0.12)" : "rgba(220,38,38,0.1)",
-                color: u.status === "approved" ? "#16a34a" : "#dc2626" }}>
-                {u.status === "approved" ? "Approved" : "Pending"}
+                background: u.status === "approved" ? "rgba(22,163,74,0.12)" : u.status === "revoked" ? "rgba(100,116,139,0.15)" : "rgba(220,38,38,0.1)",
+                color: u.status === "approved" ? "#16a34a" : u.status === "revoked" ? "#64748b" : "#dc2626" }}>
+                {u.status === "approved" ? "Approved" : u.status === "revoked" ? "Revoked" : "Pending"}
               </span>
               {!u.is_admin && (
                 <div style={{ display: "flex", gap: 6 }}>
                   {u.status === "pending"
                     ? <button className="act primary" style={{ height: 28, fontSize: 12 }} onClick={() => openPicker(u)}>Approve</button>
+                    : u.status === "revoked"
+                    ? <button className="act primary" style={{ height: 28, fontSize: 12 }} onClick={() => reapprove(u)}>Re-approve</button>
                     : <>
                         <button className="act" style={{ height: 28, fontSize: 12 }} onClick={() => openPicker(u)}>Edit Roles</button>
                         <button className="act fail" style={{ height: 28, fontSize: 12, color: "var(--tx-error, #dc2626)" }} onClick={() => revoke(u)}>Revoke</button>

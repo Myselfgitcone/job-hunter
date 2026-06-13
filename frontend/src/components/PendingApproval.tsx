@@ -2,26 +2,28 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { ROLE_GROUPS } from "./JobPreferencesModal";
 
-export default function PendingApproval({ email, onApproved, onLogout }: {
+export default function PendingApproval({ email, isRevoked, onApproved, onLogout }: {
   email: string;
+  isRevoked?: boolean;
   onApproved: () => void;
   onLogout: () => void;
 }) {
-  const [step, setStep] = useState<"loading" | "pick-role" | "waiting">("loading");
+  const [step, setStep] = useState<"loading" | "pick-role" | "waiting" | "revoked">("loading");
   const [selected, setSelected] = useState<string>(""); // family group name
   const [saving, setSaving] = useState(false);
 
   // Check if roles already set (email signup) or empty (OAuth)
   useEffect(() => {
+    if (isRevoked) { setStep("revoked"); return; }
     api.getSettings().then((s: any) => {
       const roles: string[] = s.job_roles || [];
       setStep(roles.length > 0 ? "waiting" : "pick-role");
     }).catch(() => setStep("pick-role"));
-  }, []);
+  }, [isRevoked]);
 
-  // Poll for approval every 30s once on waiting screen
+  // Poll every 30s for approval (waiting or revoked — admin can re-approve either)
   useEffect(() => {
-    if (step !== "waiting") return;
+    if (step !== "waiting" && step !== "revoked") return;
     const t = setInterval(async () => {
       try {
         const me = await api.auth.me() as any;
@@ -125,6 +127,34 @@ export default function PendingApproval({ email, onApproved, onLogout }: {
               Sign out
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === "revoked") {
+    return (
+      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-base)" }}>
+        <div style={{ textAlign: "center", maxWidth: 420, padding: 32 }}>
+          <div style={{ width: 72, height: 72, margin: "0 auto 20px", borderRadius: 20, display: "grid", placeItems: "center",
+            background: "rgba(220,38,38,0.1)", border: "1px solid rgba(220,38,38,0.3)" }}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+          </div>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#dc2626", marginBottom: 10 }}>Access Revoked</h1>
+          <p style={{ fontSize: 14, color: "var(--tx-2)", lineHeight: 1.6, marginBottom: 6 }}>
+            Your account <b>{email}</b> has been locked by the admin.
+          </p>
+          <p style={{ fontSize: 12.5, color: "var(--tx-3)", marginBottom: 24 }}>
+            Contact the admin to get your access restored. This page checks automatically — you'll be let in once re-approved.
+          </p>
+          <button onClick={onLogout}
+            style={{ height: 38, padding: "0 22px", borderRadius: 10, border: "1px solid rgba(220,38,38,0.4)", background: "rgba(220,38,38,0.06)",
+              color: "#dc2626", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
+            Sign out
+          </button>
         </div>
       </div>
     );

@@ -403,12 +403,16 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
   const newJobs = st["new"]       || 0;
   const tailored = (data.tailored_jobs || []).length;
 
+  const today = new Date().toISOString().slice(0, 10);
+  const todayEntry = (data.timeline || []).find((d: any) => d.date === today);
+  const scrapedToday = todayEntry?.scraped || 0;
+
   const stats = [
-    { label: "Total Scraped", value: total,     delta: "+scraping", grad: ["#475569","#64748b"] as [string,string] },
-    { label: "New Jobs",      value: newJobs,   delta: "pending",   grad: ["#6366f1","#818cf8"] as [string,string] },
-    { label: "Applied",       value: applied,   delta: "+this week", grad: ["#3b82f6","#60a5fa"] as [string,string] },
-    { label: "Interviews",    value: interview, delta: "upcoming",   grad: ["#10b981","#34d399"] as [string,string] },
-    { label: "AI Tailored",   value: tailored,  delta: "+this week", grad: ["#7c3aed","#a78bfa"] as [string,string] },
+    { label: "Total Scraped", value: total,        delta: "+scraping",  grad: ["#475569","#64748b"] as [string,string] },
+    { label: "Scraped Today", value: scrapedToday, delta: "new today",  grad: ["#6366f1","#818cf8"] as [string,string] },
+    { label: "Applied",       value: applied,      delta: "+this week", grad: ["#3b82f6","#60a5fa"] as [string,string] },
+    { label: "Interviews",    value: interview,    delta: "upcoming",   grad: ["#10b981","#34d399"] as [string,string] },
+    { label: "AI Tailored",   value: tailored,     delta: "+this week", grad: ["#7c3aed","#a78bfa"] as [string,string] },
   ];
 
   const statusData = [

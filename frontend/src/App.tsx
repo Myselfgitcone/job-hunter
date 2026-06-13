@@ -889,13 +889,12 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
                   <>
                     {shown.map(role => {
                       const isActive = activeFamily === role;
-                      const canFilter = !!setActiveFamily;
                       return (
                         <button key={role} type="button"
-                          onClick={() => canFilter && setActiveFamily(isActive ? "" : role)}
+                          onClick={() => setActiveFamily?.(isActive ? "" : role)}
                           style={{
                             fontSize: 11.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6, whiteSpace: "nowrap",
-                            cursor: canFilter ? "pointer" : "default", fontFamily: "inherit",
+                            cursor: setActiveFamily ? "pointer" : "default", fontFamily: "inherit",
                             border: isActive ? "1.5px solid var(--violet)" : "1px solid var(--line)",
                             background: isActive ? "rgba(124,58,237,0.12)" : "var(--bg-elevated)",
                             color: isActive ? "var(--violet)" : "var(--tx-2)",

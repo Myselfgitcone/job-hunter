@@ -952,6 +952,8 @@ async def google_callback(request: Request, code: str = None, error: str = None,
                 user = User(id=str(_uuid.uuid4()), email=email, name=name, password_hash="OAUTH_USER", created_at=datetime.utcnow().isoformat() + "Z",
                             status="approved" if email.lower() == ADMIN_EMAIL.lower() else "pending")
                 db.add(user)
+                # Roles stay empty until the admin assigns them on approval
+                db.add(UserSettings(user_id=user.id, resume="", job_roles="[]"))
                 await db.commit()
                 await db.refresh(user)
             
@@ -1016,6 +1018,8 @@ async def github_callback(request: Request, code: str = None, error: str = None,
                 user = User(id=str(_uuid.uuid4()), email=email, name=name, password_hash="OAUTH_USER", created_at=datetime.utcnow().isoformat() + "Z",
                             status="approved" if email.lower() == ADMIN_EMAIL.lower() else "pending")
                 db.add(user)
+                # Roles stay empty until the admin assigns them on approval
+                db.add(UserSettings(user_id=user.id, resume="", job_roles="[]"))
                 await db.commit()
                 await db.refresh(user)
             
@@ -1120,8 +1124,9 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
         result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
         s = result.scalar_one_or_none()
         if not s:
-            # Create defaults
-            s = UserSettings(user_id=user_id)
+            # Create defaults — roles EMPTY (admin assigns them); the legacy
+            # column default '["Data Engineer"]' must not leak in here
+            s = UserSettings(user_id=user_id, job_roles="[]")
             db.add(s)
             await db.commit()
             await db.refresh(s)  # prevent expired-object lazy load in async context

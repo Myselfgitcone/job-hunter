@@ -105,7 +105,7 @@ export default function Auth({ onSuccess }: Props) {
   const [error, setError]       = useState("");
   const [loading, setLoading]   = useState(false);
 
-  const [desiredFamilies, setDesiredFamilies] = useState<string[]>([]);
+  const [desiredFamily, setDesiredFamily] = useState<string>("");
 
   const [showForgot, setShowForgot]     = useState(false);
   const [forgotEmail, setForgotEmail]   = useState("");
@@ -140,10 +140,9 @@ export default function Auth({ onSuccess }: Props) {
     setLoading(true); setError("");
 
     try {
-      // Expand family names → full role item lists
-      const expandedRoles = ROLE_GROUPS
-        .filter(g => desiredFamilies.includes(g.group))
-        .flatMap(g => g.items);
+      // Expand selected family → full role item list
+      const group = ROLE_GROUPS.find(g => g.group === desiredFamily);
+      const expandedRoles = group ? group.items : [];
       const result = mode === "login"
         ? await api.auth.login(email, password)
         : await api.auth.register(email, password, name, expandedRoles);
@@ -498,12 +497,10 @@ export default function Auth({ onSuccess }: Props) {
                     <label style={S.label}>What roles are you looking for?</label>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
                       {ROLE_GROUPS.map(g => {
-                        const on = desiredFamilies.includes(g.group);
+                        const on = desiredFamily === g.group;
                         return (
                           <button key={g.group} type="button"
-                            onClick={() => setDesiredFamilies(on
-                              ? desiredFamilies.filter(f => f !== g.group)
-                              : [...desiredFamilies, g.group])}
+                            onClick={() => setDesiredFamily(on ? "" : g.group)}
                             style={{
                               fontSize: 13, fontWeight: 600, padding: "8px 16px", borderRadius: 999,
                               cursor: "pointer", fontFamily: "inherit",
@@ -518,7 +515,7 @@ export default function Auth({ onSuccess }: Props) {
                       })}
                     </div>
                     <div style={{ fontSize: 11.5, color: "#94a3b8", marginTop: 6 }}>
-                      Admin uses this to assign your job feed on approval.
+                      Select your primary role. Need more? Request from admin after approval.
                     </div>
                   </div>
                 </div>

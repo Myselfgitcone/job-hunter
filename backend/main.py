@@ -2373,7 +2373,8 @@ async def get_analytics(user_id: str = Depends(get_current_user_id)):
         timeline.append({
             "date": d,
             "label": d[5:],   # MM-DD
-            "scraped":  led["total"] if led else by_day.get(d, 0),
+            # Admin: use global ledger total; non-admin: use role+country-filtered by_day
+            "scraped": (led["total"] if led else by_day.get(d, 0)) if is_admin_analytics else by_day.get(d, 0),
             "scraped_usa":   (led or {}).get("USA"),
             "scraped_india": (led or {}).get("India"),
             "applied":  applied_by_day.get(d, 0),

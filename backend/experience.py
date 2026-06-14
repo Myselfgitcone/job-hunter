@@ -55,7 +55,7 @@ def extract_experience_level(description: str) -> str:
             lo = int(m.group(1))
         except (TypeError, ValueError):
             continue
-        if 0 <= lo <= 20:  # "30 years" etc. = company age, not a requirement
+        if 0 <= lo <= 15:  # real JD requirements cap at 15; 16-20 = company age noise
             candidates.append(lo)
 
     if not candidates:

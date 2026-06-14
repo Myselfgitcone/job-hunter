@@ -18,7 +18,7 @@ _TAG_RE = re.compile(r"<[^>]+>")
 _YEARS_RE = re.compile(
     r"(?:at least|minimum(?: of)?|min\.?)?\s*"
     r"(\d{1,2})(?!\d)\s*(?:\+|plus)?\s*(?:-|–|to)?\s*(\d{1,2})?\s*"
-    r"(?:\+)?\s*(?:years?|yrs?)\b",
+    r"(?:\+)?\s*(?:years?|yrs?)\b(?!\s*(?:degree|college|program|university|bachelor|master|phd))",
     re.I,
 )
 

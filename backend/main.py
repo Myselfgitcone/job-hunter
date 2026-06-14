@@ -351,7 +351,11 @@ async def _run_scrape_internal() -> dict:
     # entire DB on every hourly scrape, which was burning AI credits.
     new_job_ids = [j.get("id") for j in all_new_jobs if j.get("id")] if all_new_jobs else []
     asyncio.create_task(_run_qualify_all(new_job_ids=new_job_ids))
-    asyncio.create_task(_run_exp_ai_sweep())
+    if all_new_jobs:
+        # Fetch full JDs from ATS for new jobs, then AI-sweep whatever still has no tray
+        asyncio.create_task(_auto_fetch_jds_for_new(all_new_jobs))
+    else:
+        asyncio.create_task(_run_exp_ai_sweep())
 
     return {"new_jobs": total_new, "deleted_old": deleted, "scraped_at": now_iso}
 
@@ -402,6 +406,49 @@ async def _sync_modified_wrapper():
 
 
 # ── AI experience inference sweep ─────────────────────────────────────────────
+# ATS hosts that block scraping — skip silently
+_BLOCKED_ATS = ("successfactors.com", "sap.com", "icims.com", "taleo.net", "myworkday.com")
+
+
+async def _auto_fetch_jds_for_new(new_jobs: list[dict]):
+    """Fetch full JD HTML from ATS for newly scraped jobs.
+    Updates description + re-derives experience tray from real JD text.
+    Chains into AI sweep when done so any remaining empties get inferred."""
+    sem = asyncio.Semaphore(3)
+
+    async def fetch_one(job_id: str, url: str):
+        if not url or any(h in url for h in _BLOCKED_ATS):
+            return
+        async with sem:
+            await asyncio.sleep(0.3)
+            res = await fetch_full_jd(url)
+            if not res:
+                return
+            full_desc = res.get("description", "")
+            if not full_desc or len(full_desc.strip()) < 200:
+                return
+            async with SessionLocal() as db:
+                job = await db.get(Job, job_id)
+                if not job:
+                    return
+                job.description = full_desc
+                new_level = resolve_experience_level(job.experience_level or "", full_desc)
+                if new_level and new_level != (job.experience_level or ""):
+                    job.experience_level = new_level
+                    job.experience_level_inferred = False
+                await db.commit()
+
+    targets = [(j.get("id"), j.get("url")) for j in new_jobs if j.get("id") and j.get("url")]
+    if not targets:
+        await _run_exp_ai_sweep()
+        return
+
+    print(f"[AutoFetch] Fetching full JDs for {len(targets)} new jobs...")
+    await asyncio.gather(*[fetch_one(jid, url) for jid, url in targets], return_exceptions=True)
+    print(f"[AutoFetch] Done — running AI sweep for remaining empty trays")
+    await _run_exp_ai_sweep()
+
+
 async def _run_regex_backfill() -> int:
     """Re-run experience regex on every job.
     - If regex finds explicit years → overwrite tray (clears bad old value).

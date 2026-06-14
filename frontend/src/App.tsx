@@ -579,9 +579,7 @@ export default function App() {
   const [unseenErrors, setUnseenErrors] = useState(0);
   useEffect(() => {
     if (!isAuthenticated || !isAdmin) return;
-    const load = () => fetch("/api/admin/logs/unseen-count", {
-      headers: { Authorization: `Bearer ${localStorage.getItem("jh_token")}` }
-    }).then(r => r.json()).then(d => setUnseenErrors(d.count || 0)).catch(() => {});
+    const load = () => api.adminLogsUnseenCount().then(d => setUnseenErrors(d.count || 0)).catch(() => {});
     load();
     const t = setInterval(load, 60000);
     return () => clearInterval(t);

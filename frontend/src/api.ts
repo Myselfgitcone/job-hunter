@@ -152,6 +152,11 @@ export const api = {
     req<{ ok: boolean }>(`/api/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   adminPendingCount: () => req<{ count: number }>("/api/admin/pending-count"),
   adminDeleteUser: (id: string) => req<{ ok: boolean }>(`/api/admin/users/${id}`, { method: "DELETE" }),
+  adminJobStats: () => req<any>("/api/admin/job-stats"),
+  adminLogs: (level?: string) => req<any[]>(`/api/admin/logs${level && level !== "ALL" ? `?level=${level}` : ""}`),
+  adminLogsUnseenCount: () => req<{ count: number }>("/api/admin/logs/unseen-count"),
+  adminLogsMarkSeen: () => req<{ ok: boolean }>("/api/admin/logs/mark-seen", { method: "POST" }),
+  adminBackfillTrays: () => req<{ message: string }>("/api/admin/backfill-trays", { method: "POST" }),
   requestRole: (roles: string[]) =>
     req<{ ok: boolean }>("/api/settings/request-role", { method: "POST", body: JSON.stringify({ roles }) }),
 

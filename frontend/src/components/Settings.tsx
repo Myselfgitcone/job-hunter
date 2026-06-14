@@ -283,12 +283,7 @@ function JobStatsPanel() {
     setLoading(true);
     setErr("");
     try {
-      const r = await fetch("/api/admin/job-stats", {
-        headers: { Authorization: `Bearer ${localStorage.getItem("jh_token")}` },
-      });
-      const data = await r.json();
-      if (!r.ok) { setErr(`${r.status}: ${data?.detail || JSON.stringify(data)}`); return; }
-      setStats(data);
+      setStats(await api.adminJobStats());
     } catch (e: any) {
       setErr(e?.message || "fetch failed");
     } finally { setLoading(false); }
@@ -372,18 +367,11 @@ function SystemLogsPanel({ onSeen }: { onSeen?: () => void }) {
   const load = async (lv = filter) => {
     setLoading(true);
     try {
-      const params = lv !== "ALL" ? `?level=${lv}` : "";
-      const r = await fetch(`/api/admin/logs${params}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("jh_token")}` }
-      });
-      setLogs(await r.json());
-      // Mark seen + notify parent to clear badge
-      await fetch("/api/admin/logs/mark-seen", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("jh_token")}` }
-      });
+      setLogs(await api.adminLogs(lv));
+      await api.adminLogsMarkSeen();
       onSeen?.();
-    } finally { setLoading(false); }
+    } catch { /* ignore — empty state on error */ }
+    finally { setLoading(false); }
   };
 
   useEffect(() => { load(); }, []);
@@ -391,10 +379,7 @@ function SystemLogsPanel({ onSeen }: { onSeen?: () => void }) {
   const startBackfill = async () => {
     setBackfilling(true);
     try {
-      await fetch("/api/admin/backfill-trays", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("jh_token")}` }
-      });
+      await api.adminBackfillTrays();
     } finally {
       setTimeout(() => setBackfilling(false), 3000);
       setTimeout(() => load(), 5000);

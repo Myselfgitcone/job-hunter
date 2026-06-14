@@ -14,11 +14,13 @@ import re
 _TAG_RE = re.compile(r"<[^>]+>")
 
 # "5+ years", "3-5 years", "3 to 5 years", "at least 4 years",
-# "minimum of 6 years", "5 yrs", "seven (7) years"
+# "minimum of 6 years", "5 yrs", "seven (7) years", "5-plus years",
+# "8 or more years"
 _YEARS_RE = re.compile(
     r"(?:at least|minimum(?: of)?|min\.?)?\s*"
-    r"(\d{1,2})(?!\d)\s*(?:\+|plus)?\s*(?:-|–|to)?\s*(\d{1,2})?\s*"
-    r"(?:\+)?\s*(?:years?|yrs?)\b(?!\s*(?:degree|college|program|university|bachelor|master|phd|old\b|ago\b))",
+    r"(\d{1,2})(?!\d)\)?\s*"
+    r"(?:\+|plus|or\s+more|(?:-|–|to)\s*(?:plus\s*)?(\d{1,2})?\s*(?:\+)?)?\s*"
+    r"(?:years?|yrs?)\b(?!\s*\)?\s*(?:degree|college|program|university|bachelor|master|phd|old\b|ago\b))",
     re.I,
 )
 
@@ -53,7 +55,7 @@ def extract_experience_level(description: str) -> str:
             lo = int(m.group(1))
         except (TypeError, ValueError):
             continue
-        if 0 < lo <= 20:  # "30 years" etc. = company age, not a requirement
+        if 0 <= lo <= 20:  # "30 years" etc. = company age, not a requirement
             candidates.append(lo)
 
     if not candidates:

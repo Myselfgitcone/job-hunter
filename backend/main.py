@@ -553,25 +553,23 @@ async def startup():
                     await db.commit()
         except Exception as e:
             print(f"[Startup] Profile migration skipped: {e}")
-        # Backfill experience trays: recompute any job not already in a fine
-        # tray (empty or old coarse FJ value), then AI-infer the leftovers
+        # Backfill experience trays: re-run regex on ALL jobs (catches wrong
+        # trays like 15+ from company age "160 years"), then AI-infer empties
         try:
             async with SessionLocal() as db:
                 rows = await db.execute(select(Job.id, Job.experience_level, Job.description))
-                pending = [(jid, cur, desc) for jid, cur, desc in rows.fetchall()
-                           if (cur or "") not in EXP_TRAYS]
+                all_jobs = rows.fetchall()
             filled = 0
-            if pending:
-                async with SessionLocal() as db:
-                    for jid, cur, desc in pending:
-                        level = resolve_experience_level(cur or "", desc or "")
-                        if level and level != (cur or ""):
-                            await db.execute(update(Job).where(Job.id == jid).values(experience_level=level))
-                            filled += 1
-                            if filled % 200 == 0:
-                                await db.commit()
-                    await db.commit()
-                print(f"[Startup] Experience backfill: {filled}/{len(pending)} jobs re-bucketed")
+            async with SessionLocal() as db:
+                for jid, cur, desc in all_jobs:
+                    level = resolve_experience_level(cur or "", desc or "")
+                    if level and level != (cur or ""):
+                        await db.execute(update(Job).where(Job.id == jid).values(experience_level=level))
+                        filled += 1
+                        if filled % 200 == 0:
+                            await db.commit()
+                await db.commit()
+            print(f"[Startup] Experience backfill: {filled}/{len(all_jobs)} jobs re-bucketed")
             asyncio.create_task(_run_exp_ai_sweep())
         except Exception as e:
             print(f"[Startup] Experience backfill skipped: {e}")
@@ -2054,7 +2052,15 @@ async def fetch_jd(job_id: str, user_id: str = Depends(get_current_user_id)):
 
     res = await fetch_full_jd(url)
     if res is None:
-        # Site blocked the fetch / JS-rendered / network error
+        # Site blocked / JS-rendered — re-compute tray on existing description at least
+        if existing:
+            async with SessionLocal() as db:
+                job = await db.get(Job, job_id)
+                new_level = resolve_experience_level(job.experience_level or "", existing)
+                if new_level and new_level != (job.experience_level or ""):
+                    job.experience_level = new_level
+                    job.experience_level_inferred = False
+                    await db.commit()
         raise HTTPException(502, "Could not fetch the job page (blocked or JS-rendered). Paste the JD manually.")
     full_desc = res.get("description", "")
     extracted_date = res.get("date", "")

@@ -277,14 +277,20 @@ const CRON_PRESETS: Record<string, string> = {
 function JobStatsPanel() {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string>("");
 
   const load = async () => {
     setLoading(true);
+    setErr("");
     try {
       const r = await fetch("/api/admin/job-stats", {
         headers: { Authorization: `Bearer ${localStorage.getItem("jh_token")}` },
       });
-      setStats(await r.json());
+      const data = await r.json();
+      if (!r.ok) { setErr(`${r.status}: ${data?.detail || JSON.stringify(data)}`); return; }
+      setStats(data);
+    } catch (e: any) {
+      setErr(e?.message || "fetch failed");
     } finally { setLoading(false); }
   };
 
@@ -335,6 +341,12 @@ function JobStatsPanel() {
         {tile("No Tray Yet", exp.missing, exp.missing > 0 ? "#d97706" : "#16a34a", "pending backfill")}
         {tile("Tray Coverage", `${coveragePct}%`, coveragePct === 100 ? "#16a34a" : coveragePct > 50 ? "var(--violet)" : "#d97706")}
       </div>
+
+      {err && (
+        <div style={{ fontSize: 11, color: "#dc2626", marginTop: 6, fontFamily: "monospace", wordBreak: "break-all" }}>
+          Error: {err}
+        </div>
+      )}
 
       <div style={{ fontSize: 11, color: "var(--tx-3)", marginTop: 4 }}>
         Last scraped: <span style={{ color: "var(--tx-2)" }}>{fmtTime(stats?.last_scraped_at)}</span>

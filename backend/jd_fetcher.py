@@ -1,3 +1,4 @@
+import html as _html_mod
 import httpx
 from bs4 import BeautifulSoup
 import re
@@ -63,13 +64,50 @@ def _pick_jd_node(soup):
     return soup.body or soup
 
 
+_GH_URL_RE = re.compile(
+    r"boards\.greenhouse\.io/([^/]+)/jobs/(\d+)", re.I)
+
+
+async def _fetch_greenhouse_api(company: str, job_id: str) -> dict | None:
+    """Use Greenhouse public JSON API — no JS rendering needed."""
+    api_url = f"https://boards-api.greenhouse.io/v1/boards/{company}/jobs/{job_id}"
+    try:
+        async with httpx.AsyncClient(follow_redirects=True) as c:
+            r = await c.get(api_url, timeout=15.0,
+                            headers={"User-Agent": "Mozilla/5.0"})
+            if r.status_code != 200:
+                return None
+            data = r.json()
+        content = data.get("content", "")
+        if not content or len(content) < 200:
+            return None
+        # Greenhouse returns HTML-entity-encoded HTML inside JSON — decode it
+        html = _html_mod.unescape(content)
+        plain = re.sub(r"<[^>]+>", " ", html)
+        if len(plain.strip()) < 200:
+            return None
+        return {"description": html[:25000]}
+    except Exception as e:
+        print(f"[jd_fetcher] Greenhouse API error ({company}/{job_id}): {e}")
+        return None
+
+
 async def fetch_full_jd(url: str) -> dict | None:
     """
     Fetch the job page and return the JD as clean HTML (preserves headings,
     bullets, paragraphs — frontend renders it with .jd-html styles).
-    Falls back to plain text if the page has no usable structure.
+    Greenhouse: uses public JSON API (no JS rendering needed).
+    Others: HTML scrape with BeautifulSoup.
     Returns: {"description": str} or None.
     """
+    # Greenhouse — use JSON API directly, much more reliable than HTML scrape
+    m = _GH_URL_RE.search(url or "")
+    if m:
+        result = await _fetch_greenhouse_api(m.group(1), m.group(2))
+        if result:
+            return result
+        # If API 404s, fall through to HTML scrape as last resort
+
     try:
         async with httpx.AsyncClient(follow_redirects=True) as client:
             resp = await client.get(url, timeout=15.0, headers={"User-Agent": "Mozilla/5.0"})

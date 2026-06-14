@@ -2069,19 +2069,24 @@ async def fetch_jd(job_id: str, user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
         job = await db.get(Job, job_id)
         job.description = full_desc
+        # Re-derive experience tray from fresh JD — overrides wrong FJ value
+        new_level = resolve_experience_level(job.experience_level or "", full_desc)
+        if new_level and new_level != (job.experience_level or ""):
+            job.experience_level = new_level
+            job.experience_level_inferred = False
         if extracted_date:
             try:
                 from datetime import timezone as _tz
                 pub_dt = datetime.fromisoformat(extracted_date.replace("Z", "+00:00"))
                 now_utc = datetime.now(_tz.utc)
                 age_days = (now_utc - pub_dt).days
-                if 0 <= age_days <= 180:  # relax to 180 since it's user-triggered manual refresh
+                if 0 <= age_days <= 180:
                     job.posted_at = pub_dt.isoformat()
             except Exception:
                 pass
         await db.commit()
 
-    return {"description": full_desc, "date": job.posted_at}
+    return {"description": full_desc, "date": job.posted_at, "experience_level": job.experience_level}
 
 
 # ————————————————————————————————————————————————————————————————————————————————

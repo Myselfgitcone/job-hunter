@@ -335,7 +335,7 @@ function DescriptionTab({ job, onUpdate, onToast }: { job: Job; onUpdate: (p: Pa
       <button className="btn btn-ghost" onClick={() => setPasteMode(true)} style={{ height: 28, fontSize: 11 }}>
         <Ic d={I.clip} size={12} /> Paste JD
       </button>
-      <button className="btn btn-ghost" onClick={() => { navigator.clipboard.writeText(desc); onToast("JD copied!", "success"); }} style={{ height: 28, fontSize: 11 }}>
+      <button className="btn btn-ghost" onClick={() => { const plain = desc.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(); navigator.clipboard.writeText(plain); onToast("JD copied!", "success"); }} style={{ height: 28, fontSize: 11 }}>
         <Ic d={I.copy} size={12} /> Copy JD
       </button>
     </div>

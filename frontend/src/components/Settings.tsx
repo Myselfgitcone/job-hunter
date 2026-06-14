@@ -273,6 +273,77 @@ const CRON_PRESETS: Record<string, string> = {
   "0 9 * * 1":   "Every Monday at 9:00 AM",
 };
 
+// ── Job Stats panel (admin-only) ─────────────────────────────────────────────
+function JobStatsPanel() {
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch("/api/admin/job-stats", {
+        headers: { Authorization: `Bearer ${localStorage.getItem("jh_token")}` },
+      });
+      setStats(await r.json());
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 15000);
+    return () => clearInterval(t);
+  }, []);
+
+  const fmtTime = (iso: string) => {
+    if (!iso) return "—";
+    try { return new Date(iso).toLocaleString(); } catch { return iso; }
+  };
+
+  const exp = stats?.experience || {};
+  const expTotal = (exp.confirmed || 0) + (exp.inferred || 0) + (exp.missing || 0);
+  const coveragePct = expTotal > 0 ? Math.round(((exp.confirmed || 0) + (exp.inferred || 0)) / expTotal * 100) : 0;
+
+  const tile = (label: string, value: any, color?: string, sub?: string) => (
+    <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--line)", borderRadius: 10, padding: "12px 16px", minWidth: 110 }}>
+      <div style={{ fontSize: 22, fontWeight: 700, color: color || "var(--tx)", lineHeight: 1 }}>{value ?? "—"}</div>
+      <div style={{ fontSize: 11, color: "var(--tx-3)", marginTop: 4, fontWeight: 600 }}>{label}</div>
+      {sub && <div style={{ fontSize: 10, color: "var(--tx-faint)", marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+
+  return (
+    <section style={{ marginTop: 32 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "var(--tx)" }}>Job Stats</h3>
+        {loading && <span style={{ fontSize: 11, color: "var(--tx-3)" }}>refreshing…</span>}
+        <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--tx-faint)" }}>auto-refresh 15s</span>
+      </div>
+
+      {/* Row 1: job status */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+        {tile("Total Jobs", stats?.total)}
+        {tile("New", stats?.status?.new, "var(--st-new)")}
+        {tile("Applied", stats?.status?.applied, "var(--st-applied)")}
+        {tile("Interview", stats?.status?.interview, "var(--st-interview)")}
+        {tile("Skipped", stats?.status?.skipped, "var(--tx-3)")}
+      </div>
+
+      {/* Row 2: experience tray coverage */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+        {tile("Confirmed Tray", exp.confirmed, "#16a34a", "from FJ API")}
+        {tile("AI-Inferred Tray", exp.inferred, "var(--violet)", "DeepSeek R1")}
+        {tile("No Tray Yet", exp.missing, exp.missing > 0 ? "#d97706" : "#16a34a", "pending backfill")}
+        {tile("Tray Coverage", `${coveragePct}%`, coveragePct === 100 ? "#16a34a" : coveragePct > 50 ? "var(--violet)" : "#d97706")}
+      </div>
+
+      <div style={{ fontSize: 11, color: "var(--tx-3)", marginTop: 4 }}>
+        Last scraped: <span style={{ color: "var(--tx-2)" }}>{fmtTime(stats?.last_scraped_at)}</span>
+      </div>
+    </section>
+  );
+}
+
+
 // ── System Logs panel (admin-only) ────────────────────────────────────────────
 const LEVEL_COLOR: Record<string, string> = {
   ERROR:   "#dc2626",
@@ -640,6 +711,8 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
             </div>
           )}
         </section>
+
+        <JobStatsPanel />
 
         <SystemLogsPanel onSeen={onErrorsSeen} />
 

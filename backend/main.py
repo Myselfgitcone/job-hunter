@@ -1895,6 +1895,38 @@ async def admin_backfill_trays(user_id: str = Depends(get_current_user_id)):
     return {"message": "Backfill started — processing up to 2000 jobs in background"}
 
 
+@app.get("/api/admin/job-stats")
+async def admin_job_stats(user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        total = (await db.execute(select(func.count()).select_from(Job))).scalar() or 0
+        status_counts = {}
+        for st in ("new", "applied", "skipped", "interview"):
+            r = await db.execute(select(func.count()).select_from(Job).where(Job.status == st))
+            status_counts[st] = r.scalar() or 0
+        exp_confirmed = (await db.execute(
+            select(func.count()).select_from(Job).where(
+                Job.experience_level != None, Job.experience_level != "",
+                Job.experience_level_inferred == False
+            )
+        )).scalar() or 0
+        exp_inferred = (await db.execute(
+            select(func.count()).select_from(Job).where(Job.experience_level_inferred == True)
+        )).scalar() or 0
+        exp_missing = (await db.execute(
+            select(func.count()).select_from(Job).where(
+                or_(Job.experience_level == None, Job.experience_level == "")
+            )
+        )).scalar() or 0
+        last_scraped = (await db.execute(select(func.max(Job.scraped_at)))).scalar()
+    return {
+        "total": total,
+        "status": status_counts,
+        "experience": {"confirmed": exp_confirmed, "inferred": exp_inferred, "missing": exp_missing},
+        "last_scraped_at": last_scraped,
+    }
+
+
 @app.get("/api/qualify/health")
 async def qualify_health(user_id: str = Depends(get_current_user_id)):
     """Admin diagnostic: why is auto-qualify (not) running?"""

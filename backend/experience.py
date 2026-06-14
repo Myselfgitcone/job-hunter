@@ -84,7 +84,7 @@ async def infer_experience_ai(title: str, description: str,
     """Ask the AI to estimate minimum required years from title + JD.
     Returns a tray or "" on failure."""
     from ai.llm import chat
-    text = _TAG_RE.sub(" ", description or "")[:1500]
+    text = _TAG_RE.sub(" ", description or "")[:6000]
     try:
         raw = await chat(
             system=("You estimate the minimum years of professional experience "

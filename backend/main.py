@@ -1074,6 +1074,43 @@ async def google_callback(request: Request, code: str = None, error: str = None,
             user_json = urllib.parse.quote(json.dumps({"id": user.id, "email": user.email, "name": user.name, "status": user.status or "approved"}))
             return RedirectResponse(f"{frontend}?token={token}&user={user_json}#jobs")
 
+class GoogleTokenBody(BaseModel):
+    access_token: str
+
+@app.post("/api/auth/google/token")
+async def google_token_login(body: GoogleTokenBody):
+    """Exchange a Google OAuth access_token (from Chrome extension) for a Job Hunter JWT."""
+    async with httpx.AsyncClient() as client:
+        user_res = await client.get(
+            "https://www.googleapis.com/oauth2/v2/userinfo",
+            headers={"Authorization": f"Bearer {body.access_token}"}
+        )
+    if user_res.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid Google access token")
+    user_data = user_res.json()
+    email = user_data.get("email")
+    name = user_data.get("name", "")
+    if not email:
+        raise HTTPException(status_code=400, detail="Google account has no email")
+
+    async with SessionLocal() as db:
+        result = await db.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+        if not user:
+            user = User(
+                id=str(_uuid.uuid4()), email=email, name=name,
+                password_hash="OAUTH_USER",
+                created_at=datetime.utcnow().isoformat() + "Z",
+                status="approved" if email.lower() == ADMIN_EMAIL.lower() else "pending",
+            )
+            db.add(user)
+            db.add(UserSettings(user_id=user.id, resume="", job_roles="[]"))
+            await db.commit()
+            await db.refresh(user)
+
+        token = create_token(user.id)
+        return {"token": token, "user": {"id": user.id, "email": user.email, "name": user.name, "status": user.status or "approved"}}
+
 @app.get("/api/auth/github/login")
 def github_login(request: Request):
     frontend = request.headers.get("origin") or FRONTEND_URL

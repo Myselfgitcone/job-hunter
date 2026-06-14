@@ -402,6 +402,33 @@ async def _sync_modified_wrapper():
 
 
 # ── AI experience inference sweep ─────────────────────────────────────────────
+async def _run_regex_backfill() -> int:
+    """Re-run experience regex on every job.
+    - If regex finds explicit years → overwrite tray (clears bad old value).
+    - If regex finds nothing AND job is stuck at '15+' → reset to '' so AI
+      sweep can re-infer (fixes false positives from company-age phrases).
+    Returns number of rows changed."""
+    async with SessionLocal() as db:
+        rows = await db.execute(select(Job.id, Job.experience_level, Job.description))
+        all_jobs = rows.fetchall()
+    changed = 0
+    async with SessionLocal() as db:
+        for jid, cur, desc in all_jobs:
+            rx = extract_experience_level(desc or "")
+            if rx and rx != (cur or ""):
+                await db.execute(update(Job).where(Job.id == jid).values(
+                    experience_level=rx, experience_level_inferred=False))
+                changed += 1
+            elif not rx and (cur or "") == "15+":
+                await db.execute(update(Job).where(Job.id == jid).values(
+                    experience_level="", experience_level_inferred=False))
+                changed += 1
+            if changed % 200 == 0 and changed:
+                await db.commit()
+        await db.commit()
+    return changed
+
+
 # For jobs whose JD states no years requirement: ask the cheap parse model to
 # estimate from title + JD. Runs after scrapes and once at startup.
 _exp_sweep_running = False
@@ -553,23 +580,10 @@ async def startup():
                     await db.commit()
         except Exception as e:
             print(f"[Startup] Profile migration skipped: {e}")
-        # Backfill experience trays: re-run regex on ALL jobs (catches wrong
-        # trays like 15+ from company age "160 years"), then AI-infer empties
+        # Backfill experience trays: re-run regex on ALL jobs, then AI-infer empties
         try:
-            async with SessionLocal() as db:
-                rows = await db.execute(select(Job.id, Job.experience_level, Job.description))
-                all_jobs = rows.fetchall()
-            filled = 0
-            async with SessionLocal() as db:
-                for jid, cur, desc in all_jobs:
-                    level = resolve_experience_level(cur or "", desc or "")
-                    if level and level != (cur or ""):
-                        await db.execute(update(Job).where(Job.id == jid).values(experience_level=level))
-                        filled += 1
-                        if filled % 200 == 0:
-                            await db.commit()
-                await db.commit()
-            print(f"[Startup] Experience backfill: {filled}/{len(all_jobs)} jobs re-bucketed")
+            n = await _run_regex_backfill()
+            print(f"[Startup] Experience backfill: {n} jobs updated")
             asyncio.create_task(_run_exp_ai_sweep())
         except Exception as e:
             print(f"[Startup] Experience backfill skipped: {e}")
@@ -1888,9 +1902,15 @@ async def admin_mark_logs_seen(user_id: str = Depends(get_current_user_id)):
 @app.post("/api/admin/backfill-trays")
 async def admin_backfill_trays(user_id: str = Depends(get_current_user_id)):
     await _verify_admin(user_id)
-    asyncio.create_task(_run_exp_ai_sweep(limit=2000))
+    asyncio.create_task(_run_regex_backfill_then_ai())
     await log_event("INFO", "exp-tray", "Backfill triggered manually by admin")
-    return {"message": "Backfill started — processing up to 2000 jobs in background"}
+    return {"message": "Backfill started — regex pass then AI sweep in background"}
+
+
+async def _run_regex_backfill_then_ai():
+    n = await _run_regex_backfill()
+    await log_event("INFO", "exp-tray", f"Regex backfill complete: {n} jobs updated")
+    await _run_exp_ai_sweep(limit=2000)
 
 
 @app.get("/api/admin/job-stats")

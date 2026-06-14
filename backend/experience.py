@@ -17,7 +17,7 @@ _TAG_RE = re.compile(r"<[^>]+>")
 # "minimum of 6 years", "5 yrs", "seven (7) years"
 _YEARS_RE = re.compile(
     r"(?:at least|minimum(?: of)?|min\.?)?\s*"
-    r"(\d{1,2})\s*(?:\+|plus)?\s*(?:-|–|to)?\s*(\d{1,2})?\s*"
+    r"(\d{1,2})(?!\d)\s*(?:\+|plus)?\s*(?:-|–|to)?\s*(\d{1,2})?\s*"
     r"(?:\+)?\s*(?:years?|yrs?)\b",
     re.I,
 )

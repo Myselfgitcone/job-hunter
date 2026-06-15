@@ -13,11 +13,13 @@ import re
 
 _TAG_RE = re.compile(r"<[^>]+>")
 
-# OR-chain alternatives: "OR N years" where N >= 6 → skip (no-degree path)
+# OR-chain alternatives: "OR N years" within 60 chars — no-degree path
 _OR_PREFIX_RE = re.compile(r"\bor\b", re.I)
 # Degree-alternative "N years work experience" when degree/equivalent precedes it
 _DEGREE_PREFIX_RE = re.compile(r"\b(?:degree|equivalent)\b", re.I)
 _WORK_EXP_SUFFIX_RE = re.compile(r"^\s*work\s+experience\b", re.I)
+# Company-history noise: "voted employer for over 15 years"
+_FOR_OVER_RE = re.compile(r"\bfor\s+over\s*$", re.I)
 
 # "5+ years", "3-5 years", "3 to 5 years", "at least 4 years",
 # "minimum of 6 years", "5 yrs", "seven (7) years", "5-plus years",
@@ -63,13 +65,18 @@ def extract_experience_level(description: str) -> str:
             continue
         if not (0 <= lo <= 15):
             continue
-        prefix = text[max(0, m.start() - 80):m.start()]
+        prefix60 = text[max(0, m.start() - 60):m.start()]
+        prefix80 = text[max(0, m.start() - 80):m.start()]
+        prefix25 = text[max(0, m.start() - 25):m.start()]
         suffix = text[m.end():m.end() + 25]
-        # Skip no-degree OR-chain alternatives: "OR 11 years", "OR 7 years", etc.
-        if lo >= 6 and _OR_PREFIX_RE.search(prefix):
+        # Company-history: "employer for over 15 years"
+        if lo >= 10 and _FOR_OVER_RE.search(prefix25):
             continue
-        # Skip "N years work experience" when a degree/equivalent phrase precedes it
-        if _WORK_EXP_SUFFIX_RE.match(suffix) and _DEGREE_PREFIX_RE.search(prefix):
+        # No-degree OR-chain alternatives: "OR 7 years", "OR 11 years standalone"
+        if lo >= 4 and _OR_PREFIX_RE.search(prefix60):
+            continue
+        # "N years work experience" when degree/equivalent precedes it
+        if _WORK_EXP_SUFFIX_RE.match(suffix) and _DEGREE_PREFIX_RE.search(prefix80):
             continue
         candidates.append(lo)
 

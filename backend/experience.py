@@ -20,6 +20,14 @@ _DEGREE_PREFIX_RE = re.compile(r"\b(?:degree|equivalent)\b", re.I)
 _WORK_EXP_SUFFIX_RE = re.compile(r"^\s*work\s+experience\b", re.I)
 # Company-history noise: "voted employer for over 15 years"
 _FOR_OVER_RE = re.compile(r"\bfor\s+over\s*$", re.I)
+# Grade-table header: "Data Engineer IV " immediately before a year mention
+_GRADE_LABEL_RE = re.compile(
+    r"\b(?:engineer|developer|analyst|scientist|architect|specialist|level)\s+"
+    r"(?:IX|VIII|VII|VI|IV|V|III|II|I)\s*\d*\s*$",
+    re.I,
+)
+# Semicolon-separated degree alternatives in grade tables: "in related field; N years"
+_IN_FIELD_SEMI_RE = re.compile(r"\bin\s+related\s+field\s*;", re.I)
 
 # "5+ years", "3-5 years", "3 to 5 years", "at least 4 years",
 # "minimum of 6 years", "5 yrs", "seven (7) years", "5-plus years",
@@ -69,8 +77,14 @@ def extract_experience_level(description: str) -> str:
         prefix80 = text[max(0, m.start() - 80):m.start()]
         prefix25 = text[max(0, m.start() - 25):m.start()]
         suffix = text[m.end():m.end() + 25]
-        # Company-history: "employer for over 15 years"
+        # Company-history: "voted employer for over 15 years"
         if lo >= 10 and _FOR_OVER_RE.search(prefix25):
+            continue
+        # Grade-table header: "Data Engineer IV 9 years"
+        if _GRADE_LABEL_RE.search(prefix25):
+            continue
+        # Grade-table semicolon alt: "Bachelors in related field; N years with Masters"
+        if _IN_FIELD_SEMI_RE.search(prefix60):
             continue
         # No-degree OR-chain alternatives: "OR 7 years", "OR 11 years standalone"
         if lo >= 4 and _OR_PREFIX_RE.search(prefix60):

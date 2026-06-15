@@ -13,6 +13,12 @@ import re
 
 _TAG_RE = re.compile(r"<[^>]+>")
 
+# OR-chain alternatives: "OR N years" where N >= 6 → skip (no-degree path)
+_OR_PREFIX_RE = re.compile(r"\bor\b", re.I)
+# Degree-alternative "N years work experience" when degree/equivalent precedes it
+_DEGREE_PREFIX_RE = re.compile(r"\b(?:degree|equivalent)\b", re.I)
+_WORK_EXP_SUFFIX_RE = re.compile(r"^\s*work\s+experience\b", re.I)
+
 # "5+ years", "3-5 years", "3 to 5 years", "at least 4 years",
 # "minimum of 6 years", "5 yrs", "seven (7) years", "5-plus years",
 # "8 or more years"
@@ -55,8 +61,17 @@ def extract_experience_level(description: str) -> str:
             lo = int(m.group(1))
         except (TypeError, ValueError):
             continue
-        if 0 <= lo <= 15:  # real JD requirements cap at 15; 16-20 = company age noise
-            candidates.append(lo)
+        if not (0 <= lo <= 15):
+            continue
+        prefix = text[max(0, m.start() - 80):m.start()]
+        suffix = text[m.end():m.end() + 25]
+        # Skip no-degree OR-chain alternatives: "OR 11 years", "OR 7 years", etc.
+        if lo >= 6 and _OR_PREFIX_RE.search(prefix):
+            continue
+        # Skip "N years work experience" when a degree/equivalent phrase precedes it
+        if _WORK_EXP_SUFFIX_RE.match(suffix) and _DEGREE_PREFIX_RE.search(prefix):
+            continue
+        candidates.append(lo)
 
     if not candidates:
         return ""

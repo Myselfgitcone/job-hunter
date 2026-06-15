@@ -1,7 +1,34 @@
 import re
 
-DATA_ENGINEERING_KEYWORDS = [
-    # Core big data
+ALL_KEYWORDS = [
+    # ── Java ecosystem ────────────────────────────────────────────────────────
+    # Core language / JVM
+    "java", "jvm", "kotlin", "groovy", "scala",
+    # Spring family
+    "spring", "spring boot", "spring mvc", "spring data", "spring security",
+    "spring cloud", "spring batch", "spring integration",
+    # Build / dependency
+    "maven", "gradle", "ant",
+    # ORM / persistence
+    "hibernate", "jpa", "jdbc", "mybatis",
+    # Jakarta / J2EE
+    "jakarta", "jakarta ee", "j2ee", "jee", "ejb", "jndi",
+    # Web / API
+    "rest", "rest api", "restful", "soap", "graphql", "grpc",
+    "servlet", "jsp", "jax-rs", "jax-ws",
+    # App servers
+    "tomcat", "jetty", "wildfly", "jboss", "weblogic", "websphere",
+    # Messaging
+    "activemq", "rabbitmq", "ibm mq",
+    # Testing
+    "junit", "junit5", "mockito", "testng", "selenium", "cucumber",
+    # Patterns / architecture
+    "microservices", "monolith", "event-driven", "cqrs", "domain-driven",
+    "design patterns", "solid", "tdd", "bdd",
+    # Frameworks / libs
+    "quarkus", "micronaut", "dropwizard", "jersey", "camel", "apache camel",
+    "lombok", "jackson", "gson",
+    # ── Core big data ─────────────────────────────────────────────────────────
     "pyspark", "spark", "hadoop", "hive", "kafka", "flink", "storm",
     "databricks", "delta lake", "iceberg", "hudi",
     # Data warehouse / lakehouse
@@ -11,8 +38,8 @@ DATA_ENGINEERING_KEYWORDS = [
     "aws", "azure", "gcp", "s3", "emr", "glue", "lambda", "kinesis",
     "adls", "adf", "azure data factory", "dataflow", "pub/sub",
     "ec2", "rds", "dynamodb", "cosmos db",
-    # Languages
-    "python", "sql", "scala", "java", "bash",
+    # Languages (non-Java)
+    "python", "sql", "bash", "go", "typescript", "javascript", "r",
     # ETL / orchestration
     "etl", "elt", "airflow", "luigi", "prefect", "dagster", "dbt",
     "informatica", "ab initio", "ssis", "talend", "fivetran", "airbyte",
@@ -22,20 +49,22 @@ DATA_ENGINEERING_KEYWORDS = [
     # Streaming
     "streaming", "real-time", "real time", "kafka streams", "spark streaming",
     "kinesis streams",
-    # DevOps
+    # DevOps / infra
     "docker", "kubernetes", "k8s", "jenkins", "ci/cd", "terraform",
-    "helm", "airflow", "gitlab",
+    "helm", "gitlab", "ansible", "chef", "puppet",
     # Databases
     "postgres", "postgresql", "mysql", "oracle", "sql server", "mongodb",
-    "cassandra", "elasticsearch",
-    # Concepts
+    "cassandra", "elasticsearch", "redis", "couchbase",
+    # Data concepts
     "data modeling", "star schema", "dimensional modeling", "data governance",
     "data quality", "data lineage", "metadata", "data catalog",
     "data mesh", "lakehouse", "medallion",
     # BI
-    "tableau", "power bi", "looker", "quicksight",
+    "tableau", "power bi", "looker", "quicksight", "qlik",
     # Version control
-    "git", "github",
+    "git", "github", "bitbucket",
+    # Methodology
+    "agile", "scrum", "kanban", "jira",
 ]
 
 
@@ -48,12 +77,9 @@ def score_ats(resume_text: str, job_description: str) -> dict:
     resume_lower = _normalize(resume_text)
 
     # Extract keywords that appear in JD
-    jd_keywords = [kw for kw in DATA_ENGINEERING_KEYWORDS if kw in jd_lower]
+    jd_keywords = [kw for kw in ALL_KEYWORDS if kw in jd_lower]
 
-    # Also extract any multi-word tech terms from JD not in our list
-    extra = re.findall(r"\b(?:[a-z]+(?:\s[a-z]+)?)\b", jd_lower)
-
-    # Deduplicate
+    # Deduplicate (preserve order)
     all_jd_keywords = list(dict.fromkeys(jd_keywords))
     if not all_jd_keywords:
         return {"score": 0, "matched": [], "missing": [], "total": 0}

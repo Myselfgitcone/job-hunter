@@ -18,8 +18,8 @@ _OR_PREFIX_RE = re.compile(r"\bor\b", re.I)
 # Degree-alternative "N years work experience" when degree/equivalent precedes it
 _DEGREE_PREFIX_RE = re.compile(r"\b(?:degree|equivalent)\b", re.I)
 _WORK_EXP_SUFFIX_RE = re.compile(r"^\s*work\s+experience\b", re.I)
-# Company-history noise: "voted employer for over 15 years"
-_FOR_OVER_RE = re.compile(r"\bfor\s+over\s*$", re.I)
+# Company-history noise: "voted employer for over/more than 15 years"
+_FOR_OVER_RE = re.compile(r"\bfor\s+(?:over|more\s+than)\s*$", re.I)
 # Grade-table header: "Data Engineer IV " immediately before a year mention
 _GRADE_LABEL_RE = re.compile(
     r"\b(?:engineer|developer|analyst|scientist|architect|specialist|level)\s+"

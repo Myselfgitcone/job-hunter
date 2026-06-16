@@ -86,6 +86,7 @@ COMPANIES = [
     ("homedepot",          "wd5",  "Careers_by_HD",                     "Home Depot"),
     ("cvs",                "wd5",  "External",                          "CVS Health"),
     ("walgreens",          "wd5",  "External",                          "Walgreens"),
+    ("aritzia",            "wd3",  "External",                          "Aritzia"),
     # ── India-heavy IT companies ─────────────────────────────────────────────
     ("infosys",            "wd5",  "Infosys",                           "Infosys"),
     ("wipro",              "wd5",  "External",                          "Wipro"),
@@ -188,7 +189,12 @@ async def _fetch_company(
                         continue
 
                     loc = item.get("locationsText", "")
-                    country = detect_country(loc, default="USA" if not loc else "")
+                    # Multi-location jobs: check each part — USA wins if any part is USA
+                    loc_parts = [p.strip() for p in re.split(r"[,\n]", loc) if p.strip()]
+                    country = next(
+                        (detect_country(p) for p in loc_parts if detect_country(p) == "USA"),
+                        detect_country(loc, default="USA" if not loc else ""),
+                    )
                     if country not in ("USA", "India", "Remote"):
                         continue
 

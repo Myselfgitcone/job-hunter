@@ -1326,16 +1326,23 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
           <button key={val} className={filters.time === val ? "on" : ""} onClick={() => set("time", val)}>{label}</button>
         ))}
       </div>
-      {/* Clock + notice stacked vertically to the right of chips */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 3, marginLeft: 6, flexShrink: 0 }}>
-        <span style={{ fontSize: 10, color: "var(--tx-3)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
-          {["UTC","EST","CST"].map((tz, i) => {
-            const zone = tz === "UTC" ? "UTC" : tz === "EST" ? "America/New_York" : "America/Chicago";
+      {/* Clock (Option B layout + Option A pill colors) + retention notice */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, marginLeft: 10, paddingLeft: 10, borderLeft: "1px solid var(--line)", flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+          {([
+            { tz: "UTC", zone: "UTC",               bg: "rgba(127,119,221,0.13)", color: "#9d78f5" },
+            { tz: "EST", zone: "America/New_York",   bg: "rgba(29,158,117,0.13)",  color: "#1fba8a" },
+            { tz: "CST", zone: "America/Chicago",    bg: "rgba(186,117,23,0.13)",  color: "#d4940f" },
+          ] as const).map(({ tz, zone, bg, color }) => {
             const t = new Date(nowTs).toLocaleTimeString("en-US", { timeZone: zone, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-            return <React.Fragment key={tz}>{i > 0 && <span style={{ opacity: 0.3, margin: "0 4px" }}>·</span>}<span style={{ opacity: 0.5 }}>{tz}</span> {t}</React.Fragment>;
+            return (
+              <span key={tz} style={{ fontSize: 10, fontFamily: "monospace", background: bg, color, padding: "2px 7px", borderRadius: 20, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                {tz} {t}
+              </span>
+            );
           })}
-        </span>
-        <span style={{ fontSize: 10.5, color: "var(--tx-3)", opacity: 0.7, whiteSpace: "nowrap" }}>
+        </div>
+        <span style={{ fontSize: 10.5, color: "var(--tx-3)", opacity: 0.65, whiteSpace: "nowrap" }}>
           📅 Last 10 days only — jobs older than 10 days are automatically removed.
         </span>
       </div>

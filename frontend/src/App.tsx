@@ -663,7 +663,7 @@ export default function App() {
             const active = view === n.id;
             return (
               <a key={n.id} onClick={() => handleNav(n.id)}
-                className={`nav-item${active ? " active" : ""}`} style={{ cursor: "pointer" }}>
+                className={`nav-item${active ? " active" : ""}`} data-label={n.label} style={{ cursor: "pointer" }}>
                 <Ic d={n.ic} size={16} />
                 {n.label}
                 {n.id === "jobs" && <span className="nav-count">{filteredJobs.length}</span>}

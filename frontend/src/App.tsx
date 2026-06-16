@@ -1326,17 +1326,18 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
           <button key={val} className={filters.time === val ? "on" : ""} onClick={() => set("time", val)}>{label}</button>
         ))}
       </div>
-      {/* Live timezone clock — inline after date chips */}
-      <span style={{ fontSize: 10, color: "var(--tx-3)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", marginLeft: 2 }}>
+      {/* Live timezone clock — same row as date chips */}
+      <span style={{ fontSize: 10, color: "var(--tx-3)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", marginLeft: 4 }}>
         {["UTC","EST","CST"].map((tz, i) => {
           const zone = tz === "UTC" ? "UTC" : tz === "EST" ? "America/New_York" : "America/Chicago";
-          const t = new Date(nowTs).toLocaleTimeString("en-US", { timeZone: zone, hour: "2-digit", minute: "2-digit", hour12: false });
-          return <React.Fragment key={tz}>{i > 0 && <span style={{ opacity: 0.3, margin: "0 3px" }}>·</span>}<span style={{ opacity: 0.5 }}>{tz}</span> {t}</React.Fragment>;
+          const t = new Date(nowTs).toLocaleTimeString("en-US", { timeZone: zone, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+          return <React.Fragment key={tz}>{i > 0 && <span style={{ opacity: 0.3, margin: "0 4px" }}>·</span>}<span style={{ opacity: 0.5 }}>{tz}</span> {t}</React.Fragment>;
         })}
       </span>
-      {/* Info icon — tooltip explains 10-day retention */}
-      <span title="Last 10 days only — jobs older than 10 days are automatically removed."
-        style={{ fontSize: 12, color: "var(--tx-3)", opacity: 0.45, cursor: "default", flexShrink: 0 }}>ℹ</span>
+      {/* Retention notice — flex-basis 100% forces it onto its own row below */}
+      <div style={{ flexBasis: "100%", fontSize: 10.5, color: "var(--tx-3)", opacity: 0.7, paddingBottom: 4 }}>
+        📅 Last 10 days only — jobs older than 10 days are automatically removed.
+      </div>
 
     </div>
   );

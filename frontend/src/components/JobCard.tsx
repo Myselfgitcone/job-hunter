@@ -103,32 +103,33 @@ export function JobCard({ job, selected, onClick, onSkip, mode = "compact", inde
           {isRemote && mode === "cards" && <span className="badge-remote">Remote</span>}
         </div>
         {mode === "cards" && (
-          <div className="jc-tags">
-            {/* FantasticJobs is the default pipeline — only badge exceptions (LinkedIn, Indeed...) */}
-            {job.source !== "FantasticJobs" && (
-              <span className="badge-src">
-                <AtsLogo source={job.source} size={11} />
-                {job.source}
-              </span>
-            )}
-            {job.country === "USA" && job.visa_sponsorship === true && (
-              <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 5, background: "rgba(22,163,74,0.12)", color: "#16a34a", fontWeight: 600 }}>Visa ✓</span>
-            )}
-            {/* false = JD doesn't MENTION sponsorship (not a refusal) — neutral, not red */}
-            {job.country === "USA" && job.visa_sponsorship === false && (
-              <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 5, background: "var(--bg-2)", color: "var(--tx-3)" }}>Visa not stated</span>
-            )}
-            {job.experience_level && (
-              <span title={job.experience_level_inferred ? "AI-estimated (no explicit years in JD)" : "From job description"} style={{
-                fontSize: 11, padding: "1px 6px", borderRadius: 5,
-                background: job.experience_level_inferred ? "rgba(124,58,237,0.07)" : "var(--bg-2)",
-                color: job.experience_level_inferred ? "var(--violet)" : "var(--tx-3)",
-                border: job.experience_level_inferred ? "1px dashed rgba(124,58,237,0.3)" : "none",
-              }}>{job.experience_level_inferred ? "~" : ""}{job.experience_level}yr</span>
-            )}
-            <span className="sep" style={{ background: "var(--tx-faint)" }} />
-            <span className="jc-time">{posted}</span>
-          </div>
+          <>
+            <div className="jc-tags">
+              {job.country === "USA" && job.visa_sponsorship === true && (
+                <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 5, background: "rgba(22,163,74,0.12)", color: "#16a34a", fontWeight: 600 }}>Visa ✓</span>
+              )}
+              {job.country === "USA" && job.visa_sponsorship === false && (
+                <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 5, background: "var(--bg-2)", color: "var(--tx-3)" }}>Visa not stated</span>
+              )}
+              {job.experience_level && (
+                <span title={job.experience_level_inferred ? "AI-estimated (no explicit years in JD)" : "From job description"} style={{
+                  fontSize: 11, padding: "1px 6px", borderRadius: 5,
+                  background: job.experience_level_inferred ? "rgba(124,58,237,0.07)" : "var(--bg-2)",
+                  color: job.experience_level_inferred ? "var(--violet)" : "var(--tx-3)",
+                  border: job.experience_level_inferred ? "1px dashed rgba(124,58,237,0.3)" : "none",
+                }}>{job.experience_level_inferred ? "~" : ""}{job.experience_level}yr</span>
+              )}
+            </div>
+            <div className="jc-tags" style={{ marginTop: 2 }}>
+              {job.source !== "FantasticJobs" && (
+                <span className="badge-src">
+                  <AtsLogo source={job.source} size={11} />
+                  {job.source}
+                </span>
+              )}
+              <span className="jc-time">{posted}</span>
+            </div>
+          </>
         )}
       </div>
 

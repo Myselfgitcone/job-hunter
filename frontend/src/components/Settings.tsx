@@ -749,7 +749,8 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
 
   return (
     <div className="form-scroll">
-      <div className="form-inner">
+      <div className="settings-layout">
+      <div className="form-inner settings-left">
         <div className="form-head">
           <div>
             <h1 className="dash-title">Settings</h1>
@@ -760,8 +761,6 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
           </button>
         </div>
 
-        <div className="settings-layout">
-        <div className="settings-left">
         {/* User approval & role assignment (admin page) */}
         <UsersPanel onToast={toast} onChanged={() => {}} />
 
@@ -931,19 +930,18 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
         <JobStatsPanel />
 
         <SystemLogsPanel onSeen={onErrorsSeen} />
-        </div>{/* settings-left */}
-
-        <div className="settings-right">
-          <BillingPanel />
-        </div>
-        </div>{/* settings-layout */}
 
         <div className="form-foot">
           <button className="save-btn" onClick={saveSettings}>
             <Ic d={I.check} size={15} /> Save Settings
           </button>
         </div>
+      </div>{/* form-inner settings-left */}
+
+      <div className="settings-right">
+        <BillingPanel />
       </div>
+      </div>{/* settings-layout */}
     </div>
   );
 }

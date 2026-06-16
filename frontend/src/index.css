@@ -2002,9 +2002,9 @@ html.light .auth-tabs { background: #f1f5f9; border-color: rgba(0,0,0,.10); }
    ============================================================ */
 
 /* Settings two-column layout */
-.settings-layout { display: flex; gap: 28px; align-items: flex-start; }
+.settings-layout { display: flex; align-items: flex-start; }
 .settings-left { flex: 1 1 0; min-width: 0; }
-.settings-right { width: 320px; flex-shrink: 0; padding-top: 4px; }
+.settings-right { width: 320px; flex-shrink: 0; padding: 28px 24px 40px 4px; }
 
 /* 1280px — hide verbose topbar meta (last scraped / next scrape) */
 @media (max-width: 1280px) {

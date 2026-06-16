@@ -538,7 +538,7 @@ function BillingPanel() {
         <div style={{ fontSize: 12, color: "var(--tx-3)", marginBottom: 10, lineHeight: 1.5 }}>
           FJ doesn't expose usage data via API — check your dashboard directly.
         </div>
-        <a href="https://fantastic.jobs/dashboard" target="_blank" rel="noreferrer"
+        <a href="https://developer.fantastic.jobs/subscriptions#manage" target="_blank" rel="noreferrer"
           style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "var(--violet)", textDecoration: "none" }}>
           Open FJ Dashboard →
         </a>

@@ -2964,6 +2964,8 @@ class ProfileProject(BaseModel):
 
 class ProfileData(BaseModel):
     name: str = ""
+    first_name: str = ""
+    last_name: str = ""
     email: str = ""
     phone: str = ""
     location: str = ""

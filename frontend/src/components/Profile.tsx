@@ -237,6 +237,8 @@ export function Profile() {
       setSaveStatus("saving");
       try {
         const payload = {
+          first_name: profile.personal.firstName,
+          last_name: profile.personal.lastName,
           name: [profile.personal.firstName, profile.personal.lastName].filter(Boolean).join(" "),
           email: profile.personal.email, phone: profile.personal.phone, address: profile.personal.address,
           linkedin: profile.personal.linkedin, github: profile.personal.github, visa_status: profile.personal.visa,
@@ -282,13 +284,12 @@ export function Profile() {
           expanded: pr.expanded !== false,
         }));
         
-        const nameParts = (p.name || "").split(" ");
-        const first = nameParts[0] || "";
-        const last = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
+        const first = p.first_name || (p.name || "").split(" ")[0] || "";
+        const last = p.last_name || ((p.name || "").split(" ").length > 1 ? (p.name || "").split(" ").slice(1).join(" ") : "");
 
         _setProfile({
           personal: {
-            firstName: first, lastName: last, 
+            firstName: first, lastName: last,
             email: p.email || "", phone: p.phone || "",
             address: p.address || p.location || "", linkedin: p.linkedin || "", github: p.github || "",
             visa: p.visa_status || "",

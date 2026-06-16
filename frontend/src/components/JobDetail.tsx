@@ -775,6 +775,8 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
                 {job.salary && (
                   <span className="meta-i"><Ic d={I.briefcase} size={13} />{job.salary}</span>
                 )}
+              </div>
+              <div className="dh-co" style={{ marginTop: 4 }}>
                 <span className="badge-src">
                   <AtsLogo source={job.source} size={13} />
                   {job.source}

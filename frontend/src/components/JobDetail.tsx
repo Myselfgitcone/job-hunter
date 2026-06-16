@@ -819,15 +819,23 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
           ))}
         </div>
 
-        {/* Sub-tabs — only when Job Details is active */}
+        {/* Sub-tabs — pill style, distinct from top tabs */}
         {tab === "jobdetails" && (
-          <div className="tabs" style={{ borderTop: "none", paddingTop: 0, gap: 2 }}>
-            {DETAIL_SUBTABS.map(s => (
-              <button key={s.id} onClick={() => setSubTab(s.id)} className={`tab${subTab === s.id ? " on" : ""}`}
-                style={{ fontSize: 11, height: 30 }}>
-                {s.label}
-              </button>
-            ))}
+          <div style={{ display: "flex", gap: 6, padding: "8px 16px", background: "var(--bg-2)", borderBottom: "1px solid var(--line)" }}>
+            {DETAIL_SUBTABS.map(s => {
+              const active = subTab === s.id;
+              return (
+                <button key={s.id} onClick={() => setSubTab(s.id)} style={{
+                  fontSize: 11, fontWeight: active ? 600 : 400, height: 26,
+                  padding: "0 12px", borderRadius: 20, border: "none", cursor: "pointer",
+                  background: active ? "var(--violet)" : "var(--bg-elevated)",
+                  color: active ? "#fff" : "var(--tx-2)",
+                  transition: "all .15s",
+                }}>
+                  {s.label}
+                </button>
+              );
+            })}
           </div>
         )}
 

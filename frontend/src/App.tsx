@@ -45,7 +45,7 @@ type Filters = {
   years: string[];  // experience trays: "0-2","2-4","4-5","5-6","6-7","7-8","8-10","10-13","13-15","15+"
   visa: string[];   // "Sponsors" | "No Visa" | "Unknown"
   score: "any" | "60" | "70" | "80" | "90";
-  time: "any" | "0-24" | "24-48" | "48-72" | "72-168";  // discrete age bands in hours
+  time: string;  // "any" | ISO date string "YYYY-MM-DD"
 };
 
 function Ic({ d, size = 16, color, style }: { d: string; size?: number; color?: string; style?: React.CSSProperties }) {
@@ -443,13 +443,12 @@ export default function App() {
         const sc = (j.qualify_result as any)?.score ?? null;
         if (sc === null || sc < parseInt(filters.score)) return false;
       }
-      // time — discrete age band (e.g. "24-48" = posted between 24h and 48h ago)
+      // time — calendar date filter (e.g. "2026-06-15")
       if (filters.time !== "any") {
         const t = postMs(j.posted_at) ?? parseMs(j.scraped_at);
-        if (t === null) return false;  // can't band-match an unknown date
-        const ageH = (now - t) / 3600000;
-        const [lo, hi] = filters.time.split("-").map(Number);
-        if (ageH < lo || ageH >= hi) return false;
+        if (t === null) return false;
+        const jobDate = new Date(t).toLocaleDateString("en-CA", { timeZone: "America/New_York" }); // "YYYY-MM-DD"
+        if (jobDate !== filters.time) return false;
       }
       // Visa filter — FJ semantics: true = JD explicitly mentions sponsorship,
       // false = JD doesn't mention it (NOT a refusal), null = not checked
@@ -1218,7 +1217,19 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
 
   const committed = filters.source.length + (filters.score !== "any" ? 1 : 0);
   const draftCount = draft.source.length + (draft.score !== "any" ? 1 : 0);
-  const timeOpts: [Filters["time"], string][] = [["any","Any"],["0-24","0-24h"],["24-48","24-48h"],["48-72","48-72h"],["72-168","3-7d"]];
+  // Last 7 calendar dates in Eastern time
+  const dateDays: { val: string; label: string }[] = React.useMemo(() => {
+    const days = [];
+    const now = new Date();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const val = d.toLocaleDateString("en-CA", { timeZone: "America/New_York" }); // YYYY-MM-DD
+      const label = d.toLocaleDateString("en-US", { timeZone: "America/New_York", month: "2-digit", day: "2-digit" }); // MM/DD
+      days.push({ val, label });
+    }
+    return days;
+  }, []);
   const sourceOpts = SOURCES && SOURCES.length ? SOURCES : ["FantasticJobs","LinkedIn","Indeed"];
   const scoreOpts: [string, string][] = [["any","Any"],["60","≥60%"],["70","≥70%"],["80","≥80%"],["90","≥90%"]];
 
@@ -1311,8 +1322,9 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
       <div className="fb-divider" />
       <span className="fb-time-label">Posted</span>
       <div className="segchips">
-        {timeOpts.map(([v, l]) => (
-          <button key={v} className={filters.time === v ? "on" : ""} onClick={() => set("time", v)}>{l}</button>
+        <button className={filters.time === "any" ? "on" : ""} onClick={() => set("time", "any")}>Any</button>
+        {dateDays.map(({ val, label }) => (
+          <button key={val} className={filters.time === val ? "on" : ""} onClick={() => set("time", val)}>{label}</button>
         ))}
       </div>
 

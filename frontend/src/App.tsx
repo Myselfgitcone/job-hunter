@@ -1326,18 +1326,17 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
           <button key={val} className={filters.time === val ? "on" : ""} onClick={() => set("time", val)}>{label}</button>
         ))}
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginTop: 8, padding: "0 2px" }}>
-        <div style={{ fontSize: 10.5, color: "var(--tx-3)", lineHeight: 1.5, flex: 1 }}>
-          📅 Last 10 days only — jobs older than 10 days are automatically removed.
-        </div>
-        <div style={{ fontSize: 10, color: "var(--tx-3)", lineHeight: 1.6, textAlign: "right", flexShrink: 0, marginLeft: 8, fontVariantNumeric: "tabular-nums" }}>
-          {["UTC", "EST", "CST"].map(tz => {
-            const zone = tz === "UTC" ? "UTC" : tz === "EST" ? "America/New_York" : "America/Chicago";
-            const t = new Date(nowTs).toLocaleTimeString("en-US", { timeZone: zone, hour: "2-digit", minute: "2-digit", hour12: false });
-            return <div key={tz}><span style={{ opacity: 0.55, marginRight: 3 }}>{tz}</span>{t}</div>;
-          })}
-        </div>
-      </div>
+      {/* Live timezone clock — inline after date chips */}
+      <span style={{ fontSize: 10, color: "var(--tx-3)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", marginLeft: 2 }}>
+        {["UTC","EST","CST"].map((tz, i) => {
+          const zone = tz === "UTC" ? "UTC" : tz === "EST" ? "America/New_York" : "America/Chicago";
+          const t = new Date(nowTs).toLocaleTimeString("en-US", { timeZone: zone, hour: "2-digit", minute: "2-digit", hour12: false });
+          return <React.Fragment key={tz}>{i > 0 && <span style={{ opacity: 0.3, margin: "0 3px" }}>·</span>}<span style={{ opacity: 0.5 }}>{tz}</span> {t}</React.Fragment>;
+        })}
+      </span>
+      {/* Info icon — tooltip explains 10-day retention */}
+      <span title="Last 10 days only — jobs older than 10 days are automatically removed."
+        style={{ fontSize: 12, color: "var(--tx-3)", opacity: 0.45, cursor: "default", flexShrink: 0 }}>ℹ</span>
 
     </div>
   );

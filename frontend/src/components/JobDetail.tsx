@@ -83,12 +83,16 @@ const I = {
 };
 
 const TABS = [
+  { id: "jobdetails", label: "Job Details" },
+  { id: "qualify",    label: "Qualify" },
+  { id: "resume",     label: "Resume & Fit" },
+  { id: "cover",      label: "Cover Letter" },
+];
+
+const DETAIL_SUBTABS = [
   { id: "jobinfo",     label: "Job Info" },
   { id: "companyinfo", label: "Company Info" },
   { id: "description", label: "Job Description" },
-  { id: "qualify",     label: "Qualify" },
-  { id: "resume",      label: "Resume & Fit" },
-  { id: "cover",       label: "Cover Letter" },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -731,6 +735,8 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
     );
   }
 
+  const [subTab, setSubTab] = useState("jobinfo");
+
   const tabHasContent: Record<string, boolean> = {
     resume: !!(job.tailored_resume || job.fit_analysis),
     cover: !!job.cover_letter,
@@ -804,23 +810,32 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
           </div>
         </div>
 
-        {/* Tabs */}
+        {/* Top-level tabs */}
         <div className="tabs">
-          {TABS.map(t => {
-            const active = tab === t.id;
-            return (
-              <button key={t.id} onClick={() => setTab(t.id)} className={`tab${active ? " on" : ""}`}>
-                {t.label}
-              </button>
-            );
-          })}
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)} className={`tab${tab === t.id ? " on" : ""}`}>
+              {t.label}
+            </button>
+          ))}
         </div>
+
+        {/* Sub-tabs — only when Job Details is active */}
+        {tab === "jobdetails" && (
+          <div className="tabs" style={{ borderTop: "none", paddingTop: 0, gap: 2 }}>
+            {DETAIL_SUBTABS.map(s => (
+              <button key={s.id} onClick={() => setSubTab(s.id)} className={`tab${subTab === s.id ? " on" : ""}`}
+                style={{ fontSize: 11, height: 30 }}>
+                {s.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Tab content */}
         <div className="tab-body">
-          {tab === "jobinfo"     && <JobInfoTab job={job} />}
-          {tab === "companyinfo" && <CompanyInfoTab job={job} />}
-          {tab === "description" && <DescriptionTab job={job} onUpdate={onUpdate} onToast={onToast} />}
+          {tab === "jobdetails" && subTab === "jobinfo"     && <JobInfoTab job={job} />}
+          {tab === "jobdetails" && subTab === "companyinfo" && <CompanyInfoTab job={job} />}
+          {tab === "jobdetails" && subTab === "description" && <DescriptionTab job={job} onUpdate={onUpdate} onToast={onToast} />}
           {tab === "qualify"  && <QualifyTab job={job} running={busy === "qualify"} onRun={() => runAction("qualify")} />}
           {tab === "resume"   && (
             <div style={{ display: "flex", flexDirection: "column" }}>

@@ -2040,7 +2040,7 @@ async def admin_billing(user_id: str = Depends(get_current_user_id)):
         or_key = (admin_s.ai_api_key or "") if admin_s else ""
         prov = (admin_s.ai_provider or "OpenRouter") if admin_s else "OpenRouter"
 
-    fj_data, or_data = None, None
+    fj_data, fj_error, or_data, or_credits = None, None, None, None
     async with httpx.AsyncClient(timeout=10) as client:
         if fj_key:
             try:
@@ -2050,8 +2050,10 @@ async def admin_billing(user_id: str = Depends(get_current_user_id)):
                 )
                 if r.status_code == 200:
                     fj_data = r.json()
-            except Exception:
-                pass
+                else:
+                    fj_error = f"HTTP {r.status_code}: {r.text[:200]}"
+            except Exception as e:
+                fj_error = str(e)
         if or_key:
             try:
                 r = await client.get(
@@ -2062,7 +2064,16 @@ async def admin_billing(user_id: str = Depends(get_current_user_id)):
                     or_data = r.json().get("data")
             except Exception:
                 pass
-    return {"fj": fj_data, "openrouter": or_data, "or_provider": prov}
+            try:
+                r = await client.get(
+                    "https://openrouter.ai/api/v1/credits",
+                    headers={"Authorization": f"Bearer {or_key}"}
+                )
+                if r.status_code == 200:
+                    or_credits = r.json().get("data")
+            except Exception:
+                pass
+    return {"fj": fj_data, "fj_error": fj_error, "openrouter": or_data, "or_credits": or_credits, "or_provider": prov}
 
 
 @app.get("/api/qualify/health")

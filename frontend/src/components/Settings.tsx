@@ -480,7 +480,9 @@ function BillingPanel() {
   }, []);
 
   const fj = data?.fj;
+  const fjErr = data?.fj_error;
   const or = data?.openrouter;
+  const orCredits = data?.or_credits;
 
   const bar = (used: number, limit: number, color: string) => {
     const pct = limit > 0 ? Math.min(100, Math.round(used / limit * 100)) : 0;
@@ -518,7 +520,9 @@ function BillingPanel() {
         </div>
 
         {!fj && !loading && (
-          <div style={{ fontSize: 12, color: "var(--tx-3)" }}>No data — check FANTASTIC_JOBS_API_KEY env var</div>
+          <div style={{ fontSize: 12, color: fjErr ? "#dc2626" : "var(--tx-3)" }}>
+            {fjErr ? fjErr : "No data — check FANTASTIC_JOBS_API_KEY env var"}
+          </div>
         )}
         {loading && !fj && (
           <div style={{ fontSize: 12, color: "var(--tx-3)" }}>Loading…</div>
@@ -601,20 +605,34 @@ function BillingPanel() {
           <div style={{ fontSize: 12, color: "var(--tx-3)" }}>Loading…</div>
         )}
 
-        {or && <>
-          {or.label && (
+        {(or || orCredits) && <>
+          {/* Balance from /credits endpoint */}
+          {orCredits != null && (() => {
+            const totalCredits = orCredits.total_credits ?? 0;
+            const totalUsage = orCredits.total_usage ?? 0;
+            const balance = totalCredits - totalUsage;
+            return (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
+                <span style={{ fontSize: 12, color: "var(--tx-3)" }}>Balance</span>
+                <span style={{ fontFamily: "var(--f-mono)", fontSize: 18, fontWeight: 800, color: "#16a34a" }}>
+                  ${balance.toFixed(2)}
+                </span>
+              </div>
+            );
+          })()}
+          {or?.label && (
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 8 }}>
               <span style={{ color: "var(--tx-3)" }}>Key</span>
               <span style={{ color: "var(--tx-2)", fontFamily: "var(--f-mono)" }}>{or.label}</span>
             </div>
           )}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          {or && <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
             <span style={{ fontSize: 12, color: "var(--tx-3)" }}>Spent (this key)</span>
-            <span style={{ fontFamily: "var(--f-mono)", fontSize: 15, fontWeight: 700, color: "#f59e0b" }}>
+            <span style={{ fontFamily: "var(--f-mono)", fontSize: 13, fontWeight: 600, color: "#f59e0b" }}>
               ${typeof or.usage === "number" ? or.usage.toFixed(4) : "—"}
             </span>
-          </div>
-          {or.limit != null && (
+          </div>}
+          {or?.limit != null && (
             <>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
                 <span style={{ color: "var(--tx-3)" }}>Limit</span>
@@ -623,10 +641,10 @@ function BillingPanel() {
               {bar(or.usage ?? 0, or.limit, "var(--violet)")}
             </>
           )}
-          {or.limit == null && (
+          {or?.limit == null && !orCredits && (
             <div style={{ fontSize: 11, color: "var(--tx-faint)" }}>No spending limit set</div>
           )}
-          {or.is_free_tier === true && (
+          {or?.is_free_tier === true && (
             <div style={{ marginTop: 8, fontSize: 11, color: "#d97706", fontWeight: 600 }}>Free tier key</div>
           )}
         </>}

@@ -459,6 +459,185 @@ function SystemLogsPanel({ onSeen }: { onSeen?: () => void }) {
 }
 
 
+// ── Live Billing Panel ────────────────────────────────────────────────────────
+function BillingPanel() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+
+  const load = async () => {
+    try {
+      setData(await api.adminBilling());
+    } catch (e: any) {
+      setErr(e?.message || "fetch failed");
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 60000);
+    return () => clearInterval(t);
+  }, []);
+
+  const fj = data?.fj;
+  const or = data?.openrouter;
+
+  const bar = (used: number, limit: number, color: string) => {
+    const pct = limit > 0 ? Math.min(100, Math.round(used / limit * 100)) : 0;
+    return (
+      <div style={{ height: 5, borderRadius: 3, background: "var(--bg-active)", marginTop: 6, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${pct}%`, borderRadius: 3, background: color, transition: "width .6s" }} />
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ position: "sticky", top: 28, display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+        <h2 style={{ fontFamily: "var(--f-display)", fontSize: 18, fontWeight: 700, letterSpacing: "-.01em" }}>Live Billing</h2>
+        <button onClick={load} style={{ fontSize: 11, color: "var(--tx-3)", background: "none", border: "none", cursor: "pointer", padding: "3px 7px", borderRadius: 5 }}>
+          {loading ? "..." : "↻ Refresh"}
+        </button>
+      </div>
+
+      {err && <div style={{ fontSize: 11, color: "#dc2626" }}>{err}</div>}
+
+      {/* ── FantasticJobs ── */}
+      <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--line)", borderRadius: 12, padding: "16px 18px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg,#ec4899,#8b5cf6)", display: "grid", placeItems: "center" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          </div>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--tx)" }}>FantasticJobs API</span>
+          {fj?.subscription?.plan && (
+            <span style={{ marginLeft: "auto", fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: "rgba(236,72,153,0.12)", color: "#ec4899", border: "1px solid rgba(236,72,153,0.25)" }}>
+              {fj.subscription.plan}
+            </span>
+          )}
+        </div>
+
+        {!fj && !loading && (
+          <div style={{ fontSize: 12, color: "var(--tx-3)" }}>No data — check FANTASTIC_JOBS_API_KEY env var</div>
+        )}
+        {loading && !fj && (
+          <div style={{ fontSize: 12, color: "var(--tx-3)" }}>Loading…</div>
+        )}
+
+        {fj && <>
+          {/* Subscription */}
+          {fj.subscription && (
+            <div style={{ marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                <span style={{ color: "var(--tx-3)" }}>Plan</span>
+                <span style={{ color: "var(--tx)", fontWeight: 600 }}>{fj.subscription.plan || "—"}</span>
+              </div>
+              {fj.subscription.price != null && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginTop: 5 }}>
+                  <span style={{ color: "var(--tx-3)" }}>Price</span>
+                  <span style={{ color: "var(--tx)", fontWeight: 600 }}>${fj.subscription.price}/mo</span>
+                </div>
+              )}
+              {fj.subscription.period_end && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginTop: 5 }}>
+                  <span style={{ color: "var(--tx-3)" }}>Renews</span>
+                  <span style={{ color: "var(--tx-2)" }}>{new Date(fj.subscription.period_end).toLocaleDateString()}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Usage */}
+          {fj.usage && (
+            <div style={{ marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
+              {[
+                { label: "API Requests", used: fj.usage.requests_used, limit: fj.usage.requests_limit, color: "var(--violet)" },
+                { label: "Jobs", used: fj.usage.jobs_used, limit: fj.usage.jobs_limit, color: "#ec4899" },
+              ].map(({ label, used, limit, color }) => (
+                <div key={label} style={{ marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5 }}>
+                    <span style={{ color: "var(--tx-2)", fontWeight: 500 }}>{label}</span>
+                    <span style={{ color: "var(--tx-3)", fontFamily: "var(--f-mono)" }}>
+                      {(used ?? 0).toLocaleString()} / {(limit ?? 0).toLocaleString()}
+                    </span>
+                  </div>
+                  {bar(used ?? 0, limit ?? 1, color)}
+                  <div style={{ fontSize: 10.5, color: "var(--tx-faint)", marginTop: 3 }}>
+                    {((limit ?? 0) - (used ?? 0)).toLocaleString()} remaining
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Credits */}
+          {fj.credits != null && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: "var(--tx-3)" }}>Credits</span>
+              <span style={{ fontFamily: "var(--f-mono)", fontSize: 16, fontWeight: 700, color: "#16a34a" }}>
+                ${typeof fj.credits === "number" ? fj.credits.toFixed(2) : fj.credits}
+              </span>
+            </div>
+          )}
+        </>}
+      </div>
+
+      {/* ── OpenRouter ── */}
+      <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--line)", borderRadius: 12, padding: "16px 18px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg,#7c3aed,#06b6d4)", display: "grid", placeItems: "center" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          </div>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--tx)" }}>OpenRouter</span>
+          {data?.or_provider && data.or_provider !== "OpenRouter" && (
+            <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--tx-3)" }}>Provider: {data.or_provider}</span>
+          )}
+        </div>
+
+        {!or && !loading && (
+          <div style={{ fontSize: 12, color: "var(--tx-3)" }}>No data — set OpenRouter API key in AI Configuration</div>
+        )}
+        {loading && !or && (
+          <div style={{ fontSize: 12, color: "var(--tx-3)" }}>Loading…</div>
+        )}
+
+        {or && <>
+          {or.label && (
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 8 }}>
+              <span style={{ color: "var(--tx-3)" }}>Key</span>
+              <span style={{ color: "var(--tx-2)", fontFamily: "var(--f-mono)" }}>{or.label}</span>
+            </div>
+          )}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <span style={{ fontSize: 12, color: "var(--tx-3)" }}>Spent (this key)</span>
+            <span style={{ fontFamily: "var(--f-mono)", fontSize: 15, fontWeight: 700, color: "#f59e0b" }}>
+              ${typeof or.usage === "number" ? or.usage.toFixed(4) : "—"}
+            </span>
+          </div>
+          {or.limit != null && (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
+                <span style={{ color: "var(--tx-3)" }}>Limit</span>
+                <span style={{ color: "var(--tx-2)", fontFamily: "var(--f-mono)" }}>${or.limit}</span>
+              </div>
+              {bar(or.usage ?? 0, or.limit, "var(--violet)")}
+            </>
+          )}
+          {or.limit == null && (
+            <div style={{ fontSize: 11, color: "var(--tx-faint)" }}>No spending limit set</div>
+          )}
+          {or.is_free_tier === true && (
+            <div style={{ marginTop: 8, fontSize: 11, color: "#d97706", fontWeight: 600 }}>Free tier key</div>
+          )}
+        </>}
+      </div>
+
+      <div style={{ fontSize: 10.5, color: "var(--tx-faint)", textAlign: "center" }}>Auto-refreshes every 60s</div>
+    </div>
+  );
+}
+
+
 export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: any) => void; onErrorsSeen?: () => void }) {
   const toast = onToast || ((m: string) => console.log(m));
 
@@ -581,6 +760,8 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
           </button>
         </div>
 
+        <div className="settings-layout">
+        <div className="settings-left">
         {/* User approval & role assignment (admin page) */}
         <UsersPanel onToast={toast} onChanged={() => {}} />
 
@@ -750,6 +931,12 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
         <JobStatsPanel />
 
         <SystemLogsPanel onSeen={onErrorsSeen} />
+        </div>{/* settings-left */}
+
+        <div className="settings-right">
+          <BillingPanel />
+        </div>
+        </div>{/* settings-layout */}
 
         <div className="form-foot">
           <button className="save-btn" onClick={saveSettings}>

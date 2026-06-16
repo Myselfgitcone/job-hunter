@@ -2001,6 +2001,11 @@ html.light .auth-tabs { background: #f1f5f9; border-color: rgba(0,0,0,.10); }
    RESPONSIVE BREAKPOINTS
    ============================================================ */
 
+/* Settings two-column layout */
+.settings-layout { display: flex; gap: 28px; align-items: flex-start; }
+.settings-left { flex: 1 1 0; min-width: 0; }
+.settings-right { width: 320px; flex-shrink: 0; padding-top: 4px; }
+
 /* 1280px — hide verbose topbar meta (last scraped / next scrape) */
 @media (max-width: 1280px) {
   .topbar .meta { display: none; }
@@ -2039,6 +2044,8 @@ html.light .auth-tabs { background: #f1f5f9; border-color: rgba(0,0,0,.10); }
 
 /* 960px — same icon rail, shrink list pane */
 @media (max-width: 960px) {
+  .settings-layout { flex-direction: column; }
+  .settings-right { width: 100%; }
   .list-pane { width: 300px; min-width: 260px; }
   .topbar { padding: 0 10px; gap: 6px; }
   .job-count { display: none; }

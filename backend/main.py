@@ -2029,6 +2029,45 @@ async def admin_job_stats(user_id: str = Depends(get_current_user_id)):
     }
 
 
+@app.get("/api/admin/billing")
+async def admin_billing(user_id: str = Depends(get_current_user_id)):
+    """Proxy FJ + OpenRouter live billing data."""
+    await _verify_admin(user_id)
+    import os
+    fj_key = os.getenv("FANTASTIC_JOBS_API_KEY", "")
+    # Fetch admin settings for OpenRouter key
+    async with SessionLocal() as db:
+        row = await db.execute(select(Setting).where(Setting.key == "ai_api_key"))
+        or_key_row = row.scalar_one_or_none()
+        prov_row = await db.execute(select(Setting).where(Setting.key == "ai_provider"))
+        prov = (prov_row.scalar_one_or_none() or Setting(value="OpenRouter")).value or "OpenRouter"
+        or_key = or_key_row.value if or_key_row else ""
+
+    fj_data, or_data = None, None
+    async with httpx.AsyncClient(timeout=10) as client:
+        if fj_key:
+            try:
+                r = await client.get(
+                    "https://data.fantastic.jobs/v1/account",
+                    headers={"Authorization": f"Bearer {fj_key}"}
+                )
+                if r.status_code == 200:
+                    fj_data = r.json()
+            except Exception:
+                pass
+        if or_key:
+            try:
+                r = await client.get(
+                    "https://openrouter.ai/api/v1/auth/key",
+                    headers={"Authorization": f"Bearer {or_key}"}
+                )
+                if r.status_code == 200:
+                    or_data = r.json().get("data")
+            except Exception:
+                pass
+    return {"fj": fj_data, "openrouter": or_data, "or_provider": prov}
+
+
 @app.get("/api/qualify/health")
 async def qualify_health(user_id: str = Depends(get_current_user_id)):
     """Admin diagnostic: why is auto-qualify (not) running?"""

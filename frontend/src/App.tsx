@@ -1319,16 +1319,17 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
       </div>
 
       <div className="fb-divider" />
-      {/* "Posted" label + retention notice stacked vertically */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 1, flexShrink: 0 }}>
-        <span className="fb-time-label">Posted</span>
-        <span style={{ fontSize: 9.5, color: "var(--tx-3)", opacity: 0.6, whiteSpace: "nowrap" }}>📅 Last 10 days · auto-removed</span>
-      </div>
-      <div className="segchips">
-        <button className={filters.time === "any" ? "on" : ""} onClick={() => set("time", "any")}>Any</button>
-        {dateDays.map(({ val, label }) => (
-          <button key={val} className={filters.time === val ? "on" : ""} onClick={() => set("time", val)}>{label}</button>
-        ))}
+      <span className="fb-time-label">Posted</span>
+      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+        <div className="segchips">
+          <button className={filters.time === "any" ? "on" : ""} onClick={() => set("time", "any")}>Any</button>
+          {dateDays.map(({ val, label }) => (
+            <button key={val} className={filters.time === val ? "on" : ""} onClick={() => set("time", val)}>{label}</button>
+          ))}
+        </div>
+        <span style={{ fontSize: 10.5, color: "var(--tx-3)", opacity: 0.7 }}>
+          📅 Last 10 days only — jobs older than 10 days are automatically removed.
+        </span>
       </div>
       {/* Live timezone clock — inline after date chips */}
       <span style={{ fontSize: 10, color: "var(--tx-3)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", marginLeft: 4 }}>

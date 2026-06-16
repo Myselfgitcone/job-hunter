@@ -133,7 +133,7 @@ export default function App() {
 
   const [viewMode, setViewMode]     = useState<ViewMode>("list");
   const [listMode, setListMode]     = useState<"compact"|"cards">("cards");
-  const [sortBy, setSortBy]         = useState<"score"|"date">("score");
+  const [sortBy, setSortBy]         = useState<"score"|"date">("date");
   const [jobs, setJobs]             = useState<Job[]>([]);
   const [allJobs, setAllJobs]       = useState<Job[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);

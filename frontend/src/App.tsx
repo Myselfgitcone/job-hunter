@@ -1320,25 +1320,25 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
 
       <div className="fb-divider" />
       <span className="fb-time-label">Posted</span>
-      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-        <div className="segchips">
-          <button className={filters.time === "any" ? "on" : ""} onClick={() => set("time", "any")}>Any</button>
-          {dateDays.map(({ val, label }) => (
-            <button key={val} className={filters.time === val ? "on" : ""} onClick={() => set("time", val)}>{label}</button>
-          ))}
-        </div>
-        <span style={{ fontSize: 10.5, color: "var(--tx-3)", opacity: 0.7 }}>
+      <div className="segchips">
+        <button className={filters.time === "any" ? "on" : ""} onClick={() => set("time", "any")}>Any</button>
+        {dateDays.map(({ val, label }) => (
+          <button key={val} className={filters.time === val ? "on" : ""} onClick={() => set("time", val)}>{label}</button>
+        ))}
+      </div>
+      {/* Clock + notice stacked vertically to the right of chips */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 3, marginLeft: 6, flexShrink: 0 }}>
+        <span style={{ fontSize: 10, color: "var(--tx-3)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+          {["UTC","EST","CST"].map((tz, i) => {
+            const zone = tz === "UTC" ? "UTC" : tz === "EST" ? "America/New_York" : "America/Chicago";
+            const t = new Date(nowTs).toLocaleTimeString("en-US", { timeZone: zone, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+            return <React.Fragment key={tz}>{i > 0 && <span style={{ opacity: 0.3, margin: "0 4px" }}>·</span>}<span style={{ opacity: 0.5 }}>{tz}</span> {t}</React.Fragment>;
+          })}
+        </span>
+        <span style={{ fontSize: 10.5, color: "var(--tx-3)", opacity: 0.7, whiteSpace: "nowrap" }}>
           📅 Last 10 days only — jobs older than 10 days are automatically removed.
         </span>
       </div>
-      {/* Live timezone clock — inline after date chips */}
-      <span style={{ fontSize: 10, color: "var(--tx-3)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", marginLeft: 4 }}>
-        {["UTC","EST","CST"].map((tz, i) => {
-          const zone = tz === "UTC" ? "UTC" : tz === "EST" ? "America/New_York" : "America/Chicago";
-          const t = new Date(nowTs).toLocaleTimeString("en-US", { timeZone: zone, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-          return <React.Fragment key={tz}>{i > 0 && <span style={{ opacity: 0.3, margin: "0 4px" }}>·</span>}<span style={{ opacity: 0.5 }}>{tz}</span> {t}</React.Fragment>;
-        })}
-      </span>
 
     </div>
   );

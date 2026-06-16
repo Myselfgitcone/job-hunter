@@ -4,7 +4,8 @@ import { ROLE_GROUPS } from "./JobPreferencesModal";
 
 // ── User management (admin): approve signups + assign role families ───────────
 function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => void; onChanged: () => void }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(() => localStorage.getItem('settings_open_users') !== 'false');
+  useEffect(() => { localStorage.setItem('settings_open_users', String(open)); }, [open]);
   const [users, setUsers] = useState<any[]>([]);
   const [editing, setEditing] = useState<string | null>(null);   // user id with role picker open
   const [draftRoles, setDraftRoles] = useState<string[]>([]);
@@ -290,7 +291,8 @@ const CRON_PRESETS: Record<string, string> = {
 
 // ── Job Stats panel (admin-only) ─────────────────────────────────────────────
 function JobStatsPanel() {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(() => localStorage.getItem('settings_open_stats') !== 'false');
+  useEffect(() => { localStorage.setItem('settings_open_stats', String(open)); }, [open]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string>("");
@@ -329,11 +331,11 @@ function JobStatsPanel() {
   );
 
   return (
-    <section style={{ marginTop: 32 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
-        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "var(--tx)" }}>Job Stats</h3>
-        {loading && <span style={{ fontSize: 11, color: "var(--tx-3)" }}>refreshing…</span>}
-        <span style={{ fontSize: 11, color: "var(--tx-faint)" }}>auto-refresh 15s</span>
+    <section className="form-section">
+      <div className="section-label" style={{ cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
+        <Ic d={'<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>'} size={16} /> Job Stats
+        {loading && <span style={{ marginLeft: 6, fontSize: 11, color: "var(--tx-3)", fontWeight: 500 }}>refreshing…</span>}
+        <span style={{ marginLeft: 4, fontSize: 11, color: "var(--tx-faint)", fontWeight: 500 }}>auto-refresh 15s</span>
         <Chevron open={open} />
       </div>
 
@@ -377,7 +379,8 @@ const LEVEL_COLOR: Record<string, string> = {
 };
 
 function SystemLogsPanel({ onSeen }: { onSeen?: () => void }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(() => localStorage.getItem('settings_open_logs') !== 'false');
+  useEffect(() => { localStorage.setItem('settings_open_logs', String(open)); }, [open]);
   const [logs, setLogs] = useState<any[]>([]);
   const [filter, setFilter] = useState<"ALL"|"ERROR"|"WARNING"|"INFO">("ALL");
   const [loading, setLoading] = useState(false);
@@ -410,10 +413,10 @@ function SystemLogsPanel({ onSeen }: { onSeen?: () => void }) {
   };
 
   return (
-    <section style={{ marginTop: 32 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap", cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
-        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "var(--tx)" }}>System Logs</h3>
-        <div style={{ display: "flex", gap: 6 }}>
+    <section className="form-section">
+      <div className="section-label" style={{ cursor: "pointer", flexWrap: "wrap" }} onClick={() => setOpen(o => !o)}>
+        <Ic d={'<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>'} size={16} /> System Logs
+        <div style={{ display: "flex", gap: 6 }} onClick={e => e.stopPropagation()}>
           {(["ALL","ERROR","WARNING","INFO"] as const).map(lv => (
             <button key={lv} onClick={() => { setFilter(lv); load(lv); }}
               style={{ fontSize: 11, padding: "2px 10px", borderRadius: 6, fontWeight: 600, cursor: "pointer",
@@ -462,9 +465,12 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
 
   const [visaFilter, setVisaFilter] = useState(false);
   const [expFilter, setExpFilter]   = useState(false);
-  const [openAI, setOpenAI]           = useState(true);
-  const [openTelegram, setOpenTelegram] = useState(true);
-  const [openScheduler, setOpenScheduler] = useState(true);
+  const [openAI, setOpenAI]           = useState(() => localStorage.getItem('settings_open_ai') !== 'false');
+  const [openTelegram, setOpenTelegram] = useState(() => localStorage.getItem('settings_open_telegram') !== 'false');
+  const [openScheduler, setOpenScheduler] = useState(() => localStorage.getItem('settings_open_scheduler') !== 'false');
+  useEffect(() => { localStorage.setItem('settings_open_ai', String(openAI)); }, [openAI]);
+  useEffect(() => { localStorage.setItem('settings_open_telegram', String(openTelegram)); }, [openTelegram]);
+  useEffect(() => { localStorage.setItem('settings_open_scheduler', String(openScheduler)); }, [openScheduler]);
 
   const [provider, setProvider] = useState("OpenRouter");
   const [modelParse, setModelParse] = useState("google/gemini-2.5-flash-lite");

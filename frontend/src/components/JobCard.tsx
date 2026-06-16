@@ -16,12 +16,13 @@ const SRC_VAR: Record<string, string> = {
   Workday: "--src-workday", HiringCafe: "--src-hiringcafe",
 };
 
-// Posted date stamp: "06/11" in Eastern Time (app-wide standard, same for every viewer)
+// Posted date stamp: "06/11" — extracted directly from UTC ISO string so date
+// matches what the filter buttons show (FJ stores date-only jobs as T00:00:00Z).
 function fmtPosted(iso: string): string {
   if (!iso) return "";
-  const d = new Date(iso.replace(/(\.\d{3})\d+/, "$1"));
-  if (isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("en-US", { timeZone: "America/New_York", month: "2-digit", day: "2-digit" });
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return "";
+  return `${m[2]}/${m[3]}`;
 }
 
 function scoreClass(s: number): string {

@@ -352,18 +352,12 @@ export default function App() {
       const t = new Date(s.replace(/(\.\d{3})\d+/, "$1")).getTime();
       return isNaN(t) ? null : t;
     };
-    // When FJ gives date-only (stored as T00:00:00 UTC), shift to noon so
-    // "posted June 15" falls in the 0-24h bucket when today is June 16.
-    const postMs = (s: string | null): number | null => {
+    // Extract UTC date string "YYYY-MM-DD" from ISO timestamp for consistent
+    // date bucketing — avoids timezone shift that moves midnight-UTC jobs to previous day.
+    const jobDateStr = (s: string | null): string | null => {
       if (!s) return null;
-      const ms = parseMs(s);
-      if (ms === null) return null;
-      const d = new Date(ms);
-      if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0) {
-        d.setUTCHours(12);
-        return d.getTime();
-      }
-      return ms;
+      const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+      return m ? m[1] : null;
     };
     const list = jobs.filter(j => {
       // 1. Base Pool (Job Preferences)
@@ -443,12 +437,10 @@ export default function App() {
         const sc = (j.qualify_result as any)?.score ?? null;
         if (sc === null || sc < parseInt(filters.score)) return false;
       }
-      // time — calendar date filter (e.g. "2026-06-15")
+      // time — calendar date filter (e.g. "2026-06-15"), matched against UTC date
       if (filters.time !== "any") {
-        const t = postMs(j.posted_at) ?? parseMs(j.scraped_at);
-        if (t === null) return false;
-        const jobDate = new Date(t).toLocaleDateString("en-CA", { timeZone: "America/New_York" }); // "YYYY-MM-DD"
-        if (jobDate !== filters.time) return false;
+        const jobDate = jobDateStr(j.posted_at) ?? jobDateStr(j.scraped_at);
+        if (!jobDate || jobDate !== filters.time) return false;
       }
       // Visa filter — FJ semantics: true = JD explicitly mentions sponsorship,
       // false = JD doesn't mention it (NOT a refusal), null = not checked
@@ -476,8 +468,8 @@ export default function App() {
         if (scoreA !== scoreB) return scoreB - scoreA;
       }
       // Date sort (fallback for score, or primary for date)
-      const tA = postMs(a.posted_at) ?? parseMs(a.scraped_at) ?? 0;
-      const tB = postMs(b.posted_at) ?? parseMs(b.scraped_at) ?? 0;
+      const tA = parseMs(a.posted_at) ?? parseMs(a.scraped_at) ?? 0;
+      const tB = parseMs(b.posted_at) ?? parseMs(b.scraped_at) ?? 0;
       return tB - tA;
     });
     return { filteredJobs: list, yearsCounts: yc };
@@ -1217,15 +1209,17 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
 
   const committed = filters.source.length + (filters.score !== "any" ? 1 : 0);
   const draftCount = draft.source.length + (draft.score !== "any" ? 1 : 0);
-  // Last 7 calendar dates in Eastern time
+  // Last 10 UTC calendar dates — match UTC dates stored in DB (FJ date-only jobs = T00:00:00Z)
   const dateDays: { val: string; label: string }[] = React.useMemo(() => {
     const days = [];
     const now = new Date();
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      const val = d.toLocaleDateString("en-CA", { timeZone: "America/New_York" }); // YYYY-MM-DD
-      const label = d.toLocaleDateString("en-US", { timeZone: "America/New_York", month: "2-digit", day: "2-digit" }); // MM/DD
+    const todayUtc = now.toISOString().substring(0, 10); // "YYYY-MM-DD" UTC today
+    for (let i = 0; i < 10; i++) {
+      const d = new Date(todayUtc + "T00:00:00Z");
+      d.setUTCDate(d.getUTCDate() - i);
+      const val = d.toISOString().substring(0, 10); // YYYY-MM-DD
+      const [, m, day] = val.split("-");
+      const label = `${m}/${day}`; // MM/DD
       days.push({ val, label });
     }
     return days;
@@ -1328,7 +1322,7 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
         ))}
       </div>
       <div style={{ fontSize: 10.5, color: "var(--tx-3)", marginTop: 6, lineHeight: 1.4, padding: "0 2px" }}>
-        📅 Last 7 days only — jobs older than 7 days are automatically removed.
+        📅 Last 10 days only — jobs older than 10 days are automatically removed.
       </div>
 
     </div>

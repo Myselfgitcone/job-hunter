@@ -2065,7 +2065,7 @@ async def admin_billing(user_id: str = Depends(get_current_user_id)):
                         break
                 except Exception as e:
                     fj_probe[path] = str(e)
-    return {"or_credits": or_credits, "fj_usage": fj_usage, "fj_probe": fj_probe}
+    return {"or_credits": or_credits, "fj_usage": fj_usage, "fj_probe": fj_probe, "fj_key_set": bool(fj_key)}
 
 
 @app.get("/api/qualify/health")

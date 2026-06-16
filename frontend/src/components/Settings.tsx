@@ -540,12 +540,19 @@ function BillingPanel() {
 
         {loading && !fjUsage && <div style={{ fontSize: 12, color: "var(--tx-3)" }}>Loading…</div>}
 
+        {!loading && !fjUsage && !data?.fj_key_set && (
+          <div style={{ fontSize: 12, color: "#dc2626" }}>FANTASTIC_JOBS_API_KEY not set in Railway env vars</div>
+        )}
+
         {/* Show probe results while we find the right endpoint */}
-        {!loading && !fjUsage && fjProbe && (
+        {!loading && !fjUsage && data?.fj_key_set && fjProbe && (
           <div style={{ fontSize: 10.5, fontFamily: "var(--f-mono)", color: "var(--tx-3)", lineHeight: 1.7 }}>
-            {Object.entries(fjProbe).map(([path, status]) => (
-              <div key={path}>{path}: <span style={{ color: status === 200 ? "#16a34a" : "#dc2626" }}>{String(status)}</span></div>
-            ))}
+            {Object.keys(fjProbe).length === 0
+              ? <span style={{ color: "#dc2626" }}>Probe ran but returned no results</span>
+              : Object.entries(fjProbe).map(([path, status]) => (
+                <div key={path}>{path}: <span style={{ color: status === 200 ? "#16a34a" : "#dc2626" }}>{String(status)}</span></div>
+              ))
+            }
           </div>
         )}
 

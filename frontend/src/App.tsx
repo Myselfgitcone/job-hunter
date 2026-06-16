@@ -1192,6 +1192,11 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
   const [open, setOpen] = React.useState(false);
   const [draft, setDraft] = React.useState({ source: [] as string[], score: "any" as string });
   const ref = React.useRef<HTMLDivElement>(null);
+  const [nowTs, setNowTs] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const id = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   React.useEffect(() => {
     if (open) setDraft({ source: filters.source, score: filters.score });
@@ -1321,8 +1326,17 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
           <button key={val} className={filters.time === val ? "on" : ""} onClick={() => set("time", val)}>{label}</button>
         ))}
       </div>
-      <div style={{ fontSize: 10.5, color: "var(--tx-3)", marginTop: 6, lineHeight: 1.4, padding: "0 2px" }}>
-        📅 Last 10 days only — jobs older than 10 days are automatically removed.
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginTop: 8, padding: "0 2px" }}>
+        <div style={{ fontSize: 10.5, color: "var(--tx-3)", lineHeight: 1.5, flex: 1 }}>
+          📅 Last 10 days only — jobs older than 10 days are automatically removed.
+        </div>
+        <div style={{ fontSize: 10, color: "var(--tx-3)", lineHeight: 1.6, textAlign: "right", flexShrink: 0, marginLeft: 8, fontVariantNumeric: "tabular-nums" }}>
+          {["UTC", "EST", "CST"].map(tz => {
+            const zone = tz === "UTC" ? "UTC" : tz === "EST" ? "America/New_York" : "America/Chicago";
+            const t = new Date(nowTs).toLocaleTimeString("en-US", { timeZone: zone, hour: "2-digit", minute: "2-digit", hour12: false });
+            return <div key={tz}><span style={{ opacity: 0.55, marginRight: 3 }}>{tz}</span>{t}</div>;
+          })}
+        </div>
       </div>
 
     </div>

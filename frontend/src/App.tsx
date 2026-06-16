@@ -1327,6 +1327,9 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
           <button key={val} className={filters.time === val ? "on" : ""} onClick={() => set("time", val)}>{label}</button>
         ))}
       </div>
+      <div style={{ fontSize: 10.5, color: "var(--tx-3)", marginTop: 6, lineHeight: 1.4, padding: "0 2px" }}>
+        📅 Last 7 days only — jobs older than 7 days are automatically removed.
+      </div>
 
     </div>
   );

@@ -137,7 +137,7 @@ export default function App() {
   const [jobs, setJobs]             = useState<Job[]>([]);
   const [allJobs, setAllJobs]       = useState<Job[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [tab, setTab]               = useState("description");
+  const [tab, setTab]               = useState("jobinfo");
   const [loading, setLoading]       = useState(false);
   const [scraping, setScraping]     = useState(false);
   const [scrapeMsg, setScrapeMsg]   = useState("");
@@ -561,7 +561,7 @@ export default function App() {
     finally { setBusy(null); }
   };
 
-  const handleSelect = (id: string) => { setSelectedId(id); setTab("description"); };
+  const handleSelect = (id: string) => { setSelectedId(id); setTab("jobinfo"); };
   // Expose nav to Settings component for "Go to Profile" link
   useEffect(() => { (window as any).__navToProfile = () => setView("profile"); }, []);
   const handleNav = (v: string) => { if (v === "tailor") { setTailorOpen(true); return; } setView(v as View); };
@@ -1340,8 +1340,11 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
             </span>
           );
         })}
-        <span title="Last 10 days only — jobs older than 10 days are automatically removed."
-          style={{ fontSize: 12, color: "var(--tx-3)", opacity: 0.45, cursor: "default", marginLeft: 2, flexShrink: 0 }}>ℹ</span>
+        <span title="Last 10 days only — jobs older than 10 days are automatically removed." style={{ flexShrink: 0, marginLeft: 2, cursor: "default", display: "inline-flex", alignItems: "center" }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--tx-3)", opacity: 0.55 }}>
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+          </svg>
+        </span>
       </div>
 
     </div>

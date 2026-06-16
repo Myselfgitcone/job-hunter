@@ -83,8 +83,9 @@ const I = {
 };
 
 const TABS = [
+  { id: "jobinfo",     label: "Job Info" },
+  { id: "companyinfo", label: "Company Info" },
   { id: "description", label: "Job Description" },
-  { id: "info",        label: "Job & Company Info" },
   { id: "qualify",     label: "Qualify" },
   { id: "resume",      label: "Resume & Fit" },
   { id: "cover",       label: "Cover Letter" },
@@ -327,15 +328,20 @@ function DescriptionTab({ job, onUpdate, onToast }: { job: Job; onUpdate: (p: Pa
   }
   const isHtml = /<\s*(p|div|ul|li|br|strong|em|h[1-6])\b/i.test(desc);
 
+  const jdBtnStyle = (color: string, bg: string): React.CSSProperties => ({
+    height: 30, fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 5,
+    padding: "0 12px", borderRadius: 7, border: `1.5px solid ${color}`, background: bg,
+    color, cursor: "pointer", transition: "opacity .15s",
+  });
   const actionsRow = (
     <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-      <button className="btn btn-ghost" onClick={handleFetchJd} disabled={fetching} style={{ height: 28, fontSize: 11 }}>
+      <button onClick={handleFetchJd} disabled={fetching} style={jdBtnStyle("#0ea5e9", "rgba(14,165,233,0.08)")}>
         {fetching ? <Spinner size={11} /> : <Ic d={I.refresh} size={12} />} Refresh JD
       </button>
-      <button className="btn btn-ghost" onClick={() => setPasteMode(true)} style={{ height: 28, fontSize: 11 }}>
+      <button onClick={() => setPasteMode(true)} style={jdBtnStyle("#8b5cf6", "rgba(139,92,246,0.08)")}>
         <Ic d={I.clip} size={12} /> Paste JD
       </button>
-      <button className="btn btn-ghost" onClick={() => { const plain = desc.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(); navigator.clipboard.writeText(plain); onToast("JD copied!", "success"); }} style={{ height: 28, fontSize: 11 }}>
+      <button onClick={() => { const plain = desc.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(); navigator.clipboard.writeText(plain); onToast("JD copied!", "success"); }} style={jdBtnStyle("#10b981", "rgba(16,185,129,0.08)")}>
         <Ic d={I.copy} size={12} /> Copy JD
       </button>
     </div>
@@ -812,8 +818,9 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
 
         {/* Tab content */}
         <div className="tab-body">
+          {tab === "jobinfo"     && <JobInfoTab job={job} />}
+          {tab === "companyinfo" && <CompanyInfoTab job={job} />}
           {tab === "description" && <DescriptionTab job={job} onUpdate={onUpdate} onToast={onToast} />}
-          {tab === "info"     && <InfoTab job={job} onUpdate={onUpdate} onToast={onToast} />}
           {tab === "qualify"  && <QualifyTab job={job} running={busy === "qualify"} onRun={() => runAction("qualify")} />}
           {tab === "resume"   && (
             <div style={{ display: "flex", flexDirection: "column" }}>

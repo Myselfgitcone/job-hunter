@@ -2035,13 +2035,10 @@ async def admin_billing(user_id: str = Depends(get_current_user_id)):
     await _verify_admin(user_id)
     import os
     fj_key = os.getenv("FANTASTIC_JOBS_API_KEY", "")
-    # Fetch admin settings for OpenRouter key
     async with SessionLocal() as db:
-        row = await db.execute(select(Setting).where(Setting.key == "ai_api_key"))
-        or_key_row = row.scalar_one_or_none()
-        prov_row = await db.execute(select(Setting).where(Setting.key == "ai_provider"))
-        prov = (prov_row.scalar_one_or_none() or Setting(value="OpenRouter")).value or "OpenRouter"
-        or_key = or_key_row.value if or_key_row else ""
+        admin_s = await _get_admin_settings(db)
+        or_key = (admin_s.ai_api_key or "") if admin_s else ""
+        prov = (admin_s.ai_provider or "OpenRouter") if admin_s else "OpenRouter"
 
     fj_data, or_data = None, None
     async with httpx.AsyncClient(timeout=10) as client:

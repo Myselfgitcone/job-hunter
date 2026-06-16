@@ -480,8 +480,6 @@ function BillingPanel() {
   }, []);
 
   const orCredits = data?.or_credits;
-  const fjUsage = data?.fj_usage;
-  const fjProbe = data?.fj_probe;
 
   const bar = (used: number, limit: number, color: string) => {
     const pct = limit > 0 ? Math.min(100, Math.round(used / limit * 100)) : 0;
@@ -529,59 +527,21 @@ function BillingPanel() {
         })()}
       </div>
 
-      {/* ── FantasticJobs Usage ── */}
+      {/* ── FantasticJobs ── */}
       <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--line)", borderRadius: 12, padding: "20px 20px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
           <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg,#ec4899,#8b5cf6)", display: "grid", placeItems: "center" }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
           </div>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--tx)" }}>FantasticJobs Usage</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--tx)" }}>FantasticJobs</span>
         </div>
-
-        {loading && !fjUsage && <div style={{ fontSize: 12, color: "var(--tx-3)" }}>Loading…</div>}
-
-        {!loading && !fjUsage && !data?.fj_key_set && (
-          <div style={{ fontSize: 12, color: "#dc2626" }}>FANTASTIC_JOBS_API_KEY not set in Railway env vars</div>
-        )}
-
-        {/* Show probe results while we find the right endpoint */}
-        {!loading && !fjUsage && data?.fj_key_set && fjProbe && (
-          <div style={{ fontSize: 10.5, fontFamily: "var(--f-mono)", color: "var(--tx-3)", lineHeight: 1.7 }}>
-            {Object.keys(fjProbe).length === 0
-              ? <span style={{ color: "#dc2626" }}>Probe ran but returned no results</span>
-              : Object.entries(fjProbe).map(([path, status]) => (
-                <div key={path}>{path}: <span style={{ color: status === 200 ? "#16a34a" : "#dc2626" }}>{String(status)}</span></div>
-              ))
-            }
-          </div>
-        )}
-
-        {fjUsage && (() => {
-          const reqUsed = fjUsage.requests_used ?? fjUsage.api_requests_used ?? fjUsage.request_count ?? null;
-          const reqLimit = fjUsage.requests_limit ?? fjUsage.api_requests_limit ?? fjUsage.request_limit ?? null;
-          const jobUsed = fjUsage.jobs_used ?? fjUsage.job_count ?? null;
-          const jobLimit = fjUsage.jobs_limit ?? fjUsage.job_limit ?? null;
-          return (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {[[`API Requests`, reqUsed, reqLimit, "var(--violet)"], [`Jobs`, jobUsed, jobLimit, "#ec4899"]].map(([label, used, limit, color]) => (
-                used != null ? (
-                  <div key={label as string}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
-                      <span style={{ color: "var(--tx-2)", fontWeight: 600 }}>{label as string}</span>
-                      <span style={{ color: "var(--tx-3)", fontFamily: "var(--f-mono)" }}>{(used as number).toLocaleString()} / {limit != null ? (limit as number).toLocaleString() : "—"}</span>
-                    </div>
-                    {limit != null && bar(used as number, limit as number, color as string)}
-                    {limit != null && <div style={{ fontSize: 10.5, color: "var(--tx-faint)", marginTop: 3 }}>{((limit as number) - (used as number)).toLocaleString()} remaining</div>}
-                  </div>
-                ) : null
-              ))}
-              {/* Fallback: show raw JSON if field names don't match */}
-              {reqUsed == null && jobUsed == null && (
-                <pre style={{ fontSize: 10, color: "var(--tx-3)", overflow: "auto", maxHeight: 120 }}>{JSON.stringify(fjUsage, null, 2)}</pre>
-              )}
-            </div>
-          );
-        })()}
+        <div style={{ fontSize: 12, color: "var(--tx-3)", marginBottom: 10, lineHeight: 1.5 }}>
+          FJ doesn't expose usage data via API — check your dashboard directly.
+        </div>
+        <a href="https://fantastic.jobs/dashboard" target="_blank" rel="noreferrer"
+          style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "var(--violet)", textDecoration: "none" }}>
+          Open FJ Dashboard →
+        </a>
       </div>
 
       <div style={{ fontSize: 10.5, color: "var(--tx-faint)", textAlign: "center" }}>Auto-refreshes every 60s</div>

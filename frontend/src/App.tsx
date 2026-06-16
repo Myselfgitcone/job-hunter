@@ -352,6 +352,19 @@ export default function App() {
       const t = new Date(s.replace(/(\.\d{3})\d+/, "$1")).getTime();
       return isNaN(t) ? null : t;
     };
+    // When FJ gives date-only (stored as T00:00:00 UTC), shift to noon so
+    // "posted June 15" falls in the 0-24h bucket when today is June 16.
+    const postMs = (s: string | null): number | null => {
+      if (!s) return null;
+      const ms = parseMs(s);
+      if (ms === null) return null;
+      const d = new Date(ms);
+      if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0) {
+        d.setUTCHours(12);
+        return d.getTime();
+      }
+      return ms;
+    };
     const list = jobs.filter(j => {
       // 1. Base Pool (Job Preferences)
       const rawRoles = userSettings?.job_roles;
@@ -432,7 +445,7 @@ export default function App() {
       }
       // time — discrete age band (e.g. "24-48" = posted between 24h and 48h ago)
       if (filters.time !== "any") {
-        const t = parseMs(j.posted_at) ?? parseMs(j.scraped_at);
+        const t = postMs(j.posted_at) ?? parseMs(j.scraped_at);
         if (t === null) return false;  // can't band-match an unknown date
         const ageH = (now - t) / 3600000;
         const [lo, hi] = filters.time.split("-").map(Number);
@@ -464,8 +477,8 @@ export default function App() {
         if (scoreA !== scoreB) return scoreB - scoreA;
       }
       // Date sort (fallback for score, or primary for date)
-      const tA = parseMs(a.posted_at) ?? parseMs(a.scraped_at) ?? 0;
-      const tB = parseMs(b.posted_at) ?? parseMs(b.scraped_at) ?? 0;
+      const tA = postMs(a.posted_at) ?? parseMs(a.scraped_at) ?? 0;
+      const tB = postMs(b.posted_at) ?? parseMs(b.scraped_at) ?? 0;
       return tB - tA;
     });
     return { filteredJobs: list, yearsCounts: yc };

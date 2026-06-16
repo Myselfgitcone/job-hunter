@@ -4,6 +4,7 @@ import { ROLE_GROUPS } from "./JobPreferencesModal";
 
 // ── User management (admin): approve signups + assign role families ───────────
 function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => void; onChanged: () => void }) {
+  const [open, setOpen] = useState(true);
   const [users, setUsers] = useState<any[]>([]);
   const [editing, setEditing] = useState<string | null>(null);   // user id with role picker open
   const [draftRoles, setDraftRoles] = useState<string[]>([]);
@@ -61,7 +62,7 @@ function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => v
 
   return (
     <section className="form-section">
-      <div className="section-label">
+      <div className="section-label" style={{ cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
         <Ic d={'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'} size={16} /> Users
         <span style={{ marginLeft: 6, fontSize: 11.5, color: "var(--tx-3)", fontWeight: 600 }}>{users.length}</span>
         {users.some(u => u.status === "pending") && (
@@ -69,8 +70,10 @@ function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => v
             {users.filter(u => u.status === "pending").length} pending
           </span>
         )}
+        <Chevron open={open} />
       </div>
-      <input value={q} onChange={e => { setQ(e.target.value); setPage(1); }}
+      {!open && null}
+      {open && <><input value={q} onChange={e => { setQ(e.target.value); setPage(1); }}
         placeholder="Search by name or email"
         style={{ width: "100%", height: 38, padding: "0 14px", borderRadius: 10, border: "1px solid var(--line)",
           background: "var(--bg-elevated)", color: "var(--tx)", fontSize: 13, marginBottom: 10, outline: "none" }} />
@@ -214,7 +217,19 @@ function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => v
             style={{ background: "none", border: "none", color: cur === pages ? "var(--tx-faint)" : "var(--tx-2)", fontSize: 12.5, fontWeight: 600, cursor: cur === pages ? "default" : "pointer" }}>Next ›</button>
         </div>
       )}
+      </>}
     </section>
+  );
+}
+
+// ── Chevron for collapsible sections ─────────────────────────────────────────
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+      style={{ marginLeft: "auto", flexShrink: 0, transition: "transform .2s", transform: open ? "rotate(0deg)" : "rotate(-90deg)" }}>
+      <path d="M6 9l6 6 6-6"/>
+    </svg>
   );
 }
 
@@ -275,6 +290,7 @@ const CRON_PRESETS: Record<string, string> = {
 
 // ── Job Stats panel (admin-only) ─────────────────────────────────────────────
 function JobStatsPanel() {
+  const [open, setOpen] = useState(true);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string>("");
@@ -314,13 +330,14 @@ function JobStatsPanel() {
 
   return (
     <section style={{ marginTop: 32 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
         <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "var(--tx)" }}>Job Stats</h3>
         {loading && <span style={{ fontSize: 11, color: "var(--tx-3)" }}>refreshing…</span>}
-        <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--tx-faint)" }}>auto-refresh 15s</span>
+        <span style={{ fontSize: 11, color: "var(--tx-faint)" }}>auto-refresh 15s</span>
+        <Chevron open={open} />
       </div>
 
-      {/* Row 1: job status */}
+      {open && <>{/* Row 1: job status */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
         {tile("Total Jobs", stats?.total)}
         {tile("New", stats?.status?.new, "var(--st-new)")}
@@ -346,6 +363,7 @@ function JobStatsPanel() {
       <div style={{ fontSize: 11, color: "var(--tx-3)", marginTop: 4 }}>
         Last scraped: <span style={{ color: "var(--tx-2)" }}>{fmtTime(stats?.last_scraped_at)}</span>
       </div>
+      </>}
     </section>
   );
 }
@@ -359,6 +377,7 @@ const LEVEL_COLOR: Record<string, string> = {
 };
 
 function SystemLogsPanel({ onSeen }: { onSeen?: () => void }) {
+  const [open, setOpen] = useState(true);
   const [logs, setLogs] = useState<any[]>([]);
   const [filter, setFilter] = useState<"ALL"|"ERROR"|"WARNING"|"INFO">("ALL");
   const [loading, setLoading] = useState(false);
@@ -392,7 +411,7 @@ function SystemLogsPanel({ onSeen }: { onSeen?: () => void }) {
 
   return (
     <section style={{ marginTop: 32 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap", cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
         <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "var(--tx)" }}>System Logs</h3>
         <div style={{ display: "flex", gap: 6 }}>
           {(["ALL","ERROR","WARNING","INFO"] as const).map(lv => (
@@ -404,7 +423,7 @@ function SystemLogsPanel({ onSeen }: { onSeen?: () => void }) {
             </button>
           ))}
         </div>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8 }} onClick={e => e.stopPropagation()}>
           <button onClick={() => load()} disabled={loading}
             style={{ fontSize: 11.5, padding: "4px 12px", borderRadius: 6, cursor: "pointer", background: "var(--bg-2)", color: "var(--tx-2)", border: "1px solid var(--line)", fontWeight: 600 }}>
             {loading ? "Loading…" : "Refresh"}
@@ -415,9 +434,10 @@ function SystemLogsPanel({ onSeen }: { onSeen?: () => void }) {
             {backfilling ? "Starting…" : "Backfill Trays"}
           </button>
         </div>
+        <Chevron open={open} />
       </div>
 
-      <div style={{ maxHeight: 380, overflowY: "auto", borderRadius: 10, border: "1px solid var(--line)", background: "var(--bg-elevated)", fontFamily: "monospace" }}>
+      {open && <div style={{ maxHeight: 380, overflowY: "auto", borderRadius: 10, border: "1px solid var(--line)", background: "var(--bg-elevated)", fontFamily: "monospace" }}>
         {logs.length === 0 ? (
           <div style={{ padding: 24, textAlign: "center", color: "var(--tx-3)", fontSize: 13 }}>
             {loading ? "Loading…" : "No logs found"}
@@ -430,7 +450,7 @@ function SystemLogsPanel({ onSeen }: { onSeen?: () => void }) {
             <span style={{ color: "var(--tx-2)", wordBreak: "break-word" }}>{l.message}</span>
           </div>
         ))}
-      </div>
+      </div>}
     </section>
   );
 }
@@ -442,6 +462,9 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
 
   const [visaFilter, setVisaFilter] = useState(false);
   const [expFilter, setExpFilter]   = useState(false);
+  const [openAI, setOpenAI]           = useState(true);
+  const [openTelegram, setOpenTelegram] = useState(true);
+  const [openScheduler, setOpenScheduler] = useState(true);
 
   const [provider, setProvider] = useState("OpenRouter");
   const [modelParse, setModelParse] = useState("google/gemini-2.5-flash-lite");
@@ -557,8 +580,10 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
 
         {/* AI Configuration */}
         <section className="form-section">
-          <div className="section-label"><Ic d={I.sparkles} size={16} /> AI Configuration</div>
-          <label className="field">
+          <div className="section-label" style={{ cursor: "pointer" }} onClick={() => setOpenAI(o => !o)}>
+            <Ic d={I.sparkles} size={16} /> AI Configuration<Chevron open={openAI} />
+          </div>
+          {openAI && <><label className="field">
             <span className="field-label">Provider</span>
             <div className="seg-tabs">
               {Object.keys(AI_PROVIDERS).map(p => (
@@ -611,12 +636,15 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
               </select>
             </label>
           </div>
+          </>}
         </section>
 
         {/* Telegram */}
         <section className="form-section">
-          <div className="section-label"><Ic d={I.bell} size={16} /> Telegram Notifications</div>
-          <div className="field-grid">
+          <div className="section-label" style={{ cursor: "pointer" }} onClick={() => setOpenTelegram(o => !o)}>
+            <Ic d={I.bell} size={16} /> Telegram Notifications<Chevron open={openTelegram} />
+          </div>
+          {openTelegram && <><div className="field-grid">
             <label className="field">
               <span className="field-label">Bot Token</span>
               <div className="input-reveal">
@@ -643,12 +671,15 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
             {testState === "ok"   && <span className="test-res ok"><Ic d={I.check} size={13} /> Delivered</span>}
             {testState === "fail" && <span className="test-res fail"><Ic d={I.x} size={13} /> Failed</span>}
           </div>
+          </>}
         </section>
 
         {/* Scheduler */}
         <section className="form-section">
-          <div className="section-label"><Ic d={I.clock} size={16} /> Auto-Scrape Scheduler</div>
-          <div className="field-grid">
+          <div className="section-label" style={{ cursor: "pointer" }} onClick={() => setOpenScheduler(o => !o)}>
+            <Ic d={I.clock} size={16} /> Auto-Scrape Scheduler<Chevron open={openScheduler} />
+          </div>
+          {openScheduler && <><div className="field-grid">
             <label className="field">
               <span className="field-label">Cron Expression</span>
               <input type="text" value={cron} onChange={e => setCron(e.target.value)} style={{ fontFamily: "var(--f-mono)" }} placeholder="0 * * * *" />
@@ -707,6 +738,7 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
               </button>
             </div>
           )}
+          </>}
         </section>
 
         <JobStatsPanel />

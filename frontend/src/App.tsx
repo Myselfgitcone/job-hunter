@@ -791,21 +791,21 @@ export default function App() {
               <div className="jobs-body">
                 <div className="list-pane">
                   <div className="list-head">
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--tx-3)", whiteSpace: "nowrap" }}>
-                      Sorted by:
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--tx-3)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                      Sort:
                       <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                        <select 
-                          value={sortBy} 
+                        <select
+                          value={sortBy}
                           onChange={e => setSortBy(e.target.value as "score"|"date")}
-                          style={{ appearance: "none", background: "var(--bg-elevated)", border: "1px solid var(--line)", borderRadius: 6, color: "var(--tx)", fontWeight: 600, padding: "3px 22px 3px 10px", cursor: "pointer", outline: "none", fontFamily: "inherit", fontSize: 12.5, boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}
+                          style={{ appearance: "none", background: "var(--bg-elevated)", border: "1px solid var(--line)", borderRadius: 6, color: "var(--tx)", fontWeight: 600, padding: "2px 18px 2px 7px", cursor: "pointer", outline: "none", fontFamily: "inherit", fontSize: 11, boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}
                         >
                           <option value="score">Match Score</option>
                           <option value="date">Date Posted</option>
                         </select>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", right: 7, color: "var(--tx-3)", pointerEvents: "none" }}><path d="m6 9 6 6 6-6"/></svg>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", right: 5, color: "var(--tx-3)", pointerEvents: "none" }}><path d="m6 9 6 6 6-6"/></svg>
                       </div>
                     </div>
-                    <div className="search-wrap" style={{ flex: 1, marginLeft: 10, minWidth: 0 }}>
+                    <div className="search-wrap" style={{ flex: 1, marginLeft: 6, minWidth: 0 }}>
                       <svg className="s-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
                       </svg>

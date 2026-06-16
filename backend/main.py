@@ -2041,6 +2041,8 @@ async def admin_billing(user_id: str = Depends(get_current_user_id)):
         prov = (admin_s.ai_provider or "OpenRouter") if admin_s else "OpenRouter"
 
     or_credits = None
+    fj_usage = None
+    fj_probe = {}
     async with httpx.AsyncClient(timeout=10) as client:
         if or_key:
             try:
@@ -2052,7 +2054,18 @@ async def admin_billing(user_id: str = Depends(get_current_user_id)):
                     or_credits = r.json().get("data")
             except Exception:
                 pass
-    return {"or_credits": or_credits}
+        if fj_key:
+            fj_headers = {"Authorization": f"Bearer {fj_key}"}
+            for path in ["/v1/usage", "/v1/subscription", "/v1/me", "/v1/billing", "/v2/account", "/v1/quota"]:
+                try:
+                    r = await client.get(f"https://data.fantastic.jobs{path}", headers=fj_headers)
+                    fj_probe[path] = r.status_code
+                    if r.status_code == 200:
+                        fj_usage = {"_endpoint": path, **r.json()} if isinstance(r.json(), dict) else {"_endpoint": path, "data": r.json()}
+                        break
+                except Exception as e:
+                    fj_probe[path] = str(e)
+    return {"or_credits": or_credits, "fj_usage": fj_usage, "fj_probe": fj_probe}
 
 
 @app.get("/api/qualify/health")

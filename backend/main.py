@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from zoneinfo import ZoneInfo
 EST = ZoneInfo('America/New_York')
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Depends, Body

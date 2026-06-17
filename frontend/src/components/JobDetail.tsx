@@ -345,7 +345,19 @@ function DescriptionTab({ job, onUpdate, onToast }: { job: Job; onUpdate: (p: Pa
       <button onClick={() => setPasteMode(true)} style={jdBtnStyle("#8b5cf6", "rgba(139,92,246,0.08)")}>
         <Ic d={I.clip} size={12} /> Paste JD
       </button>
-      <button onClick={() => { const plain = desc.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(); navigator.clipboard.writeText(plain); onToast("JD copied!", "success"); }} style={jdBtnStyle("#10b981", "rgba(16,185,129,0.08)")}>
+      <button onClick={async () => {
+        let plain: string;
+        if (/<[a-zA-Z]/.test(desc)) {
+          const tmp = document.createElement("div");
+          tmp.innerHTML = desc;
+          tmp.querySelectorAll("script, style, noscript").forEach(el => el.remove());
+          plain = (tmp.textContent || "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+        } else {
+          plain = desc.trim();
+        }
+        try { await navigator.clipboard.writeText(plain); onToast("JD copied!", "success"); }
+        catch { onToast("Copy failed — try selecting text manually", "error"); }
+      }} style={jdBtnStyle("#10b981", "rgba(16,185,129,0.08)")}>
         <Ic d={I.copy} size={12} /> Copy JD
       </button>
     </div>

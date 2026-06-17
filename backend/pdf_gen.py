@@ -25,7 +25,7 @@ import io, re
 
 BLACK = colors.HexColor("#1A1A1A")
 GRAY  = colors.HexColor("#555555")
-LGRAY = colors.HexColor("#CCCCCC")
+LGRAY = colors.HexColor("#999999")
 FONT  = "Helvetica"
 
 # Matches date ranges like "Sep 2023 — Present", "Jan 2021 – Jul 2022", "Dec 2018 - Dec 2020"
@@ -188,7 +188,7 @@ def _build_story(resume_text: str) -> list:
             # Keep colon in display to match Resumevar-2 style
             display = clean + ":"
             story.append(Paragraph(_e(display), section_sty))
-            story.append(HRFlowable(width="100%", thickness=0.5,
+            story.append(HRFlowable(width="100%", thickness=0.75,
                                     color=LGRAY, spaceAfter=4))
             continue
 

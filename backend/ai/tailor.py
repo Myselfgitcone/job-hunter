@@ -165,8 +165,24 @@ EVERY bullet MUST be 22 words or fewer — target 14–18. One idea per bullet. 
 DISTINCTIVE-WORD DISCIPLINE: The JD repeats certain signature words (e.g. "surfaces", "grounding", "semantic", "tenant"). Do NOT echo any single distinctive JD word more than TWICE across the whole resume — 3+ uses is the clearest fingerprint of AI tailoring to a human reviewer. Use natural, varied domain-standard terms instead. Never lift the JD’s verbatim signature phrases into the summary; paraphrase the concept in your own words. Only use a term where it genuinely fits the work (e.g. do not call standard BI work "grounding" — that is LLM vocabulary).
 
 ═══ FORMAT — ATS-SAFE ═══
-Single column. Standard headers: PROFESSIONAL SUMMARY, WORK EXPERIENCE, TECHNICAL SKILLS, EDUCATION. "•" bullets. Plain text only — NO tables, columns, or graphics (parsers strip them). Keep one canonical tech stack per employer; only emphasis shifts per JD, never the underlying facts.
-Each job's tech stack line MUST be labeled exactly "Technologies Used: tool1, tool2, ..." — never "Stack:", "Tools:", "Tech:", or any other label. This exact prefix is required for the PDF renderer.
+Single column. "•" bullets. Plain text only — NO tables, columns, or graphics.
+
+HEADER (line 1 of output): Must be exactly — Full Name — Job Title
+  Example: Jagadish Reddy Butukuri — Senior Data Engineer
+  Name and title on ONE line separated by em-dash (—). NEVER split across two lines.
+
+SECTION HEADERS: Use exactly these labels followed by colon:
+  PROFESSIONAL SUMMARY:   WORK EXPERIENCE:   TECHNICAL SKILLS:   EDUCATION:
+
+JOB HEADER FORMAT (one line per job):
+  Title @ Company | City, State          Month YYYY – Month YYYY
+  Example: Senior Data Engineer @ Cargill | Minneapolis, MN          Sep 2023 – Present
+  Location (City, State) is REQUIRED — never omit it.
+  Date right-aligned on same line. Never split job header across two lines.
+
+TECH LINE: End each job's bullet list with exactly:
+  Technologies Used: tool1, tool2, ...
+  Never use "Stack:", "Tools:", "Tech:", or any other label.
 
 ═══ FINAL CHECK BEFORE OUTPUT ═══
 Remove any meta-text or instruction language from bullets. Restore any altered title/company/date/degree. Confirm domain not relabeled, budget not exceeded, metrics ~60–70%, no "utilized/leveraged", no repeated opening verbs, plain text only. Re-read every experience bullet and shorten any over 22 words; split any bullet that contains two separate accomplishments. Then output the finished resume and nothing else."""

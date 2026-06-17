@@ -1352,10 +1352,10 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
           </svg>
           {infoTip && (
             <div style={{
-              position: "absolute", bottom: "calc(100% + 6px)", right: 0,
+              position: "absolute", top: "calc(100% + 6px)", right: 0,
               background: "#1a1a1a", color: "#fff", fontSize: 11, lineHeight: 1.4,
               padding: "6px 10px", borderRadius: 6, whiteSpace: "nowrap",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.25)", zIndex: 999, pointerEvents: "none",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.35)", zIndex: 9999, pointerEvents: "none",
             }}>
               Last 10 days only — jobs older than 10 days are automatically removed.
             </div>

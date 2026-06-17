@@ -2689,8 +2689,8 @@ async def get_analytics(user_id: str = Depends(get_current_user_id)):
         "by_source":  sorted(by_source.items(),  key=lambda x: -x[1]),
         "timeline":   timeline,
         "monthly":    monthly,
-        "applied_jobs":  applied_jobs[:50],
-        "tailored_jobs": tailored_jobs[:50],
+        "applied_jobs":  sorted(applied_jobs,  key=lambda j: j.get("tailored_at") or j.get("applied_at") or "", reverse=True)[:50],
+        "tailored_jobs": sorted(tailored_jobs, key=lambda j: j.get("tailored_at") or "", reverse=True)[:50],
     }
 
 

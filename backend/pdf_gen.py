@@ -13,8 +13,8 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
-from reportlab.lib.enums import TA_LEFT, TA_CENTER
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable, Table, TableStyle
+from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 import io
 import re
 
@@ -47,6 +47,8 @@ def _build_story(resume_text: str) -> list:
                                    textColor=NAVY, spaceBefore=7, spaceAfter=2)
     job_style = ParagraphStyle("Job", fontName="Helvetica-Bold", fontSize=10,
                                textColor=BLACK, spaceBefore=5, spaceAfter=1.5)
+    jobdate_style = ParagraphStyle("JobDate", fontName="Helvetica", fontSize=10,
+                                   textColor=GRAY, alignment=TA_RIGHT, spaceBefore=5, spaceAfter=1.5)
     bullet_style = ParagraphStyle("Bullet", fontName="Helvetica", fontSize=9,
                                   textColor=BLACK, leading=12, spaceAfter=1,
                                   leftIndent=14, firstLineIndent=-10)
@@ -127,9 +129,9 @@ def _build_story(resume_text: str) -> list:
                 story.append(Paragraph(f"&#8226;&nbsp;&nbsp;{e(text)}", bullet_style))
             continue
 
-        # Job header lines
+        # Job header lines  -> 2-column table: left text, right-aligned date
         if re.match(r"^.+? @ .+", line):
-            # Bold title, plain company, gray location + right-aligned date
+            date_t = ""
             if " @ " in line:
                 before_at, after_at = line.split(" @ ", 1)
                 title_t = e(before_at.strip())
@@ -142,18 +144,32 @@ def _build_story(resume_text: str) -> list:
                     if date_m:
                         location = loc_date[:date_m.start()].strip()
                         date_t   = date_m.group(1).strip()
-                        html = (f'<b>{title_t}</b>'
-                                f' @ {e(company_t.strip())}'
-                                f'<font color="#555555">  |  {e(location)}'
-                                f'   {e(date_t)}</font>')
+                        left_html = (f'<b>{title_t}</b>'
+                                     f' @ {e(company_t.strip())}'
+                                     f'<font color="#555555">  |  {e(location)}</font>')
                     else:
-                        html = (f'<b>{title_t}</b>'
-                                f' @ {e(after_at)}')
+                        left_html = (f'<b>{title_t}</b>'
+                                     f' @ {e(after_at)}')
                 else:
-                    html = f'<b>{title_t}</b> @ {e(after_at)}'
+                    left_html = f'<b>{title_t}</b> @ {e(after_at)}'
             else:
-                html = f'<b>{e(line)}</b>'
-            story.append(Paragraph(html, job_style))
+                left_html = f'<b>{e(line)}</b>'
+
+            left_para = Paragraph(left_html, job_style)
+            if date_t:
+                right_para = Paragraph(e(date_t), jobdate_style)
+                tbl = Table([[left_para, right_para]],
+                            colWidths=[5.0*inch, 2.4*inch])
+                tbl.setStyle(TableStyle([
+                    ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ]))
+                story.append(tbl)
+            else:
+                story.append(left_para)
             continue
 
         # Default

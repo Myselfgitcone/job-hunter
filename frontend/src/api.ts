@@ -138,8 +138,9 @@ export const api = {
   saveNotes: (id: string, notes: string) =>
     req(`/api/jobs/${id}/notes`, { method: "PUT", body: JSON.stringify({ notes }) }),
 
-  pdfUrl: (id: string) => `${BASE}/api/jobs/${id}/resume/pdf`,
+  pdfUrl:  (id: string) => `${BASE}/api/jobs/${id}/resume/pdf`,
   docxUrl: (id: string) => `${BASE}/api/jobs/${id}/resume/docx`,
+  jdUrl:   (id: string) => `${BASE}/api/jobs/${id}/jd`,
 
   clearAllJobs: () => req<{ deleted: number }>("/api/jobs/all", { method: "DELETE" }),
 

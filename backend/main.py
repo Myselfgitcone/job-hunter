@@ -2403,6 +2403,22 @@ async def download_docx(job_id: str, user_id: str = Depends(get_current_user_id)
 
 # â”€â”€ Quick Tailor (paste any JD, no job record needed) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+@app.get("/api/jobs/{job_id}/jd")
+async def download_jd(job_id: str, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job or not job.description:
+            raise HTTPException(404, "Job description not found")
+    company_slug = re.sub(r"[^\w]+", "_", job.company or "Company").strip("_")
+    title_slug   = re.sub(r"[^\w]+", "_", job.title   or "Role").strip("_")
+    filename = f"JD_{company_slug}_{title_slug}.txt"
+    return StreamingResponse(
+        iter([job.description.encode("utf-8")]),
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 class QuickTailorRequest(BaseModel):
     jd: str
     company: str = "Company"

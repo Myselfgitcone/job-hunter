@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { api } from "../api";
+import { api, downloadFile } from "../api";
 
 // ── StatCard with count-up animation ─────────────────────────────────────────
 function StatCard({ stat }: { stat: { label: string; value: number; delta: string; grad: [string, string] } }) {
@@ -257,10 +257,10 @@ function _fmtFullDate(iso: string): string {
 }
 
 // ResumeVar-style column: search, big cards, status pill, pagination
-function ResumeList({ title, accent, items, icon, badge }: {
+function ResumeList({ title, accent, items, icon, badge, showDownloads }: {
   title: string; accent: string;
-  items: Array<{ company: string; title: string; when: string; whenFull: string; location: string; exp: string }>;
-  icon: string; badge: string;
+  items: Array<{ id?: string; company: string; title: string; when: string; whenFull: string; location: string; exp: string }>;
+  icon: string; badge: string; showDownloads?: boolean;
 }) {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
@@ -315,8 +315,26 @@ function ResumeList({ title, accent, items, icon, badge }: {
               {it.location && <div style={{ fontSize: 12, color: "var(--tx-3)", marginTop: 2 }}>Location: {it.location}</div>}
               {it.exp && <div style={{ fontSize: 12, color: "var(--tx-3)", marginTop: 2 }}>Exp Needed: {it.exp} yrs</div>}
             </div>
-            <span style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 700, padding: "4px 12px", borderRadius: 999,
-              background: accent + "1c", color: accent }}>✓ {badge}</span>
+            <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+              <span style={{ fontSize: 11.5, fontWeight: 700, padding: "4px 12px", borderRadius: 999,
+                background: accent + "1c", color: accent }}>✓ {badge}</span>
+              {showDownloads && it.id && (
+                <div style={{ display: "flex", gap: 5 }}>
+                  {([
+                    { label: "PDF",  url: api.pdfUrl(it.id),  file: "resume.pdf"  },
+                    { label: "DOCX", url: api.docxUrl(it.id), file: "resume.docx" },
+                    { label: "JD",   url: api.jdUrl(it.id),   file: "jd.txt"      },
+                  ] as { label: string; url: string; file: string }[]).map(({ label, url, file }) => (
+                    <button key={label} onClick={() => downloadFile(url, file)}
+                      style={{ fontSize: 10.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6,
+                        border: "1px solid var(--line)", background: "var(--bg-surface)",
+                        color: "var(--tx-2)", cursor: "pointer" }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -463,7 +481,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
     when: timeAgo(j.applied_at || j.scraped_at), whenFull: _fmtFullDate(j.applied_at || j.scraped_at),
   }));
   const tailoredJobs = (data.tailored_jobs || []).map((j: any) => ({
-    company: j.company, title: j.title, location: j.location || "", exp: j.experience_level || "",
+    id: j.id, company: j.company, title: j.title, location: j.location || "", exp: j.experience_level || "",
     when: timeAgo(j.tailored_at || j.scraped_at), whenFull: _fmtFullDate(j.tailored_at || j.scraped_at),
   }));
 
@@ -604,7 +622,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
           <div className="rh-section-head">Resume History</div>
           <div className="rh-cols">
             <ResumeList title="Applied Resumes"  accent="#10b981" items={appliedJobs}  icon="applied"  badge="Applied"  />
-            <ResumeList title="Tailored Resumes" accent="#7c3aed" items={tailoredJobs} icon="sparkles" badge="Tailored" />
+            <ResumeList title="Tailored Resumes" accent="#7c3aed" items={tailoredJobs} icon="sparkles" badge="Tailored" showDownloads />
           </div>
         </div>
 

@@ -1,5 +1,6 @@
 import re
 from ai.llm import chat
+from resume_lint import lint_resume
 
 
 # ── Hard limits enforced in Python (AI cannot count) ─────────────────────────
@@ -159,20 +160,19 @@ Senior/lead JD → Led, Designed, Owned, Architected, Drove. Mid JD → Develope
 Open by naming the target title + seniority; fold in 1–2 distinctive JD phrases. Say who the candidate is — do NOT copy bullet lines into the summary. Formal/enterprise/technical JD → 4–6 bullet lines. Conversational/startup/small-company JD → 4–6 sentence first-person paragraph.
 
 ═══ HUMAN VOICE — ANTI-AI-TELL ═══
-BAN "utilized" and "leveraged" → use "used", "built", "ran". No two consecutive bullets start with the same verb. Vary structure (metric-first, action-first, tool-first, partner-first). No empty intensifiers ("significantly", "substantially") without a real number. No bullet over ~22 words. Summary wording ≠ bullet wording. It should read like a skilled professional wrote it, not a tool.
+BAN "utilized" and "leveraged" → use "used", "built", "ran". No two consecutive bullets start with the same verb. Vary structure (metric-first, action-first, tool-first, partner-first). No empty intensifiers ("significantly", "substantially") without a real number. Summary wording ≠ bullet wording. It should read like a skilled professional wrote it, not a tool.
+EVERY bullet MUST be 22 words or fewer — target 14–18. One idea per bullet. If a bullet joins two accomplishments with "and" or an em-dash, split it or cut the weaker half. A bullet that would wrap past 2 printed lines is a FAILURE. Do not stack clauses or list 3+ items inside one bullet — name one example or generalize in fewer words.
 
 ═══ FORMAT — ATS-SAFE ═══
 Single column. Standard headers: PROFESSIONAL SUMMARY, WORK EXPERIENCE, TECHNICAL SKILLS, EDUCATION. "•" bullets. Plain text only — NO tables, columns, or graphics (parsers strip them). Keep one canonical tech stack per employer; only emphasis shifts per JD, never the underlying facts.
 
 ═══ FINAL CHECK BEFORE OUTPUT ═══
-Remove any meta-text or instruction language from bullets. Restore any altered title/company/date/degree. Confirm domain not relabeled, budget not exceeded, metrics ~60–70%, no "utilized/leveraged", no repeated opening verbs, plain text only. Then output the finished resume and nothing else."""
+Remove any meta-text or instruction language from bullets. Restore any altered title/company/date/degree. Confirm domain not relabeled, budget not exceeded, metrics ~60–70%, no "utilized/leveraged", no repeated opening verbs, plain text only. Re-read every experience bullet and shorten any over 22 words; split any bullet that contains two separate accomplishments. Then output the finished resume and nothing else."""
 
 
 async def tailor_resume(base_resume: str, job_description: str,
                         api_key: str, provider: str, model: str) -> str:
-    raw = await chat(
-        system=SYSTEM_PROMPT,
-        user=f"""Tailor this resume to the JD. HARD LIMIT: 2 printed pages. Goal: pass ATS ranking and get shortlisted by a human.
+    user_msg = f"""Tailor this resume to the JD. HARD LIMIT: 2 printed pages. Goal: pass ATS ranking and get shortlisted by a human.
 
 Steps:
 1. Read the JD — extract hard skills, responsibilities, domain, seniority, tone, and the top 3–5 distinctive phrases.
@@ -190,10 +190,33 @@ Derive company domains from the ORIGINAL RESUME below. Do not relabel any compan
 === ORIGINAL RESUME ===
 {base_resume}
 
-OUTPUT: complete tailored resume, plain text only, exact format preserved.""",
+OUTPUT: complete tailored resume, plain text only, exact format preserved."""
+
+    raw = await chat(
+        system=SYSTEM_PROMPT,
+        user=user_msg,
         api_key=api_key,
         provider=provider,
         model=model,
         max_tokens=4096,
     )
+
+    # ── Quality gate: lint → one-time retry if issues found ──────────────────
+    issues = lint_resume(raw)
+    if issues:
+        fix_msg = (
+            "The resume you produced has these issues. Fix ALL of them and return "
+            "the corrected resume only — same format, plain text, no commentary:\n\n"
+            + "\n".join(issues)
+            + "\n\nHere is the resume to fix:\n\n" + raw
+        )
+        raw = await chat(
+            system=SYSTEM_PROMPT,
+            user=fix_msg,
+            api_key=api_key,
+            provider=provider,
+            model=model,
+            max_tokens=4096,
+        )
+
     return _enforce_limits(raw)

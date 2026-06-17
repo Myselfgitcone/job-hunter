@@ -166,6 +166,7 @@ DISTINCTIVE-WORD DISCIPLINE: The JD repeats certain signature words (e.g. "surfa
 
 ═══ FORMAT — ATS-SAFE ═══
 Single column. Standard headers: PROFESSIONAL SUMMARY, WORK EXPERIENCE, TECHNICAL SKILLS, EDUCATION. "•" bullets. Plain text only — NO tables, columns, or graphics (parsers strip them). Keep one canonical tech stack per employer; only emphasis shifts per JD, never the underlying facts.
+Each job's tech stack line MUST be labeled exactly "Technologies Used: tool1, tool2, ..." — never "Stack:", "Tools:", "Tech:", or any other label. This exact prefix is required for the PDF renderer.
 
 ═══ FINAL CHECK BEFORE OUTPUT ═══
 Remove any meta-text or instruction language from bullets. Restore any altered title/company/date/degree. Confirm domain not relabeled, budget not exceeded, metrics ~60–70%, no "utilized/leveraged", no repeated opening verbs, plain text only. Re-read every experience bullet and shorten any over 22 words; split any bullet that contains two separate accomplishments. Then output the finished resume and nothing else."""

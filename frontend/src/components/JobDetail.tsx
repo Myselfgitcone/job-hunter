@@ -460,8 +460,8 @@ function QualifyTab({ job, running, onRun }: { job: Job; running: boolean; onRun
 }
 
 // ── Resume tab ─────────────────────────────────────────────────────────────────
-function ResumeTab({ job, tailoring, onTailor, onToast }: {
-  job: Job; tailoring: boolean; onTailor: () => void; onToast: (m: string, t?: "success" | "error") => void;
+function ResumeTab({ job, tailoring, onTailor, onCancel, onToast }: {
+  job: Job; tailoring: boolean; onTailor: () => void; onCancel: () => void; onToast: (m: string, t?: "success" | "error") => void;
 }) {
   if (!job.tailored_resume && !tailoring) {
     return (
@@ -482,7 +482,14 @@ function ResumeTab({ job, tailoring, onTailor, onToast }: {
   if (tailoring) {
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "80px 20px", gap: 14 }}>
-        <Spinner size={28} color="var(--accent)" /><div style={{ fontSize: 13.5, color: "var(--text-secondary)" }}>Tailoring resume with AI…</div>
+        <Spinner size={28} color="var(--accent)" />
+        <div style={{ fontSize: 13.5, color: "var(--text-secondary)" }}>Tailoring resume with AI…</div>
+        <button
+          onClick={onCancel}
+          style={{ marginTop: 4, fontSize: 12.5, fontWeight: 500, color: "var(--text-muted)", background: "none", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: "6px 18px", cursor: "pointer" }}
+        >
+          Cancel
+        </button>
       </div>
     );
   }
@@ -713,11 +720,11 @@ function InfoTab({ job, onUpdate, onToast }: {
 }
 
 // ── Main JobDetail ─────────────────────────────────────────────────────────────
-export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction }: {
+export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction, onCancel }: {
   job: Job | null; tab: string; setTab: (t: string) => void;
   onUpdate: (patch: Partial<Job>) => void;
   onToast: (m: string, t?: "success" | "error") => void;
-  busy: string | null; runAction: (a: string) => void;
+  busy: string | null; runAction: (a: string) => void; onCancel: () => void;
 }) {
   if (!job) {
     return (
@@ -849,7 +856,7 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
           {tab === "qualify"  && <QualifyTab job={job} running={busy === "qualify"} onRun={() => runAction("qualify")} />}
           {tab === "resume"   && (
             <div style={{ display: "flex", flexDirection: "column" }}>
-              <ResumeTab job={job} tailoring={busy === "resume"} onTailor={() => runAction("resume")} onToast={onToast} />
+              <ResumeTab job={job} tailoring={busy === "resume"} onTailor={() => runAction("resume")} onCancel={onCancel} onToast={onToast} />
               <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 20, marginTop: 24 }}>
                 <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 12 }}>Fit & Tips</div>
                 <FitTab job={job} running={busy === "fit"} onRun={() => runAction("fit")} />

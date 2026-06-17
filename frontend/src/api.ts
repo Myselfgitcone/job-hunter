@@ -130,7 +130,7 @@ export const api = {
   saveDescription: (id: string, description: string) =>
     req(`/api/jobs/${id}/description`, { method: "PUT", body: JSON.stringify({ description }) }),
 
-  tailor: (id: string) => req<TailorResult>(`/api/jobs/${id}/tailor`, { method: "POST" }),
+  tailor: (id: string, signal?: AbortSignal) => req<TailorResult>(`/api/jobs/${id}/tailor`, { method: "POST", signal }),
 
   generateCoverLetter: (id: string) =>
     req<{ cover_letter: string }>(`/api/jobs/${id}/cover-letter`, { method: "POST" }),

@@ -242,6 +242,7 @@ export default function App() {
   const [activeFamily, setActiveFamily] = useState<string>(""); // user role chip filter
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("jh_sidebar") === "1");
   const [busy, setBusy]             = useState<string | null>(null);
+  const abortRef                    = useRef<AbortController | null>(null);
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem("jh_welcomed"));
   const { toasts, toast }           = useToasts();
 
@@ -538,7 +539,8 @@ export default function App() {
         updateJob(selectedJob.id, { qualify_result: r });
         toast("Qualification complete", "success");
       } else if (action === "resume") {
-        const r = await api.tailor(selectedJob.id);
+        abortRef.current = new AbortController();
+        const r = await api.tailor(selectedJob.id, abortRef.current.signal);
         updateJob(selectedJob.id, {
           tailored_resume: r.tailored_resume,
           ats_score_before: r.ats_before?.score ?? null,
@@ -557,9 +559,11 @@ export default function App() {
         toast("Cover letter generated", "success");
       }
       await refreshJob(selectedJob.id);
-    } catch (e: any) { toast(e.message || "Failed", "error"); }
-    finally { setBusy(null); }
+    } catch (e: any) { if (e?.name !== "AbortError") toast(e.message || "Failed", "error"); }
+    finally { setBusy(null); abortRef.current = null; }
   };
+
+  const cancelAction = () => { abortRef.current?.abort(); };
 
   const handleSelect = (id: string) => { setSelectedId(id); setTab("jobdetails"); };
   // Expose nav to Settings component for "Go to Profile" link
@@ -829,7 +833,7 @@ export default function App() {
                     )}
                   </div>
                 </div>
-                <JobDetail job={selectedJob} tab={tab} setTab={setTab} onUpdate={(patch: Partial<Job>) => selectedJob && updateJob(selectedJob.id, patch)} onToast={toast} busy={busy} runAction={runAction} />
+                <JobDetail job={selectedJob} tab={tab} setTab={setTab} onUpdate={(patch: Partial<Job>) => selectedJob && updateJob(selectedJob.id, patch)} onToast={toast} busy={busy} runAction={runAction} onCancel={cancelAction} />
               </div>
             )}
           </>

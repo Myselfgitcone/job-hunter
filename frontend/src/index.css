@@ -1902,6 +1902,12 @@ html.light .tag-pill button:hover { background: rgba(124,58,237,.15); }
 }
 .splash.splash-ready .splash-ring { opacity: 1; transform: scale(1); }
 .splash.splash-ready .splash-bull { opacity: 1; transform: scale(1); }
+.splash-spark {
+  transform-box: fill-box; transform-origin: center;
+  opacity: 0; transform: scale(.5);
+  transition: opacity .7s ease .1s, transform .9s cubic-bezier(.34,1.56,.64,1) .1s;
+}
+.splash.splash-ready .splash-spark { opacity: 1; transform: scale(1); }
 
 .splash-lock-ring {
   position: absolute; inset: 0; border-radius: 50%; border: 2px solid rgba(59,130,246,.5);

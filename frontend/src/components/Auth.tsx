@@ -66,12 +66,11 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
       </div>
       <div className="splash-center">
         <div className="splash-target">
-          <svg viewBox="0 0 120 120">
-            <circle className="splash-ring" cx="60" cy="60" r="46" />
-            <circle className="splash-bull" cx="60" cy="60" r="15" />
+          <svg className="splash-spark" viewBox="0 0 60 60">
+            <circle cx="30" cy="30" r="30" fill="#0f0f1a"/>
+            <path d="M30 9 L32.5 24 L46 27.5 L32.5 31 L30 46 L27.5 31 L14 27.5 L27.5 24 Z" fill="white"/>
+            <path d="M44 12 L45.2 16.8 L50 18 L45.2 19.2 L44 24 L42.8 19.2 L38 18 L42.8 16.8 Z" fill="#22d3ee"/>
           </svg>
-          <span className="splash-lock-ring" />
-          <span className="splash-lock-ring splash-lock-ring-2" />
         </div>
         <div className="splash-word">
           <h1 className="splash-brand">Job <span className="splash-hl">Hunter</span></h1>
@@ -549,9 +548,10 @@ export default function Auth({ onSuccess }: Props) {
 function Brand({ light }: { light?: boolean }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: light ? 40 : 28 }}>
-      <svg width="44" height="44" viewBox="0 0 32 32" fill="none">
-        <circle cx="16" cy="16" r="14" stroke="#7c3aed" strokeWidth="2.5" fill="none" />
-        <circle cx="16" cy="16" r="5" fill="#7c3aed" />
+      <svg width="44" height="44" viewBox="0 0 60 60">
+        <circle cx="30" cy="30" r="30" fill="#0f0f1a"/>
+        <path d="M30 9 L32.5 24 L46 27.5 L32.5 31 L30 46 L27.5 31 L14 27.5 L27.5 24 Z" fill="white"/>
+        <path d="M44 12 L45.2 16.8 L50 18 L45.2 19.2 L44 24 L42.8 19.2 L38 18 L42.8 16.8 Z" fill="#22d3ee"/>
       </svg>
       <div>
         <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", color: "#0f172a" }}>

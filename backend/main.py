@@ -2975,6 +2975,7 @@ class ProfileData(BaseModel):
     github: str = ""
     website: str = ""
     visa_status: str = ""
+    summary: str = ""
     experience: List[ProfileExperience] = []
     education: List[ProfileEducation] = []
     projects: List[ProfileProject] = []
@@ -2999,6 +3000,12 @@ def _profile_to_resume_text(p: dict) -> str:
     if contact:
         lines.append(contact)
     lines.append("")
+
+    summary = p.get("summary", "")
+    if summary:
+        lines.append("PROFESSIONAL SUMMARY:")
+        lines.append(summary)
+        lines.append("")
 
     exp = p.get("experience", [])
     if exp:

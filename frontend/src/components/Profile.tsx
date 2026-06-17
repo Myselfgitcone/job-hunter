@@ -173,6 +173,7 @@ export function Profile() {
 
   const [profile, _setProfile] = useState<any>({
     personal: { firstName: "", lastName: "", email: "", phone: "", address: "", linkedin: "", github: "", visa: "" },
+    summary: "",
     experience: [] as any[],
     education: [] as any[],
     projects: [] as any[],
@@ -249,6 +250,7 @@ export function Profile() {
           })),
           education: profile.education.map((e: any) => ({ ...e, expanded: e.expanded !== false })),
           projects: profile.projects.map((pr: any) => ({ name: pr.name, description: pr.stack || pr.desc, url: pr.url, expanded: pr.expanded !== false })),
+          summary: profile.summary || "",
           skills: profile.skills, certifications: profile.certifications,
         };
         await api.saveProfile(payload as any);
@@ -294,6 +296,7 @@ export function Profile() {
             address: p.address || p.location || "", linkedin: p.linkedin || "", github: p.github || "",
             visa: p.visa_status || "",
           },
+          summary: p.summary || "",
           experience: exp, education: edu, projects: proj,
           skills: p.skills || [],
           certifications: p.certifications || [],
@@ -311,6 +314,7 @@ export function Profile() {
     if (!window.confirm("Are you sure you want to clear your entire profile? This cannot be undone until you save again.")) return;
     setProfile({
       personal: { firstName: "", lastName: "", email: "", phone: "", address: "", linkedin: "", github: "", visa: "" },
+      summary: "",
       experience: [], education: [], projects: [], skills: [], certifications: [],
     });
   };
@@ -503,6 +507,18 @@ export function Profile() {
               innerIcon={<Ic d={I.github} size={16} />} placeholder="github.com/..." 
             />
           </div>
+        </section>
+
+        {/* Professional Summary */}
+        <section className="form-section">
+          <div className="section-label"><Ic d={I.doc} size={16} /> Professional Summary</div>
+          <textarea
+            value={profile.summary}
+            onChange={e => setProfile((p: any) => ({ ...p, summary: e.target.value }))}
+            placeholder="Write a 2–4 sentence professional summary highlighting your expertise, years of experience, and key strengths. This will appear at the top of every tailored resume."
+            rows={4}
+            style={{ width: "100%", resize: "vertical", minHeight: 90 }}
+          />
         </section>
 
         {/* Work Experience */}

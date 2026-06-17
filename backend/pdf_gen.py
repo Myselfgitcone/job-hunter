@@ -25,7 +25,7 @@ import io, re
 
 BLACK = colors.HexColor("#1A1A1A")
 GRAY  = colors.HexColor("#555555")
-LGRAY = colors.HexColor("#999999")
+LGRAY = colors.HexColor("#1A1A1A")
 FONT  = "Helvetica"
 
 # Matches date ranges like "Sep 2023 — Present", "Jan 2021 – Jul 2022", "Dec 2018 - Dec 2020"
@@ -130,30 +130,30 @@ def _parse_job_header(s: str):
 
 def _build_story(resume_text: str) -> list:
     name_sty = ParagraphStyle("Name",
-        fontName=FONT+"-Bold", fontSize=13.5, textColor=BLACK,
-        alignment=TA_LEFT, leading=17, spaceAfter=1)
+        fontName=FONT+"-Bold", fontSize=14, textColor=BLACK,
+        alignment=TA_LEFT, leading=18, spaceAfter=1)
     contact_sty = ParagraphStyle("Contact",
-        fontName=FONT, fontSize=9.5, textColor=GRAY,
+        fontName=FONT, fontSize=10, textColor=GRAY,
         alignment=TA_LEFT, leading=13, spaceAfter=8)
     section_sty = ParagraphStyle("Section",
         fontName=FONT+"-Bold", fontSize=11, textColor=BLACK,
         alignment=TA_LEFT, spaceBefore=9, spaceAfter=2)
     job_l_sty = ParagraphStyle("JobL",
-        fontName=FONT+"-Bold", fontSize=10, textColor=BLACK,
-        alignment=TA_LEFT, spaceBefore=6, spaceAfter=0, leading=13)
+        fontName=FONT+"-Bold", fontSize=10.5, textColor=BLACK,
+        alignment=TA_LEFT, spaceBefore=4, spaceAfter=0, leading=14)
     job_r_sty = ParagraphStyle("JobR",
-        fontName=FONT+"-Bold", fontSize=10, textColor=GRAY,
-        alignment=TA_RIGHT, spaceBefore=6, spaceAfter=0, leading=13)
+        fontName=FONT+"-Bold", fontSize=10.5, textColor=GRAY,
+        alignment=TA_RIGHT, spaceBefore=4, spaceAfter=0, leading=14)
     bullet_sty = ParagraphStyle("Bullet",
-        fontName=FONT, fontSize=9.5, textColor=BLACK,
-        alignment=TA_JUSTIFY, leading=13, spaceAfter=2.5,
+        fontName=FONT, fontSize=10, textColor=BLACK,
+        alignment=TA_JUSTIFY, leading=14, spaceAfter=2.5,
         leftIndent=16, firstLineIndent=-12)
     tech_sty = ParagraphStyle("Tech",
-        fontName=FONT, fontSize=9, textColor=BLACK,
+        fontName=FONT, fontSize=9.5, textColor=BLACK,
         alignment=TA_LEFT, spaceAfter=3, spaceBefore=2, leftIndent=0)
     body_sty = ParagraphStyle("Body",
-        fontName=FONT, fontSize=9.5, textColor=BLACK,
-        alignment=TA_JUSTIFY, leading=13, spaceAfter=3)
+        fontName=FONT, fontSize=10, textColor=BLACK,
+        alignment=TA_JUSTIFY, leading=14, spaceAfter=3)
 
     _tbl_style = TableStyle([
         ("VALIGN",        (0, 0), (-1, -1), "BOTTOM"),
@@ -187,8 +187,8 @@ def _build_story(resume_text: str) -> list:
             # Keep colon in display to match Resumevar-2 style
             display = clean + ":"
             story.append(Paragraph(_e(display), section_sty))
-            story.append(HRFlowable(width="100%", thickness=0.75,
-                                    color=LGRAY, spaceAfter=4))
+            story.append(HRFlowable(width="100%", thickness=1.0,
+                                    color=LGRAY, spaceAfter=3))
             continue
 
         # ── Education lines — plain black text, no bold/gray (matches Resumevar-2)
@@ -232,6 +232,7 @@ def _build_story(resume_text: str) -> list:
                 tbl = Table([[left_p, right_p]],
                             colWidths=[_LEFT_COL, _DATE_COL])
                 tbl.setStyle(_tbl_style)
+                tbl.hAlign = "LEFT"
                 story.append(tbl)
             else:
                 story.append(left_p)

@@ -185,7 +185,9 @@ def _build_story(resume_text: str) -> list:
             clean        = s.rstrip(":")
             in_skills    = "SKILL" in clean or "TECHNICAL" in clean
             in_education = "EDUC" in clean
-            story.append(Paragraph(_e(clean), section_sty))
+            # Keep colon in display to match Resumevar-2 style
+            display = clean + ":"
+            story.append(Paragraph(_e(display), section_sty))
             story.append(HRFlowable(width="100%", thickness=0.5,
                                     color=LGRAY, spaceAfter=4))
             continue
@@ -219,6 +221,13 @@ def _build_story(resume_text: str) -> list:
                 html = f"<b>{_e(label.strip())}:</b> {_e(value.strip())}"
             else:
                 html = _e(text)
+            story.append(Paragraph(f"&#8226;&nbsp;&nbsp;{html}", bullet_sty))
+            continue
+
+        # ── Skills section: plain "Label: value" lines (no bullet prefix) ───────
+        if in_skills and ":" in s and not s.startswith("•"):
+            label, _, value = s.partition(":")
+            html = f"<b>{_e(label.strip())}:</b> {_e(value.strip())}"
             story.append(Paragraph(f"&#8226;&nbsp;&nbsp;{html}", bullet_sty))
             continue
 

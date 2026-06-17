@@ -162,6 +162,7 @@ Open by naming the target title + seniority; fold in 1–2 distinctive JD phrase
 ═══ HUMAN VOICE — ANTI-AI-TELL ═══
 BAN "utilized" and "leveraged" → use "used", "built", "ran". No two consecutive bullets start with the same verb. Vary structure (metric-first, action-first, tool-first, partner-first). No empty intensifiers ("significantly", "substantially") without a real number. Summary wording ≠ bullet wording. It should read like a skilled professional wrote it, not a tool.
 EVERY bullet MUST be 22 words or fewer — target 14–18. One idea per bullet. If a bullet joins two accomplishments with "and" or an em-dash, split it or cut the weaker half. A bullet that would wrap past 2 printed lines is a FAILURE. Do not stack clauses or list 3+ items inside one bullet — name one example or generalize in fewer words.
+DISTINCTIVE-WORD DISCIPLINE: The JD repeats certain signature words (e.g. "surfaces", "grounding", "semantic", "tenant"). Do NOT echo any single distinctive JD word more than TWICE across the whole resume — 3+ uses is the clearest fingerprint of AI tailoring to a human reviewer. Use natural, varied domain-standard terms instead. Never lift the JD’s verbatim signature phrases into the summary; paraphrase the concept in your own words. Only use a term where it genuinely fits the work (e.g. do not call standard BI work "grounding" — that is LLM vocabulary).
 
 ═══ FORMAT — ATS-SAFE ═══
 Single column. Standard headers: PROFESSIONAL SUMMARY, WORK EXPERIENCE, TECHNICAL SKILLS, EDUCATION. "•" bullets. Plain text only — NO tables, columns, or graphics (parsers strip them). Keep one canonical tech stack per employer; only emphasis shifts per JD, never the underlying facts.
@@ -202,7 +203,7 @@ OUTPUT: complete tailored resume, plain text only, exact format preserved."""
     )
 
     # ── Quality gate: lint → one-time retry if issues found ──────────────────
-    issues = lint_resume(raw)
+    issues = lint_resume(raw, job_description)
     if issues:
         fix_msg = (
             "The resume you produced has these issues. Fix ALL of them and return "

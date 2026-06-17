@@ -1,8 +1,8 @@
 """
 resume_lint.py — quality gate for tailored resumes BEFORE rendering.
-Checks only what the LLM must fix (length, words, leaks).
-Bullet COUNTS are handled deterministically by _enforce_limits() in tailor.py,
-so they are intentionally NOT checked here (avoids wasteful retries).
+Checks what the LLM must fix: bullet length, multi-idea bullets, banned words,
+meta-leaks, summary length, and JD-word echo (signature words copied too often).
+Bullet COUNTS are handled deterministically by _enforce_limits() in tailor.py.
 """
 import re
 import sys
@@ -14,18 +14,29 @@ BANNED_WORDS = ["utilized", "leveraged"]
 META_LEAKS   = ["fabricat", "as per the jd", "as required", "[[", "note:",
                 "lorem", "placeholder", "tbd"]
 
+# Echo check: a distinctive word lifted from the JD shouldn't appear 3+ times.
+ECHO_MAX           = 2       # max times a JD signature word may appear in resume
+ECHO_MIN_WORD_LEN  = 6       # only consider longer/distinctive words
+# Common resume/data words that are fine to repeat — never flagged as "echo".
+ECHO_STOPLIST = {
+    "pipelines", "pipeline", "data", "across", "analytics", "reporting",
+    "frameworks", "models", "datasets", "systems", "platform", "platforms",
+    "engineering", "experience", "metrics", "governance", "quality",
+    "building", "scalable", "operational", "business", "technical", "teams",
+}
+
 
 def _words(text):
     return len(re.findall(r"\S+", text))
 
 
-def lint_resume(text: str):
-    """Return a list of human-readable issue strings. Empty list = clean."""
+def lint_resume(text: str, job_description: str = ""):
+    """Return a list of issue strings. Empty = clean.
+    Pass job_description to enable the JD-word-echo check (optional)."""
     issues = []
     lines = [l.rstrip() for l in text.strip().split("\n")]
 
-    section = None        # "SUMMARY" | "SKILL" | "EXPERIENCE" | other
-    in_experience = False
+    section = None
     summary_count = 0
     long_bullets = []
     multi_idea = []
@@ -35,18 +46,13 @@ def lint_resume(text: str):
         if not line:
             continue
 
-        # section header
         if line == line.upper() and line.endswith(":") and not line.startswith("•"):
             section = line.rstrip(":")
-            in_experience = "EXPERIENCE" in section or "WORK" in section
             continue
 
-        # job header (inside experience) — just confirms we're in job bullets
         if " @ " in line and not line.startswith("•") and not line.startswith("Technologies"):
-            in_experience = True
             continue
 
-        # bullets
         if line.startswith("•"):
             body = line[1:].strip()
             low = body.lower()
@@ -54,7 +60,6 @@ def lint_resume(text: str):
             for w in BANNED_WORDS:
                 if re.search(rf"\b{w}\b", low):
                     issues.append(f'[BANNED WORD] "{w}" found: "{body[:60]}..."')
-
             for m in META_LEAKS:
                 if m in low:
                     issues.append(f'[META LEAK] "{m}" found: "{body[:60]}..."')
@@ -65,7 +70,6 @@ def lint_resume(text: str):
             if section and ("SKILL" in section or "TECHNICAL" in section):
                 continue
 
-            # experience bullets: word + multi-idea checks
             wc = _words(body)
             if wc > WORD_LIMIT:
                 long_bullets.append((wc, body))
@@ -85,13 +89,32 @@ def lint_resume(text: str):
     for wc, body in multi_idea:
         issues.append(f"[MULTI-IDEA] {wc} words, 2+ accomplishments — split or cut: \"{body[:70]}...\"")
 
+    # ── JD-word echo: flag distinctive JD words repeated too often in resume ──
+    if job_description:
+        jd_low = job_description.lower()
+        res_low = text.lower()
+        jd_words = set(re.findall(r"[a-z][a-z\-]{%d,}" % (ECHO_MIN_WORD_LEN - 1), jd_low))
+        checked = set()
+        for w in jd_words:
+            if w in ECHO_STOPLIST or w in checked:
+                continue
+            checked.add(w)
+            count = len(re.findall(rf"\b{re.escape(w)}\b", res_low))
+            if count > ECHO_MAX:
+                issues.append(
+                    f'[JD ECHO] "{w}" appears {count}x in resume — a distinctive '
+                    f'JD word repeated 3+ times reads as copied. Vary it; keep at most {ECHO_MAX}.'
+                )
+
     return issues
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("usage: python3 resume_lint.py resume.md"); sys.exit(1)
-    found = lint_resume(open(sys.argv[1]).read())
+        print("usage: python3 resume_lint.py resume.md [jd.txt]"); sys.exit(1)
+    txt = open(sys.argv[1]).read()
+    jd = open(sys.argv[2]).read() if len(sys.argv) > 2 else ""
+    found = lint_resume(txt, jd)
     if not found:
         print("✓ CLEAN — no issues.")
     else:

@@ -1,178 +1,168 @@
 """
-PDF generator matching exact formatting of Jagadish_Resume_Resume.docx reference.
-  Name:    18pt  bold  NAVY  CENTER
-  Title:   12pt        GRAY  CENTER
-  Contact: 9.5pt       GRAY  CENTER  + NAVY rule below
-  Section: 11pt  bold  NAVY         + gray rule above
-  JobHdr:  10.5pt bold BLACK        spaced right-align for date
-  Bullet:  9.5pt       BLACK
-  Tech:    9pt  italic GRAY
-  Skill:   9.5pt       BLACK  bold label + plain value
+pdf_gen.py — Resumevar-style formatting.
+  Header:   Name — Title on ONE line, 14pt bold black, left-aligned
+  Contact:  10pt gray, left-aligned
+  Section:  11pt bold black + thin gray rule UNDERNEATH
+  JobHdr:   10.5pt bold black left + bold gray date right (2-col table)
+  Bullet:   9.5pt black, justified, hanging indent
+  Tech:     9pt, "Technologies Used:" bold black + plain black (NOT italic)
+  Skill:    9.5pt bold label + plain value
+  Body:     9.5pt black justified
 """
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable, Table, TableStyle
-from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
-import io
-import re
+from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                HRFlowable, Table, TableStyle)
+from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_JUSTIFY
+import io, re
 
-NAVY  = colors.HexColor("#1F3864")
 BLACK = colors.HexColor("#1A1A1A")
 GRAY  = colors.HexColor("#555555")
+LGRAY = colors.HexColor("#AAAAAA")   # thin rule color
+FONT  = "Helvetica"
 
 
 def generate_pdf(resume_text: str, job_title: str = "", company: str = "") -> bytes:
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=letter,
-        leftMargin=0.55*inch, rightMargin=0.55*inch,
-        topMargin=0.55*inch, bottomMargin=0.55*inch,
+        leftMargin=0.7*inch, rightMargin=0.7*inch,
+        topMargin=0.6*inch,  bottomMargin=0.6*inch,
     )
-    story = _build_story(resume_text)
-    doc.build(story)
+    doc.build(_build_story(resume_text))
     return buffer.getvalue()
 
 
 def _build_story(resume_text: str) -> list:
-    # Styles
-    name_style = ParagraphStyle("Name", fontName="Helvetica-Bold", fontSize=17,
-                                textColor=NAVY, alignment=TA_CENTER, leading=21, spaceAfter=2)
-    title_style = ParagraphStyle("Title", fontName="Helvetica", fontSize=11,
-                                 textColor=GRAY, alignment=TA_CENTER, leading=14, spaceAfter=2)
-    contact_style = ParagraphStyle("Contact", fontName="Helvetica", fontSize=9,
-                                   textColor=GRAY, alignment=TA_CENTER, leading=12, spaceAfter=4)
-    section_style = ParagraphStyle("Section", fontName="Helvetica-Bold", fontSize=10.5,
-                                   textColor=NAVY, spaceBefore=7, spaceAfter=2)
-    job_style = ParagraphStyle("Job", fontName="Helvetica-Bold", fontSize=10,
-                               textColor=BLACK, spaceBefore=5, spaceAfter=1.5)
-    jobdate_style = ParagraphStyle("JobDate", fontName="Helvetica", fontSize=10,
-                                   textColor=GRAY, alignment=TA_RIGHT, spaceBefore=5, spaceAfter=1.5)
-    bullet_style = ParagraphStyle("Bullet", fontName="Helvetica", fontSize=9,
-                                  textColor=BLACK, leading=12, spaceAfter=1,
-                                  leftIndent=14, firstLineIndent=-10)
-    tech_style = ParagraphStyle("Tech", fontName="Helvetica-Oblique", fontSize=8.5,
-                                textColor=GRAY, spaceAfter=2, spaceBefore=1,
-                                leftIndent=10)
-    body_style = ParagraphStyle("Body", fontName="Helvetica", fontSize=9,
-                                textColor=BLACK, leading=12, spaceAfter=2)
+    # ── Styles ────────────────────────────────────────────────────────────────
+    name_style = ParagraphStyle("Name",
+        fontName=FONT+"-Bold", fontSize=13.5, textColor=BLACK,
+        alignment=TA_LEFT, leading=17, spaceAfter=1)
+    contact_style = ParagraphStyle("Contact",
+        fontName=FONT, fontSize=9.5, textColor=GRAY,
+        alignment=TA_LEFT, leading=13, spaceAfter=8)
+    section_style = ParagraphStyle("Section",
+        fontName=FONT+"-Bold", fontSize=11, textColor=BLACK,
+        alignment=TA_LEFT, spaceBefore=9, spaceAfter=2)
+    job_left_style = ParagraphStyle("JobL",
+        fontName=FONT+"-Bold", fontSize=10, textColor=BLACK,
+        alignment=TA_LEFT, spaceBefore=6, spaceAfter=0, leading=13)
+    job_right_style = ParagraphStyle("JobR",
+        fontName=FONT+"-Bold", fontSize=10, textColor=GRAY,
+        alignment=TA_RIGHT, spaceBefore=6, spaceAfter=0, leading=13)
+    bullet_style = ParagraphStyle("Bullet",
+        fontName=FONT, fontSize=9.5, textColor=BLACK,
+        alignment=TA_JUSTIFY, leading=13, spaceAfter=2.5,
+        leftIndent=16, firstLineIndent=-12)
+    tech_style = ParagraphStyle("Tech",
+        fontName=FONT, fontSize=9, textColor=BLACK,
+        alignment=TA_LEFT, spaceAfter=3, spaceBefore=2, leftIndent=10)
+    body_style = ParagraphStyle("Body",
+        fontName=FONT, fontSize=9.5, textColor=BLACK,
+        alignment=TA_JUSTIFY, leading=13, spaceAfter=3)
 
     def e(t):
-        return (t.replace("&", "&amp;")
-                 .replace("<", "&lt;")
-                 .replace(">", "&gt;")
-                 .replace("—", "&#8212;")
-                 .replace("–", "&#8211;"))
+        return (t.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+                 .replace("—","&#8212;").replace("–","&#8211;"))
 
     story = []
     lines = resume_text.strip().split("\n")
 
-    # Header
+    # ── Header: Name — Title on one line, contact on next ────────────────────
     name_line    = lines[0].strip() if lines else ""
     contact_line = lines[1].strip() if len(lines) > 1 else ""
-
-    name_parts = name_line.split(" — ", 1)
-    story.append(Paragraph(e(name_parts[0]), name_style))
-    if len(name_parts) > 1:
-        story.append(Paragraph(e(name_parts[1]), title_style))
+    story.append(Paragraph(e(name_line), name_style))
     story.append(Paragraph(e(contact_line), contact_style))
-    story.append(HRFlowable(width="100%", thickness=2, color=NAVY, spaceAfter=4))
 
-    in_skills = False
+    in_skills   = False
     in_education = False
 
     for line in lines[2:]:
         line = line.rstrip()
         if not line:
-            continue  # spacing handled by style spaceAfter/spaceBefore
+            continue
 
-        # Section headers
-        if (line == line.upper() and len(line) > 3
-                and line.endswith(":") and not line.startswith("•")):
-            section_name = line.rstrip(":")
+        # ── Section header ────────────────────────────────────────────────────
+        if (line.strip() == line.strip().upper() and len(line.strip()) > 3
+                and line.strip().endswith(":") and not line.strip().startswith("•")):
+            section_name = line.strip().rstrip(":")
             in_skills    = "SKILL" in section_name or "TECHNICAL" in section_name
-            in_education = "EDUC" in section_name
-            story.append(HRFlowable(width="100%", thickness=0.5,
-                                    color=colors.HexColor("#CCCCCC"), spaceAfter=2))
+            in_education = "EDUC"  in section_name
             story.append(Paragraph(e(section_name), section_style))
+            story.append(HRFlowable(width="100%", thickness=0.5,
+                                    color=LGRAY, spaceAfter=4))
             continue
 
-        # Education
+        # ── Education ─────────────────────────────────────────────────────────
         if in_education:
-            sep = " — " if " — " in line else (" @ " if " @ " in line else None)
+            sep = " — " if " — " in line else (" @ " if " @ " in line
+                  else (" | " if " | " in line else None))
             if sep:
-                degree, uni = line.split(sep, 1)
-                html = (f'<b><font color="#1A1A1A">{e(degree.strip())}</font></b>'
-                        f'<font color="#555555">   &#8212;   {e(uni.strip())}</font>')
-                story.append(Paragraph(html, body_style))
+                parts = line.split(sep, 1)
+                html = (f'<b>{e(parts[0].strip())}</b>'
+                        f'<font color="#555555">{e(sep)}{e(parts[1].strip())}</font>')
             else:
-                story.append(Paragraph(f'<b>{e(line)}</b>', body_style))
+                html = f'<b>{e(line.strip())}</b>'
+            story.append(Paragraph(html, body_style))
             continue
 
-        # Technologies Used
-        if line.startswith("Technologies Used:"):
-            rest = line[len("Technologies Used:"):].strip()
-            html = (f'<b><i>Technologies Used: </i></b>'
-                    f'<i>{e(rest)}</i>')
+        # ── Technologies Used ─────────────────────────────────────────────────
+        if line.strip().startswith("Technologies Used:"):
+            rest = line.strip()[len("Technologies Used:"):].strip()
+            html = f'<b>Technologies Used:</b> {e(rest)}'
             story.append(Paragraph(html, tech_style))
             continue
 
-        # Bullets
-        if line.startswith("•"):
-            text = line[1:].strip()
+        # ── Bullets ───────────────────────────────────────────────────────────
+        if line.strip().startswith("•"):
+            text = line.strip()[1:].strip()
             if in_skills and ":" in text:
                 label, _, value = text.partition(":")
-                html = (f'<b>{e(label.strip())}:</b> {e(value.strip())}')
-                story.append(Paragraph(f"&#8226;&nbsp;&nbsp;{html}", bullet_style))
+                html = f'<b>{e(label.strip())}:</b> {e(value.strip())}'
             else:
-                story.append(Paragraph(f"&#8226;&nbsp;&nbsp;{e(text)}", bullet_style))
+                html = e(text)
+            story.append(Paragraph(f"&#8226;&nbsp;&nbsp;{html}", bullet_style))
             continue
 
-        # Job header lines  -> 2-column table: left text, right-aligned date
-        if re.match(r"^.+? @ .+", line):
-            date_t = ""
-            if " @ " in line:
-                before_at, after_at = line.split(" @ ", 1)
-                title_t = e(before_at.strip())
-                if " | " in after_at:
-                    company_t, loc_date = after_at.split(" | ", 1)
-                    date_m = re.search(
-                        r"((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}.*$)",
-                        loc_date
-                    )
-                    if date_m:
-                        location = loc_date[:date_m.start()].strip()
-                        date_t   = date_m.group(1).strip()
-                        left_html = (f'<b>{title_t}</b>'
-                                     f' @ {e(company_t.strip())}'
-                                     f'<font color="#555555">  |  {e(location)}</font>')
-                    else:
-                        left_html = (f'<b>{title_t}</b>'
-                                     f' @ {e(after_at)}')
+        # ── Job header: 2-col table, left=title/co/loc, right=date ───────────
+        if re.match(r"^.+? @ .+", line.strip()):
+            before_at, after_at = line.strip().split(" @ ", 1)
+            title_t = e(before_at.strip())
+            date_t  = ""
+            if " | " in after_at:
+                company_t, loc_date = after_at.split(" | ", 1)
+                date_m = re.search(
+                    r"((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+                    r"\s+\d{4}.*$)", loc_date)
+                if date_m:
+                    location = loc_date[:date_m.start()].strip()
+                    date_t   = date_m.group(1).strip()
+                    left_html = (f'<b>{title_t} @ {e(company_t.strip())}'
+                                 f'</b>  <font color="#555555">| {e(location)}</font>')
                 else:
-                    left_html = f'<b>{title_t}</b> @ {e(after_at)}'
+                    left_html = f'<b>{title_t} @ {e(after_at)}</b>'
             else:
-                left_html = f'<b>{e(line)}</b>'
+                left_html = f'<b>{title_t} @ {e(after_at)}</b>'
 
-            left_para = Paragraph(left_html, job_style)
+            left_p  = Paragraph(left_html, job_left_style)
             if date_t:
-                right_para = Paragraph(e(date_t), jobdate_style)
-                tbl = Table([[left_para, right_para]],
-                            colWidths=[5.0*inch, 2.4*inch])
+                right_p = Paragraph(f'<b>{e(date_t)}</b>', job_right_style)
+                tbl = Table([[left_p, right_p]], colWidths=[4.8*inch, 2.6*inch])
                 tbl.setStyle(TableStyle([
-                    ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-                    ("TOPPADDING", (0, 0), (-1, -1), 0),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                    ("VALIGN",       (0,0),(-1,-1),"BOTTOM"),
+                    ("LEFTPADDING",  (0,0),(-1,-1),0),
+                    ("RIGHTPADDING", (0,0),(-1,-1),0),
+                    ("TOPPADDING",   (0,0),(-1,-1),0),
+                    ("BOTTOMPADDING",(0,0),(-1,-1),0),
                 ]))
                 story.append(tbl)
             else:
-                story.append(left_para)
+                story.append(left_p)
             continue
 
-        # Default
-        story.append(Paragraph(e(line), body_style))
+        # ── Default body ──────────────────────────────────────────────────────
+        story.append(Paragraph(e(line.strip()), body_style))
 
     return story

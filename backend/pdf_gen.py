@@ -101,13 +101,12 @@ def _parse_job_header(s: str):
         dm = _DATE_RE.search(after_at)
         if dm:
             date_t = dm.group(1).strip()
+            # Strip trailing date + separators; keep company + location all bold black
             rest = after_at[:dm.start()].strip().rstrip("|").rstrip(",").strip()
         else:
             rest = after_at.strip()
-        if rest:
-            left_html = f"<b>{_e(title_t)} @ {_e(rest)}</b>"
-        else:
-            left_html = f"<b>{_e(title_t)}</b>"
+        # Entire left side bold black — Resumevar-2 style (no gray on location)
+        left_html = f"<b>{_e(title_t)} @ {_e(rest)}</b>" if rest else f"<b>{_e(title_t)}</b>"
 
     else:
         # "Title | Company | Date" or "Title | Company | Location | Date"
@@ -151,7 +150,7 @@ def _build_story(resume_text: str) -> list:
         leftIndent=16, firstLineIndent=-12)
     tech_sty = ParagraphStyle("Tech",
         fontName=FONT, fontSize=9, textColor=BLACK,
-        alignment=TA_LEFT, spaceAfter=3, spaceBefore=2, leftIndent=10)
+        alignment=TA_LEFT, spaceAfter=3, spaceBefore=2, leftIndent=0)
     body_sty = ParagraphStyle("Body",
         fontName=FONT, fontSize=9.5, textColor=BLACK,
         alignment=TA_JUSTIFY, leading=13, spaceAfter=3)
@@ -192,19 +191,9 @@ def _build_story(resume_text: str) -> list:
                                     color=LGRAY, spaceAfter=4))
             continue
 
-        # ── Education lines ───────────────────────────────────────────────────
+        # ── Education lines — plain black text, no bold/gray (matches Resumevar-2)
         if in_education:
-            # Don't treat as job header even if line has "@" or "|"
-            sep = (" — " if " — " in s
-                   else (" @ " if " @ " in s
-                   else (" | " if " | " in s else None)))
-            if sep:
-                parts = s.split(sep, 1)
-                html = (f'<b>{_e(parts[0].strip())}</b>'
-                        f'<font color="#555555">{_e(sep)}{_e(parts[1].strip())}</font>')
-            else:
-                html = f"<b>{_e(s)}</b>"
-            story.append(Paragraph(html, body_sty))
+            story.append(Paragraph(_e(s), body_sty))
             continue
 
         # ── Technologies Used (also catches "Stack:", "Tools:" variants) ────────

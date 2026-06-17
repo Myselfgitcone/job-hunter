@@ -42,8 +42,8 @@ _KNOWN_SECTIONS = {
     "EDUCATION", "SKILLS", "CERTIFICATIONS", "PROJECTS", "SUMMARY",
 }
 
-# Page usable width: 8.5" - 0.7" left - 0.7" right = 7.1"
-_USABLE_W = 7.1 * inch
+# Page usable width: 8.5" - 0.5" left - 0.5" right = 7.5"
+_USABLE_W = 7.5 * inch
 _DATE_COL  = 2.1 * inch
 _LEFT_COL  = _USABLE_W - _DATE_COL   # 5.0"
 
@@ -52,8 +52,8 @@ def generate_pdf(resume_text: str, job_title: str = "", company: str = "") -> by
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=letter,
-        leftMargin=0.7*inch, rightMargin=0.7*inch,
-        topMargin=0.6*inch,  bottomMargin=0.6*inch,
+        leftMargin=0.5*inch, rightMargin=0.5*inch,
+        topMargin=0.5*inch,  bottomMargin=0.5*inch,
     )
     doc.build(_build_story(resume_text))
     return buf.getvalue()

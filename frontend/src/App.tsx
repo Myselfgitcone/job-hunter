@@ -645,7 +645,7 @@ export default function App() {
           {/* Brand */}
           <div className="brand" style={{ justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-              <div className="brand-mark" style={{ flexShrink: 0 }}><span className="brand-dot" /></div>
+              <div className="brand-mark" style={{ flexShrink: 0 }}><svg width="26" height="26" viewBox="0 0 60 60"><circle cx="30" cy="30" r="30" fill="#0f0f1a"/><path d="M30 9 L32.5 24 L46 27.5 L32.5 31 L30 46 L27.5 31 L14 27.5 L27.5 24 Z" fill="white"/><path d="M44 12 L45.2 16.8 L50 18 L45.2 19.2 L44 24 L42.8 19.2 L38 18 L42.8 16.8 Z" fill="#22d3ee"/></svg></div>
               <div className="brand-text">
                 <div className="brand-name">Job <span className="hl">Hunter</span></div>
                 <div className="brand-sub">Hunt Smarter, Not Harder</div>
@@ -729,7 +729,7 @@ export default function App() {
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M9 3v18"/></svg>
               </button>
               <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                <div className="brand-mark" style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0 }}><span className="brand-dot" /></div>
+                <div className="brand-mark" style={{ width: 26, height: 26, flexShrink: 0 }}><svg width="26" height="26" viewBox="0 0 60 60"><circle cx="30" cy="30" r="30" fill="#0f0f1a"/><path d="M30 9 L32.5 24 L46 27.5 L32.5 31 L30 46 L27.5 31 L14 27.5 L27.5 24 Z" fill="white"/><path d="M44 12 L45.2 16.8 L50 18 L45.2 19.2 L44 24 L42.8 19.2 L38 18 L42.8 16.8 Z" fill="#22d3ee"/></svg></div>
                 <div className="brand-text">
                   <div className="brand-name" style={{ margin: 0, fontSize: 16 }}>Job <span className="hl">Hunter</span></div>
                   <div className="brand-sub">Hunt Smarter, Not Harder</div>

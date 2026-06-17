@@ -249,11 +249,11 @@ textarea { resize: none; }
 }
 .brand-mark {
   width: 26px; height: 26px; border-radius: 50%;
-  border: 2.5px solid #2563eb; background: transparent;
+  background: transparent;
   display: grid; place-items: center;
   position: relative; flex: 0 0 26px;
 }
-.brand-dot { width: 9px; height: 9px; border-radius: 50%; background: #2563eb; }
+.brand-dot { display: none; }
 .brand-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .brand-name { font-family: var(--f-display); font-weight: 700; font-size: 15px; letter-spacing: -.02em; line-height: 1.1; }
 .brand-name .hl { color: #3b82f6; }
@@ -1385,13 +1385,12 @@ html.light .tag-pill button:hover { background: rgba(124,58,237,.15); }
 }
 .brand-mark {
   width: 26px; height: 26px;
-  border-radius: 9px;
-  background: var(--grad);
+  border-radius: 50%;
+  background: transparent;
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 14px -4px var(--violet-glow);
   flex-shrink: 0;
 }
-.brand-mark svg { width: 16px; height: 16px; color: #fff; stroke: #fff; }
+.brand-mark svg { width: 26px; height: 26px; }
 .brand-name {
   font-family: var(--f-display);
   font-size: 15px; font-weight: 700;

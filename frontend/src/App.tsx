@@ -1193,6 +1193,7 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
   const [draft, setDraft] = React.useState({ source: [] as string[], score: "any" as string });
   const ref = React.useRef<HTMLDivElement>(null);
   const [nowTs, setNowTs] = React.useState(() => Date.now());
+  const [infoTip, setInfoTip] = React.useState(false);
   React.useEffect(() => {
     const id = setInterval(() => setNowTs(Date.now()), 1000);
     return () => clearInterval(id);
@@ -1340,10 +1341,25 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
             </span>
           );
         })}
-        <span title="Last 10 days only — jobs older than 10 days are automatically removed." style={{ flexShrink: 0, marginLeft: 2, cursor: "default", display: "inline-flex", alignItems: "center" }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--tx-3)", opacity: 0.55 }}>
+        <span
+          style={{ flexShrink: 0, marginLeft: 2, cursor: "pointer", display: "inline-flex", alignItems: "center", position: "relative" }}
+          onMouseEnter={() => setInfoTip(true)}
+          onMouseLeave={() => setInfoTip(false)}
+          onClick={() => setInfoTip(v => !v)}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
           </svg>
+          {infoTip && (
+            <div style={{
+              position: "absolute", bottom: "calc(100% + 6px)", right: 0,
+              background: "#1a1a1a", color: "#fff", fontSize: 11, lineHeight: 1.4,
+              padding: "6px 10px", borderRadius: 6, whiteSpace: "nowrap",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.25)", zIndex: 999, pointerEvents: "none",
+            }}>
+              Last 10 days only — jobs older than 10 days are automatically removed.
+            </div>
+          )}
         </span>
       </div>
 

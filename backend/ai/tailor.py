@@ -8,8 +8,8 @@ BULLET_LIMITS = {
     "PROFESSIONAL SUMMARY": 5,   # fixed: 5 exactly (was 6, caused math overflow)
     "summary":              5,
 }
-JOB_BULLET_LIMITS = [9, 7, 5, 2]   # most-recent → oldest — fixed to match 28 hard cap
-# Math: 5 (summary) + 9 + 7 + 5 + 2 = 28 total ✓
+JOB_BULLET_LIMITS = [11, 7, 5, 2]   # most-recent → oldest; 5+11+7+5+2 = 30 hard cap
+# Fix #3: expanded most-recent job from 9→11 to match prompt budget and leave coverage on table
 SKILLS_LINE_LIMIT = 9
 
 
@@ -117,15 +117,15 @@ def _enforce_limits(text: str) -> str:
 SYSTEM_PROMPT = """You are an expert resume writer. The candidate's real title and years of experience come from the resume — never invent or change them. Return ONLY the finished resume — no commentary, no plan block, no meta-text.
 
 ═══ HARD GATES — THESE OVERRIDE EVERYTHING ELSE ═══
-BULLET BUDGET (hard total: 28, summary included):
+BULLET BUDGET (hard total: 30, summary included):
   • PROFESSIONAL SUMMARY:  exactly 5 bullets
-  • MOST RECENT JOB:       9 bullets max  + 1 Technologies Used line
+  • MOST RECENT JOB:       11 bullets max + 1 Technologies Used line
   • SECOND JOB:            7 bullets max  + 1 Technologies Used line
   • THIRD JOB:             5 bullets max  + 1 Technologies Used line
   • FOURTH+ JOB:           2 bullets max  + 1 Technologies Used line
   • TECHNICAL SKILLS:      6–9 grouped lines
   • EDUCATION:             1 line per degree
-  Maximum possible: 5+9+7+5+2 = 28 total. If you write more, you failed. Cut lowest-relevance bullets first.
+  Maximum possible: 5+11+7+5+2 = 30 total. If you write more, you failed. Cut lowest-relevance bullets first.
 
 FORMAT — ATS-SAFE:
   Single column. "•" bullets only. Plain text — NO tables, columns, graphics, or markdown.
@@ -294,7 +294,7 @@ Open with a bullet naming the target title + seniority + years of experience. Fo
 ✗ NEVER: mirror the JD's exact feature list verbatim into TECHNICAL SKILLS
 ✗ NEVER: stack 3+ major technology paradigms in one role's bullets
 ✗ NEVER: list a tool in Skills with no supporting bullet in the resume
-✗ NEVER: exceed 28 total bullets (5 summary + 9 + 7 + 5 + 2)
+✗ NEVER: exceed 30 total bullets (5 summary + 11 + 7 + 5 + 2)
 ✗ NEVER: drop a strict compliance framework into a domain where it is legally impossible
 ✓ ALWAYS: end each job block with exactly "Technologies Used: ..."
 ✓ ALWAYS: include "| City, State" in every job header
@@ -333,7 +333,7 @@ If a tool appears in TECHNICAL SKILLS but has zero supporting bullets anywhere
 in the WORK EXPERIENCE section, either remove it from Skills or append
 "(current capability)" after it.
 
-CHECK 4 — NOTHING ELSE:
+CONSTRAINT — NOTHING ELSE:
 Reproduce every other line exactly as given. No commentary. No plan blocks.
 Return the complete corrected resume as plain text only."""
 
@@ -365,17 +365,41 @@ Return the complete corrected resume as plain text only — no commentary, no pl
     return stripped
 
 
+# ── Per-issue rule restatements for scoped retry messages ─────────────────────
+# One sentence each — tells the model exactly which rule it broke so it can fix
+# ONLY that issue without re-tailoring unrelated bullets (fix-one-break-one fix).
+_RETRY_RULES = {
+    "[MISSING CONTACT]":   "Line 2 must be 'phone | email' — add the contact line with real phone and email.",
+    "[MISSING LOCATION]":  "Every job header must include '| City, State' after the company name.",
+    "[MISSING TECH LINE]": "Every job block must end with exactly 'Technologies Used: tool1, tool2, ...' — no substitutes.",
+    "[BANNED TECH LABEL]": "Use exactly 'Technologies Used:' — never 'Platform:', 'Stack:', 'Tools:', 'Technologies:', etc.",
+    "[BANNED WORD]":       "Replace 'utilized' and 'leveraged' with 'used', 'built', or 'ran'.",
+    "[META LEAK]":         "Remove all instruction text, commentary, or placeholder strings from the resume body.",
+    "[TOO LONG]":          "Shorten to ≤22 words. One idea per bullet only. Split compound bullets.",
+    "[MULTI-IDEA]":        "One accomplishment per bullet. Split into two separate bullets or cut the weaker half.",
+    "[SAME VERB]":         "No two consecutive experience bullets may open with the same verb — vary them.",
+    "[SUMMARY]":           "PROFESSIONAL SUMMARY must have exactly 5 bullet lines — not 4, not 6.",
+    "[BULLET OVERFLOW]":   "Total bullets (summary + experience) must be ≤30. Cut lowest-relevance bullets first.",
+    "[LOW METRICS]":       "60–70% of experience bullets need a concrete number. Add quantified outcomes.",
+    "[HIGH METRICS]":      "60–70% of bullets carry numbers — remove forced metrics from process/collaboration bullets.",
+    "[JD ECHO]":           "A distinctive JD word repeated 3+ times reads as copied. Vary phrasing, keep ≤2 uses.",
+    "[TRUNCATED OUTPUT]":  "Output was cut off mid-resume. Regenerate the COMPLETE resume including all sections.",
+}
+
+
 async def tailor_resume(base_resume: str, job_description: str,
                         api_key: str, provider: str, model: str) -> str:
 
     user_msg = f"""Tailor this resume to the JD. Hard limit: 28 bullets total (5 summary + 23 experience). Output: plain text resume only.
 
-STEP 1 — Open a <plan> block. Inside, write:
-  DOMAINS: [each company in the resume → its real industry, e.g. Cargill → agribusiness/commodity trading]
-  TIMELINE: [each role's start–end year and which JD tools were mainstream/available by then]
-  GAP_FILLS: [for each JD skill not in the resume: do all 4 anchors fit AND budget available? → assign to role, or DROP]
-  CUTS: [which existing bullets are being displaced, and from which role]
-  COMPLIANCE_DROPS: [any JD compliance frameworks being skipped and why]
+STEP 1 — Open a <plan> block. Fill in EVERY field explicitly before writing a single resume line:
+  SUMMARY_TITLE: [candidate's actual title as it appears in the resume] → [exact text of summary bullet 1, showing how the JD's target role is bridged without fabricating a new title]
+  DOMAINS: [each company → its real industry; derive from resume text, never invent]
+  TIMELINE: [each role's start–end years + which JD tools were already mainstream enterprise-standard by then]
+  TIMELINE_BLOCKS: [any JD tool that fails the timeline check → placed in Skills-only or dropped; write "none" if all tools are plausible]
+  GAP_FILLS: [for each JD hard skill absent from resume: 4-anchor test result → role assignment or DROP to Skills-only]
+  CUTS: [which existing bullets are displaced to make room, and from which role]
+  COMPLIANCE_DROPS: [frameworks skipped because legally impossible in candidate's real domain; write "none" if all apply]
 Close </plan>.
 
 STEP 2 — Write the complete tailored resume following all system prompt rules.
@@ -401,16 +425,42 @@ STEP 3 — Count every bullet. Rewrite any over 22 words before finalizing.
     raw = re.sub(r'<plan>.*?</plan>', '', raw, flags=re.DOTALL).strip()
 
     # ── Quality gate: lint → up to 3 retries until clean ────────────────────
+    # Best-of-N: track the attempt with the fewest lint issues.
+    # Prevents returning a regressed retry that's WORSE than attempt 1.
+    _best_raw         = raw
+    _best_issue_count = len(lint_resume(raw, job_description))
+
     for attempt in range(3):
         issues = lint_resume(raw, job_description)
+
+        # Update best-so-far before possibly retrying
+        if len(issues) <= _best_issue_count:
+            _best_issue_count = len(issues)
+            _best_raw = raw
+
         if not issues:
             break   # clean — no retry needed
+
+        # Scoped retry: one-line rule restatement per issue.
+        # "Fix ONLY these" prevents the model from re-tailoring unrelated
+        # sections — eliminating the fix-one-break-one regression cycle.
+        issue_lines = "\n".join(
+            "  • {}\n    → {}".format(
+                iss,
+                _RETRY_RULES.get(
+                    "[" + iss.split("]")[0].lstrip("[") + "]",
+                    "Re-read the system prompt rules and fix this issue."
+                )
+            )
+            for iss in issues
+        )
         fix_msg = (
-            f"The resume you produced has {len(issues)} issue(s) on attempt {attempt + 1}. "
-            "Fix ALL of them and return the corrected resume only — "
-            "same format, plain text, no commentary:\n\n"
-            + "\n".join(f"  • {iss}" for iss in issues)
-            + "\n\nHere is the resume to fix:\n\n" + raw
+            f"TARGETED FIX — attempt {attempt + 2} of 3.\n"
+            "Fix ONLY the specific issues listed below. "
+            "Do NOT alter any other bullet, section, or line — surgical edits only.\n"
+            "Return the COMPLETE resume as plain text with only these fixes applied.\n\n"
+            f"ISSUES TO FIX:\n{issue_lines}\n\n"
+            "=== RESUME TO FIX ===\n" + raw
         )
         raw = await chat(
             system=SYSTEM_PROMPT,
@@ -418,10 +468,19 @@ STEP 3 — Count every bullet. Rewrite any over 22 words before finalizing.
             api_key=api_key,
             provider=provider,
             model=model,
-            max_tokens=6000,   # bumped: retry sends full resume back + issue list
+            max_tokens=6000,
         )
-        # Strip plan block from retry output too
+        # Strip plan block from retry output
         raw = re.sub(r'<plan>.*?</plan>', '', raw, flags=re.DOTALL).strip()
+
+    # Final best-of-N check: maybe last attempt was worse than an earlier one
+    final_issues = lint_resume(raw, job_description)
+    if len(final_issues) < _best_issue_count:
+        _best_raw = raw
+        _best_issue_count = len(final_issues)
+    if _best_issue_count > 0 and _best_raw is not raw:
+        print(f"[RETRY] Best-of-N: using earlier attempt ({_best_issue_count} issues remaining vs {len(final_issues)} in last)")
+    raw = _best_raw
 
     # ── Enforce hard limits (deterministic trim after AI output) ─────────────
     result = _enforce_limits(raw)

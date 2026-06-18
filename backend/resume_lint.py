@@ -11,7 +11,7 @@ import sys
 WORD_LIMIT   = 22
 WORD_TARGET  = 18
 SUMMARY_MAX  = 5    # prompt requires EXACTLY 5 summary bullets
-BULLET_MAX   = 28   # hard total: 5 summary + 9 + 7 + 5 + 2 experience
+BULLET_MAX   = 30   # hard total: 5 summary + 11 + 7 + 5 + 2 experience (Fix #3: 9→11 for most-recent job)
 BANNED_WORDS = ["utilized", "leveraged"]
 META_LEAKS   = ["fabricat", "as per the jd", "as required", "[[", "note:",
                 "lorem", "placeholder", "tbd"]

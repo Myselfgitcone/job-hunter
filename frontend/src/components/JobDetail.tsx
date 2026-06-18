@@ -476,8 +476,8 @@ function ResumeTab({ job, tailoring, onTailor, onCancel, onToast }: {
   job: Job; tailoring: boolean; onTailor: () => void; onCancel: () => void; onToast: (m: string, t?: "success" | "error") => void;
 }) {
   // Hooks MUST be at top level — never inside conditionals
-  const [elapsed, setElapsed] = React.useState(0);
-  React.useEffect(() => {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
     if (!tailoring) { setElapsed(0); return; }
     setElapsed(0);
     const t = setInterval(() => setElapsed(s => s + 1), 1000);

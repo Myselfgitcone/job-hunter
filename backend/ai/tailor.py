@@ -146,9 +146,54 @@ Score every bullet 1–5 by JD relevance:
   1 — generic soft skill → CUT FIRST
 Keep top bullets within the budget; cut lowest first.
 
-═══ GAP FILLING — FULL COMMITMENT ═══
-For each JD hard skill missing from the resume, write a bullet as genuine, lived experience — no hedging, no flags, state it as fact. Each gap bullet needs all four: a specific technique/action, the named JD tool, context from the REAL company's REAL domain, and a realistic outcome (usually a number, ≤20 words).
-Anchor to the real domain — NEVER relabel a company's industry to match the JD. Place each gap bullet at the job whose domain best fits the JD. Max ~2–3 gap bullets per job; if a whole job is mostly fabricated, spread coverage instead. Displace the lowest-scoring bullet in that role. Tools with no basis go in the Skills section only, not bullets.
+═══ GAP FILLING — PRACTITIONER-LEVEL COMMITMENT ═══
+For EVERY hard skill the JD names that is missing from the resume, write a bullet that sounds like a senior professional who has used that skill for years — not a first-timer who just Googled it.
+
+Each gap bullet MUST have all four of these anchors:
+  1. SPECIFIC ACTION — name the exact technique, pattern, or operation (not just "used X" — say what you did WITH X)
+  2. NAMED TOOL — use the JD's exact tool/framework/technology name
+  3. REAL DOMAIN CONTEXT — anchor to the real company's real business domain (e.g. grain/commodity data at Cargill, patient records at a healthcare company, transaction data at a bank)
+  4. CONCRETE OUTCOME — a realistic number or tangible result (≤18 words total for the bullet)
+
+TONE RULES FOR GAP BULLETS:
+  • Write as if describing a past project you owned — past tense, confident, zero hedging
+  • Use mid-to-senior action verbs: Built, Designed, Implemented, Migrated, Automated, Deployed, Optimized
+  • Sound like someone who knows the tool's real trade-offs — name a specific feature, method, or pattern (e.g. not "used Kafka" but "streamed commodity-price events through Kafka topics to 3 downstream consumers")
+  • NEVER say: "gained experience in", "assisted with", "helped with", "exposure to", "familiar with" — these are instant red flags
+  • NEVER use the word "leveraged" or "utilized"
+  • One crisp idea only — under 18 words
+
+PLACEMENT RULES:
+  • Place each gap bullet at the job whose real domain best fits the JD skill
+  • Max 2–3 gap bullets per job (spread if more are needed)
+  • Displace the LOWEST-scoring existing bullet in that role to make room
+  • If a skill has zero plausible connection to any job's real domain — put it in TECHNICAL SKILLS only, never force a bullet
+
+CENTRAL-SKILL RULE: If a skill is named 3+ times in the JD, appears in the job title, or is clearly the role's main focus — it must appear in a bullet at EVERY job where it is plausible. Anchor each instance to that job's real domain.
+
+THE UNIVERSAL FORMULA — applies to every industry, every role, every tool:
+  [Action verb] + [specific technique/pattern with the named tool] + [real domain anchor from employer's actual industry] + [concrete outcome]
+
+DERIVE THE DOMAIN FROM THE RESUME — not from a template:
+  • The candidate's companies tell you the domain. Read their industry, their data, their customers, their operations.
+  • Healthcare: patient records, claims, EHR systems, clinical workflows, bed capacity
+  • Supply chain / logistics: inventory, shipments, procurement, vendor SLAs, warehouses
+  • Agribusiness / commodity: grain prices, crop yields, supplier contracts, commodity trades
+  • Financial services / banking: transactions, loans, risk scores, portfolios, ledgers
+  • Cybersecurity / defense: endpoints, threat feeds, alerts, access policies, incidents
+  • Retail / e-commerce: orders, SKUs, customer behavior, conversions, catalog
+  • Legal / compliance: contracts, regulations, audit trails, case matter, deadlines
+  • Manufacturing: production runs, defect rates, equipment uptime, quality gates
+  • Healthcare IT / digital health: HL7/FHIR data, clinical decision support, patient outcomes
+  • SaaS / tech product: tenants, user events, feature flags, API calls, error rates
+  • Any other domain — read the resume and infer. Never invent. Never relabel.
+
+THREE EXAMPLES SHOWING THE FORMULA ACROSS DIFFERENT DOMAINS:
+  Agribusiness + Airflow:    "Automated daily grain-price ingestion jobs using Apache Airflow DAGs, cutting analyst wait time by 3 hours"
+  Healthcare + dbt:          "Built dbt models transforming raw EHR claims into patient-risk aggregates, reducing report latency by 45%"
+  Finance + Spring Boot:     "Refactored loan-origination batch jobs into Spring Boot microservices, cutting processing time by 28%"
+Every gap bullet you write must hit this same bar — no domain is special-cased, the formula works universally.
+
 
 ═══ METRICS — NATURAL, ~60–70% ═══
 Add a number only where work naturally produces one (gains, volume, time saved, accuracy, cost, refresh time, errors). NEVER force numbers onto collaboration, documentation, or process bullets — "documented 45 definitions" / "attended 12 sprints" are dead AI tells. ~60–70% of bullets carry a metric, higher on recent job, lower on oldest. Never 100% (fake), never 0% (weak). Keep plausible: %s 10–40%, volumes mid-level, dollar impact only if seniority fits.
@@ -183,6 +228,18 @@ JOB HEADER FORMAT (one line per job):
 TECH LINE: End each job's bullet list with exactly:
   Technologies Used: tool1, tool2, ...
   Never use "Stack:", "Tools:", "Tech:", or any other label.
+
+═══ CRITICAL REMINDERS — CHECK THESE BEFORE YOU TYPE THE FIRST CHARACTER ═══
+✗ NEVER: "utilized" or "leveraged" — use "used", "built", "ran"
+✗ NEVER: any bullet over 22 words — shorten or split every single one
+✗ NEVER: two consecutive experience bullets starting with the same verb
+✗ NEVER: meta-language, commentary, or instruction text anywhere in output
+✗ NEVER: missing phone/email contact line (must be line 2 of the resume)
+✗ NEVER: drop a JD-named hard skill without putting it somewhere (bullet or Skills)
+✓ ALWAYS: end every job block with exactly "Technologies Used: tool1, tool2, ..."
+✓ ALWAYS: every job header must include "| City, State"
+✓ ALWAYS: metrics on ~60–70% of bullets — never 100% (fake), never 0% (weak)
+✓ ALWAYS: gap bullets must sound like a seasoned practitioner — specific action + named tool + domain anchor + outcome
 
 ═══ FINAL CHECK BEFORE OUTPUT ═══
 Remove any meta-text or instruction language from bullets. Restore any altered title/company/date/degree. Confirm domain not relabeled, budget not exceeded, metrics ~60–70%, no "utilized/leveraged", no repeated opening verbs, plain text only. Re-read every experience bullet and shorten any over 22 words; split any bullet that contains two separate accomplishments. Then output the finished resume and nothing else."""
@@ -219,13 +276,16 @@ OUTPUT: complete tailored resume, plain text only, exact format preserved."""
         max_tokens=4096,
     )
 
-    # ── Quality gate: lint → one-time retry if issues found ──────────────────
-    issues = lint_resume(raw, job_description)
-    if issues:
+    # ── Quality gate: lint → up to 3 retries until clean ────────────────────
+    for attempt in range(3):
+        issues = lint_resume(raw, job_description)
+        if not issues:
+            break   # clean — no retry needed
         fix_msg = (
-            "The resume you produced has these issues. Fix ALL of them and return "
-            "the corrected resume only — same format, plain text, no commentary:\n\n"
-            + "\n".join(issues)
+            f"The resume you produced has {len(issues)} issue(s) on attempt {attempt + 1}. "
+            "Fix ALL of them and return the corrected resume only — "
+            "same format, plain text, no commentary:\n\n"
+            + "\n".join(f"  • {iss}" for iss in issues)
             + "\n\nHere is the resume to fix:\n\n" + raw
         )
         raw = await chat(

@@ -1258,6 +1258,8 @@ async def _get_user_settings(user_id: str) -> dict:
             resume_row = await db.get(Setting, "resume")
             resume_text = resume_row.value if resume_row else ""
 
+        profile_name_val = (s.profile_name or "") if s else ""
+        job_roles_val = json.loads(s.job_roles or "[]") if s else []
         return {
             "resume": resume_text,
             "ai_provider": ai_source.ai_provider if ai_source else "openrouter",
@@ -1266,6 +1268,8 @@ async def _get_user_settings(user_id: str) -> dict:
             "ai_model_tailor": ai_source.ai_model_tailor if ai_source else "",
             "ai_model_qualify": ai_source.ai_model_qualify if ai_source else "",
             "ai_model_cover_letter": ai_source.ai_model_cover_letter if ai_source else "",
+            "profile_name": profile_name_val,
+            "job_roles": job_roles_val,
         }
 
 
@@ -2349,6 +2353,17 @@ async def update_notes(job_id: str, body: NotesUpdate, user_id: str = Depends(ge
 
 # â”€â”€ PDF Download â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+
+def _candidate_slug(profile_name: str) -> str:
+    """'Jagadish Reddy Butukuri' → 'Jagadish_Butukuri' (first + last word only)."""
+    parts = profile_name.strip().split()
+    if len(parts) >= 2:
+        return f"{parts[0]}_{parts[-1]}"
+    elif parts:
+        return parts[0]
+    return "Candidate"
+
+
 @app.get("/api/jobs/{job_id}/resume/pdf")
 async def download_pdf(job_id: str, user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
@@ -2363,9 +2378,11 @@ async def download_pdf(job_id: str, user_id: str = Depends(get_current_user_id))
         if not tailored_resume:
             raise HTTPException(400, "No tailored resume yet. Click Tailor Resume first.")
 
+    user_cfg = await _get_user_settings(user_id)
+    cand = _candidate_slug(user_cfg.get("profile_name", ""))
+    company_slug = re.sub(r"[^\w]+", "_", job.company or "Company").strip("_")
+    filename = f"{cand}_{company_slug}.pdf"
     pdf_bytes = generate_pdf(tailored_resume, job.title, job.company)
-    title_slug = re.sub(r"[^\w]+", "_", job.title or "Senior_Data_Engineer").strip("_")
-    filename = f"Jagadish_Reddy_Butukuri_{title_slug}.pdf"
 
     return StreamingResponse(
         iter([pdf_bytes]),
@@ -2390,9 +2407,11 @@ async def download_docx(job_id: str, user_id: str = Depends(get_current_user_id)
         if not tailored_resume:
             raise HTTPException(400, "No tailored resume yet. Click Tailor Resume first.")
 
+    user_cfg = await _get_user_settings(user_id)
+    cand = _candidate_slug(user_cfg.get("profile_name", ""))
+    company_slug = re.sub(r"[^\w]+", "_", job.company or "Company").strip("_")
+    filename = f"{cand}_{company_slug}.docx"
     docx_bytes = generate_docx(tailored_resume, job.title, job.company)
-    title_slug = re.sub(r"[^\w]+", "_", job.title or "Senior_Data_Engineer").strip("_")
-    filename = f"Jagadish_Reddy_Butukuri_{title_slug}.docx"
 
     return StreamingResponse(
         iter([docx_bytes]),
@@ -2457,9 +2476,11 @@ async def quick_tailor_pdf(body: QuickTailorRequest, user_id: str = Depends(get_
 
     tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model)
     pdf_bytes = generate_pdf(tailored, "", body.company)
+    cand = _candidate_slug(user_cfg.get("profile_name", ""))
+    company_slug = re.sub(r"[^\w]+", "_", body.company or "Company").strip("_")
     return StreamingResponse(
         iter([pdf_bytes]), media_type="application/pdf",
-        headers={"Content-Disposition": 'attachment; filename="Jagadish_Reddy_Butukuri_Senior_Data_Engineer.pdf"'},
+        headers={"Content-Disposition": f'attachment; filename="{cand}_{company_slug}.pdf"'},
     )
 
 
@@ -2479,27 +2500,35 @@ async def quick_tailor_docx(body: QuickTailorRequest, user_id: str = Depends(get
 
     tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model)
     docx_bytes = generate_docx(tailored, "", body.company)
+    cand = _candidate_slug(user_cfg.get("profile_name", ""))
+    company_slug = re.sub(r"[^\w]+", "_", body.company or "Company").strip("_")
     return StreamingResponse(
         iter([docx_bytes]),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": 'attachment; filename="Jagadish_Reddy_Butukuri_Senior_Data_Engineer.docx"'},
+        headers={"Content-Disposition": f'attachment; filename="{cand}_{company_slug}.docx"'},
     )
 
 
 # â”€â”€ Save Package (create folder + write all files to disk) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-def _build_package_zip(company: str, jd: str, tailored_resume: str, cover_letter: str = "") -> bytes:
+def _build_package_zip(
+    company: str,
+    jd: str,
+    tailored_resume: str,
+    cover_letter: str = "",
+    candidate_slug: str = "Candidate",
+) -> bytes:
     """Build all package files into a ZIP in memory. Returns raw ZIP bytes."""
     import zipfile, io as _io
     company_clean = re.sub(r"[^\w\s\-]", "", company).strip()
     slug = re.sub(r"[^\w]+", "_", company).strip("_")
     buf = _io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr(f"{company_clean}_JD.docx",         generate_jd_docx(jd, company_clean))
-        zf.writestr("Jagadish_Reddy_Butukuri_Senior_Data_Engineer.pdf",  generate_pdf(tailored_resume, "", company))
-        zf.writestr("Jagadish_Reddy_Butukuri_Senior_Data_Engineer.docx", generate_docx(tailored_resume, "", company))
+        zf.writestr(f"{company_clean}_JD.docx",                          generate_jd_docx(jd, company_clean))
+        zf.writestr(f"{candidate_slug}_{slug}.pdf",                      generate_pdf(tailored_resume, "", company))
+        zf.writestr(f"{candidate_slug}_{slug}.docx",                     generate_docx(tailored_resume, "", company))
         if cover_letter and cover_letter.strip():
-            zf.writestr(f"Jagadish_Reddy_Butukuri_{slug}_CoverLetter.txt",
+            zf.writestr(f"{candidate_slug}_{slug}_CoverLetter.txt",
                         cover_letter.encode("utf-8"))
     return buf.getvalue()
 
@@ -2519,7 +2548,9 @@ async def save_package(job_id: str, user_id: str = Depends(get_current_user_id))
         if not tailored_resume:
             raise HTTPException(400, "No tailored resume yet. Tailor first.")
 
-    zip_bytes = _build_package_zip(job.company, job.description or "", tailored_resume, cover_letter or "")
+    user_cfg = await _get_user_settings(user_id)
+    cand = _candidate_slug(user_cfg.get("profile_name", ""))
+    zip_bytes = _build_package_zip(job.company, job.description or "", tailored_resume, cover_letter or "", cand)
     slug = re.sub(r"[^\w]+", "_", job.company).strip("_")
     return StreamingResponse(
         iter([zip_bytes]),
@@ -2536,7 +2567,9 @@ class QuickSaveRequest(BaseModel):
 
 @app.post("/api/quick-tailor/save-package")
 async def quick_save_package(body: QuickSaveRequest, user_id: str = Depends(get_current_user_id)):
-    zip_bytes = _build_package_zip(body.company, body.jd, body.tailored_resume, body.cover_letter)
+    user_cfg = await _get_user_settings(user_id)
+    cand = _candidate_slug(user_cfg.get("profile_name", ""))
+    zip_bytes = _build_package_zip(body.company, body.jd, body.tailored_resume, body.cover_letter, cand)
     slug = re.sub(r"[^\w]+", "_", body.company).strip("_")
     return StreamingResponse(
         iter([zip_bytes]),
@@ -3228,6 +3261,7 @@ async def qualify_job_endpoint(job_id: str, user_id: str = Depends(get_current_u
     if not profile:
         raise HTTPException(400, "No profile configured. Fill in your profile first.")
 
+    candidate_roles = user_cfg.get("job_roles", [])
     result = await qualify_job(
         profile=profile,
         job_title=job.title,
@@ -3237,6 +3271,7 @@ async def qualify_job_endpoint(job_id: str, user_id: str = Depends(get_current_u
         api_key=api_key,
         provider=provider,
         model=model,
+        candidate_roles=candidate_roles,
     )
 
     async with SessionLocal() as db:
@@ -3336,6 +3371,8 @@ async def _run_qualify_all_inner(new_job_ids: list | None = None):
 
     for job in jobs:
         try:
+            # Pass admin's job_roles so auto-qualify scores against their actual target roles
+            admin_roles = json.loads(admin_s.job_roles or "[]") if admin_s and admin_s.job_roles else []
             res = await qualify_job(
                 profile=profile,
                 job_title=job.title,
@@ -3345,6 +3382,7 @@ async def _run_qualify_all_inner(new_job_ids: list | None = None):
                 api_key=api_key,
                 provider=provider,
                 model=model,
+                candidate_roles=admin_roles,
             )
             async with SessionLocal() as db2:
                 j = await db2.get(Job, job.id)

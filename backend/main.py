@@ -3090,16 +3090,6 @@ def _profile_to_resume_text(p: dict) -> str:
                     lines.append(f"â€¢ {b.strip()}")
             lines.append("")
 
-    edu = p.get("education", [])
-    if edu:
-        lines.append("EDUCATION:")
-        for e in edu:
-            degree = e.get("degree", "")
-            school = e.get("school", "")
-            year = e.get("year", "")
-            lines.append(" | ".join(filter(None, [f"{degree} @ {school}" if degree and school else (degree or school), year])))
-        lines.append("")
-
     skills = p.get("skills", [])
     if skills:
         lines.append("TECHNICAL SKILLS:")
@@ -3110,6 +3100,17 @@ def _profile_to_resume_text(p: dict) -> str:
     if certs:
         lines.append("CERTIFICATIONS:")
         lines.append(", ".join(certs))
+        lines.append("")
+
+    edu = p.get("education", [])
+    if edu:
+        lines.append("EDUCATION:")
+        for e in edu:
+            degree = e.get("degree", "")
+            school = e.get("school", "")
+            year = e.get("year", "")
+            lines.append(" | ".join(filter(None, [f"{degree} @ {school}" if degree and school else (degree or school), year])))
+        lines.append("")
 
     return "\n".join(lines).strip()
 

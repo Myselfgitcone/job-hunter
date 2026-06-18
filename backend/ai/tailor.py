@@ -126,6 +126,7 @@ BULLET BUDGET (hard total: 30, summary included):
   • TECHNICAL SKILLS:      6–9 grouped lines
   • EDUCATION:             1 line per degree
   Maximum possible: 5+11+7+5+2 = 30 total. If you write more, you failed. Cut lowest-relevance bullets first.
+  BULLET ORDER: Within each job, write bullets highest-relevance FIRST, lowest-relevance LAST. If the count is trimmed, the last bullet is cut — so your weakest bullet must always be last.
 
 FORMAT — ATS-SAFE:
   Single column. "•" bullets only. Plain text — NO tables, columns, graphics, or markdown.
@@ -404,7 +405,7 @@ Close </plan>.
 
 STEP 2 — Write the complete tailored resume following all system prompt rules.
 
-STEP 3 — Count every bullet. Rewrite any over 22 words before finalizing.
+STEP 3 — Within each job, confirm bullets are ordered highest-JD-relevance first, lowest last. Count every bullet. Rewrite any over 22 words before finalizing.
 
 === JOB DESCRIPTION ===
 {job_description[:16000]}

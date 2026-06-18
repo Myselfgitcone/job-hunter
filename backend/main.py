@@ -3009,6 +3009,7 @@ async def run_scraper_now(user_id: str = Depends(get_current_user_id)):
 class ProfileExperience(BaseModel):
     role: str = ""
     company: str = ""
+    location: str = ""   # "City, State" — used in job header: Role @ Company | City, State  Date
     start_date: str = ""
     end_date: str = ""
     years: float = 0
@@ -3076,10 +3077,13 @@ def _profile_to_resume_text(p: dict) -> str:
         for e in exp:
             role = e.get("role", "")
             company = e.get("company", "")
+            loc = e.get("location", "")          # "City, State"
             start = e.get("start_date", "")
             end = e.get("end_date", "")
-            date_range = f"{start} â€“ {end}".strip(" â€“") if (start or end) else ""
-            header = " | ".join(filter(None, [f"{role} @ {company}" if role and company else (role or company), date_range]))
+            date_range = (start + " – " + end).strip(" –") if (start or end) else ""
+            role_company = (role + " @ " + company) if (role and company) else (role or company)
+            location_date = "  ".join(filter(None, [loc, date_range]))
+            header = " | ".join(filter(None, [role_company, location_date]))
             lines.append(header)
             for b in e.get("bullets", []):
                 if b.strip():

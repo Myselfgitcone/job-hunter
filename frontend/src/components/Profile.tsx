@@ -244,7 +244,7 @@ export function Profile() {
           email: profile.personal.email, phone: profile.personal.phone, address: profile.personal.address,
           linkedin: profile.personal.linkedin, github: profile.personal.github, visa_status: profile.personal.visa,
           experience: profile.experience.map((e: any) => ({
-            role: e.title, company: e.company, start_date: e.start, end_date: e.end,
+            role: e.title, company: e.company, location: e.location || "", start_date: e.start, end_date: e.end,
             bullets: e.desc ? e.desc.split("\n").map((b: string) => b.replace(/^[\s•\-\.]*/, "").trim()).filter(Boolean) : [], years: 0,
             expanded: e.expanded !== false,
           })),
@@ -273,6 +273,7 @@ export function Profile() {
         // Map API profile format to design format
         const exp = (p.experience || []).map((e: any) => ({
           title: e.role || e.title || "", company: e.company || "",
+          location: e.location || "",
           start: e.start_date || e.start || "", end: e.end_date || e.end || "Present",
           desc: (e.bullets || []).map((b: string) => b.replace(/^[\s•\-\.]*/, "• ")).join("\n") || e.desc || "",
           expanded: e.expanded !== false,
@@ -348,6 +349,7 @@ export function Profile() {
         const exp = (parsed.experience || []).map((e: any) => ({
           title:   e.role || e.title || "",
           company: e.company || "",
+          location: e.location || "",
           start:   e.start_date || e.start || "",
           end:     e.end_date || e.end || "Present",
           desc:    Array.isArray(e.bullets) ? e.bullets.map((b: string) => b.replace(/^[\s•\-\.]*/, "• ")).join("\n") : (e.desc || ""),
@@ -525,7 +527,7 @@ export function Profile() {
         <section className="form-section">
           <div className="section-label">
             <Ic d={I.briefcase} size={16} /> Work Experience
-            <button className="add-btn" onClick={() => setProfile((p: any) => ({ ...p, experience: [...p.experience, { title: "", company: "", start: "", end: "Present", desc: "" }] }))}>
+            <button className="add-btn" onClick={() => setProfile((p: any) => ({ ...p, experience: [...p.experience, { title: "", company: "", location: "", start: "", end: "Present", desc: "" }] }))}>
               + Add Experience
             </button>
           </div>
@@ -534,6 +536,11 @@ export function Profile() {
               <div className="field-grid">
                 <Field label="Job Title" value={e.title}   onChange={v => updateAt("experience", i, "title", v)} />
                 <Field label="Company"   value={e.company} onChange={v => updateAt("experience", i, "company", v)} />
+                <Field
+                  label={<><span style={{display: "inline-flex", alignItems: "center", gap: 4}}><Ic d={I.mapPin} size={13} /> Location</span></>}
+                  value={e.location || ""} onChange={v => updateAt("experience", i, "location", v)}
+                  placeholder="City, State" full
+                />
                 <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "1fr 1fr 100px", gap: 14 }}>
                   <Field label="Start Date" value={e.start}  onChange={v => updateAt("experience", i, "start", v)} placeholder="Jan 2021" />
                   <Field label="End Date"   value={e.end}    onChange={v => updateAt("experience", i, "end", v)} placeholder="Present" />

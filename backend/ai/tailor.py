@@ -390,7 +390,7 @@ _RETRY_RULES = {
 async def tailor_resume(base_resume: str, job_description: str,
                         api_key: str, provider: str, model: str) -> str:
 
-    user_msg = f"""Tailor this resume to the JD. Hard limit: 28 bullets total (5 summary + 23 experience). Output: plain text resume only.
+    user_msg = f"""Tailor this resume to the JD. Hard limit: 30 bullets total (5 summary + 25 experience). Output: plain text resume only.
 
 STEP 1 — Open a <plan> block. Fill in EVERY field explicitly before writing a single resume line:
   SUMMARY_TITLE: [candidate's actual title as it appears in the resume] → [exact text of summary bullet 1, showing how the JD's target role is bridged without fabricating a new title]

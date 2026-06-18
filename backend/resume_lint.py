@@ -1,32 +1,50 @@
 """
 resume_lint.py — quality gate for tailored resumes BEFORE rendering.
 Checks what the LLM must fix: bullet length, multi-idea bullets, banned words,
-meta-leaks, summary length, Technologies Used presence per job, consecutive
-same-verb bullets, and JD-word echo (signature words copied too often).
-Bullet COUNTS are handled deterministically by _enforce_limits() in tailor.py.
+meta-leaks, summary count (exactly 5), total bullet overflow, Technologies Used
+presence per job, banned tech labels, consecutive same-verb bullets, metrics
+density, and JD-word echo (signature words copied too often).
 """
 import re
 import sys
 
 WORD_LIMIT   = 22
 WORD_TARGET  = 18
-SUMMARY_MAX  = 5   # updated: prompt now requires exactly 5 summary bullets (was 6)
+SUMMARY_MAX  = 5    # prompt requires EXACTLY 5 summary bullets
+BULLET_MAX   = 28   # hard total: 5 summary + 9 + 7 + 5 + 2 experience
 BANNED_WORDS = ["utilized", "leveraged"]
 META_LEAKS   = ["fabricat", "as per the jd", "as required", "[[", "note:",
                 "lorem", "placeholder", "tbd"]
 
-# Echo check: a distinctive word lifted from the JD shouldn't appear 3+ times.
-ECHO_MAX           = 2       # max times a JD signature word may appear in resume
-ECHO_MIN_WORD_LEN  = 6       # only consider longer/distinctive words
+# Degree-line guard: prevents "Master of Science @ University" from being
+# treated as a job header and triggering a missing-tech-line false positive.
+DEGREE_SIGNALS = {
+    "university", "college", "institute", "bachelor", "master", "phd",
+    "science", "arts", "b.s.", "m.s.", "b.a.", "m.a.", "degree",
+}
 
-# Common resume/domain words that are fine to repeat — never flagged as "echo".
-# Covers ALL user fields: data engineering, Java/backend, cybersecurity, finance, data analyst.
+# Banned tech-line labels — prompt requires EXACTLY "Technologies Used:"
+BANNED_TECH_LABELS = [
+    r"^platform:", r"^platforms:", r"^stack:", r"^tech stack:",
+    r"^tools:", r"^tools used:", r"^tech:", r"^technologies:",
+]
+
+# Echo check: a distinctive word lifted from the JD shouldn't appear 3+ times.
+ECHO_MAX           = 2       # max allowed repetitions of a JD signature word
+ECHO_MIN_WORD_LEN  = 6       # only flag longer / distinctive words
+
+# Words that are fine to repeat — never flagged as echo.
+# Covers data engineering, Java/backend, cybersecurity, finance, data analyst.
 ECHO_STOPLIST = {
     # Universal resume words
     "pipelines", "pipeline", "data", "across", "analytics", "reporting",
     "frameworks", "models", "datasets", "systems", "platform", "platforms",
     "engineering", "experience", "metrics", "governance", "quality",
     "building", "scalable", "operational", "business", "technical", "teams",
+    # Data engineering — false-positives without these
+    "processing", "ingestion", "transformation", "warehouse", "storage",
+    "compute", "cluster", "workload", "consumption", "extraction", "loading",
+    "orchestration", "partitioning", "indexing", "replication", "streaming",
     # Java / backend / software engineering
     "services", "service", "microservices", "application", "applications",
     "performance", "testing", "integration", "deployment", "architecture",
@@ -48,7 +66,7 @@ ECHO_STOPLIST = {
     "calculated", "measures",
 }
 
-# Multi-idea verb list — extended to cover ALL user fields
+# Multi-idea verb detection — covers all user fields
 _MULTI_VERB_PATTERN = re.compile(
     r"\b("
     # Data engineering / DevOps / cloud
@@ -71,10 +89,9 @@ _MULTI_VERB_PATTERN = re.compile(
     r")\b"
 )
 
-# Phone like (347) 695-1020 / 347-695-1020 / 3476951020
 _PHONE_RE = re.compile(r"\(?\d{3}\)?[\s\-.]?\d{3}[\s\-.]?\d{4}")
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
-_VERB1_RE = re.compile(r"^([A-Za-z]+)")   # first word of a bullet body
+_VERB1_RE = re.compile(r"^([A-Za-z]+)")
 
 
 def _words(text):
@@ -82,12 +99,11 @@ def _words(text):
 
 
 def lint_resume(text: str, job_description: str = ""):
-    """Return a list of issue strings. Empty = clean.
-    Pass job_description to enable the JD-word-echo check (optional)."""
+    """Return a list of issue strings. Empty list = clean resume."""
     issues = []
     lines  = [l.rstrip() for l in text.strip().split("\n")]
 
-    # ── Header integrity: contact line must exist in the first 3 lines ───────
+    # ── Header integrity: contact line must exist in first 3 lines ────────────
     header_blob = "\n".join(lines[:3])
     if not _PHONE_RE.search(header_blob):
         issues.append("[MISSING CONTACT] No phone number in the header — "
@@ -105,6 +121,8 @@ def lint_resume(text: str, job_description: str = ""):
     job_has_tech_line   = False   # did current job get a Technologies Used line?
     jobs_missing_tech   = []      # job header strings missing Technologies Used
     prev_opening_verb   = None    # for consecutive same-verb check
+    total_bullets       = 0       # all bullets (summary + experience + skills)
+    exp_bullets         = []      # (body, has_metric) for metrics density check
 
     for raw in lines:
         line = raw.strip()
@@ -112,7 +130,14 @@ def lint_resume(text: str, job_description: str = ""):
             prev_opening_verb = None
             continue
 
-        # ── Section header ───────────────────────────────────────────────────
+        # ── Banned tech-line labels (checked on every non-empty line) ─────────
+        for pattern in BANNED_TECH_LABELS:
+            if re.match(pattern, line.lower()):
+                issues.append(
+                    f'[BANNED TECH LABEL] Use "Technologies Used:" not "{line[:40]}"'
+                )
+
+        # ── Section header ────────────────────────────────────────────────────
         if line == line.upper() and line.endswith(":") and not line.startswith("•"):
             # Close the last open job before switching sections
             if current_job_header and not job_has_tech_line:
@@ -123,9 +148,13 @@ def lint_resume(text: str, job_description: str = ""):
             section = line.rstrip(":")
             continue
 
-        # ── Job header ───────────────────────────────────────────────────────
+        # ── Job header ────────────────────────────────────────────────────────
+        # Guard: degree lines like "M.S. @ Saint Louis University" must not be
+        # treated as job headers — they would trigger a missing-tech-line flag.
+        is_degree_line = any(d in line.lower() for d in DEGREE_SIGNALS)
         if (" @ " in line and not line.startswith("•")
                 and not line.startswith("Technologies")
+                and not is_degree_line
                 and section and "EDUC" not in section):
             # Close previous job — check it had a Technologies Used line
             if current_job_header and not job_has_tech_line:
@@ -133,7 +162,6 @@ def lint_resume(text: str, job_description: str = ""):
             current_job_header = line
             job_has_tech_line  = False
             prev_opening_verb  = None
-            # Location check
             if " | " not in line:
                 issues.append(
                     f'[MISSING LOCATION] Job header has no "| City, State": '
@@ -147,12 +175,13 @@ def lint_resume(text: str, job_description: str = ""):
             prev_opening_verb = None
             continue
 
-        # ── Bullet lines ─────────────────────────────────────────────────────
+        # ── Bullet lines ──────────────────────────────────────────────────────
         if line.startswith("•"):
             body = line[1:].strip()
             low  = body.lower()
+            total_bullets += 1
 
-            # Banned words & meta leaks (checked across all sections)
+            # Banned words & meta leaks (all sections)
             for w in BANNED_WORDS:
                 if re.search(rf"\b{w}\b", low):
                     issues.append(f'[BANNED WORD] "{w}" found: "{body[:60]}..."')
@@ -168,7 +197,11 @@ def lint_resume(text: str, job_description: str = ""):
                 prev_opening_verb = None
                 continue
 
-            # ── Consecutive same-verb check (experience bullets only) ─────────
+            # Experience bullet — track for metrics density
+            has_metric = bool(re.search(r"\d", body))
+            exp_bullets.append((body, has_metric))
+
+            # ── Consecutive same-verb check (experience only) ─────────────────
             vm = _VERB1_RE.match(body)
             if vm:
                 verb = vm.group(1).lower()
@@ -181,17 +214,25 @@ def lint_resume(text: str, job_description: str = ""):
             else:
                 prev_opening_verb = None
 
-            # ── Word count & multi-idea checks ───────────────────────────────
+            # ── Word count & multi-idea checks ────────────────────────────────
             wc = _words(body)
             if wc > WORD_LIMIT:
                 long_bullets.append((wc, body))
-            if wc > WORD_TARGET and (" — " in body or re.search(r"\band\b", low)):
+
+            # Em-dash = strong multi-idea signal → 2+ action verbs
+            if wc > WORD_TARGET and " — " in body:
                 verb_count = len(_MULTI_VERB_PATTERN.findall(low))
                 if verb_count >= 2:
                     multi_idea.append((wc, body))
+            # "and" alone = weak signal → require 3+ verbs to avoid false positives
+            # e.g. "built and deployed X via Jenkins" is one idea with 2 verbs — skip
+            elif wc > WORD_TARGET and re.search(r"\band\b", low):
+                verb_count = len(_MULTI_VERB_PATTERN.findall(low))
+                if verb_count >= 3:
+                    multi_idea.append((wc, body))
             continue
 
-        # Non-bullet content — reset consecutive verb tracking
+        # Non-bullet, non-header content — reset consecutive verb tracking
         prev_opening_verb = None
 
     # Close the very last job in the file
@@ -199,8 +240,22 @@ def lint_resume(text: str, job_description: str = ""):
         jobs_missing_tech.append(current_job_header)
 
     # ── Aggregate collected issues ────────────────────────────────────────────
-    if summary_count > SUMMARY_MAX:
-        issues.append(f"[SUMMARY] {summary_count} lines (max {SUMMARY_MAX}). Trim.")
+
+    # Total bullet overflow — triggers retry BEFORE _enforce_limits silently trims
+    if total_bullets > BULLET_MAX:
+        issues.append(
+            f"[BULLET OVERFLOW] {total_bullets} total bullets (max {BULLET_MAX}). "
+            "Cut lowest-relevance bullets to reach 28."
+        )
+
+    # Summary count — must be EXACTLY 5 (not just ≤ 5)
+    if summary_count != SUMMARY_MAX:
+        direction = "Add more." if summary_count < SUMMARY_MAX else "Trim."
+        issues.append(
+            f"[SUMMARY] {summary_count} bullets (must be exactly {SUMMARY_MAX}). "
+            f"{direction}"
+        )
+
     for wc, body in long_bullets:
         issues.append(f'[TOO LONG] {wc} words (max {WORD_LIMIT}): "{body[:70]}..."')
     for wc, body in multi_idea:
@@ -213,10 +268,28 @@ def lint_resume(text: str, job_description: str = ""):
             f'"{jh[:60]}". Add it as the last line of that job\'s bullets.'
         )
 
-    # ── JD-word echo: flag distinctive JD words repeated too often ───────────
+    # ── Metrics density check (experience bullets only) ───────────────────────
+    if exp_bullets:
+        metric_count = sum(1 for _, has_m in exp_bullets if has_m)
+        ratio = metric_count / len(exp_bullets)
+        if ratio < 0.50:
+            issues.append(
+                f"[LOW METRICS] Only {ratio:.0%} of experience bullets have numbers "
+                f"(target 60–70%). Add quantified outcomes to more bullets."
+            )
+        elif ratio > 0.85:
+            issues.append(
+                f"[HIGH METRICS] {ratio:.0%} of experience bullets have numbers "
+                f"(target 60–70%). Looks forced — remove metrics from process/collab bullets."
+            )
+
+    # ── JD-word echo check — run on BULLET TEXT ONLY ─────────────────────────
+    # Avoids false positives from tools named in "Technologies Used:" lines
+    # or from section headers repeating JD vocabulary.
     if job_description:
+        bullet_text = "\n".join(body for body, _ in exp_bullets)
         jd_low   = job_description.lower()
-        res_low  = text.lower()
+        res_low  = bullet_text.lower()
         jd_words = set(re.findall(r"[a-z][a-z\-]{%d,}" % (ECHO_MIN_WORD_LEN - 1), jd_low))
         checked  = set()
         for w in jd_words:

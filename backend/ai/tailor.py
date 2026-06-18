@@ -307,9 +307,12 @@ JOB HEADER FORMAT (one line per job):
   Location (City, State) is REQUIRED — never omit it.
   Date right-aligned on same line. Never split job header across two lines.
 
-TECH LINE: End each job's bullet list with exactly:
+TECH LINE: End each job's bullet list with EXACTLY this label and no other:
   Technologies Used: tool1, tool2, ...
-  Never use "Stack:", "Tools:", "Tech:", or any other label.
+  BANNED labels — using any of these is a formatting failure:
+    ✗ Platform:   ✗ Platforms:  ✗ Stack:      ✗ Tech Stack:
+    ✗ Tools:      ✗ Tools Used: ✗ Tech:       ✗ Technologies:
+  The label must be EXACTLY "Technologies Used:" — copy it character for character.
 
 ═══ CRITICAL REMINDERS — CHECK THESE BEFORE YOU TYPE THE FIRST CHARACTER ═══
 ✗ NEVER: "utilized" or "leveraged" — use "used", "built", "ran"

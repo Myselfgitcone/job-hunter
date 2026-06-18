@@ -199,7 +199,8 @@ def _build_story(resume_text: str) -> list:
 
         # ── Technologies Used (also catches "Stack:", "Tools:" variants) ────────
         _TECH_PREFIXES = ("Technologies Used:", "Stack:", "Tools:", "Tech Stack:",
-                          "Technologies:", "Tech:")
+                          "Technologies:", "Tech:", "Platform:", "Platforms:",
+                          "Tools Used:", "Tech Used:")
         _tech_match = next((p for p in _TECH_PREFIXES if s.startswith(p)), None)
         if _tech_match:
             rest = s[len(_tech_match):].strip()

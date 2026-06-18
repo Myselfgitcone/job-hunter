@@ -306,6 +306,63 @@ Open with a bullet naming the target title + seniority + years of experience. Fo
 Count ALL bullets — total must be ≤ 28. Count words in every bullet — rewrite any over 22 words. Confirm: domain not relabeled, no "utilized/leveraged", no repeated opening verbs, no compliance frameworks outside plausible history, budget not exceeded. Then output the finished resume and nothing else."""
 
 
+# ── 4th-layer semantic reviewer ───────────────────────────────────────────────
+# Runs ONCE after _enforce_limits. Fixes what lint can't (semantic issues).
+# Scope is intentionally narrow — only 3 checks, nothing else.
+REVIEWER_PROMPT = """You are a resume quality reviewer — NOT a resume writer.
+Fix exactly 3 semantic issues in the resume given to you. Change NOTHING outside
+these 3 checks. Do NOT: add bullets, remove bullets, change bullet content,
+change company names, dates, locations, titles, or bullet count.
+Every bullet you write or rewrite must be ≤ 22 words. Return plain text only.
+
+CHECK 1 — SKILLS ANTI-STUFFING:
+If TECHNICAL SKILLS lines mirror the JD's exact feature list verbatim (e.g.
+"Databricks Platform: DataFrames, Datasets, Spark SQL, Delta Lake, Databricks
+Notebook, DBFS, Databricks Connect" — lifted straight from the JD qualifications),
+regroup them organically by how the candidate actually works. Use natural category
+names like "Distributed Processing", "Cloud Warehousing", "Orchestration & DevOps".
+Max 6 tools per line. Do NOT change any bullet in the experience section.
+
+CHECK 2 — SUMMARY TECH DUMP:
+If any summary bullet is a tech-spec list (5+ tools with no candidate context,
+no impact statement, no who-you-are signal), rewrite it as a single crisp
+who-you-are statement. ≤ 22 words. One idea only.
+
+CHECK 3 — UNPROVEN SKILLS:
+If a tool appears in TECHNICAL SKILLS but has zero supporting bullets anywhere
+in the WORK EXPERIENCE section, either remove it from Skills or append
+"(current capability)" after it.
+
+CHECK 4 — NOTHING ELSE:
+Reproduce every other line exactly as given. No commentary. No plan blocks.
+Return the complete corrected resume as plain text only."""
+
+
+async def review_resume(tailored: str, job_description: str,
+                        api_key: str, provider: str, model: str) -> str:
+    """One-shot semantic review pass. No retry — fires exactly once after _enforce_limits."""
+    msg = f"""Review and fix the 3 semantic issues per your instructions.
+Return the complete corrected resume as plain text only — no commentary, no plan block.
+
+=== JOB DESCRIPTION ===
+{job_description[:8000]}
+
+=== TAILORED RESUME ===
+{tailored}"""
+
+    reviewed = await chat(
+        system=REVIEWER_PROMPT,
+        user=msg,
+        api_key=api_key,
+        provider=provider,
+        model=model,
+        max_tokens=4096,
+    )
+    # Strip any accidental plan/commentary block from reviewer output
+    reviewed = re.sub(r'<plan>.*?</plan>', '', reviewed, flags=re.DOTALL).strip()
+    return reviewed
+
+
 async def tailor_resume(base_resume: str, job_description: str,
                         api_key: str, provider: str, model: str) -> str:
 
@@ -367,11 +424,16 @@ STEP 3 — Count every bullet. Rewrite any over 22 words before finalizing.
     # ── Enforce hard limits (deterministic trim after AI output) ─────────────
     result = _enforce_limits(raw)
 
-    # ── Final lint pass — log any post-enforce residuals (don't retry) ───────
-    final_issues = lint_resume(result, job_description)
-    if final_issues:
-        print(f"[WARN] post-enforce lint issues ({len(final_issues)}):")
-        for iss in final_issues:
+    # ── Semantic review — 1 pass, no retry (catches what lint can’t) ────────
+    result = await review_resume(result, job_description, api_key, provider, model)
+    # Strip plan block in case reviewer adds any reasoning artifacts
+    result = re.sub(r'<plan>.*?</plan>', '', result, flags=re.DOTALL).strip()
+
+    # ── Post-review lint — log WARN only, no retry ───────────────────────
+    post_issues = lint_resume(result, job_description)
+    if post_issues:
+        print(f"[WARN] post-review lint ({len(post_issues)}):")
+        for iss in post_issues:
             print(f"  • {iss}")
 
     return result

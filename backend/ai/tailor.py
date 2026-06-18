@@ -358,9 +358,11 @@ Return the complete corrected resume as plain text only — no commentary, no pl
         model=model,
         max_tokens=4096,
     )
-    # Strip any accidental plan/commentary block from reviewer output
-    reviewed = re.sub(r'<plan>.*?</plan>', '', reviewed, flags=re.DOTALL).strip()
-    return reviewed
+    # Strip any accidental plan/commentary block — log if it actually fires
+    stripped = re.sub(r'<plan>.*?</plan>', '', reviewed, flags=re.DOTALL).strip()
+    if stripped != reviewed:
+        print("[WARN] Reviewer output contained <plan> block — may be over-thinking (re-tailoring risk)")
+    return stripped
 
 
 async def tailor_resume(base_resume: str, job_description: str,
@@ -425,9 +427,12 @@ STEP 3 — Count every bullet. Rewrite any over 22 words before finalizing.
     result = _enforce_limits(raw)
 
     # ── Semantic review — 1 pass, no retry (catches what lint can’t) ────────
+    pre_review_hash = hash(result)
     result = await review_resume(result, job_description, api_key, provider, model)
-    # Strip plan block in case reviewer adds any reasoning artifacts
-    result = re.sub(r'<plan>.*?</plan>', '', result, flags=re.DOTALL).strip()
+    if hash(result) != pre_review_hash:
+        print("[REVIEW] Reviewer made changes")
+    else:
+        print("[REVIEW] Reviewer made no changes — check if checks are triggering")
 
     # ── Post-review lint — log WARN only, no retry ───────────────────────
     post_issues = lint_resume(result, job_description)

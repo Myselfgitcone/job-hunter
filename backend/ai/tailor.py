@@ -169,6 +169,20 @@ PLACEMENT RULES:
   • Displace the LOWEST-scoring existing bullet in that role to make room
   • If a skill has zero plausible connection to any job's real domain — put it in TECHNICAL SKILLS only, never force a bullet
 
+VOCABULARY MIRRORING TRAP — CRITICAL:
+  When anchoring gap bullets to the candidate's real domain, NEVER copy the JD's exact business-domain words into a different industry context. Instead translate to the employer's industry equivalent:
+  • JD says "quotes, binds, premium" (insurance) → at an agribusiness employer, write "procurement bids, contract volumes, margin thresholds" — NOT "quotes"
+  • JD says "tickets, incidents" (IT support) → at a manufacturing employer, write "work orders, downtime events"
+  • JD says "tenant, subscription" (SaaS) → at a bank, write "account, portfolio"
+  A sharp recruiter WILL notice if an agribusiness bullet uses insurance jargon or a bank bullet uses retail jargon. Anchor to the EMPLOYER's vocabulary, not the JD's vocabulary.
+
+TECHNOLOGY TIMELINE CHECK — CRITICAL:
+  Before injecting a framework or tool into a role, verify it was widely adopted BEFORE that job's end date:
+  • Do NOT inject a tool that was released in the same year the role ended — enterprise adoption lags 12–24 months behind public release
+  • Example: FastAPI released late 2018 → not credible in enterprise banking before 2020; inject only into roles ending 2021 or later
+  • If no plausible role timeframe exists for the tool → add it to TECHNICAL SKILLS only, framed as a current capability, not a historical project
+  • Use this rule for any framework with a known release date: React hooks (2019), Kubernetes GA (2018), dbt cloud GA (2020), Spark Structured Streaming (2016+)
+
 CENTRAL-SKILL RULE: If a skill is named 3+ times in the JD, appears in the job title, or is clearly the role's main focus — it must appear in a bullet at EVERY job where it is plausible. Anchor each instance to that job's real domain.
 
 THE UNIVERSAL FORMULA — applies to every industry, every role, every tool:

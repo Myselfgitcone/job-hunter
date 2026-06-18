@@ -475,6 +475,15 @@ function QualifyTab({ job, running, onRun }: { job: Job; running: boolean; onRun
 function ResumeTab({ job, tailoring, onTailor, onCancel, onToast }: {
   job: Job; tailoring: boolean; onTailor: () => void; onCancel: () => void; onToast: (m: string, t?: "success" | "error") => void;
 }) {
+  // Hooks MUST be at top level — never inside conditionals
+  const [elapsed, setElapsed] = React.useState(0);
+  React.useEffect(() => {
+    if (!tailoring) { setElapsed(0); return; }
+    setElapsed(0);
+    const t = setInterval(() => setElapsed(s => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [tailoring]);
+
   if (!job.tailored_resume && !tailoring) {
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", gap: 18, textAlign: "center" }}>
@@ -492,12 +501,6 @@ function ResumeTab({ job, tailoring, onTailor, onCancel, onToast }: {
     );
   }
   if (tailoring) {
-    const [elapsed, setElapsed] = React.useState(0);
-    React.useEffect(() => {
-      setElapsed(0);
-      const t = setInterval(() => setElapsed(s => s + 1), 1000);
-      return () => clearInterval(t);
-    }, []);
     const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
     const ss = String(elapsed % 60).padStart(2, "0");
     return (

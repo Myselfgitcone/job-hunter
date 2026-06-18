@@ -137,6 +137,39 @@ Cover every HARD SKILL the JD names, every core RESPONSIBILITY, the SENIORITY le
 SKIP on purpose: soft skills ("team player", "self-motivated"), culture words ("fast-paced"), boilerplate ("Bachelor's preferred", "MS Office"), and any keyword whose only job is to inflate the score.
 A skill needs to appear once or twice, not five times — parsers credit synonyms, so repetition reads as stuffing. Never paste the JD in or stuff hidden keywords.
 
+═══ TECHNICAL SKILLS SECTION — ANTI-STUFFING RULE ═══
+The TECHNICAL SKILLS section must reflect what the candidate ACTUALLY uses — NOT a reorganized copy of the JD's feature list.
+A trained recruiter reads Skills last. If every sub-feature in Skills exactly mirrors the JD's qualification list, it is an immediate "copy-paste" signal that destroys credibility.
+
+RULES FOR SKILLS SECTION:
+  • Group by HOW the candidate works, not by how the JD is organized
+    Example: instead of mirroring "Virtual Warehouses, Snowpipe, Streams & Tasks, Time Travel" from the JD,
+    write: "Snowflake (Snowpipe, Time Travel, Streams & Tasks)" — same coverage, natural grouping
+  • Only list a tool/feature in Skills if it appears in at least ONE job bullet somewhere in the resume
+    A skill with no supporting bullet is an unproven claim — a recruiter will ask about it and expose the gap
+  • Do NOT lift the JD's exact sub-feature enumeration verbatim into a Skills line
+    WRONG: "Databricks: DataFrames, Datasets, Spark SQL, Delta Lake, Databricks Notebook, DBFS, Databricks Connect"
+    RIGHT:  "Databricks (Delta Lake, Spark SQL, DBFS, Notebooks); Databricks Connect for remote execution"
+  • Lead with what the candidate does MOST (based on the original resume), add JD-relevant items naturally
+  • 6–9 grouped lines maximum. If a line requires more than 6 tools, split into two natural sub-groups
+
+═══ SCOPE CREDIBILITY — NO UNICORN ENGINEER ═══
+A recruiter who interviews dozens of engineers knows what one person can realistically own at one company.
+Do NOT stack more than 2–3 major technology paradigms in a single role's bullets.
+
+What breaks credibility (the "unicorn" red flag):
+  • Claiming 2TB+ traditional ETL pipelines AND LLM fine-tuning AND RAG AND agentic AI at the SAME company
+  • Claiming system-wide architecture design AND hands-on coding AND mentorship AND stakeholder leadership in the same 9-month role
+  • Listing 8 different AI/ML capabilities all as Cargill bullets when the base resume shows conventional data engineering
+
+HOW TO HANDLE WHEN JD REQUIRES MANY SKILLS:
+  • Distribute gap fills across ALL roles, not concentrated in the most recent one
+  • Most recent role (Cargill): take the 2–3 most advanced/current JD skills — the ones that make sense at senior level today
+  • Middle role (Molina): take 1–2 supporting JD skills that fit healthcare/mid-career level
+  • Earliest role (JPMorgan): take foundational JD skills that were available and realistic in 2018–2020
+  • If the JD requires a completely new paradigm with no historical anchoring (e.g., LLMs in 2018), only the most recent role can claim it
+  • It is better to cover 70% of JD skills CREDIBLY than 100% UNcredibly
+
 ═══ BULLET SCORING ═══
 Score every bullet 1–5 by JD relevance:
   5 — tool/skill explicitly named in JD
@@ -285,10 +318,14 @@ TECH LINE: End each job's bullet list with exactly:
 ✗ NEVER: meta-language, commentary, or instruction text anywhere in output
 ✗ NEVER: missing phone/email contact line (must be line 2 of the resume)
 ✗ NEVER: drop a JD-named hard skill without putting it somewhere (bullet or Skills)
+✗ NEVER: mirror the JD's exact feature list verbatim into TECHNICAL SKILLS — group naturally from the candidate's real experience
+✗ NEVER: stack more than 2–3 major technology paradigms in one role's bullets — distribute across roles
+✗ NEVER: list a tool in Skills if zero bullets in the resume demonstrate it — unproven claims get exposed in interviews
 ✓ ALWAYS: end every job block with exactly "Technologies Used: tool1, tool2, ..."
 ✓ ALWAYS: every job header must include "| City, State"
 ✓ ALWAYS: metrics on ~60–70% of bullets — never 100% (fake), never 0% (weak)
 ✓ ALWAYS: gap bullets must sound like a seasoned practitioner — specific action + named tool + domain anchor + outcome
+✓ ALWAYS: Skills section proves what bullets demonstrate — every Skills line should trace back to at least one bullet
 
 ═══ FINAL CHECK BEFORE OUTPUT ═══
 Remove any meta-text or instruction language from bullets. Restore any altered title/company/date/degree. Confirm domain not relabeled, budget not exceeded, metrics ~60–70%, no "utilized/leveraged", no repeated opening verbs, plain text only. Re-read every experience bullet and shorten any over 22 words; split any bullet that contains two separate accomplishments. Then output the finished resume and nothing else."""

@@ -3195,14 +3195,15 @@ async def parse_resume_file(file: UploadFile = File(...), user_id: str = Depends
   "linkedin": "",
   "github": "",
   "summary": "",
-  "experience": [
+  “experience”: [
     {
-      "role": "",
-      "company": "",
-      "start_date": "Jan 2022",
-      "end_date": "Present",
-      "years": 2.5,
-      "bullets": ["All bullet points exactly as written in resume â€” do not skip, summarize, or truncate any"]
+      “role”: “”,
+      “company”: “”,
+      “location”: “”,
+      “start_date”: “Jan 2022”,
+      “end_date”: “Present”,
+      “years”: 2.5,
+      “bullets”: [“All bullet points exactly as written in resume â€” do not skip, summarize, or truncate any”]
     }
   ],
   "education": [
@@ -3223,6 +3224,7 @@ Rules:
 - linkedin: full LinkedIn URL or just the handle (e.g. linkedin.com/in/username)
 - github: full GitHub URL or handle (e.g. github.com/username)
 - summary: professional summary or objective paragraph if present, else ""
+- location (experience): city/state where the job was located (e.g. "Minneapolis, MN"). Use "" if not found.
 - start_date / end_date: exact date format from resume (e.g. "Sep 2023", "Jan 2021", "Present"). Use "" if not found.
 - years: calculate as decimal from start to end (2 years 6 months = 2.5). Estimate if dates missing.
 - bullets: extract EVERY bullet point for each role exactly as written â€” do NOT truncate, skip, or summarize any bullet.

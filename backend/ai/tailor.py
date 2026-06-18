@@ -58,9 +58,12 @@ def _enforce_limits(text: str) -> str:
                 skills_count = 0
             elif "EDUC" in sec:
                 in_section   = "education"
+            elif "EXPERIENCE" in sec or "WORK" in sec:
+                # Explicit branch — defensive reset if model outputs duplicate header
+                in_section   = "other"
             else:
                 in_section   = "other"
-            job_index = -1
+            job_index = -1   # always reset on any section boundary
             out.append(line)
             i += 1
             continue
@@ -101,16 +104,9 @@ def _enforce_limits(text: str) -> str:
             i += 1
             continue
 
-        # ── Continuation lines ────────────────────────────────────────────────
-        if in_section in ("summary", "job") and stripped and not is_section_header(stripped):
-            if out and (out[-1].strip().startswith("•") or
-                        (not out[-1].strip().startswith("•") and
-                         not is_section_header(out[-1].strip()) and
-                         not is_job_header(out[-1].strip()) and
-                         out[-1].strip())):
-                out.append(line)
-            i += 1
-            continue
+        # ── All other lines — pass through unchanged ─────────────────────────
+        # (LLM bullets are self-contained; complex continuation logic was
+        #  more likely to silently drop valid lines than catch real continuations)
 
         out.append(line)
         i += 1
@@ -363,9 +359,19 @@ STEP 3 — Count every bullet. Rewrite any over 22 words before finalizing.
             api_key=api_key,
             provider=provider,
             model=model,
-            max_tokens=4096,
+            max_tokens=6000,   # bumped: retry sends full resume back + issue list
         )
         # Strip plan block from retry output too
         raw = re.sub(r'<plan>.*?</plan>', '', raw, flags=re.DOTALL).strip()
 
-    return _enforce_limits(raw)
+    # ── Enforce hard limits (deterministic trim after AI output) ─────────────
+    result = _enforce_limits(raw)
+
+    # ── Final lint pass — log any post-enforce residuals (don't retry) ───────
+    final_issues = lint_resume(result, job_description)
+    if final_issues:
+        print(f"[WARN] post-enforce lint issues ({len(final_issues)}):")
+        for iss in final_issues:
+            print(f"  • {iss}")
+
+    return result

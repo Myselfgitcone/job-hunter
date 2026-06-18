@@ -16,11 +16,14 @@ BANNED_WORDS = ["utilized", "leveraged"]
 META_LEAKS   = ["fabricat", "as per the jd", "as required", "[[", "note:",
                 "lorem", "placeholder", "tbd"]
 
-# Degree-line guard: prevents "Master of Science @ University" from being
-# treated as a job header and triggering a missing-tech-line false positive.
+# Degree-line guard: prevents education lines being tracked for tech-line presence.
+# IMPORTANT: keep these specific — avoid words that appear in job titles or company names.
+# Removed: 'science' (conflicts with 'Data Science @ Cargill'),
+#           'arts' (conflicts with any 'Arts' company),
+#           'master' (conflicts with 'Master Data Engineer' title)
 DEGREE_SIGNALS = {
-    "university", "college", "institute", "bachelor", "master", "phd",
-    "science", "arts", "b.s.", "m.s.", "b.a.", "m.a.", "degree",
+    "university", "college", "institute", "bachelor", "phd",
+    "b.s.", "m.s.", "b.a.", "m.a.", "m.eng.", "degree",
 }
 
 # Banned tech-line labels — prompt requires EXACTLY "Technologies Used:"
@@ -121,7 +124,7 @@ def lint_resume(text: str, job_description: str = ""):
     job_has_tech_line   = False   # did current job get a Technologies Used line?
     jobs_missing_tech   = []      # job header strings missing Technologies Used
     prev_opening_verb   = None    # for consecutive same-verb check
-    total_bullets       = 0       # all bullets (summary + experience + skills)
+    total_bullets       = 0       # computed after loop: summary_count + len(exp_bullets)
     exp_bullets         = []      # (body, has_metric) for metrics density check
 
     for raw in lines:
@@ -179,7 +182,8 @@ def lint_resume(text: str, job_description: str = ""):
         if line.startswith("•"):
             body = line[1:].strip()
             low  = body.lower()
-            total_bullets += 1
+            # NOTE: total_bullets is computed after the loop as summary_count + len(exp_bullets)
+            # to exclude skills-section bullets from the 28-bullet overflow check.
 
             # Banned words & meta leaks (all sections)
             for w in BANNED_WORDS:
@@ -241,7 +245,9 @@ def lint_resume(text: str, job_description: str = ""):
 
     # ── Aggregate collected issues ────────────────────────────────────────────
 
-    # Total bullet overflow — triggers retry BEFORE _enforce_limits silently trims
+    # Total bullet overflow — fires BEFORE _enforce_limits silently trims.
+    # Only counts summary + experience bullets (not skills), matching the 28-cap definition.
+    total_bullets = summary_count + len(exp_bullets)
     if total_bullets > BULLET_MAX:
         issues.append(
             f"[BULLET OVERFLOW] {total_bullets} total bullets (max {BULLET_MAX}). "
@@ -272,7 +278,7 @@ def lint_resume(text: str, job_description: str = ""):
     if exp_bullets:
         metric_count = sum(1 for _, has_m in exp_bullets if has_m)
         ratio = metric_count / len(exp_bullets)
-        if ratio < 0.50:
+        if ratio < 0.55:
             issues.append(
                 f"[LOW METRICS] Only {ratio:.0%} of experience bullets have numbers "
                 f"(target 60–70%). Add quantified outcomes to more bullets."

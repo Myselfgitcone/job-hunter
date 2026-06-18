@@ -1260,6 +1260,20 @@ async def _get_user_settings(user_id: str) -> dict:
 
         profile_name_val = (s.profile_name or "") if s else ""
         job_roles_val = json.loads(s.job_roles or "[]") if s else []
+
+        # Build candidate full name from the JSON profile (first_name + last_name),
+        # NOT from UserSettings.profile_name (which is the account display name, e.g. "Admin").
+        # The Profile page saves first_name + last_name into the JSON profile via PUT /api/profile.
+        try:
+            async with SessionLocal() as _pdb:
+                _prof = await _load_profile(_pdb, user_id)
+            _fn = (_prof.get("first_name") or "").strip()
+            _ln = (_prof.get("last_name") or "").strip()
+            if _fn or _ln:
+                profile_name_val = f"{_fn} {_ln}".strip()
+        except Exception:
+            pass  # fall back to whatever profile_name_val was
+
         return {
             "resume": resume_text,
             "ai_provider": ai_source.ai_provider if ai_source else "openrouter",

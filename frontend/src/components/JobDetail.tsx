@@ -492,10 +492,29 @@ function ResumeTab({ job, tailoring, onTailor, onCancel, onToast }: {
     );
   }
   if (tailoring) {
+    const [elapsed, setElapsed] = React.useState(0);
+    React.useEffect(() => {
+      setElapsed(0);
+      const t = setInterval(() => setElapsed(s => s + 1), 1000);
+      return () => clearInterval(t);
+    }, []);
+    const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
+    const ss = String(elapsed % 60).padStart(2, "0");
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "80px 20px", gap: 14 }}>
-        <Spinner size={28} color="var(--accent)" />
+        <div style={{ position: "relative", width: 60, height: 60 }}>
+          <Spinner size={60} color="var(--accent)" />
+          <div style={{
+            position: "absolute", inset: 0, display: "flex", alignItems: "center",
+            justifyContent: "center", fontSize: 11, fontWeight: 700,
+            color: "var(--accent)", fontFamily: "var(--f-mono, monospace)",
+            letterSpacing: "0.04em",
+          }}>
+            {mm}:{ss}
+          </div>
+        </div>
         <div style={{ fontSize: 13.5, color: "var(--text-secondary)" }}>Tailoring resume with AI…</div>
+        <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>Usually takes 30–90 seconds</div>
         <button
           onClick={onCancel}
           style={{ marginTop: 4, fontSize: 12.5, fontWeight: 500, color: "var(--text-muted)", background: "none", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: "6px 18px", cursor: "pointer" }}

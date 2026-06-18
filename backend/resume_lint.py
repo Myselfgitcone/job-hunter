@@ -245,6 +245,22 @@ def lint_resume(text: str, job_description: str = ""):
 
     # ── Aggregate collected issues ────────────────────────────────────────────
 
+    # Required sections check — catches token-limit truncation.
+    # If the model ran out of max_tokens mid-output, both visible jobs may have
+    # Technologies Used lines (so no missing-tech-line fires), but EDUCATION and
+    # TECHNICAL SKILLS will be absent. This triggers a retry so the full resume is regenerated.
+    text_upper = text.upper()
+    if "EDUCATION" not in text_upper:
+        issues.append(
+            "[TRUNCATED OUTPUT] EDUCATION section is missing — output was likely cut off. "
+            "Regenerate the full resume including Education and Technical Skills."
+        )
+    if "TECHNICAL SKILLS" not in text_upper and "SKILLS" not in text_upper:
+        issues.append(
+            "[TRUNCATED OUTPUT] TECHNICAL SKILLS section is missing — output was likely cut off. "
+            "Regenerate the full resume including Technical Skills and Education."
+        )
+
     # Total bullet overflow — fires BEFORE _enforce_limits silently trims.
     # Only counts summary + experience bullets (not skills), matching the 28-cap definition.
     total_bullets = summary_count + len(exp_bullets)

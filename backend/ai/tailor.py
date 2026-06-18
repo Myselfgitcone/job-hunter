@@ -394,7 +394,7 @@ STEP 3 — Count every bullet. Rewrite any over 22 words before finalizing.
         api_key=api_key,
         provider=provider,
         model=model,
-        max_tokens=4096,
+        max_tokens=6000,   # bumped from 4096: <plan> block consumes 1500-2000 tokens
     )
 
     # ── Strip <plan> thinking block (defense-in-depth — model may forget to self-strip) ──

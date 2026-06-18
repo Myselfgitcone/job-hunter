@@ -147,7 +147,8 @@ def _build_story(resume_text: str) -> list:
     bullet_sty = ParagraphStyle("Bullet",
         fontName=FONT, fontSize=10, textColor=BLACK,
         alignment=TA_JUSTIFY, leading=14, spaceAfter=2.5,
-        leftIndent=16, firstLineIndent=-12)
+        leftIndent=14, bulletIndent=2,
+        bulletFontName=FONT, bulletFontSize=10)
     tech_sty = ParagraphStyle("Tech",
         fontName=FONT, fontSize=9.5, textColor=BLACK,
         alignment=TA_LEFT, spaceAfter=3, spaceBefore=2, leftIndent=0)
@@ -213,14 +214,14 @@ def _build_story(resume_text: str) -> list:
                 html = f"<b>{_e(label.strip())}:</b> {_e(value.strip())}"
             else:
                 html = _e(text)
-            story.append(Paragraph(f"&#8226;&nbsp;&nbsp;{html}", bullet_sty))
+            story.append(Paragraph(html, bullet_sty, bulletText='•'))
             continue
 
         # ── Skills section: plain "Label: value" lines (no bullet prefix) ───────
         if in_skills and ":" in s and not s.startswith("•"):
             label, _, value = s.partition(":")
             html = f"<b>{_e(label.strip())}:</b> {_e(value.strip())}"
-            story.append(Paragraph(f"&#8226;&nbsp;&nbsp;{html}", bullet_sty))
+            story.append(Paragraph(html, bullet_sty, bulletText='•'))
             continue
 
         # ── Job header ────────────────────────────────────────────────────────

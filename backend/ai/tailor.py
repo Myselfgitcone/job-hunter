@@ -395,6 +395,7 @@ async def tailor_resume(base_resume: str, job_description: str,
 
 STEP 1 — Open a <plan> block. Fill in EVERY field explicitly before writing a single resume line:
   SUMMARY_TITLE: [candidate's actual title as it appears in the resume] → [exact text of summary bullet 1, showing how the JD's target role is bridged without fabricating a new title]
+  JOB_HEADERS: [list every job header from the base resume exactly as written — title, company, location, dates — then confirm each will appear UNCHANGED in the output. Title fabrication = auto-fail.]
   DOMAINS: [each company → its real industry; derive from resume text, never invent]
   TIMELINE: [each role's start–end years + which JD tools were already mainstream enterprise-standard by then]
   TIMELINE_BLOCKS: [any JD tool that fails the timeline check → placed in Skills-only or dropped; write "none" if all tools are plausible]

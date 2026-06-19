@@ -539,7 +539,9 @@ function ResumeTab({ job, tailoring, onTailor, onCancel, onToast }: {
           </div>
         </div>
         <div style={{ fontSize: 13.5, color: "var(--text-secondary)" }}>Tailoring resume with AI…</div>
-        <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>Usually takes 30–90 seconds</div>
+        <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+          {elapsed < 60 ? "Usually takes 1–3 minutes" : elapsed < 120 ? "Still working — almost there…" : "Taking longer than usual — complex resume"}
+        </div>
         <button
           onClick={onCancel}
           style={{ marginTop: 4, fontSize: 12.5, fontWeight: 500, color: "var(--text-muted)", background: "none", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: "6px 18px", cursor: "pointer" }}

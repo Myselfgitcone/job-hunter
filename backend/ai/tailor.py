@@ -307,7 +307,7 @@ Open with a bullet naming the target title + seniority + years of experience. Fo
 ✓ ALWAYS: Skills section items trace back to at least one job bullet
 
 ═══ FINAL CHECK BEFORE OUTPUT ═══
-Count ALL bullets — total must be ≤ 28. Count words in every bullet — rewrite any over 22 words. Confirm: domain not relabeled, no "utilized/leveraged", no repeated opening verbs, no compliance frameworks outside plausible history, budget not exceeded. Then output the finished resume and nothing else."""
+Count ALL bullets — total must be ≤ 30. Count words in every bullet — rewrite any over 22 words. Confirm: domain not relabeled, no "utilized/leveraged", no repeated opening verbs, no compliance frameworks outside plausible history, budget not exceeded. Then output the finished resume and nothing else."""
 
 
 # ── 4th-layer semantic reviewer ───────────────────────────────────────────────

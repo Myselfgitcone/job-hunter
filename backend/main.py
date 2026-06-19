@@ -2321,7 +2321,15 @@ async def generate_cover_letter_endpoint(job_id: str, user_id: str = Depends(get
     if not api_key:
         raise HTTPException(400, "No AI API key set. Add one in Settings.")
 
-    resume = user_cfg.get("resume", "")
+    # Use tailored resume if one exists for this job — it's already JD-aligned.
+    # Fall back to base resume if not yet tailored.
+    async with SessionLocal() as db:
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj_for_resume = uj_result.scalar_one_or_none()
+    tailored = (uj_for_resume.tailored_resume or "") if uj_for_resume else ""
+    resume = tailored if tailored.strip() else user_cfg.get("resume", "")
     jd = job.description or ""
 
     letter = await generate_cover_letter(resume, jd, job.title, job.company, api_key, provider, model)

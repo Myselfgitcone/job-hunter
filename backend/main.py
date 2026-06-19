@@ -2252,6 +2252,9 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
         job = await db.get(Job, job_id)
         if not job:
             raise HTTPException(404, "Job not found")
+        profile_data = await _load_profile(db, user_id)
+
+    profile_skills = list(profile_data.get("skills", [])) if profile_data else []
 
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
@@ -2271,7 +2274,7 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
 
     ats_before = score_ats(base_resume, jd)
 
-    tailored_text = await tailor_resume(base_resume, jd, api_key, provider, model)
+    tailored_text = await tailor_resume(base_resume, jd, api_key, provider, model, profile_skills=profile_skills)
     ats_after = score_ats(tailored_text, jd)
 
     fit = await analyze_fit(base_resume, jd, job.title, job.company, api_key, provider, model)
@@ -2464,6 +2467,12 @@ class QuickTailorRequest(BaseModel):
     jd: str
     company: str = "Company"
 
+async def _load_profile_skills(user_id: str) -> list[str]:
+    async with SessionLocal() as db:
+        profile_data = await _load_profile(db, user_id)
+    return list(profile_data.get("skills", [])) if profile_data else []
+
+
 @app.post("/api/quick-tailor")
 async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_current_user_id)):
     user_cfg = await _get_user_settings(user_id)
@@ -2478,7 +2487,8 @@ async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_curr
     if not base_resume:
         raise HTTPException(400, "No base resume found. Add it in Settings.")
 
-    tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model)
+    profile_skills = await _load_profile_skills(user_id)
+    tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model, profile_skills=profile_skills)
     return {"tailored_resume": tailored}
 
 
@@ -2496,7 +2506,8 @@ async def quick_tailor_pdf(body: QuickTailorRequest, user_id: str = Depends(get_
     if not base_resume:
         raise HTTPException(400, "No base resume found.")
 
-    tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model)
+    profile_skills = await _load_profile_skills(user_id)
+    tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model, profile_skills=profile_skills)
     pdf_bytes = generate_pdf(tailored, "", body.company)
     cand = _candidate_slug(user_cfg.get("profile_name", ""))
     company_slug = re.sub(r"[^\w]+", "_", body.company or "Company").strip("_")
@@ -2520,7 +2531,8 @@ async def quick_tailor_docx(body: QuickTailorRequest, user_id: str = Depends(get
     if not base_resume:
         raise HTTPException(400, "No base resume found.")
 
-    tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model)
+    profile_skills = await _load_profile_skills(user_id)
+    tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model, profile_skills=profile_skills)
     docx_bytes = generate_docx(tailored, "", body.company)
     cand = _candidate_slug(user_cfg.get("profile_name", ""))
     company_slug = re.sub(r"[^\w]+", "_", body.company or "Company").strip("_")

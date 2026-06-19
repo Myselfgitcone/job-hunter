@@ -156,14 +156,16 @@ Cover every HARD SKILL the JD names, every core RESPONSIBILITY, the SENIORITY le
 SKIP on purpose: soft skills, culture words ("fast-paced"), boilerplate, and keywords whose only purpose is inflation.
 Each skill appears once or twice — never five times. Repetition reads as stuffing.
 
-═══ TECHNICAL SKILLS — ANTI-STUFFING ═══
-The SKILLS section reflects what the candidate ACTUALLY uses — not a copy of the JD's feature list.
-A trained recruiter reads Skills last. If every sub-feature mirrors the JD's qualification list exactly, it is an immediate copy-paste signal.
-  • Group by broad capability (e.g. "Cloud Warehousing", "Orchestration") — NOT by how the JD organizes its list
-  • Blend JD-required tools with the candidate's baseline tools to create an organic list that looks earned, not assembled
-  • Limit each grouped line to 5–6 tools maximum; split larger groups naturally
-  • Only list a tool if it appears in at least one job bullet — tools with no supporting bullet get exposed in interviews
+═══ TECHNICAL SKILLS — ORGANIZATION ═══
+Include ALL tools from the CANDIDATE'S DECLARED SKILLS section — those are the candidate's own claims, never omit or filter them.
+NEW tools added from the JD (not in the declared list) may only appear if they have a supporting bullet in the work experience.
+  • Organize by categories that fit the JD role:
+    - Architecture/strategy JDs → use "Data Architecture & Modeling", "Real-time & Messaging", "Data Governance", "Cloud Platforms", etc.
+    - Engineering/pipeline JDs → use "Distributed Processing", "Cloud Platforms", "Orchestration & DevOps", "Databases", etc.
+  • Lead with the categories most relevant to the JD's primary focus
+  • Limit each line to 6–7 tools maximum; split larger groups naturally
   • 6–9 lines maximum
+  • Do NOT copy the JD's exact qualification wording — use natural category names
 
 ═══ SCOPE CREDIBILITY — NO UNICORN ENGINEER ═══
 A recruiter who interviews dozens of engineers knows what one person can realistically own at one company.
@@ -297,7 +299,7 @@ Open with a bullet naming the target title + seniority + years of experience. Fo
 ✗ NEVER: write a gap bullet if all 4 anchors cannot be satisfied credibly
 ✗ NEVER: mirror the JD's exact feature list verbatim into TECHNICAL SKILLS
 ✗ NEVER: stack 3+ major technology paradigms in one role's bullets
-✗ NEVER: list a tool in Skills with no supporting bullet in the resume
+✗ NEVER: add a NEW JD tool to Skills with no supporting bullet — Declared Skills are exempt from this restriction
 ✗ NEVER: exceed 30 total bullets (5 summary + 11 + 7 + 5 + 2)
 ✗ NEVER: drop a strict compliance framework into a domain where it is legally impossible
 ✓ ALWAYS: end each job block with exactly "Technologies Used: ..."
@@ -332,10 +334,12 @@ If any summary bullet is a tech-spec list (5+ tools with no candidate context,
 no impact statement, no who-you-are signal), rewrite it as a single crisp
 who-you-are statement. ≤ 22 words. One idea only.
 
-CHECK 3 — UNPROVEN SKILLS:
+CHECK 3 — AI-ADDED SKILLS ONLY:
 If a tool appears in TECHNICAL SKILLS but has zero supporting bullets anywhere
-in the WORK EXPERIENCE section, remove it from that Skills line entirely.
-Do NOT add "(current capability)" or any other label — just delete the tool name.
+in the WORK EXPERIENCE section AND it does NOT appear in the CANDIDATE'S DECLARED
+SKILLS list provided in this message, remove it from that Skills line entirely.
+Tools that ARE in the Declared Skills list are the candidate's own claims — keep them regardless of bullet support.
+Do NOT add any label — just delete the non-declared tool name.
 
 CONSTRAINT — NOTHING ELSE:
 Reproduce every other line exactly as given. No commentary. No plan blocks.
@@ -343,11 +347,15 @@ Return the complete corrected resume as plain text only."""
 
 
 async def review_resume(tailored: str, job_description: str,
-                        api_key: str, provider: str, model: str) -> str:
+                        api_key: str, provider: str, model: str,
+                        profile_skills: list[str] | None = None) -> str:
     """One-shot semantic review pass. No retry — fires exactly once after _enforce_limits."""
+    skills_ctx = ""
+    if profile_skills:
+        skills_ctx = f"\n=== CANDIDATE'S DECLARED SKILLS (keep ALL in TECHNICAL SKILLS) ===\n{', '.join(profile_skills)}\n"
     msg = f"""Review and fix the 3 semantic issues per your instructions.
 Return the complete corrected resume as plain text only — no commentary, no plan block.
-
+{skills_ctx}
 === JOB DESCRIPTION ===
 {job_description[:8000]}
 
@@ -392,10 +400,19 @@ _RETRY_RULES = {
 
 
 async def tailor_resume(base_resume: str, job_description: str,
-                        api_key: str, provider: str, model: str) -> str:
+                        api_key: str, provider: str, model: str,
+                        profile_skills: list[str] | None = None) -> str:
+
+    declared_section = ""
+    if profile_skills:
+        declared_section = (
+            "\n=== CANDIDATE'S DECLARED SKILLS — include ALL in TECHNICAL SKILLS ===\n"
+            + ", ".join(profile_skills)
+            + "\nOrganize by JD-relevant categories. Do NOT omit any declared skill.\n"
+        )
 
     user_msg = f"""Tailor this resume to the JD. Hard limit: 30 bullets total (5 summary + 25 experience). Output: plain text resume only.
-
+{declared_section}
 STEP 1 — Open a <plan> block. Fill in EVERY field explicitly before writing a single resume line:
   SUMMARY_TITLE: [candidate's actual title as it appears in the resume] → [exact text of summary bullet 1, showing how the JD's target role is bridged without fabricating a new title]
   JOB_HEADERS: [list every job header from the base resume exactly as written — title, company, location, dates — then confirm each will appear UNCHANGED in the output. Title fabrication = auto-fail.]
@@ -492,7 +509,7 @@ STEP 3 — Within each job, confirm bullets are ordered highest-JD-relevance fir
 
     # ── Semantic review — 1 pass, no retry (catches what lint can’t) ────────
     pre_review_hash = hash(result)
-    result = await review_resume(result, job_description, api_key, provider, model)
+    result = await review_resume(result, job_description, api_key, provider, model, profile_skills=profile_skills)
     if hash(result) != pre_review_hash:
         print("[REVIEW] Reviewer made changes")
     else:

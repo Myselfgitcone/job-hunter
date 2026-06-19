@@ -5,12 +5,8 @@ Sends job alerts, daily digests, and supports basic commands.
 import asyncio
 import logging
 import re
-from zoneinfo import ZoneInfo
-
-# Digest timestamps in Eastern Time (app-wide standard)
-LOCAL_TZ = ZoneInfo("America/New_York")
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +108,7 @@ async def send_scrape_digest(new_jobs: list, total_jobs: int):
         "",
         f"This run total: <b>{count}</b>",
         f"Total in DB: <b>{total_jobs:,}</b>",
-        datetime.now(LOCAL_TZ).strftime("%b %d, %I:%M%p ET"),
+        datetime.now(timezone.utc).strftime("%b %d, %H:%M UTC"),
     ]
 
     await send_message("\n".join(lines))

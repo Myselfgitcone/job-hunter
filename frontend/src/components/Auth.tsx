@@ -119,6 +119,11 @@ export default function Auth({ onSuccess }: Props) {
 
   const [jobCount, setJobCount] = useState(() => parseInt(localStorage.getItem("jh_job_count") || "0") || 0);
   const [liveStats, setLiveStats] = useState<any>(null);
+  const [utcClock, setUtcClock] = useState(() => new Date().toLocaleTimeString("en-US", { timeZone: "UTC", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }));
+  useEffect(() => {
+    const t = setInterval(() => setUtcClock(new Date().toLocaleTimeString("en-US", { timeZone: "UTC", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -319,6 +324,12 @@ export default function Auth({ onSuccess }: Props) {
                     <div style={{ ...S.liveCellLabel, fontSize: 12 }}>{s.label}</div>
                   </div>
                 ))}
+              </div>
+              <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 10, fontFamily: "monospace", background: "rgba(127,119,221,0.13)", color: "#7c3aed", padding: "2px 10px", borderRadius: 20, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", border: "1px solid rgba(124,58,237,0.18)" }}>
+                  UTC {utcClock}
+                </span>
+                <span style={{ fontSize: 10.5, color: "#94a3b8" }}>— jobs use UTC timestamps</span>
               </div>
             </div>
           </div>

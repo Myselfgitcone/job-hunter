@@ -2478,7 +2478,7 @@ async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_curr
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model    = user_cfg.get("ai_model", "google/gemini-flash-1.5")
+    model    = user_cfg.get("ai_model_tailor", "anthropic/claude-opus-4-8")
 
     if not api_key:
         raise HTTPException(400, "No AI API key set. Add one in Settings.")
@@ -2497,7 +2497,7 @@ async def quick_tailor_pdf(body: QuickTailorRequest, user_id: str = Depends(get_
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model    = user_cfg.get("ai_model", "google/gemini-flash-1.5")
+    model    = user_cfg.get("ai_model_tailor", "anthropic/claude-opus-4-8")
 
     if not api_key:
         raise HTTPException(400, "No AI API key set.")
@@ -2522,7 +2522,7 @@ async def quick_tailor_docx(body: QuickTailorRequest, user_id: str = Depends(get
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model    = user_cfg.get("ai_model", "google/gemini-flash-1.5")
+    model    = user_cfg.get("ai_model_tailor", "anthropic/claude-opus-4-8")
 
     if not api_key:
         raise HTTPException(400, "No AI API key set.")

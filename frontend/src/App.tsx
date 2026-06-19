@@ -533,7 +533,18 @@ export default function App() {
   };
 
   const runAction = async (action: string) => {
-    if (!selectedJob || busy) return; setBusy(action); setBusyJobId(selectedJob.id);
+    if (!selectedJob || busy) return;
+    if (action === "resume") {
+      const jd = selectedJob.description || "";
+      const flags: string[] = [];
+      if (/\b(TS\/SCI|top\s+secret|secret\s+clearance|security\s+clearance|clearance\s+required|active\s+(in-scope\s+)?clearance|polygraph|poly\b)/i.test(jd))
+        flags.push("security clearance");
+      if (/\b(U\.?S\.?\s*citizen(ship)?(\s+required)?|must\s+be\s+a\s+(U\.?S\.?\s*)?citizen|citizenship\s+required)/i.test(jd))
+        flags.push("U.S. citizenship");
+      if (flags.length > 0 && !window.confirm(`⚠️ This job requires ${flags.join(" and ")}.\n\nYou may not be eligible. Tailor anyway?`))
+        return;
+    }
+    setBusy(action); setBusyJobId(selectedJob.id);
     try {
       if (action === "qualify") {
         const r = await api.qualifyJob(selectedJob.id);

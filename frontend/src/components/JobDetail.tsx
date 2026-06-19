@@ -3,6 +3,16 @@ import type { Job, JobStatus } from "../types";
 import { api, downloadFile } from "../api";
 import { ATSBar, Spinner, CompanyLogo, AtsLogo } from "./primitives";
 
+const DISQUALIFIER_PATTERNS: { label: string; re: RegExp }[] = [
+  { label: "Requires security clearance",  re: /\b(TS\/SCI|top\s+secret|secret\s+clearance|security\s+clearance|clearance\s+required|active\s+(in-scope\s+)?clearance|polygraph|poly\b)/i },
+  { label: "Requires U.S. citizenship",    re: /\b(U\.?S\.?\s*citizen(ship)?(\s+required)?|must\s+be\s+a\s+(U\.?S\.?\s*)?citizen|citizenship\s+required)/i },
+];
+
+function detectDisqualifiers(jd: string): string[] {
+  if (!jd) return [];
+  return DISQUALIFIER_PATTERNS.filter(p => p.re.test(jd)).map(p => p.label);
+}
+
 function relTimeDetail(iso: string): string {
   if (!iso) return "";
   const diff = Date.now() - new Date(iso.replace(/(\.\d{3})\d+/, "$1")).getTime();
@@ -864,6 +874,13 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
             <StatusDropdown status={job.status} onChange={handleStatusChange} />
           </div>
         </div>
+
+        {/* Disqualifier banner */}
+        {detectDisqualifiers(job.description || "").map(label => (
+          <div key={label} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 16px", background: "#FEF2F2", borderBottom: "1px solid #FECACA", color: "#B91C1C", fontSize: 12.5, fontWeight: 500 }}>
+            <span style={{ fontSize: 15 }}>⚠️</span> {label}
+          </div>
+        ))}
 
         {/* Top-level tabs */}
         <div className="tabs">

@@ -208,6 +208,7 @@ TONE RULES:
 
 PLACEMENT RULES:
   • Place each gap bullet at the job whose real domain best fits the JD skill
+  • WRONG-JOB RULE: If a skill's only existing bullet is at an old/less relevant role, write a NEW gap-fill bullet at the most recent plausible role instead — don't surface a buried 2018 bullet as the primary demonstration of a skill the JD cares about
   • Max 2–3 gap bullets per job — spread if more are needed
   • Displace the LOWEST-scoring existing bullet to make room
   • If a skill has zero plausible connection to any role — put it in TECHNICAL SKILLS only, never force a bullet
@@ -224,9 +225,15 @@ VOCABULARY MIRRORING TRAP — CRITICAL:
 TECHNOLOGY TIMELINE CHECK — CRITICAL:
   Before injecting a tool into a role, verify it was widely adopted BEFORE that job's end date.
   Enterprise adoption lags 12–24 months behind public release.
-  • FastAPI (late 2018) → not credible in enterprise banking before 2020
-  • dbt Cloud GA (2020), React hooks (2019), Kubernetes GA (2018), Spark Structured Streaming (2016+)
-  If no plausible timeframe exists → add to TECHNICAL SKILLS only, not a historical bullet.
+  Use this reference — earliest credible enterprise use:
+  • Kafka: 2015 (LinkedIn open-sourced 2011, enterprise-ready by 2014–15 — credible at JPMorgan 2018)
+  • Spark: 2015  | Databricks managed: 2016  | Delta Lake: 2020
+  • Kubernetes: 2017  | Docker enterprise: 2015  | Terraform: 2016
+  • Snowflake: 2016  | dbt Core: 2017  | dbt Cloud GA: 2020
+  • Airflow: 2017  | FastAPI: 2020  | React hooks: 2019
+  • MLflow: 2019  | Vector DBs (Pinecone/Weaviate): 2022  | LangChain: 2023
+  • Flink enterprise: 2018  | Iceberg: 2020  | Trino/Presto: 2017
+  If a tool's adoption date is AFTER the job's end date → TECHNICAL SKILLS only, never a historical bullet.
 
 CENTRAL-SKILL RULE: If a skill appears 3+ times in the JD or is the role's clear focus — include it at EVERY job where it is plausible. Exception: if the technology timeline check blocks a specific role, skip that role — do not force it.
 

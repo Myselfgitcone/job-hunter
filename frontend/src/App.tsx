@@ -852,7 +852,7 @@ export default function App() {
         )}
       </div>
 
-      <QuickTailor open={tailorOpen} onClose={() => setTailorOpen(false)} onToast={toast} />
+      <QuickTailor open={tailorOpen} onClose={() => setTailorOpen(false)} onToast={toast} tailorModel={userSettings?.ai_model_tailor || ""} />
       <Toasts toasts={toasts} />
 
       {/* Welcome modal removed */}

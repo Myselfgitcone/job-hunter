@@ -2,11 +2,9 @@ import { useState } from "react";
 import { api } from "../api";
 import { Sparkles, Loader2, Download, X, FileText, FolderDown } from "lucide-react";
 
-interface Props { open?: boolean;
-  onClose: () => void;
-}
+interface Props { open?: boolean; onClose: () => void; tailorModel?: string; }
 
-export function QuickTailor({ open = true, onClose, onToast }: Props & { open?: boolean; onToast?: (m:string,t?:"success"|"error")=>void }) {
+export function QuickTailor({ open = true, onClose, onToast, tailorModel }: Props & { open?: boolean; onToast?: (m:string,t?:"success"|"error")=>void }) {
   const [jd, setJd]           = useState("");
   const [company, setCompany] = useState("");
   const [tailored, setTailored] = useState("");
@@ -78,6 +76,11 @@ export function QuickTailor({ open = true, onClose, onToast }: Props & { open?: 
           <div className="flex items-center gap-2">
             <Sparkles size={16} className="text-purple-400" />
             <h2 className="text-sm font-semibold text-slate-100">Quick Tailor — Paste Any JD</h2>
+            {tailorModel && (
+              <span style={{ fontSize: 10.5, background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)", borderRadius: 6, padding: "1px 7px", fontWeight: 500 }}>
+                {tailorModel.split("/").pop()?.replace(/-/g, " ")}
+              </span>
+            )}
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors">
             <X size={16} />

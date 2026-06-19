@@ -312,13 +312,19 @@ export function Profile() {
   const updateAt = (key: "experience" | "education" | "projects", i: number, k: string, v: string) =>
     setProfile((p: any) => ({ ...p, [key]: p[key].map((x: any, j: number) => j === i ? { ...x, [k]: v } : x) }));
 
-  const clearAll = () => {
+  const clearAll = async () => {
     if (!window.confirm("Are you sure you want to clear your entire profile? This cannot be undone until you save again.")) return;
-    setProfile({
+    const empty = {
       personal: { firstName: "", lastName: "", email: "", phone: "", address: "", linkedin: "", github: "", visa: "" },
       summary: "",
       experience: [], education: [], projects: [], skills: [], certifications: [],
-    });
+    };
+    setProfile(empty);
+    try {
+      setSaveStatus("saving");
+      await api.saveProfile({ first_name: "", last_name: "", name: "", email: "", phone: "", address: "", linkedin: "", github: "", visa_status: "", experience: [], education: [], projects: [], summary: "", skills: [], certifications: [] } as any);
+      setSaveStatus("saved");
+    } catch { setSaveStatus("unsaved"); }
   };
 
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);

@@ -334,8 +334,8 @@ who-you-are statement. ≤ 22 words. One idea only.
 
 CHECK 3 — UNPROVEN SKILLS:
 If a tool appears in TECHNICAL SKILLS but has zero supporting bullets anywhere
-in the WORK EXPERIENCE section, either remove it from Skills or append
-"(current capability)" after it.
+in the WORK EXPERIENCE section, remove it from that Skills line entirely.
+Do NOT add "(current capability)" or any other label — just delete the tool name.
 
 CONSTRAINT — NOTHING ELSE:
 Reproduce every other line exactly as given. No commentary. No plan blocks.

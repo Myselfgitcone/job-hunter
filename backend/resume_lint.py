@@ -1,95 +1,311 @@
 """
-resume_lint.py — quality gate for tailored resumes BEFORE rendering.
-Checks what the LLM must fix: bullet length, multi-idea bullets, banned words,
-meta-leaks, summary count (exactly 5), total bullet overflow, Technologies Used
-presence per job, banned tech labels, consecutive same-verb bullets, metrics
-density, and JD-word echo (signature words copied too often).
+resume_lint_v2.py — universal quality gate for tailored resumes.
+
+Supports: Tech, Investment Banking (IB), Finance, Cybersecurity (Cyber),
+          Healthcare, Consulting, and General roles.
+
+Role type is auto-detected from the job description. Every check —
+bullet limits, section labels, closing-line presence, verb lists,
+echo stoplist, metrics density — adapts to the detected role type.
+
+Usage:
+    issues = lint_resume(resume_text, job_description)
+    # Returns list of issue strings. Empty = clean.
+
+CLI:
+    python3 resume_lint_v2.py resume.txt jd.txt
 """
+
 import re
 import sys
+from dataclasses import dataclass, field
+from typing import Optional
 
-WORD_LIMIT   = 22
-WORD_TARGET  = 18
-SUMMARY_MAX  = 5    # prompt requires EXACTLY 5 summary bullets
-BULLET_MAX   = 30   # hard total: 5 summary + 11 + 7 + 5 + 2 experience (Fix #3: 9→11 for most-recent job)
+
+# ── Role type constants ────────────────────────────────────────────────────────
+TECH        = "TECH"
+IB          = "IB"
+FINANCE     = "FINANCE"
+CYBER       = "CYBER"
+HEALTHCARE  = "HEALTHCARE"
+CONSULTING  = "CONSULTING"
+GENERAL     = "GENERAL"
+
+
+# ── Per-role bullet budgets ────────────────────────────────────────────────────
+# (most_recent, second, third, fourth_plus, summary, hard_total)
+BULLET_BUDGETS = {
+    TECH:       (11, 7, 5, 2, 5, 30),
+    IB:         ( 5, 4, 3, 2, 5, 19),
+    FINANCE:    ( 5, 4, 3, 2, 5, 19),
+    CYBER:      ( 7, 5, 4, 2, 5, 23),
+    HEALTHCARE: ( 6, 4, 3, 2, 5, 20),
+    CONSULTING: ( 6, 5, 3, 2, 5, 21),
+    GENERAL:    ( 7, 5, 4, 2, 5, 23),
+}
+
+SUMMARY_EXACT = 5
+WORD_LIMIT    = 22
+WORD_TARGET   = 18
+
 BANNED_WORDS = ["utilized", "leveraged"]
-META_LEAKS   = ["fabricat", "as per the jd", "as required", "[[", "note:",
-                "lorem", "placeholder", "tbd"]
 
-# Degree-line guard: prevents education lines being tracked for tech-line presence.
-# IMPORTANT: keep these specific — avoid words that appear in job titles or company names.
-# Removed: 'science' (conflicts with 'Data Science @ Cargill'),
-#           'arts' (conflicts with any 'Arts' company),
-#           'master' (conflicts with 'Master Data Engineer' title)
+META_LEAKS = [
+    "fabricat", "as per the jd", "as required", "[[", "note:",
+    "lorem", "placeholder", "tbd", "insert here", "your name",
+]
+
 DEGREE_SIGNALS = {
     "university", "college", "institute", "bachelor", "phd",
     "b.s.", "m.s.", "b.a.", "m.a.", "m.eng.", "degree",
 }
 
-# Banned tech-line labels — prompt requires EXACTLY "Technologies Used:"
-BANNED_TECH_LABELS = [
-    r"^platform:", r"^platforms:", r"^stack:", r"^tech stack:",
-    r"^tools:", r"^tools used:", r"^tech:", r"^technologies:",
-]
+# ── Role-type detection ────────────────────────────────────────────────────────
 
-# Echo check: a distinctive word lifted from the JD shouldn't appear 3+ times.
-ECHO_MAX           = 2       # max allowed repetitions of a JD signature word
-ECHO_MIN_WORD_LEN  = 6       # only flag longer / distinctive words
+# Signals weighted by specificity. More specific signals scored higher.
+_ROLE_SIGNALS: dict[str, list[tuple[str, int]]] = {
+    IB: [
+        (r"\bm&a\b", 3), (r"\binvestment bank", 3), (r"\bleveraged (finance|buyout)\b", 3),
+        (r"\bdeal execution\b", 3), (r"\bpitch book\b", 2), (r"\bcim\b", 2),
+        (r"\bdata room\b", 2), (r"\becm\b|dcm\b", 2), (r"\bbuy[-\s]?side\b", 2),
+        (r"\bsell[-\s]?side\b", 2), (r"\btransaction (advisory|experience)\b", 2),
+        (r"\blbo\b", 2), (r"\bmerger model\b", 2), (r"\bcapital markets\b", 2),
+        (r"\bmanagement presentation\b", 1), (r"\bbulge bracket\b", 2),
+    ],
+    FINANCE: [
+        (r"\bfp&a\b", 3), (r"\bfinancial planning\b", 2), (r"\bfinancial analyst\b", 2),
+        (r"\baccounting\b", 2), (r"\bgeneral ledger\b", 2), (r"\bclose process\b", 2),
+        (r"\bvariance analysis\b", 2), (r"\bbudget(ing)?\b", 2), (r"\bforecast(ing)?\b", 2),
+        (r"\btreasury\b", 2), (r"\bgaap\b", 2), (r"\bifrs\b", 2), (r"\bsox compliance\b", 2),
+        (r"\bcfo\b", 1), (r"\bearnings\b", 1), (r"\bfinancial model(ing)?\b", 2),
+    ],
+    CYBER: [
+        (r"\bcybersecur", 3), (r"\bsoc analyst\b", 3), (r"\bthreat (intel|hunting|detect)", 3),
+        (r"\bincident response\b", 3), (r"\bpenetration test", 3), (r"\bvulnerability\b", 2),
+        (r"\bsiem\b", 2), (r"\bedr\b", 2), (r"\bfirewall\b", 2), (r"\bgrc\b", 2),
+        (r"\bzero trust\b", 2), (r"\bmitre att&ck\b", 3), (r"\bmalware\b", 2),
+        (r"\bblue team\b", 2), (r"\bred team\b", 2), (r"\bsecurity operations\b", 2),
+        (r"\binfosec\b", 2), (r"\bpki\b", 1), (r"\bdlp\b", 1),
+    ],
+    HEALTHCARE: [
+        (r"\bpatient (care|outcome|panel|record)", 3), (r"\bclinical\b", 2),
+        (r"\bregistered nurse\b", 3), (r"\bphysician\b", 3), (r"\bnurse practitioner\b", 3),
+        (r"\behr\b", 2), (r"\bepic\b|cerner\b", 2), (r"\bhipaa\b", 2),
+        (r"\bcare (coordination|management|plan)", 2), (r"\breadmission", 2),
+        (r"\bhealth (informatics|system|care)", 2), (r"\bmedical record", 2),
+        (r"\bclinical trial\b", 2), (r"\bpharmac", 1),
+    ],
+    CONSULTING: [
+        (r"\bconsulting\b", 2), (r"\bmanagement consultant\b", 3), (r"\bstrategy consultant\b", 3),
+        (r"\bengagement\b", 2), (r"\bclient (delivery|relationship|facing)", 2),
+        (r"\bworkstream\b", 2), (r"\bprocess improvement\b", 2), (r"\bchange management\b", 2),
+        (r"\boperational excellence\b", 2), (r"\btransformation\b", 1),
+        (r"\bcase team\b", 2), (r"\bmckinsey|bain|bcg|deloitte|accenture|kpmg|pwc|ey\b", 2),
+    ],
+    TECH: [
+        (r"\bdata engineer", 2), (r"\bsoftware engineer", 2), (r"\bdevops\b", 2),
+        (r"\bsre\b", 2), (r"\bplatform engineer", 2), (r"\bml engineer", 2),
+        (r"\bdata (pipeline|platform|infrastructure|architecture)", 2),
+        (r"\bkafka\b|\bspark\b|\bdatabricks\b|\bairflow\b|\bdbt\b", 2),
+        (r"\bkubernetes\b|\bdocker\b|\bterraform\b", 2),
+        (r"\bsnowflake\b|\bbigquery\b|\bredshift\b", 2),
+        (r"\bpython\b|\bsql\b|\bjava\b|\bscala\b", 1),
+        (r"\bcloud (infrastructure|platform|architecture)", 2),
+        (r"\bci/cd\b|\bgithub actions\b|\bjenkins\b", 2),
+    ],
+}
 
-# Words that are fine to repeat — never flagged as echo.
-# Covers data engineering, Java/backend, cybersecurity, finance, data analyst.
-ECHO_STOPLIST = {
+# Everything else → GENERAL
+_GENERAL_THRESHOLD = 2   # minimum score to NOT fall back to GENERAL
+
+
+def detect_role_type(jd: str) -> str:
+    """Auto-detect role type from JD text. Returns one of the role type constants."""
+    jd_low = jd.lower()
+    scores: dict[str, int] = {rt: 0 for rt in _ROLE_SIGNALS}
+
+    for role_type, signals in _ROLE_SIGNALS.items():
+        for pattern, weight in signals:
+            if re.search(pattern, jd_low):
+                scores[role_type] += weight
+
+    best_role = max(scores, key=lambda r: scores[r])
+    best_score = scores[best_role]
+
+    # IB beats FINANCE when both score high (IB is more specific)
+    if scores[IB] > 0 and scores[FINANCE] > 0 and scores[IB] >= scores[FINANCE]:
+        return IB
+
+    if best_score < _GENERAL_THRESHOLD:
+        return GENERAL
+
+    return best_role
+
+
+# ── Valid section headers per role type ───────────────────────────────────────
+# Maps role type → set of uppercase header names (without trailing colon) that are VALID.
+# Any other UPPERCASE: line triggers an "unexpected header" warning.
+_VALID_HEADERS: dict[str, set[str]] = {
+    TECH: {
+        "PROFESSIONAL SUMMARY", "WORK EXPERIENCE", "TECHNICAL SKILLS", "EDUCATION",
+        "CERTIFICATIONS", "PROJECTS", "PUBLICATIONS",
+    },
+    IB: {
+        "PROFESSIONAL SUMMARY", "WORK EXPERIENCE", "TRANSACTION EXPERIENCE",
+        "EDUCATION", "CERTIFICATIONS", "SKILLS",
+    },
+    FINANCE: {
+        "PROFESSIONAL SUMMARY", "WORK EXPERIENCE", "CORE COMPETENCIES",
+        "EDUCATION", "CERTIFICATIONS", "SKILLS",
+    },
+    CYBER: {
+        "PROFESSIONAL SUMMARY", "WORK EXPERIENCE", "TECHNICAL SKILLS",
+        "CERTIFICATIONS", "EDUCATION", "PROJECTS",
+    },
+    HEALTHCARE: {
+        "PROFESSIONAL SUMMARY", "WORK EXPERIENCE", "SKILLS & EXPERTISE",
+        "LICENSES & CERTIFICATIONS", "EDUCATION", "CLINICAL EXPERIENCE",
+    },
+    CONSULTING: {
+        "PROFESSIONAL SUMMARY", "WORK EXPERIENCE", "CORE COMPETENCIES",
+        "EDUCATION", "CERTIFICATIONS", "PUBLICATIONS",
+    },
+    GENERAL: {
+        "PROFESSIONAL SUMMARY", "WORK EXPERIENCE", "SKILLS",
+        "EDUCATION", "CERTIFICATIONS", "PROJECTS", "CORE COMPETENCIES",
+    },
+}
+
+# Required sections (subset that MUST be present)
+_REQUIRED_HEADERS: dict[str, set[str]] = {
+    TECH:       {"PROFESSIONAL SUMMARY", "WORK EXPERIENCE", "TECHNICAL SKILLS", "EDUCATION"},
+    IB:         {"PROFESSIONAL SUMMARY", "WORK EXPERIENCE", "EDUCATION"},
+    FINANCE:    {"PROFESSIONAL SUMMARY", "WORK EXPERIENCE", "EDUCATION"},
+    CYBER:      {"PROFESSIONAL SUMMARY", "WORK EXPERIENCE", "CERTIFICATIONS", "EDUCATION"},
+    HEALTHCARE: {"PROFESSIONAL SUMMARY", "WORK EXPERIENCE", "EDUCATION"},
+    CONSULTING: {"PROFESSIONAL SUMMARY", "WORK EXPERIENCE", "EDUCATION"},
+    GENERAL:    {"PROFESSIONAL SUMMARY", "WORK EXPERIENCE", "EDUCATION"},
+}
+
+# ── Closing line rules per role type ──────────────────────────────────────────
+# role_type → (required: bool, valid_prefixes: list[str], banned_prefixes: list[str])
+# "required" means every job block MUST have a closing line.
+_CLOSING_LINE_RULES: dict[str, tuple[bool, list[str], list[str]]] = {
+    TECH: (
+        True,
+        ["technologies used:"],
+        ["platform:", "platforms:", "stack:", "tech stack:", "tools:", "tools used:", "tech:", "technologies:"],
+    ),
+    IB: (
+        False,   # optional; only deal-execution jobs need it
+        ["selected transactions:"],
+        [],
+    ),
+    FINANCE: (
+        False,   # optional
+        ["key tools:"],
+        [],
+    ),
+    CYBER: (
+        True,
+        ["technologies & platforms:"],
+        ["tools:", "platforms:", "stack:", "tech:"],
+    ),
+    HEALTHCARE: (
+        False,   # only for health-informatics hybrids
+        ["systems used:"],
+        [],
+    ),
+    CONSULTING: (
+        False,   # no closing line for consulting
+        [],
+        [],
+    ),
+    GENERAL: (
+        False,
+        [],
+        [],
+    ),
+}
+
+# ── Echo stoplists — words fine to repeat, never flagged ──────────────────────
+_BASE_STOPLIST = {
     # Universal resume words
     "pipelines", "pipeline", "data", "across", "analytics", "reporting",
     "frameworks", "models", "datasets", "systems", "platform", "platforms",
     "engineering", "experience", "metrics", "governance", "quality",
     "building", "scalable", "operational", "business", "technical", "teams",
-    # Data engineering — false-positives without these
-    "processing", "ingestion", "transformation", "warehouse", "storage",
-    "compute", "cluster", "workload", "consumption", "extraction", "loading",
-    "orchestration", "partitioning", "indexing", "replication", "streaming",
-    # Java / backend / software engineering
-    "services", "service", "microservices", "application", "applications",
-    "performance", "testing", "integration", "deployment", "architecture",
-    "development", "software", "backend", "frontend", "database",
-    "interfaces", "threads", "modules", "packages", "classes", "servers",
-    "endpoints", "runtime", "dependencies",
-    # Cybersecurity
-    "security", "network", "access", "monitoring", "controls", "threats",
-    "policies", "compliance", "incident", "vulnerabilities", "identity",
-    "detection", "response", "firewall", "encryption", "alerts", "logging",
-    "privileged", "exposure",
-    # Finance / FP&A / accounting
-    "financial", "revenue", "budget", "forecast", "management", "investment",
-    "portfolio", "accounting", "transactions", "reconciliation", "variance",
-    "quarter", "annual", "analysis", "planning", "statements",
-    # Data analyst / BI
-    "insights", "dashboards", "dashboard", "visualization", "reports",
-    "queries", "trends", "stakeholders", "requirements", "findings",
-    "calculated", "measures",
+    "processes", "process", "results", "performance", "support", "strategy",
+    "initiatives", "projects", "stakeholders", "requirements",
 }
 
-# Multi-idea verb detection — covers all user fields
+_ROLE_ECHO_STOPLIST: dict[str, set[str]] = {
+    TECH: _BASE_STOPLIST | {
+        "processing", "ingestion", "transformation", "warehouse", "storage",
+        "compute", "cluster", "workload", "consumption", "extraction", "loading",
+        "orchestration", "partitioning", "indexing", "replication", "streaming",
+        "services", "service", "microservices", "application", "applications",
+        "deployment", "architecture", "development", "software", "backend",
+        "database", "interfaces", "modules", "servers", "endpoints", "runtime",
+        "dependencies", "testing", "integration",
+    },
+    IB: _BASE_STOPLIST | {
+        "transaction", "transactions", "financial", "capital", "market", "markets",
+        "client", "clients", "management", "process", "materials", "analysis",
+        "valuation", "deal", "deals", "advisory", "equity", "debt", "acquisition",
+        "merger", "leverage", "investment", "banking", "execution", "diligence",
+        "offering", "proceeds", "financing", "billion", "million",
+    },
+    FINANCE: _BASE_STOPLIST | {
+        "financial", "revenue", "budget", "forecast", "management", "investment",
+        "portfolio", "accounting", "transactions", "reconciliation", "variance",
+        "quarter", "annual", "analysis", "planning", "statements", "reporting",
+        "balance", "income", "cash", "model", "modeling", "gaap", "ifrs",
+        "close", "journal", "entries", "accrual", "consolidation",
+    },
+    CYBER: _BASE_STOPLIST | {
+        "security", "network", "access", "monitoring", "controls", "threats",
+        "policies", "compliance", "incident", "vulnerabilities", "identity",
+        "detection", "response", "firewall", "encryption", "alerts", "logging",
+        "privileged", "exposure", "endpoint", "threat", "malware", "phishing",
+        "investigation", "remediation", "hardening", "patching", "scanning",
+    },
+    HEALTHCARE: _BASE_STOPLIST | {
+        "patient", "patients", "clinical", "care", "health", "medical",
+        "nursing", "physician", "treatment", "outcomes", "documentation",
+        "assessment", "diagnosis", "medication", "discharge", "admission",
+        "records", "provider", "members", "eligibility", "claims",
+    },
+    CONSULTING: _BASE_STOPLIST | {
+        "client", "clients", "engagement", "workstream", "analysis", "findings",
+        "recommendations", "implementation", "deliverables", "framework",
+        "methodology", "stakeholders", "leadership", "team", "approach",
+        "solution", "solutions", "impact", "outcomes", "program",
+    },
+    GENERAL: _BASE_STOPLIST | {
+        "customers", "customer", "sales", "revenue", "growth", "team",
+        "management", "operations", "budget", "planning", "execution",
+        "communication", "collaboration", "relationships", "initiatives",
+    },
+}
+
+# ── Multi-idea verb detection ─────────────────────────────────────────────────
 _MULTI_VERB_PATTERN = re.compile(
     r"\b("
-    # Data engineering / DevOps / cloud
     r"built|designed|developed|implemented|created|led|ran|"
     r"orchestrated|migrated|optimized|enforced|delivered|"
     r"containerized|architected|established|reduced|cut|"
-    r"deployed|automated|"
-    # Java / software engineering
-    r"refactored|integrated|shipped|tested|configured|upgraded|"
-    r"resolved|debugged|released|published|maintained|extended|"
-    # Cybersecurity
-    r"detected|remediated|patched|hardened|investigated|"
-    r"triaged|responded|assessed|audited|scoped|"
-    # Finance / FP&A
-    r"modeled|forecasted|reconciled|analyzed|reported|"
-    r"reviewed|managed|tracked|calculated|projected|"
-    # Data analyst / BI
+    r"deployed|automated|refactored|integrated|shipped|tested|"
+    r"configured|upgraded|resolved|debugged|released|maintained|"
+    r"detected|remediated|patched|hardened|investigated|triaged|"
+    r"responded|assessed|audited|modeled|forecasted|reconciled|"
+    r"analyzed|reviewed|managed|tracked|calculated|projected|"
     r"visualized|queried|transformed|validated|monitored|"
-    r"documented|presented|identified"
-    r")\b"
+    r"documented|presented|identified|executed|structured|"
+    r"advised|coordinated|prepared|facilitated|recommended|"
+    r"educated|assessed|administered|supported|contributed"
+    r")\b",
+    re.IGNORECASE,
 )
 
 _PHONE_RE = re.compile(r"\(?\d{3}\)?[\s\-.]?\d{3}[\s\-.]?\d{4}")
@@ -97,243 +313,328 @@ _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 _VERB1_RE = re.compile(r"^([A-Za-z]+)")
 
 
-def _words(text):
+def _words(text: str) -> int:
     return len(re.findall(r"\S+", text))
 
 
-def lint_resume(text: str, job_description: str = ""):
-    """Return a list of issue strings. Empty list = clean resume."""
-    issues = []
-    lines  = [l.rstrip() for l in text.strip().split("\n")]
+def _is_section_header(line: str) -> bool:
+    s = line.strip()
+    return (s == s.upper() and len(s) > 3 and s.endswith(":")
+            and not s.startswith("•") and not s.startswith("Technologies")
+            and not s.startswith("Selected") and not s.startswith("Key Tools")
+            and not s.startswith("Systems") and not s.startswith("Technologies &"))
 
-    # ── Header integrity: contact line must exist in first 3 lines ────────────
+
+def _is_job_header(line: str, section: Optional[str]) -> bool:
+    s = line.strip()
+    if " @ " not in s:
+        return False
+    if s.startswith("•"):
+        return False
+    if any(d in s.lower() for d in DEGREE_SIGNALS):
+        return False
+    if section and "EDUC" in section:
+        return False
+    return True
+
+
+def _is_closing_line(line: str, role_type: str) -> bool:
+    s = line.strip().lower()
+    _, valid_prefixes, _ = _CLOSING_LINE_RULES[role_type]
+    return any(s.startswith(p) for p in valid_prefixes)
+
+
+def _has_banned_closing_label(line: str, role_type: str) -> Optional[str]:
+    s = line.strip().lower()
+    _, _, banned = _CLOSING_LINE_RULES[role_type]
+    for b in banned:
+        if s.startswith(b):
+            return line.strip()[:50]
+    return None
+
+
+def lint_resume(text: str, job_description: str = "") -> list[str]:
+    """
+    Lint a tailored resume against the job description.
+    Auto-detects role type from job_description.
+    Returns list of issue strings. Empty = clean.
+    """
+    issues: list[str] = []
+    lines = [l.rstrip() for l in text.strip().split("\n")]
+
+    # ── Role type detection ──────────────────────────────────────────────────
+    role_type = detect_role_type(job_description) if job_description else GENERAL
+    budget = BULLET_BUDGETS[role_type]
+    job_limits = [budget[0], budget[1], budget[2], budget[3]]  # per-job limits
+    echo_stoplist = _ROLE_ECHO_STOPLIST[role_type]
+    closing_required, _, _ = _CLOSING_LINE_RULES[role_type]
+
+    # ── Header integrity ─────────────────────────────────────────────────────
     header_blob = "\n".join(lines[:3])
     if not _PHONE_RE.search(header_blob):
-        issues.append("[MISSING CONTACT] No phone number in the header — "
-                      "add the contact line 'phone | email' as line 2. "
-                      "A resume with no phone gets ignored.")
+        issues.append("[MISSING CONTACT] No phone number found in the first 3 lines.")
     if not _EMAIL_RE.search(header_blob):
-        issues.append("[MISSING CONTACT] No email in the header — "
-                      "add the contact line 'phone | email' as line 2.")
+        issues.append("[MISSING CONTACT] No email address found in the first 3 lines.")
 
-    section             = None
-    summary_count       = 0
-    long_bullets        = []
-    multi_idea          = []
-    current_job_header  = None    # header string of the currently open job
-    job_has_tech_line   = False   # did current job get a Technologies Used line?
-    jobs_missing_tech   = []      # job header strings missing Technologies Used
-    prev_opening_verb   = None    # for consecutive same-verb check
-    total_bullets       = 0       # computed after loop: summary_count + len(exp_bullets)
-    exp_bullets         = []      # (body, has_metric) for metrics density check
+    # ── Parse pass ───────────────────────────────────────────────────────────
+    section:              Optional[str] = None
+    summary_count:        int = 0
+    exp_bullets:          list[tuple[str, bool]] = []   # (body, has_metric)
+    long_bullets:         list[tuple[int, str]] = []
+    multi_idea_bullets:   list[tuple[int, str]] = []
+    job_index:            int = -1
+    current_job_header:   Optional[str] = None
+    job_has_closing_line: bool = False
+    jobs_missing_closing: list[str] = []
+    prev_verb:            Optional[str] = None
+    found_headers:        set[str] = set()
 
     for raw in lines:
-        line = raw.strip()
+        line    = raw.strip()
+        line_lo = line.lower()
         if not line:
-            prev_opening_verb = None
+            prev_verb = None
             continue
 
-        # ── Banned tech-line labels (checked on every non-empty line) ─────────
-        for pattern in BANNED_TECH_LABELS:
-            if re.match(pattern, line.lower()):
-                issues.append(
-                    f'[BANNED TECH LABEL] Use "Technologies Used:" not "{line[:40]}"'
-                )
+        # ── Banned closing labels ────────────────────────────────────────────
+        banned_label = _has_banned_closing_label(line, role_type)
+        if banned_label:
+            _, valid_prefixes, _ = _CLOSING_LINE_RULES[role_type]
+            expected = valid_prefixes[0].title() if valid_prefixes else "correct label"
+            issues.append(
+                f'[BANNED CLOSING LABEL] Use "{expected}" not "{banned_label}"'
+            )
 
-        # ── Section header ────────────────────────────────────────────────────
-        if line == line.upper() and line.endswith(":") and not line.startswith("•"):
-            # Close the last open job before switching sections
-            if current_job_header and not job_has_tech_line:
-                jobs_missing_tech.append(current_job_header)
-            current_job_header = None
-            job_has_tech_line  = False
-            prev_opening_verb  = None
-            section = line.rstrip(":")
+        # ── Section header ───────────────────────────────────────────────────
+        if _is_section_header(line):
+            if current_job_header and closing_required and not job_has_closing_line:
+                jobs_missing_closing.append(current_job_header)
+            current_job_header   = None
+            job_has_closing_line = False
+            prev_verb            = None
+            section = line.rstrip(":").upper()
+            found_headers.add(section)
             continue
 
-        # ── Job header ────────────────────────────────────────────────────────
-        # Guard: degree lines like "M.S. @ Saint Louis University" must not be
-        # treated as job headers — they would trigger a missing-tech-line flag.
-        is_degree_line = any(d in line.lower() for d in DEGREE_SIGNALS)
-        if (" @ " in line and not line.startswith("•")
-                and not line.startswith("Technologies")
-                and not is_degree_line
-                and section and "EDUC" not in section):
-            # Close previous job — check it had a Technologies Used line
-            if current_job_header and not job_has_tech_line:
-                jobs_missing_tech.append(current_job_header)
-            current_job_header = line
-            job_has_tech_line  = False
-            prev_opening_verb  = None
-            if " | " not in line:
+        # ── Job header ───────────────────────────────────────────────────────
+        if _is_job_header(line, section):
+            if current_job_header and closing_required and not job_has_closing_line:
+                jobs_missing_closing.append(current_job_header)
+            current_job_header   = line
+            job_has_closing_line = False
+            prev_verb            = None
+            job_index           += 1
+            if "|" not in line:
                 issues.append(
-                    f'[MISSING LOCATION] Job header has no "| City, State": '
-                    f'"{line[:55]}". Add the location after the company.'
+                    f'[MISSING LOCATION] Job header missing "| City, State": "{line[:60]}"'
                 )
             continue
 
-        # ── Technologies Used line ────────────────────────────────────────────
-        if line.startswith("Technologies Used:"):
-            job_has_tech_line = True
-            prev_opening_verb = None
+        # ── Closing line ─────────────────────────────────────────────────────
+        if _is_closing_line(line, role_type):
+            job_has_closing_line = True
+            prev_verb            = None
             continue
 
-        # ── Bullet lines ──────────────────────────────────────────────────────
+        # ── Bullet lines ─────────────────────────────────────────────────────
         if line.startswith("•"):
-            body = line[1:].strip()
-            low  = body.lower()
-            # NOTE: total_bullets is computed after the loop as summary_count + len(exp_bullets)
-            # to exclude skills-section bullets from the 28-bullet overflow check.
+            body   = line[1:].strip()
+            body_lo = body.lower()
 
-            # Banned words & meta leaks (all sections)
+            # Banned words + meta leaks (all sections)
             for w in BANNED_WORDS:
-                if re.search(rf"\b{w}\b", low):
-                    issues.append(f'[BANNED WORD] "{w}" found: "{body[:60]}..."')
+                if re.search(rf"\b{w}\b", body_lo):
+                    # "leveraged" is a valid IB/finance product noun in specific phrases
+                    if w == "leveraged" and re.search(
+                        r"\bleveraged\s+(finance|buyout|loan|credit|lending|capital)\b", body_lo
+                    ):
+                        continue
+                    issues.append(f'[BANNED WORD] "{w}" in: "{body[:60]}..."')
             for m in META_LEAKS:
-                if m in low:
-                    issues.append(f'[META LEAK] "{m}" found: "{body[:60]}..."')
+                if m in body_lo:
+                    issues.append(f'[META LEAK] "{m}" in: "{body[:60]}..."')
 
             if section and "SUMMARY" in section:
-                summary_count    += 1
-                prev_opening_verb = None
-                continue
-            if section and ("SKILL" in section or "TECHNICAL" in section):
-                prev_opening_verb = None
+                summary_count += 1
+                prev_verb = None
                 continue
 
-            # Experience bullet — track for metrics density
+            # Skills / competencies / certs sections — pass through
+            skills_sections = {
+                "TECHNICAL SKILLS", "CORE COMPETENCIES", "SKILLS & EXPERTISE",
+                "SKILLS", "CERTIFICATIONS", "LICENSES & CERTIFICATIONS",
+            }
+            if section and any(s in section for s in skills_sections):
+                prev_verb = None
+                continue
+
+            # Experience bullet
             has_metric = bool(re.search(r"\d", body))
             exp_bullets.append((body, has_metric))
 
-            # ── Consecutive same-verb check (experience only) ─────────────────
+            # Consecutive same-verb check
             vm = _VERB1_RE.match(body)
             if vm:
                 verb = vm.group(1).lower()
-                if prev_opening_verb and verb == prev_opening_verb:
+                if prev_verb and verb == prev_verb:
                     issues.append(
-                        f'[SAME VERB] Two consecutive bullets both start with '
+                        f'[SAME VERB] Consecutive bullets both start with '
                         f'"{verb.capitalize()}": "{body[:55]}..."'
                     )
-                prev_opening_verb = verb
+                prev_verb = verb
             else:
-                prev_opening_verb = None
+                prev_verb = None
 
-            # ── Word count & multi-idea checks ────────────────────────────────
+            # Word count
             wc = _words(body)
             if wc > WORD_LIMIT:
                 long_bullets.append((wc, body))
 
-            # Em-dash = strong multi-idea signal → 2+ action verbs
+            # Multi-idea check
             if wc > WORD_TARGET and " — " in body:
-                verb_count = len(_MULTI_VERB_PATTERN.findall(low))
-                if verb_count >= 2:
-                    multi_idea.append((wc, body))
-            # "and" alone = weak signal → require 3+ verbs to avoid false positives
-            # e.g. "built and deployed X via Jenkins" is one idea with 2 verbs — skip
-            elif wc > WORD_TARGET and re.search(r"\band\b", low):
-                verb_count = len(_MULTI_VERB_PATTERN.findall(low))
-                if verb_count >= 3:
-                    multi_idea.append((wc, body))
+                if len(_MULTI_VERB_PATTERN.findall(body_lo)) >= 2:
+                    multi_idea_bullets.append((wc, body))
+            elif wc > WORD_TARGET and re.search(r"\band\b", body_lo):
+                if len(_MULTI_VERB_PATTERN.findall(body_lo)) >= 3:
+                    multi_idea_bullets.append((wc, body))
             continue
 
-        # Non-bullet, non-header content — reset consecutive verb tracking
-        prev_opening_verb = None
+        prev_verb = None
 
-    # Close the very last job in the file
-    if current_job_header and not job_has_tech_line:
-        jobs_missing_tech.append(current_job_header)
+    # Close last job
+    if current_job_header and closing_required and not job_has_closing_line:
+        jobs_missing_closing.append(current_job_header)
 
-    # ── Aggregate collected issues ────────────────────────────────────────────
+    # ── Aggregate checks ──────────────────────────────────────────────────────
 
-    # Required sections check — catches token-limit truncation.
-    # If the model ran out of max_tokens mid-output, both visible jobs may have
-    # Technologies Used lines (so no missing-tech-line fires), but EDUCATION and
-    # TECHNICAL SKILLS will be absent. This triggers a retry so the full resume is regenerated.
+    # Required sections present?
     text_upper = text.upper()
-    if "EDUCATION" not in text_upper:
+    for req in _REQUIRED_HEADERS[role_type]:
+        # Flexible match — check if any found header contains the required phrase
+        if not any(req in h for h in found_headers):
+            issues.append(
+                f"[MISSING SECTION] Required section not found: "
+                f'"{req}:" — add it or check for truncation.'
+            )
+
+    # Summary count
+    if summary_count != SUMMARY_EXACT:
+        direction = "Add more." if summary_count < SUMMARY_EXACT else "Trim."
         issues.append(
-            "[TRUNCATED OUTPUT] EDUCATION section is missing — output was likely cut off. "
-            "Regenerate the full resume including Education and Technical Skills."
-        )
-    if "TECHNICAL SKILLS" not in text_upper and "SKILLS" not in text_upper:
-        issues.append(
-            "[TRUNCATED OUTPUT] TECHNICAL SKILLS section is missing — output was likely cut off. "
-            "Regenerate the full resume including Technical Skills and Education."
+            f"[SUMMARY] {summary_count} bullets in summary (must be exactly {SUMMARY_EXACT}). {direction}"
         )
 
-    # Total bullet overflow — fires BEFORE _enforce_limits silently trims.
-    # Only counts summary + experience bullets (not skills), matching the 28-cap definition.
+    # Bullet budget
     total_bullets = summary_count + len(exp_bullets)
-    if total_bullets > BULLET_MAX:
+    hard_total    = budget[5]  # index 5 = hard_total
+    if total_bullets > hard_total:
         issues.append(
-            f"[BULLET OVERFLOW] {total_bullets} total bullets (max {BULLET_MAX}). "
-            "Cut lowest-relevance bullets to reach 28."
+            f"[BULLET OVERFLOW] {total_bullets} total bullets "
+            f"(max {hard_total} for {role_type} role). "
+            f"Cut {total_bullets - hard_total} lowest-relevance bullets."
         )
 
-    # Summary count — must be EXACTLY 5 (not just ≤ 5)
-    if summary_count != SUMMARY_MAX:
-        direction = "Add more." if summary_count < SUMMARY_MAX else "Trim."
+    # Per-job bullet overflow (check using job_limits and job_index)
+    # Note: we track this approximately via job_index — exact per-job counts
+    # would require a second parse pass. Flag overflow at the hard total level
+    # and let _enforce_limits handle per-job trimming.
+
+    # Missing closing lines
+    for jh in jobs_missing_closing:
+        _, valid_prefixes, _ = _CLOSING_LINE_RULES[role_type]
+        expected = valid_prefixes[0].title() if valid_prefixes else "closing line"
         issues.append(
-            f"[SUMMARY] {summary_count} bullets (must be exactly {SUMMARY_MAX}). "
-            f"{direction}"
+            f'[MISSING CLOSING LINE] No "{expected}" after job: "{jh[:60]}". '
+            f"Add it as the last line of that job's bullets."
         )
 
+    # Long bullets
     for wc, body in long_bullets:
         issues.append(f'[TOO LONG] {wc} words (max {WORD_LIMIT}): "{body[:70]}..."')
-    for wc, body in multi_idea:
+
+    # Multi-idea bullets
+    for wc, body in multi_idea_bullets:
         issues.append(
             f'[MULTI-IDEA] {wc} words, 2+ accomplishments — split or cut: "{body[:70]}..."'
         )
-    for jh in jobs_missing_tech:
-        issues.append(
-            f'[MISSING TECH LINE] No "Technologies Used:" after job: '
-            f'"{jh[:60]}". Add it as the last line of that job\'s bullets.'
-        )
 
-    # ── Metrics density check (experience bullets only) ───────────────────────
+    # Metrics density
     if exp_bullets:
-        metric_count = sum(1 for _, has_m in exp_bullets if has_m)
+        metric_count = sum(1 for _, hm in exp_bullets if hm)
         ratio = metric_count / len(exp_bullets)
-        if ratio < 0.55:
+
+        # Target ratio varies by role type
+        low_threshold  = 0.40 if role_type in (HEALTHCARE, CONSULTING) else 0.55
+        high_threshold = 0.85
+
+        if ratio < low_threshold:
             issues.append(
-                f"[LOW METRICS] Only {ratio:.0%} of experience bullets have numbers "
-                f"(target 60–70%). Add quantified outcomes to more bullets."
+                f"[LOW METRICS] {ratio:.0%} of experience bullets have numbers "
+                f"(target {'40–60%' if role_type in (HEALTHCARE, CONSULTING) else '60–70%'}). "
+                f"Add quantified outcomes."
             )
-        elif ratio > 0.85:
+        elif ratio > high_threshold:
             issues.append(
                 f"[HIGH METRICS] {ratio:.0%} of experience bullets have numbers "
-                f"(target 60–70%). Looks forced — remove metrics from process/collab bullets."
+                f"(target {'40–60%' if role_type in (HEALTHCARE, CONSULTING) else '60–70%'}). "
+                f"Remove forced metrics from process/collaboration bullets."
             )
 
-    # ── JD-word echo check — run on BULLET TEXT ONLY ─────────────────────────
-    # Avoids false positives from tools named in "Technologies Used:" lines
-    # or from section headers repeating JD vocabulary.
+    # JD echo check — on experience bullet text only
     if job_description:
-        bullet_text = "\n".join(body for body, _ in exp_bullets)
-        jd_low   = job_description.lower()
-        res_low  = bullet_text.lower()
-        jd_words = set(re.findall(r"[a-z][a-z\-]{%d,}" % (ECHO_MIN_WORD_LEN - 1), jd_low))
-        checked  = set()
+        bullet_text = " ".join(body for body, _ in exp_bullets)
+        jd_lo       = job_description.lower()
+        res_lo      = bullet_text.lower()
+        jd_words    = set(re.findall(r"[a-z][a-z\-]{5,}", jd_lo))
+        checked     = set()
         for w in jd_words:
-            if w in ECHO_STOPLIST or w in checked:
+            if w in echo_stoplist or w in checked:
                 continue
             checked.add(w)
-            count = len(re.findall(rf"\b{re.escape(w)}\b", res_low))
-            if count > ECHO_MAX:
+            count = len(re.findall(rf"\b{re.escape(w)}\b", res_lo))
+            if count > 2:
                 issues.append(
-                    f'[JD ECHO] "{w}" appears {count}x in resume — a distinctive '
-                    f'JD word repeated 3+ times reads as copied. Vary it; keep at most {ECHO_MAX}.'
+                    f'[JD ECHO] "{w}" appears {count}x in resume bullets — '
+                    f"a distinctive JD word repeated 3+ times reads as copied. "
+                    f"Vary phrasing; keep ≤2 uses."
                 )
 
     return issues
 
 
+# ── Retry rule messages (same interface as before) ────────────────────────────
+RETRY_RULES: dict[str, str] = {
+    "[MISSING CONTACT]":       "Line 2 must be 'phone | email' — add the contact line.",
+    "[MISSING LOCATION]":      "Every job header must include '| City, State' after the company name.",
+    "[MISSING CLOSING LINE]":  "Every job block must end with the correct closing line for this role type.",
+    "[BANNED CLOSING LABEL]":  "Use the exact closing line label required for this role type.",
+    "[BANNED WORD]":           "Replace 'utilized' and 'leveraged' with active verbs: 'used', 'built', 'ran'.",
+    "[META LEAK]":             "Remove all instruction text, placeholders, or commentary from the resume body.",
+    "[TOO LONG]":              "Shorten to ≤22 words. One idea per bullet only. Split compound bullets.",
+    "[MULTI-IDEA]":            "One accomplishment per bullet. Split into two or cut the weaker half.",
+    "[SAME VERB]":             "No two consecutive experience bullets may open with the same verb — vary them.",
+    "[SUMMARY]":               "PROFESSIONAL SUMMARY must have exactly 5 bullet lines — not 4, not 6.",
+    "[BULLET OVERFLOW]":       "Total bullets exceed the limit for this role type. Cut lowest-relevance bullets first.",
+    "[MISSING SECTION]":       "A required section is missing. Check for output truncation and regenerate.",
+    "[LOW METRICS]":           "Add quantified outcomes to more experience bullets (role-appropriate target).",
+    "[HIGH METRICS]":          "Remove forced numbers from process/collaboration bullets — looks artificial.",
+    "[JD ECHO]":               "A JD word repeated 3+ times reads as keyword stuffing. Vary phrasing.",
+}
+
+
+# ── CLI ───────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("usage: python3 resume_lint.py resume.md [jd.txt]"); sys.exit(1)
-    txt  = open(sys.argv[1]).read()
-    jd   = open(sys.argv[2]).read() if len(sys.argv) > 2 else ""
-    found = lint_resume(txt, jd)
+        print("usage: python3 resume_lint_v2.py resume.txt [jd.txt]")
+        sys.exit(1)
+
+    resume_text = open(sys.argv[1]).read()
+    jd_text     = open(sys.argv[2]).read() if len(sys.argv) > 2 else ""
+
+    detected = detect_role_type(jd_text) if jd_text else GENERAL
+    print(f"Detected role type: {detected}")
+
+    found = lint_resume(resume_text, jd_text)
     if not found:
         print("✓ CLEAN — no issues.")
     else:

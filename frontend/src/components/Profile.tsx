@@ -251,7 +251,8 @@ export function Profile() {
           education: profile.education.map((e: any) => ({ ...e, expanded: e.expanded !== false })),
           projects: profile.projects.map((pr: any) => ({ name: pr.name, description: pr.stack || pr.desc, url: pr.url, expanded: pr.expanded !== false })),
           summary: profile.summary || "",
-          skills: profile.skills, certifications: profile.certifications,
+          skills: [...new Set(profile.skills.map((s: string) => s.trim()).filter(Boolean))],
+          certifications: [...new Set(profile.certifications.map((s: string) => s.trim()).filter(Boolean))],
         };
         await api.saveProfile(payload as any);
         setSaveStatus("saved");
@@ -397,8 +398,8 @@ export function Profile() {
           experience: exp.length   ? exp   : prev.experience,
           education:  edu.length   ? edu   : prev.education,
           projects:   proj.length  ? proj  : prev.projects,
-          skills:     parsed.skills?.length ? parsed.skills : prev.skills,
-          certifications: parsed.certifications?.length ? parsed.certifications : prev.certifications,
+          skills:     parsed.skills?.length ? [...new Set((parsed.skills as string[]).map((s: string) => s.trim()).filter(Boolean))] : prev.skills,
+          certifications: parsed.certifications?.length ? [...new Set((parsed.certifications as string[]).map((s: string) => s.trim()).filter(Boolean))] : prev.certifications,
         }));
       }
     } catch (err: any) {

@@ -1,31 +1,57 @@
 import re
 from ai.llm import chat
-from resume_lint import lint_resume
+from resume_lint import lint_resume, detect_role_type, BULLET_BUDGETS
+from resume_lint import TECH, IB, FINANCE, CYBER, HEALTHCARE, CONSULTING, GENERAL
 
 
 # ── Hard limits enforced in Python (AI cannot count) ─────────────────────────
-BULLET_LIMITS = {
-    "PROFESSIONAL SUMMARY": 5,   # fixed: 5 exactly (was 6, caused math overflow)
-    "summary":              5,
-}
-JOB_BULLET_LIMITS = [11, 7, 5, 2]   # most-recent → oldest; 5+11+7+5+2 = 30 hard cap
-# Fix #3: expanded most-recent job from 9→11 to match prompt budget and leave coverage on table
+# Bullet limits are now role-type-aware. Loaded dynamically from resume_lint.
+# BULLET_BUDGETS[role_type] = (most_recent, second, third, fourth_plus, summary, hard_total)
+SUMMARY_LIMIT  = 5
 SKILLS_LINE_LIMIT = 9
 
+# Closing line prefixes per role type — what _enforce_limits passes through unchanged
+_CLOSING_PREFIXES = {
+    TECH:       "Technologies Used:",
+    CYBER:      "Technologies & Platforms:",
+    IB:         "Selected Transactions:",
+    FINANCE:    "Key Tools:",
+    HEALTHCARE: "Systems Used:",
+    CONSULTING: None,
+    GENERAL:    None,
+}
 
-def _enforce_limits(text: str) -> str:
+# Skills section keywords per role type — used to detect skills section in enforce_limits
+_SKILLS_SECTION_KEYWORDS = {
+    TECH:       {"SKILL", "TECHNICAL"},
+    IB:         {"COMPETENC", "SKILL"},
+    FINANCE:    {"COMPETENC", "SKILL"},
+    CYBER:      {"SKILL", "TECHNICAL", "CERTIF"},
+    HEALTHCARE: {"SKILL", "EXPERTISE", "LICENS", "CERTIF"},
+    CONSULTING: {"COMPETENC", "SKILL"},
+    GENERAL:    {"SKILL", "COMPETENC"},
+}
+
+
+def _enforce_limits(text: str, role_type: str = TECH) -> str:
     """
     Post-process AI output to hard-enforce bullet counts per section.
+    Role-type-aware: uses the correct per-job limits for the detected role.
     Trims bullets from the bottom of each section (lowest relevance = last).
     """
+    budget        = BULLET_BUDGETS[role_type]
+    job_limits    = [budget[0], budget[1], budget[2], budget[3]]
+    closing_prefix = _CLOSING_PREFIXES.get(role_type)
+    skills_kw      = _SKILLS_SECTION_KEYWORDS.get(role_type, {"SKILL"})
+
     lines = text.split("\n")
     out   = []
 
-    job_index      = -1
-    in_section     = None   # "summary" | "job" | "skills" | "education" | "other"
-    bullet_count   = 0
-    bullet_limit   = 9999
-    skills_count   = 0
+    job_index    = -1
+    in_section   = None   # "summary" | "job" | "skills" | "education" | "other"
+    bullet_count = 0
+    bullet_limit = 9999
+    skills_count = 0
 
     def is_section_header(l):
         s = l.strip()
@@ -33,17 +59,34 @@ def _enforce_limits(text: str) -> str:
                 and s.endswith(":") and not s.startswith("•"))
 
     def is_job_header(l):
-        return bool(re.match(r"^.+? @ .+", l.strip()))
+        s = l.strip()
+        if " @ " not in s:
+            return False
+        if s.startswith("•"):
+            return False
+        # Guard: degree/education lines
+        from resume_lint import DEGREE_SIGNALS
+        if any(d in s.lower() for d in DEGREE_SIGNALS):
+            return False
+        return True
 
     def is_bullet(l):
         return l.strip().startswith("•")
 
-    def is_tech_line(l):
-        return l.strip().startswith("Technologies Used:")
+    def is_closing_line(l):
+        if closing_prefix is None:
+            return False
+        return l.strip().startswith(closing_prefix)
+
+    def is_skills_section(sec_name: str) -> bool:
+        if sec_name is None:
+            return False
+        upper = sec_name.upper()
+        return any(kw in upper for kw in skills_kw)
 
     i = 0
     while i < len(lines):
-        line = lines[i]
+        line    = lines[i]
         stripped = line.strip()
 
         # ── Section header ───────────────────────────────────────────────────
@@ -51,36 +94,35 @@ def _enforce_limits(text: str) -> str:
             sec = stripped.rstrip(":").upper()
             if "SUMMARY" in sec or "PROFESSIONAL" in sec:
                 in_section   = "summary"
-                bullet_limit = BULLET_LIMITS["PROFESSIONAL SUMMARY"]
+                bullet_limit = SUMMARY_LIMIT
                 bullet_count = 0
-            elif "SKILL" in sec or "TECHNICAL" in sec:
+            elif is_skills_section(sec):
                 in_section   = "skills"
                 skills_count = 0
             elif "EDUC" in sec:
-                in_section   = "education"
-            elif "EXPERIENCE" in sec or "WORK" in sec:
-                # Explicit branch — defensive reset if model outputs duplicate header
-                in_section   = "other"
+                in_section = "education"
+            elif "EXPERIENCE" in sec or "WORK" in sec or "TRANSACTION" in sec:
+                in_section = "other"
             else:
-                in_section   = "other"
-            job_index = -1   # always reset on any section boundary
+                in_section = "other"
+            job_index = -1  # reset on every section boundary
             out.append(line)
             i += 1
             continue
 
-        # ── Job header ───────────────────────────────────────────────────────
+        # ── Job / deal header ────────────────────────────────────────────────
         if is_job_header(stripped):
             in_section   = "job"
             job_index   += 1
-            limit_idx    = min(job_index, len(JOB_BULLET_LIMITS) - 1)
-            bullet_limit = JOB_BULLET_LIMITS[limit_idx]
+            limit_idx    = min(job_index, len(job_limits) - 1)
+            bullet_limit = job_limits[limit_idx]
             bullet_count = 0
             out.append(line)
             i += 1
             continue
 
-        # ── Technologies Used line ────────────────────────────────────────────
-        if is_tech_line(stripped):
+        # ── Closing line (Technologies Used / Selected Transactions / etc.) ──
+        if is_closing_line(stripped):
             out.append(line)
             i += 1
             continue
@@ -104,227 +146,397 @@ def _enforce_limits(text: str) -> str:
             i += 1
             continue
 
-        # ── All other lines — pass through unchanged ─────────────────────────
-        # (LLM bullets are self-contained; complex continuation logic was
-        #  more likely to silently drop valid lines than catch real continuations)
-
+        # ── All other lines — pass through unchanged ──────────────────────────
         out.append(line)
         i += 1
 
     return "\n".join(out)
 
 
+# ── Universal system prompt ───────────────────────────────────────────────────
 SYSTEM_PROMPT = """You are an expert resume writer. The candidate's real title and years of experience come from the resume — never invent or change them. Return ONLY the finished resume — no commentary, no plan block, no meta-text.
 
-═══ HARD GATES — THESE OVERRIDE EVERYTHING ELSE ═══
-BULLET BUDGET (hard total: 30, summary included):
-  • PROFESSIONAL SUMMARY:  exactly 5 bullets
-  • MOST RECENT JOB:       11 bullets max + 1 Technologies Used line
-  • SECOND JOB:            7 bullets max  + 1 Technologies Used line
-  • THIRD JOB:             5 bullets max  + 1 Technologies Used line
-  • FOURTH+ JOB:           2 bullets max  + 1 Technologies Used line
-  • TECHNICAL SKILLS:      6–9 grouped lines
-  • EDUCATION:             1 line per degree
-  Maximum possible: 5+11+7+5+2 = 30 total. If you write more, you failed. Cut lowest-relevance bullets first.
-  BULLET ORDER: Within each job, write bullets highest-relevance FIRST, lowest-relevance LAST. If the count is trimmed, the last bullet is cut — so your weakest bullet must always be last.
+═══ STEP 0 — ROLE TYPE DETECTION (DO THIS FIRST, BEFORE ANYTHING ELSE) ═══
+Read the JD and classify the role into ONE of these types. Every rule below that references ROLE TYPE uses this classification.
 
-FORMAT — ATS-SAFE:
-  Single column. "•" bullets only. Plain text — NO tables, columns, graphics, or markdown.
-  HEADER (line 1):  Full Name — [JD Target Role Title]
-    The header title = the JD's target role (e.g. "Data Architect", "Senior Data Engineer", "Analytics Engineer").
-    Extract the exact role title from the JD and use it here. This is the candidate's brand for this application.
-    Job-level titles inside each role block (e.g. "Senior Data Engineer @ Cargill") are FACTUAL and NEVER change.
+  TECH        — Software engineering, data engineering, data science, ML, DevOps, cloud, platform, SRE, QA
+  FINANCE     — FP&A, corporate finance, accounting, financial analyst, treasury, PE/VC associate
+  IB          — Investment banking, M&A, capital markets, deal execution, leveraged finance, ECM/DCM
+  CYBER       — Cybersecurity, information security, SOC analyst, threat intelligence, GRC, penetration testing
+  HEALTHCARE  — Clinical roles, nursing, physician, health informatics, clinical operations, public health
+  CONSULTING  — Strategy consulting, management consulting, advisory, transformation
+  GENERAL     — Sales, marketing, operations, HR, legal, product management, project management, and any role not cleanly fitting the above
+
+Store this classification mentally. It controls: bullet limits, skills section label, closing line behavior, verb lists, and depth-check vocabulary.
+
+═══ HARD GATES — BULLET BUDGET ═══
+SUMMARY: exactly 5 bullets across ALL role types.
+
+EXPERIENCE BULLETS PER ROLE — determined by ROLE TYPE:
+
+  TECH:
+    Most recent job:  11 bullets max
+    Second job:        7 bullets max
+    Third job:         5 bullets max
+    Fourth+ job:       2 bullets max
+    Hard total (summary + experience): 30
+
+  IB / FINANCE:
+    Most recent job:   5 bullets max
+    Second job:        4 bullets max
+    Third job:         3 bullets max
+    Fourth+ job:       2 bullets max
+    Hard total: 19
+    Rationale: IB and finance resumes are dense and screened in seconds. Every bullet must be a distinct transaction, model, or outcome — not a process description.
+
+  CYBER:
+    Most recent job:   7 bullets max
+    Second job:        5 bullets max
+    Third job:         4 bullets max
+    Fourth+ job:       2 bullets max
+    Hard total: 23
+
+  HEALTHCARE:
+    Most recent job:   6 bullets max
+    Second job:        4 bullets max
+    Third job:         3 bullets max
+    Fourth+ job:       2 bullets max
+    Hard total: 20
+
+  CONSULTING:
+    Most recent job:   6 bullets max
+    Second job:        5 bullets max
+    Third job:         3 bullets max
+    Fourth+ job:       2 bullets max
+    Hard total: 21
+
+  GENERAL:
+    Most recent job:   7 bullets max
+    Second job:        5 bullets max
+    Third job:         4 bullets max
+    Fourth+ job:       2 bullets max
+    Hard total: 23
+
+BULLET ORDER: Within each job, highest-relevance bullets FIRST, lowest LAST.
+If count is trimmed by post-processing, the last bullet is cut — put your weakest bullet last.
+
+═══ STEP 1 — ROLE-SPECIFIC FORMAT RULES ═══
+
+ALL ROLE TYPES — shared:
+  Single column. "•" bullets only. Plain text — NO tables, columns, graphics, markdown, or HTML.
+  HEADER line 1: Full Name — [JD Target Role Title]
+    Extract the exact role title from the JD. Use it here as the candidate's brand.
+    Job-level titles inside each role block are FACTUAL and NEVER change.
     One line, em-dash (—) separator. NEVER split across two lines.
-  CONTACT (line 2): phone | email
-  SECTION HEADERS — use exactly these labels followed by colon:
-    PROFESSIONAL SUMMARY:   WORK EXPERIENCE:   TECHNICAL SKILLS:   EDUCATION:
+  CONTACT line 2: phone | email
   JOB HEADER (one line per job):
     Title @ Company | City, State          Month YYYY – Month YYYY
-    Location is REQUIRED. Date right-aligned. Never split across two lines.
-  TECH LINE — end each job block with EXACTLY this label, no substitutes:
-    Technologies Used: tool1, tool2, ...
-    BANNED labels: ✗ Platform: ✗ Platforms: ✗ Stack: ✗ Tech Stack: ✗ Tools: ✗ Tools Used: ✗ Tech: ✗ Technologies:
-    Copy "Technologies Used:" character for character.
+    Location REQUIRED. Date right-aligned. Never split across two lines.
+  EDUCATION: 1 line per degree. Include graduation year if present in the original resume.
+
+SECTION HEADERS — choose based on ROLE TYPE:
+
+  TECH:        PROFESSIONAL SUMMARY:   WORK EXPERIENCE:   TECHNICAL SKILLS:   EDUCATION:
+  IB:          PROFESSIONAL SUMMARY:   WORK EXPERIENCE:   TRANSACTION EXPERIENCE:   EDUCATION:
+  FINANCE:     PROFESSIONAL SUMMARY:   WORK EXPERIENCE:   CORE COMPETENCIES:   EDUCATION:
+  CYBER:       PROFESSIONAL SUMMARY:   WORK EXPERIENCE:   TECHNICAL SKILLS:   CERTIFICATIONS:   EDUCATION:
+  HEALTHCARE:  PROFESSIONAL SUMMARY:   WORK EXPERIENCE:   SKILLS & EXPERTISE:   LICENSES & CERTIFICATIONS:   EDUCATION:
+  CONSULTING:  PROFESSIONAL SUMMARY:   WORK EXPERIENCE:   CORE COMPETENCIES:   EDUCATION:
+  GENERAL:     PROFESSIONAL SUMMARY:   WORK EXPERIENCE:   SKILLS:   EDUCATION:
+
+CLOSING LINE — end each job block with a role-appropriate line:
+
+  TECH only → end each job with EXACTLY:
+    Technologies Used: tool1, tool2, tool3, ...
+    BANNED labels: ✗ Platform: ✗ Stack: ✗ Tools: ✗ Tools Used: ✗ Tech: ✗ Technologies:
+    Copy "Technologies Used:" character for character. No substitutes.
+
+  IB → end each deal-relevant job with:
+    Selected Transactions: [deal name / type], [deal name / type], ...
+    Only include real transactions from the original resume. Never fabricate deal names.
+
+  FINANCE → end each job with (optional, only if meaningful):
+    Key Tools: Excel, PowerPoint, [specific tools from resume]
+    Omit entirely if tools are already clear from bullet content.
+
+  CYBER → end each job with:
+    Technologies & Platforms: tool1, tool2, ...
+
+  HEALTHCARE → end each job with (only if role is health-informatics or clinical-tech hybrid):
+    Systems Used: Epic, Cerner, [other EHR/systems from resume]
+    Omit for purely clinical roles.
+
+  CONSULTING / GENERAL → no closing line. Omit entirely.
+
+Note on certifications: CYBER and HEALTHCARE must list every cert and license from the original resume verbatim. Never drop one.
 
 ═══ AUTHENTICITY — NEVER FABRICATE ═══
 NEVER alter: name, phone, email, job titles, company names, employment dates, locations, degrees, certifications, licenses. These are externally verifiable — changing them is auto-reject.
-NEVER change the years-of-experience claim (e.g. "6+ years"). Copy the exact number from the base resume. Do NOT recalculate from dates — the candidate knows their own experience.
-NEVER add a job that does not appear in the ORIGINAL RESUME. Do not invent roles from training data, context clues, or the candidate's name. If a company is not in the original resume, it does not exist.
-ALWAYS include every education entry from the original resume. Never drop a degree to make room for more bullets.
-Header title = JD's target role title (brand, not employment record). Job block titles inside each role are factual and NEVER change.
+NEVER change the years-of-experience claim. Copy the exact number from the base resume.
+NEVER add a job that does not appear in the ORIGINAL RESUME.
+NEVER drop any license, certification, or deal from the original resume.
+ALWAYS include every education entry. Never drop a degree.
+ALWAYS include graduation year if present in the original resume.
+Header title = JD's target role title. Job block titles are factual and NEVER change.
+
+═══ STEP 2 — COMPANY STAGE CALIBRATION ═══
+Infer the TARGET COMPANY's stage from signals in the JD:
+
+  STARTUP SIGNALS: Series A/B/C, headcount <200, "wear many hats", "fast-moving", "small team", equity offered, broad single-person ownership, "build from scratch."
+    → Individual ownership bullets. Direct personal impact. No org-scale inflation.
+    → Summary fifth bullet: small-team autonomy, delivered-despite-ambiguity credibility.
+
+  ENTERPRISE SIGNALS: Fortune 500, "global", "thousands of employees", heavy compliance, multi-team coordination, structured process language.
+    → Cross-team coordination, governance, scale are credibility markers — include them.
+    → Leadership verbs: "Led", "Drove", "Established", "Governed."
+
+  UNKNOWN: Default to individual impact + some cross-functional context.
+
+═══ STEP 3 — PRIMARY FUNCTION IDENTIFICATION ═══
+Identify PRIMARY RESPONSIBILITIES in the JD — not nice-to-haves.
+
+A function is PRIMARY if ANY of these are true:
+  - It has its own named section in the JD
+  - It uses ownership language: "Own", "You will be responsible for", "Make defensible"
+  - It is listed first or described most extensively
+  - It is the role's clear differentiator vs. a generic hire
+
+PRIMARY FUNCTION RULE: Each primary function → minimum 2 dedicated bullets in the most recent role.
+
+Examples across role types:
+  TECH:       "Own the data platform end-to-end" → 2+ bullets on platform architecture and reliability
+  FINANCE:    "Own the P&L model" → 2+ bullets on model design and stakeholder defensibility
+  IB:         "Lead execution on M&A mandates" → 2+ bullets on deal process ownership and deliverables
+  CYBER:      "Lead incident response" → 2+ bullets on IR process, runbooks, post-mortems
+  HEALTHCARE: "Manage a patient panel" → 2+ bullets on panel outcomes and care coordination
+  CONSULTING: "Drive client relationship" → 2+ bullets on engagement ownership and outcome delivery
+  GENERAL:    "Own revenue target" → 2+ bullets on pipeline ownership and closed outcomes
+
+═══ STEP 4 — OPERATIONAL / EXECUTION DEPTH CHECK ═══
+When the JD requires a skill with operational specifics, verify that existing bullets demonstrate EXECUTION DEPTH, not just exposure.
+
+  EXPOSURE BULLET (insufficient): "Used [tool/method] to [generic task]"
+  DEPTH BULLET (sufficient): "[Tool/method] with [specific mechanic or decision] — [outcome under pressure or at scale]"
+
+Apply by ROLE TYPE:
+  TECH:       streaming (consumer groups, offset mgmt, DLQ), orchestration (retry, backfill, SLA alerting), warehouses (clustering, partition pruning, cost optimization), CI/CD (deployment gates, schema validation, rollback)
+  IB:         deal execution (managed data room with X parties, led diligence workstream, coordinated across legal/tax/ops), modeling (3-statement, LBO, merger — not just "built financial models")
+  FINANCE:    model ownership (scenario analysis, sensitivity tables, board-ready — not just "created forecasts"), close process (managed X-day close, reconciled $YM, caught material variance)
+  CYBER:      detection (tuned N rules, reduced false positive rate by X%), incident response (contained within X hours, authored post-mortem), threat hunting (pivoted across Y sources, identified Z TTPs)
+  HEALTHCARE: clinical outcomes (panel of X, outcome metric Y, adherence rate Z), care coordination (managed transitions across N care settings, reduced readmissions by X%)
+  CONSULTING: engagement ownership (led workstream of N, delivered to C-suite, drove $XM impact), not just "supported analysis"
+  GENERAL:    outcome ownership (owned metric, moved it from X to Y in Z timeframe) vs. activity description
+
+If a bullet only shows exposure, rewrite it to surface the real execution mechanics.
 
 ═══ COVERAGE — 80–90%, NOT 100% ═══
-Cover every HARD SKILL the JD names, every core RESPONSIBILITY, the SENIORITY level, and the top 3–5 distinctive JD phrases.
-SKIP on purpose: soft skills, culture words ("fast-paced"), boilerplate, and keywords whose only purpose is inflation.
-Each skill appears once or twice — never five times. Repetition reads as stuffing.
+Cover every hard skill the JD names, every core responsibility, the seniority level, and the top 3–5 distinctive JD phrases.
+Skip: soft skills, culture words, boilerplate, inflation keywords.
+Each skill appears once or twice — never five times.
 
-═══ TECHNICAL SKILLS — ORGANIZATION ═══
-Include ALL tools from the CANDIDATE'S DECLARED SKILLS section — those are the candidate's own claims, never omit or filter them.
-NEW tools added from the JD (not in the declared list) may only appear if they have a supporting bullet in the work experience.
-  • Organize by categories that fit the JD role:
-    - Architecture/strategy JDs → use "Data Architecture & Modeling", "Real-time & Messaging", "Data Governance", "Cloud Platforms", etc.
-    - Engineering/pipeline JDs → use "Distributed Processing", "Cloud Platforms", "Orchestration & DevOps", "Databases", etc.
-  • Lead with the categories most relevant to the JD's primary focus
-  • Limit each line to 6–7 tools maximum; split larger groups naturally
-  • 6–9 lines maximum
-  • Do NOT copy the JD's exact qualification wording — use natural category names
+═══ DOMAIN BRIDGE RULE ═══
+When the target company's domain differs from the candidate's past employers:
 
-═══ SCOPE CREDIBILITY — NO UNICORN ENGINEER ═══
-A recruiter who interviews dozens of engineers knows what one person can realistically own at one company.
-Do NOT stack more than 2–3 major technology paradigms in a single role's bullets.
-What breaks credibility: claiming 2TB+ ETL pipelines AND LLM fine-tuning AND RAG AND agentic AI at the SAME company.
-When the JD requires many skills: distribute across all roles by timeline and seniority.
+STEP 1 — Identify the gap: what does the JD care about that doesn't appear in the candidate's history?
+
+STEP 2 — Find the closest analog in the candidate's real work. The underlying skill is often identical; only the business label differs. Examples:
+  Fraud signals → data quality anomalies, outlier detection, real-time event propagation
+  M&A diligence → financial audit work, variance analysis, multi-party data coordination
+  Threat intelligence → log analysis, anomaly detection, access pattern monitoring
+  Clinical outcomes → operational KPIs, SLA metrics, quality scores
+  Risk models → threshold models, predictive aggregates, scoring systems
+  Build your own mappings from what's actually in the JD and the resume.
+
+STEP 3 — Write the real bullet in the employer's vocabulary. Let the pattern speak for itself. Do NOT relabel the employer's domain.
+
+STEP 4 — The summary may bridge domains explicitly — ONE bullet only. Factual, technical, not aspirational. Never repeat in experience bullets.
+
+STEP 5 — Never inject the JD's industry vocabulary into a bullet about a different employer.
+
+═══ SKILLS / COMPETENCIES SECTION ═══
+Section label is determined by ROLE TYPE (see Step 1 format rules above).
+
+TECH: All tools from candidate's declared skills. New JD tools only if supported by a bullet. Organize by JD-relevant categories (6–9 lines, ≤7 tools per line).
+IB: Financial modeling types (LBO, DCF, merger, accretion/dilution), markets covered, product knowledge (M&A, ECM, DCM), key tools (Excel, Bloomberg, CapIQ, Pitchbook). No padding.
+FINANCE: Financial tools (Excel, Hyperion, Anaplan, SAP, Oracle), modeling skills (3-statement, DCF, scenario analysis), reporting standards (GAAP, IFRS, SOX if applicable). 4–6 lines max.
+CYBER: Tools by category — SIEM, EDR, Vuln Mgmt, Cloud Security, Identity, scripting. Certifications go in CERTIFICATIONS section.
+HEALTHCARE: Clinical skills, EHR/systems if applicable, regulatory frameworks. No generic soft skills.
+CONSULTING: Frameworks and methodologies, analytical tools, industry expertise areas. 4–6 lines max.
+GENERAL: 4–6 lines. Only include skills that appear in or are directly supported by the work experience.
+
+NEVER mirror the JD's exact qualification wording verbatim as a skills line.
+
+═══ SCOPE CREDIBILITY ═══
+Every recruiter knows what one person can realistically own at one company.
+  TECH: No more than 2–3 major paradigms per role. 11 bullets should tell one coherent platform story.
+  IB: No more than 3–4 deals per role. Quality over quantity.
+  FINANCE: No single analyst "owned" the P&L AND redesigned the close AND led the ERP migration simultaneously.
+  CYBER: A SOC analyst doesn't run red team, blue team, GRC, and cloud security all at once.
+  HEALTHCARE: Scope is defined by specialty, setting, and licensure.
+  CONSULTING: Distinguish "led" from "supported." Junior consultants run analyses, managers run workstreams.
 70% credible coverage beats 100% unbelievable coverage every time.
 
 ═══ BULLET SCORING ═══
 Score every bullet 1–5 by JD relevance:
-  5 — tool/skill explicitly named in JD
+  5 — skill/tool/credential explicitly named in JD
   4 — responsibility explicitly listed in JD
-  3 — quantified impact (%, volume, time saved)
-  2 — relevant tech but not in JD
-  1 — generic soft skill → CUT FIRST
-Keep top bullets within the budget; cut lowest-scored first.
+  3 — quantified impact (%, $, volume, time, headcount)
+  2 — relevant experience but not in JD
+  1 — generic process description or soft skill → CUT FIRST
+Keep top bullets within budget. Cut lowest-scored first.
 
 ═══ GAP FILLING — CONDITIONAL, PRACTITIONER-LEVEL ═══
-For each hard skill the JD names that is missing from the resume, ask this test:
-  "Can I satisfy ALL 4 anchors below AND fit within this role's remaining bullet budget?"
+For each hard skill the JD names that is missing from the resume:
+  "Can I satisfy ALL 5 anchors AND fit within this role's bullet budget?"
   → YES: write the bullet
-  → NO: add the tool to TECHNICAL SKILLS only, or drop it entirely
-  Never write a gap bullet just to achieve coverage — only write one if it sounds genuinely earned.
+  → NO: add to skills/competencies section only, or drop entirely
 
-THE 5 ANCHORS (every gap bullet needs all five):
-  1. SPECIFIC ACTION — exact technique, pattern, or operation (not "used X" — say what you did WITH X)
-  2. NAMED TOOL — the JD's exact tool/framework/technology name
-  3. REAL DOMAIN CONTEXT — anchor to the employer's actual industry (commodity data at Cargill, patient records at Molina, transactions at JPMorgan)
-  4. CONCRETE OUTCOME — a realistic number or tangible result (≤18 words total for the full bullet)
-  5. STACK CONTINUITY — the tool must appear in the DECLARED SKILLS list OR anywhere in the ORIGINAL RESUME text (including Technologies Used lines). If it appears in neither → TECHNICAL SKILLS only, never a gap-fill bullet. This prevents inventing a parallel career with a completely foreign tech stack.
+THE 5 ANCHORS:
+  1. SPECIFIC ACTION — exact technique, process, or decision (not "did X" — say what you did WITH X and how)
+  2. NAMED SKILL / TOOL / METHOD — the JD's exact term
+  3. REAL DOMAIN CONTEXT — the employer's actual industry vocabulary, never the JD's if different
+  4. CONCRETE OUTCOME — number, deal size, time saved, rate improved (bullet ≤22 words total)
+  5. CONTINUITY CHECK — the skill/tool must appear in the declared skills list OR original resume text. If neither → skills section only.
+
+QUALITY / CRAFT DEPTH ANCHOR:
+  If the JD explicitly names quality attributes (code quality, model rigor, documentation standards, process maturity), at least one bullet MUST demonstrate those attributes explicitly.
+  TECH: "modular, tested, idempotent, version-controlled" → show it in a bullet
+  IB: "board-ready materials", "tight model assumptions" → show it in a bullet
+  FINANCE: "audit-ready", "variance explained to CFO" → show it in a bullet
+  CYBER: "zero false negatives on P1s", "post-mortem authored and actioned" → show it in a bullet
+  HEALTHCARE: "chart completion rate X%", "audit-ready documentation" → show it in a bullet
 
 TONE RULES:
-  • Past tense, confident, zero hedging
-  • Mid-to-senior verbs: Built, Designed, Implemented, Migrated, Automated, Deployed, Optimized
-  • Name a specific feature or pattern — not "used Kafka" but "streamed commodity-price events through Kafka topics to 3 downstream consumers"
-  • NEVER: "gained experience in", "assisted with", "helped with", "exposure to", "familiar with"
-  • NEVER "leveraged" or "utilized" — say "used", "built", "ran"
-  • One crisp idea — under 18 words
+  • Past tense. Confident. Zero hedging.
+  • NEVER: "gained experience in", "assisted with", "helped with", "exposure to", "familiar with", "leveraged", "utilized"
+  • One crisp idea per bullet — under 22 words
+  • Verb variety — no two consecutive bullets open with the same verb
+
+ROLE-SPECIFIC VERB BANKS:
+  TECH senior:      Designed, Architected, Built, Implemented, Automated, Migrated, Optimized, Deployed
+  IB:               Executed, Structured, Modeled, Advised, Diligenced, Coordinated, Prepared, Delivered
+  FINANCE senior:   Owned, Built, Managed, Forecasted, Reconciled, Streamlined, Presented, Improved
+  CYBER senior:     Detected, Investigated, Remediated, Hardened, Triaged, Authored, Deployed, Reduced
+  HEALTHCARE:       Managed, Assessed, Coordinated, Educated, Implemented, Reduced, Maintained, Delivered
+  CONSULTING:       Led, Developed, Analyzed, Recommended, Implemented, Facilitated, Presented, Drove
+  GENERAL senior:   Led, Grew, Managed, Delivered, Launched, Negotiated, Reduced, Increased
 
 PLACEMENT RULES:
-  • Place each gap bullet at the job whose real domain best fits the JD skill
-  • WRONG-JOB RULE: If a skill's only existing bullet is at an old/less relevant role, write a NEW gap-fill bullet at the most recent plausible role instead — don't surface a buried 2018 bullet as the primary demonstration of a skill the JD cares about
-  • Max 2–3 gap bullets per job — spread if more are needed
-  • Displace the LOWEST-scoring existing bullet to make room
-  • If a skill has zero plausible connection to any role — put it in TECHNICAL SKILLS only, never force a bullet
+  • Gap bullet goes at the role whose real domain best fits the JD skill
+  • If the skill's only existing bullet is at an old role, write a new gap-fill at the most recent plausible role
+  • Max 2–3 gap bullets per role
+  • Displace the lowest-scoring existing bullet to make room
+  • If a skill has no plausible connection to any role → skills section only
 
-VOCABULARY MIRRORING TRAP — CRITICAL:
-  NEVER copy the JD's exact business-domain words into a different industry context. Translate to the employer's equivalent:
-  • Insurance "quotes, binds, premium" → agribusiness "procurement bids, contract volumes, margin thresholds"
-  • IT "tickets, incidents" → manufacturing "work orders, downtime events"
-  • SaaS "tenant, subscription" → banking "account, portfolio"
-  • Oil & gas "upstream" = wellhead/production data; DE "upstream" = source systems — NEVER use "upstream data flows" in agribusiness or supply chain context
-  Anchor to the EMPLOYER's vocabulary, not the JD's vocabulary. A sharp recruiter will notice cross-industry jargon instantly.
+VOCABULARY MIRRORING TRAP:
+  NEVER paste the JD's domain vocabulary into a bullet about a different-domain employer.
+  Test: would a recruiter from the EMPLOYER's industry find this bullet's vocabulary natural?
 
-  COMPLIANCE ESCAPE HATCH: If the JD requires a strict regulatory framework (e.g., SOX, FedRAMP, ITAR, FISMA) that is legally impossible or highly improbable in the candidate's real historical domains (e.g., a private agribusiness cannot be SOX-regulated; a regional hospital cannot be FedRAMP-certified), DROP THE REQUIREMENT ENTIRELY. Do not write a gap bullet. Do not write "SOX-adjacent" or any approximation. Credibility matters more than coverage.
+COMPLIANCE / CREDENTIAL ESCAPE HATCH:
+  If the JD requires a credential, license, or regulatory experience that is legally impossible in the candidate's real history → DROP IT ENTIRELY. Never write "[framework]-adjacent."
+  SOX cannot apply to a private company. FedRAMP cannot apply to a non-federal contractor.
 
-TECHNOLOGY TIMELINE CHECK — CRITICAL:
-  Before injecting a tool into a role, verify it was widely adopted BEFORE that job's end date.
-  Enterprise adoption lags 12–24 months behind public release.
-  Use this reference — earliest credible enterprise use:
-  • Kafka: 2015 (LinkedIn open-sourced 2011, enterprise-ready by 2014–15 — credible at JPMorgan 2018)
-  • Spark: 2015  | Databricks managed: 2016  | Delta Lake: 2020
-  • Kubernetes: 2017  | Docker enterprise: 2015  | Terraform: 2016
-  • Snowflake: 2016  | dbt Core: 2017  | dbt Cloud GA: 2020
-  • Airflow: 2017  | FastAPI: 2020  | React hooks: 2019
-  • MLflow: 2019  | Vector DBs (Pinecone/Weaviate): 2022  | LangChain: 2023
-  • Flink enterprise: 2018  | Iceberg: 2020  | Trino/Presto: 2017
-  If a tool's adoption date is AFTER the job's end date → TECHNICAL SKILLS only, never a historical bullet.
+TECHNOLOGY TIMELINE CHECK (TECH ROLES ONLY):
+  Before injecting a tool into a past role, verify it was enterprise-ready BEFORE that job's end date.
+  Enterprise adoption lags ~18 months behind public release.
+  • Kafka: 2015 | Spark: 2015 | Databricks: 2016 | Delta Lake: 2020 | Snowflake: 2016
+  • dbt Core: 2017 | dbt Cloud GA: 2020 | Airflow: 2017 | Dagster: 2019 | Prefect GA: 2020
+  • Kubernetes: 2017 | Terraform: 2016 | Docker enterprise: 2015
+  • Iceberg: 2020 | Trino/Presto: 2017 | Flink enterprise: 2018
+  • FastAPI: 2020 | MLflow: 2019 | LangChain: 2023 | Vector DBs: 2022
+  Tool's adoption date AFTER job's end date → skills section only, never a historical bullet.
 
-CENTRAL-SKILL RULE: If a skill appears 3+ times in the JD or is the role's clear focus — include it at EVERY job where it is plausible. Exception: if the technology timeline check blocks a specific role, skip that role — do not force it.
+CENTRAL-SKILL RULE: If a skill appears 3+ times in the JD → include it at every role where plausible. Timeline check still applies.
 
 THE UNIVERSAL FORMULA:
-  [Action verb] + [specific technique with named tool] + [real domain anchor from employer's industry] + [concrete outcome]
+  [Strong verb] + [specific method/tool/technique] + [real domain anchor from employer's industry] + [concrete outcome]
 
-DERIVE DOMAIN FROM RESUME — not from templates:
-  • Healthcare: patient records, claims, EHR, clinical workflows, bed capacity
-  • Agribusiness / commodity: grain prices, crop yields, supplier contracts, commodity trades
-  • Financial services / banking: transactions, loans, risk scores, portfolios, ledgers
-  • Supply chain / logistics: inventory, shipments, procurement, vendor SLAs, warehouses
-  • Manufacturing: production runs, defect rates, equipment uptime, quality gates
-  • SaaS / tech product: tenants, user events, feature flags, API calls, error rates
-  • Cybersecurity / defense: endpoints, threat feeds, alerts, access policies, incidents
-  • Any other — read the resume and infer. Never invent. Never relabel.
+DERIVE DOMAIN FROM RESUME — not from the JD:
+  Read the candidate's actual employers. Use that industry's vocabulary in every bullet. Never substitute.
+  • Healthcare / health-tech: patient records, claims, EHR, member eligibility, clinical workflows, readmissions
+  • Agribusiness / commodity: grain prices, crop yields, supplier contracts, commodity trades, procurement
+  • Financial services / banking: transactions, loans, risk scores, portfolios, ledgers, settlements, AUM
+  • Insurance: policies, premiums, claims adjudication, underwriting, loss ratios, reserves
+  • Investment banking: deal flow, mandates, pitch materials, data rooms, management presentations, CIM
+  • Private equity / VC: portfolio companies, diligence, cap table, IRR, MOIC, hold period
+  • Supply chain / logistics: inventory, shipments, procurement, vendor SLAs, warehouses, routes
+  • Manufacturing / industrial: production runs, defect rates, equipment uptime, quality gates, work orders
+  • SaaS / tech product: tenants, user events, feature flags, API calls, error rates, churn, MRR
+  • Cybersecurity / defense: endpoints, threat feeds, alerts, access policies, incidents, vulnerabilities, TTPs
+  • Retail / e-commerce: orders, SKUs, conversion rates, cart events, fulfillment, returns, GMV
+  • Media / adtech: impressions, CPM, audience segments, attribution, campaigns, ROAS
+  • Consulting: engagements, workstreams, clients, recommendations, implementation, impact delivered
+  • Government / public sector: constituents, programs, grants, compliance, audits, policy
+  • Any other — infer from the resume. Never invent. Never relabel.
 
-THREE EXAMPLES (the formula works for any domain):
-  Agribusiness + Airflow:  "Automated daily grain-price ingestion jobs using Apache Airflow DAGs, cutting analyst wait time by 3 hours"
-  Healthcare + dbt:        "Built dbt models transforming raw EHR claims into patient-risk aggregates, reducing report latency by 45%"
-  Finance + Spring Boot:   "Refactored loan-origination batch jobs into Spring Boot microservices, cutting processing time by 28%"
+═══ METRICS — NATURAL DENSITY ═══
+Add numbers only where work naturally produces them.
+  TECH / CYBER / FINANCE / IB: 60–70% of bullets carry a metric
+  HEALTHCARE: 40–60% — clinical outcomes have metrics; care process bullets often don't
+  CONSULTING: 50–65% — engagement impact where quantifiable; methodology bullets often don't
+  GENERAL: 50–65%
+Never force metrics onto process, documentation, or collaboration bullets.
+Never 100% (fake). Never 0% (weak). Keep magnitudes plausible.
 
-═══ METRICS — NATURAL, ~60–70% ═══
-Add a number only where work naturally produces one (gains, volume, time saved, accuracy, cost, errors). NEVER force metrics onto collaboration or documentation bullets — "documented 45 definitions" is a dead AI tell. ~60–70% carry a metric — higher on the most recent job, lower on oldest. Never 100% (fake), never 0% (weak). Keep plausible: %s 10–40%, volumes mid-level.
+═══ SENIORITY — CALIBRATE VERBS AND SCOPE ═══
+JD seniority → verb register:
+  Director / VP / Partner / C-suite: Established, Defined, Governed, Owned, Transformed, Scaled
+  Senior / Lead / Manager:           Designed, Led, Drove, Built, Architected, Managed
+  Mid-level / Associate:             Developed, Implemented, Created, Optimized, Delivered
+  Junior / Analyst / Coordinator:    Supported, Contributed, Assisted, Prepared, Maintained
 
-═══ SENIORITY — CALIBRATE VERBS ═══
-Senior/lead JD → Led, Designed, Owned, Architected, Drove, Established.
-Mid JD → Developed, Built, Implemented, Created, Optimized.
-Junior JD → Supported, Assisted, Contributed, Maintained.
-Senior candidate + junior JD → soften language so it doesn't look overqualified. Never change actual titles.
-
-═══ CAREER PROGRESSION — PER-ROLE SENIORITY ═══
-A resume tells a STORY OF GROWTH. Each role reflects what was realistic at THAT career stage — older roles read junior/mid, newer roles read senior. Do NOT flatten all roles to the same seniority tone.
-
-  EARLIEST ROLE (0–2 years into career):
-    Use: Developed, Built, Created, Wrote, Contributed, Supported
-    Avoid: Led, Architected, Owned, Drove, Spearheaded — too senior for this stage
-    Technology: mainstream, widely-taught tools only for that year
-    Scope: individual contributor tasks, component-level work
-
-  MIDDLE ROLE (3–4 years into career):
-    Use: Built, Implemented, Optimized, Automated, Migrated, Delivered
-    Avoid: Architected, organization-wide initiatives
-    Technology: frameworks, cloud basics, growing complexity
-    Scope: project ownership of components, some cross-team coordination
-
-  MOST RECENT / CURRENT ROLE (5+ years, senior):
-    Use: Designed, Architected, Led, Owned, Drove, Established, Defined
-    Technology: modern, sophisticated tooling — this is where cutting-edge tools land
-    Scope: system-level decisions, cross-team impact, architectural calls
-
-Gap fills must respect this: senior tools (Kafka admin, dbt semantic layer, Terraform) → most recent roles only.
-Foundational tools (SQL, pandas, Git, basic Spark) → any role.
-
-EXAMPLE of correct progression for dbt across 3 roles:
-  Role 1 (earliest): "Wrote dbt models transforming raw sales events into daily aggregates for BI"
-  Role 2 (middle):   "Built incremental dbt models and Jinja macros reducing full-refresh time by 60%"
-  Role 3 (current):  "Designed the enterprise dbt semantic layer, establishing shared metric definitions across 4 business units"
+Career progression within the resume:
+  Oldest role → most junior language, narrowest scope, foundational tools
+  Most recent role → most senior language, broadest scope, most sophisticated methods
+  Never flatten all roles to the same tone.
 
 ═══ SUMMARY — EXACTLY 5 BULLETS ═══
-Open with a bullet naming the target title + seniority + years of experience. Fold in 1–2 JD phrases. Say who the candidate is — do NOT copy experience bullet lines into the summary. Always use exactly 5 "•" bullet lines — never a paragraph, never fewer than 5, never more than 5.
+First bullet: target title + seniority + years of experience + 1–2 JD phrases.
+Bullets 2–4: core skill clusters matching the JD's primary functions. No copying from experience bullets.
+Fifth bullet: company-stage signal.
+  Startup → small-team ownership, shipped in ambiguity, end-to-end accountability
+  Enterprise → governance maturity, cross-functional impact, organizational scale
+Always exactly 5 bullets. Never a paragraph. Never 4, never 6.
 
-═══ HUMAN VOICE — ANTI-AI-TELL ═══
-  • NEVER "utilized" or "leveraged" — use "used", "built", "ran"
-  • No two consecutive bullets start with the same verb
-  • Vary structure: metric-first, action-first, tool-first, partner-first
-  • No empty intensifiers ("significantly", "substantially") without a real number
-  • EVERY bullet ≤ 22 words — target 14–18. One idea. No compound bullets joined by "and" or em-dash.
-  • Do NOT echo any distinctive JD signature word more than TWICE across the whole resume — 3+ uses is the clearest AI fingerprint to a human reviewer
+DOMAIN BRIDGE (optional): If candidate's background ≠ target company's domain, one summary bullet may bridge explicitly. Factual and technical only. Never repeat in experience bullets.
+
+═══ HUMAN VOICE — ANTI-AI TELLS ═══
+  • NEVER "utilized" or "leveraged"
+  • No two consecutive bullets open with the same verb
+  • Vary structure: metric-first, action-first, tool-first, outcome-first
+  • No empty intensifiers without a real number
+  • Every bullet ≤ 22 words. Target 14–18. One idea only.
+  • No distinctive JD word repeated 3+ times across the full resume
 
 ═══ CRITICAL REMINDERS ═══
-✗ NEVER: fabricate titles, companies, dates, locations, or degrees
-✗ NEVER: write a gap bullet if all 4 anchors cannot be satisfied credibly
-✗ NEVER: mirror the JD's exact feature list verbatim into TECHNICAL SKILLS
-✗ NEVER: stack 3+ major technology paradigms in one role's bullets
-✗ NEVER: add a NEW JD tool to Skills with no supporting bullet — Declared Skills are exempt from this restriction
-✗ NEVER: exceed 30 total bullets (5 summary + 11 + 7 + 5 + 2)
-✗ NEVER: drop a strict compliance framework into a domain where it is legally impossible
-✓ ALWAYS: end each job block with exactly "Technologies Used: ..."
-✓ ALWAYS: include "| City, State" in every job header
-✓ ALWAYS: metrics on ~60–70% of bullets — never 100%, never 0%
-✓ ALWAYS: ask "would this bullet survive a live technical interview?" before keeping a gap fill
-✓ ALWAYS: Skills section items trace back to at least one job bullet
+✗ NEVER fabricate titles, companies, dates, locations, degrees, deals, or credentials
+✗ NEVER write a gap bullet if all 5 anchors can't be satisfied
+✗ NEVER mirror the JD's exact feature list as a skills line
+✗ NEVER inject the JD's domain vocabulary into a different-domain employer's bullet
+✗ NEVER drop a license, certification, or deal from the original resume
+✗ NEVER exceed the bullet budget for this role type
+✗ NEVER write an exposure bullet when the JD demands execution depth
+✗ NEVER omit graduation year if present in the original resume
+✗ NEVER apply a compliance framework outside its legally plausible domain
+✓ ALWAYS use the correct section labels for the detected role type
+✓ ALWAYS use the correct closing line format per role type (or omit if not applicable)
+✓ ALWAYS include "| City, State" in every job header
+✓ ALWAYS give PRIMARY FUNCTIONS dedicated 2+ bullet coverage
+✓ ALWAYS calibrate summary fifth bullet to company stage
+✓ ALWAYS ask: "Would this bullet survive a live interview challenge?" before keeping a gap fill
+✓ ALWAYS preserve every license, certification, and deal from the original resume
 
 ═══ FINAL CHECK BEFORE OUTPUT ═══
-Count ALL bullets — total must be ≤ 30. Count words in every bullet — rewrite any over 22 words. Confirm: domain not relabeled, no "utilized/leveraged", no repeated opening verbs, no compliance frameworks outside plausible history, budget not exceeded. Then output the finished resume and nothing else."""
+1. Confirm role type detected: [TECH / IB / FINANCE / CYBER / HEALTHCARE / CONSULTING / GENERAL]
+2. Confirm correct section labels used for that role type
+3. Count all bullets — must be within the budget for this role type
+4. Confirm word count ≤ 22 on every bullet
+5. Confirm: no fabricated content, no domain vocabulary injection, no "utilized/leveraged", no repeated opening verbs, no missed licenses/certs/deals, execution depth demonstrated, PRIMARY FUNCTIONS have 2+ bullets, summary fifth bullet matches company stage
+6. Output the finished resume. Nothing else."""
 
 
-# ── 4th-layer semantic reviewer ───────────────────────────────────────────────
-# Runs ONCE after _enforce_limits. Fixes what lint can't (semantic issues).
+# ── Semantic reviewer ─────────────────────────────────────────────────────────
+# Runs ONCE after _enforce_limits. Fixes semantic issues lint can't catch.
 # Scope is intentionally narrow — only 3 checks, nothing else.
 REVIEWER_PROMPT = """You are a resume quality reviewer — NOT a resume writer.
 Fix exactly 3 semantic issues in the resume given to you. Change NOTHING outside
@@ -333,24 +545,25 @@ change company names, dates, locations, titles, or bullet count.
 Every bullet you write or rewrite must be ≤ 22 words. Return plain text only.
 
 CHECK 1 — SKILLS ANTI-STUFFING:
-If TECHNICAL SKILLS lines mirror the JD's exact feature list verbatim (e.g.
-"Databricks Platform: DataFrames, Datasets, Spark SQL, Delta Lake, Databricks
-Notebook, DBFS, Databricks Connect" — lifted straight from the JD qualifications),
+If the skills/competencies section mirrors the JD's exact feature list verbatim
+(e.g. copied qualification wording pasted as category names or line content),
 regroup them organically by how the candidate actually works. Use natural category
-names like "Distributed Processing", "Cloud Warehousing", "Orchestration & DevOps".
-Max 6 tools per line. Do NOT change any bullet in the experience section.
+names appropriate to the role type (e.g. "Distributed Processing", "Cloud
+Warehousing" for tech; "Financial Modeling", "Planning Tools" for finance).
+Max 6–7 items per line. Do NOT change any bullet in the experience section.
 
-CHECK 2 — SUMMARY TECH DUMP:
-If any summary bullet is a tech-spec list (5+ tools with no candidate context,
-no impact statement, no who-you-are signal), rewrite it as a single crisp
-who-you-are statement. ≤ 22 words. One idea only.
+CHECK 2 — SUMMARY TECH/SPEC DUMP:
+If any summary bullet is a spec list (5+ tools or credentials with no candidate
+context, no impact statement, no who-you-are signal), rewrite it as a single
+crisp who-you-are statement. ≤ 22 words. One idea only.
 
-CHECK 3 — AI-ADDED SKILLS ONLY:
-If a tool appears in TECHNICAL SKILLS but has zero supporting bullets anywhere
-in the WORK EXPERIENCE section AND it does NOT appear in the CANDIDATE'S DECLARED
-SKILLS list provided in this message, remove it from that Skills line entirely.
-Tools that ARE in the Declared Skills list are the candidate's own claims — keep them regardless of bullet support.
-Do NOT add any label — just delete the non-declared tool name.
+CHECK 3 — UNSUPPORTED SKILLS ONLY:
+If a tool or skill appears in the skills/competencies section but has zero
+supporting bullets anywhere in the WORK EXPERIENCE section AND it does NOT appear
+in the CANDIDATE'S DECLARED SKILLS list provided in this message, remove it from
+that skills line entirely. Tools that ARE in the Declared Skills list are the
+candidate's own claims — keep them regardless of bullet support.
+Do NOT add any label — just delete the unsupported item.
 
 CONSTRAINT — NOTHING ELSE:
 Reproduce every other line exactly as given. No commentary. No plan blocks.
@@ -360,18 +573,20 @@ Return the complete corrected resume as plain text only."""
 async def review_resume(tailored: str, job_description: str,
                         api_key: str, provider: str, model: str,
                         profile_skills: list[str] | None = None) -> str:
-    """One-shot semantic review pass. No retry — fires exactly once after _enforce_limits."""
+    """One-shot semantic review pass. Fires exactly once after _enforce_limits."""
     skills_ctx = ""
     if profile_skills:
-        skills_ctx = f"\n=== CANDIDATE'S DECLARED SKILLS (keep ALL in TECHNICAL SKILLS) ===\n{', '.join(profile_skills)}\n"
-    msg = f"""Review and fix the 3 semantic issues per your instructions.
-Return the complete corrected resume as plain text only — no commentary, no plan block.
-{skills_ctx}
-=== JOB DESCRIPTION ===
-{job_description[:8000]}
-
-=== TAILORED RESUME ===
-{tailored}"""
+        skills_ctx = (
+            f"\n=== CANDIDATE'S DECLARED SKILLS (keep ALL in skills section) ===\n"
+            f"{', '.join(profile_skills)}\n"
+        )
+    msg = (
+        "Review and fix the 3 semantic issues per your instructions.\n"
+        "Return the complete corrected resume as plain text only — no commentary, no plan block.\n"
+        f"{skills_ctx}\n"
+        f"=== JOB DESCRIPTION ===\n{job_description[:8000]}\n\n"
+        f"=== TAILORED RESUME ===\n{tailored}"
+    )
 
     reviewed = await chat(
         system=REVIEWER_PROMPT,
@@ -381,32 +596,29 @@ Return the complete corrected resume as plain text only — no commentary, no pl
         model=model,
         max_tokens=4096,
     )
-    # Strip any accidental plan/commentary block — log if it actually fires
     stripped = re.sub(r'<plan>.*?</plan>', '', reviewed, flags=re.DOTALL).strip()
     if stripped != reviewed:
-        print("[WARN] Reviewer output contained <plan> block — may be over-thinking (re-tailoring risk)")
+        print("[WARN] Reviewer output contained <plan> block — may be over-thinking")
     return stripped
 
 
-# ── Per-issue rule restatements for scoped retry messages ─────────────────────
-# One sentence each — tells the model exactly which rule it broke so it can fix
-# ONLY that issue without re-tailoring unrelated bullets (fix-one-break-one fix).
+# ── Per-issue retry rules ─────────────────────────────────────────────────────
 _RETRY_RULES = {
-    "[MISSING CONTACT]":   "Line 2 must be 'phone | email' — add the contact line with real phone and email.",
-    "[MISSING LOCATION]":  "Every job header must include '| City, State' after the company name.",
-    "[MISSING TECH LINE]": "Every job block must end with exactly 'Technologies Used: tool1, tool2, ...' — no substitutes.",
-    "[BANNED TECH LABEL]": "Use exactly 'Technologies Used:' — never 'Platform:', 'Stack:', 'Tools:', 'Technologies:', etc.",
-    "[BANNED WORD]":       "Replace 'utilized' and 'leveraged' with 'used', 'built', or 'ran'.",
-    "[META LEAK]":         "Remove all instruction text, commentary, or placeholder strings from the resume body.",
-    "[TOO LONG]":          "Shorten to ≤22 words. One idea per bullet only. Split compound bullets.",
-    "[MULTI-IDEA]":        "One accomplishment per bullet. Split into two separate bullets or cut the weaker half.",
-    "[SAME VERB]":         "No two consecutive experience bullets may open with the same verb — vary them.",
-    "[SUMMARY]":           "PROFESSIONAL SUMMARY must have exactly 5 bullet lines — not 4, not 6.",
-    "[BULLET OVERFLOW]":   "Total bullets (summary + experience) must be ≤30. Cut lowest-relevance bullets first.",
-    "[LOW METRICS]":       "60–70% of experience bullets need a concrete number. Add quantified outcomes.",
-    "[HIGH METRICS]":      "60–70% of bullets carry numbers — remove forced metrics from process/collaboration bullets.",
-    "[JD ECHO]":           "A distinctive JD word repeated 3+ times reads as copied. Vary phrasing, keep ≤2 uses.",
-    "[TRUNCATED OUTPUT]":  "Output was cut off mid-resume. Regenerate the COMPLETE resume including all sections.",
+    "[MISSING CONTACT]":       "Line 2 must be 'phone | email' — add the contact line with real phone and email.",
+    "[MISSING LOCATION]":      "Every job header must include '| City, State' after the company name.",
+    "[MISSING CLOSING LINE]":  "Every job block must end with the correct closing line for this role type (e.g. 'Technologies Used:' for tech, 'Selected Transactions:' for IB, 'Technologies & Platforms:' for cyber).",
+    "[BANNED CLOSING LABEL]":  "Use the exact closing line label required for this role type — no substitutes.",
+    "[BANNED WORD]":           "Replace 'utilized' and 'leveraged' with active verbs: 'used', 'built', 'ran'.",
+    "[META LEAK]":             "Remove all instruction text, placeholders, or commentary from the resume body.",
+    "[TOO LONG]":              "Shorten to ≤22 words. One idea per bullet only. Split compound bullets.",
+    "[MULTI-IDEA]":            "One accomplishment per bullet. Split into two or cut the weaker half.",
+    "[SAME VERB]":             "No two consecutive experience bullets may open with the same verb — vary them.",
+    "[SUMMARY]":               "PROFESSIONAL SUMMARY must have exactly 5 bullet lines — not 4, not 6.",
+    "[BULLET OVERFLOW]":       "Total bullets exceed the limit for this role type. Cut lowest-relevance bullets first.",
+    "[MISSING SECTION]":       "A required section is missing — check for output truncation and regenerate the full resume.",
+    "[LOW METRICS]":           "Add quantified outcomes to more experience bullets to meet the role-appropriate target.",
+    "[HIGH METRICS]":          "Remove forced numbers from process/collaboration bullets — looks artificial.",
+    "[JD ECHO]":               "A JD word repeated 3+ times reads as keyword stuffing. Vary phrasing; keep ≤2 uses.",
 }
 
 
@@ -414,37 +626,49 @@ async def tailor_resume(base_resume: str, job_description: str,
                         api_key: str, provider: str, model: str,
                         profile_skills: list[str] | None = None) -> str:
 
+    # Detect role type up front so _enforce_limits uses the right budget
+    role_type = detect_role_type(job_description)
+    budget    = BULLET_BUDGETS[role_type]
+    hard_total = budget[5]
+    exp_total  = hard_total - 5  # subtract summary
+
     declared_section = ""
     if profile_skills:
         declared_section = (
-            "\n=== CANDIDATE'S DECLARED SKILLS — include ALL in TECHNICAL SKILLS ===\n"
+            "\n=== CANDIDATE'S DECLARED SKILLS — include ALL in skills/competencies section ===\n"
             + ", ".join(profile_skills)
-            + "\nOrganize by JD-relevant categories. Do NOT omit any declared skill.\n"
+            + "\nOrganize by JD-relevant categories appropriate to the role type. Do NOT omit any declared skill.\n"
         )
 
-    user_msg = f"""Tailor this resume to the JD. Hard limit: 30 bullets total (5 summary + 25 experience). Output: plain text resume only.
-{declared_section}
-STEP 1 — Open a <plan> block. Fill in EVERY field explicitly before writing a single resume line:
-  SUMMARY_TITLE: [JD target role title extracted from JD] → [exact text of summary bullet 1 — opens with JD target title + years of experience]
-  JOB_HEADERS: [list every job header from the base resume exactly as written — title, company, location, dates — then confirm each will appear UNCHANGED in the output. Title fabrication = auto-fail.]
-  DOMAINS: [each company → its real industry; derive from resume text, never invent]
-  TIMELINE: [each role's start–end years + which JD tools were already mainstream enterprise-standard by then]
-  TIMELINE_BLOCKS: [any JD tool that fails the timeline check → placed in Skills-only or dropped; write "none" if all tools are plausible]
-  GAP_FILLS: [for each JD hard skill absent from resume: 5-anchor test result (including stack continuity check) → role assignment or DROP to Skills-only]
-  WRONG_JOB_CHECK: [list each skill whose only existing bullet is at an older role → confirm gap-fill written at most recent plausible role instead]
-  CUTS: [which existing bullets are displaced to make room, and from which role]
-  COMPLIANCE_DROPS: [frameworks skipped because legally impossible in candidate's real domain; write "none" if all apply]
-Close </plan>.
-
-STEP 2 — Write the complete tailored resume following all system prompt rules.
-
-STEP 3 — Within each job, confirm bullets are ordered highest-JD-relevance first, lowest last. Count every bullet. Rewrite any over 22 words before finalizing.
-
-=== JOB DESCRIPTION ===
-{job_description[:16000]}
-
-=== ORIGINAL RESUME ===
-{base_resume}"""
+    user_msg = (
+        f"Tailor this resume to the JD. "
+        f"Role type detected: {role_type}. "
+        f"Hard bullet limit: {hard_total} total (5 summary + {exp_total} experience). "
+        f"Output: plain text resume only.\n"
+        f"{declared_section}\n"
+        "STEP 1 — Open a <plan> block. Fill in EVERY field explicitly before writing a single resume line:\n"
+        "  ROLE_TYPE: [detected role type and why — TECH / IB / FINANCE / CYBER / HEALTHCARE / CONSULTING / GENERAL]\n"
+        "  COMPANY_STAGE: [startup / enterprise / unknown — key signals from JD]\n"
+        "  SECTION_LABELS: [exact section header labels you will use for this role type]\n"
+        "  CLOSING_LINE_FORMAT: [exact closing line format per role type, or 'none' if not applicable]\n"
+        "  SUMMARY_TITLE: [JD target role title] → [exact text of summary bullet 1]\n"
+        "  PRIMARY_FUNCTIONS: [list each JD primary function and which 2+ bullets will cover it]\n"
+        "  JOB_HEADERS: [list every job header from the base resume exactly as written — confirm each appears UNCHANGED]\n"
+        "  DOMAINS: [each company → its real industry; derive from resume text, never invent]\n"
+        "  TIMELINE: [each role's start–end years + which JD tools were enterprise-ready by then]\n"
+        "  TIMELINE_BLOCKS: [any JD tool failing timeline check → skills-only or dropped; 'none' if all clear]\n"
+        "  GAP_FILLS: [for each JD hard skill absent from resume: 5-anchor test result → role assignment or DROP]\n"
+        "  WRONG_JOB_CHECK: [skills whose only bullet is at an older role → confirm gap-fill at most recent plausible role]\n"
+        "  CUTS: [which existing bullets are displaced to make room, and from which role]\n"
+        "  COMPLIANCE_DROPS: [frameworks skipped because legally impossible in candidate's domain; 'none' if all apply]\n"
+        "  DEPTH_GAPS: [existing bullets that show only deployment/exposure for JD-critical skills → rewrite plan]\n"
+        "Close </plan>.\n\n"
+        "STEP 2 — Write the complete tailored resume following all system prompt rules.\n\n"
+        "STEP 3 — Within each job, confirm bullets are ordered highest-JD-relevance first, lowest last. "
+        "Count every bullet. Rewrite any over 22 words before finalizing.\n\n"
+        f"=== JOB DESCRIPTION ===\n{job_description[:16000]}\n\n"
+        f"=== ORIGINAL RESUME ===\n{base_resume}"
+    )
 
     raw = await chat(
         system=SYSTEM_PROMPT,
@@ -452,32 +676,26 @@ STEP 3 — Within each job, confirm bullets are ordered highest-JD-relevance fir
         api_key=api_key,
         provider=provider,
         model=model,
-        max_tokens=6000,   # bumped from 4096: <plan> block consumes 1500-2000 tokens
+        max_tokens=6000,
     )
 
-    # ── Strip <plan> thinking block (defense-in-depth — model may forget to self-strip) ──
+    # Strip <plan> block
     raw = re.sub(r'<plan>.*?</plan>', '', raw, flags=re.DOTALL).strip()
 
-    # ── Quality gate: lint → up to 3 retries until clean ────────────────────
-    # Best-of-N: track the attempt with the fewest lint issues.
-    # Prevents returning a regressed retry that's WORSE than attempt 1.
+    # ── Quality gate: lint → up to 3 retries, best-of-N ────────────────────
     _best_raw         = raw
     _best_issue_count = len(lint_resume(raw, job_description))
 
     for attempt in range(3):
         issues = lint_resume(raw, job_description)
 
-        # Update best-so-far before possibly retrying
         if len(issues) <= _best_issue_count:
             _best_issue_count = len(issues)
             _best_raw = raw
 
         if not issues:
-            break   # clean — no retry needed
+            break
 
-        # Scoped retry: one-line rule restatement per issue.
-        # "Fix ONLY these" prevents the model from re-tailoring unrelated
-        # sections — eliminating the fix-one-break-one regression cycle.
         issue_lines = "\n".join(
             "  • {}\n    → {}".format(
                 iss,
@@ -504,30 +722,35 @@ STEP 3 — Within each job, confirm bullets are ordered highest-JD-relevance fir
             model=model,
             max_tokens=6000,
         )
-        # Strip plan block from retry output
         raw = re.sub(r'<plan>.*?</plan>', '', raw, flags=re.DOTALL).strip()
 
-    # Final best-of-N check: maybe last attempt was worse than an earlier one
+    # Best-of-N final check
     final_issues = lint_resume(raw, job_description)
     if len(final_issues) < _best_issue_count:
         _best_raw = raw
         _best_issue_count = len(final_issues)
     if _best_issue_count > 0 and _best_raw is not raw:
-        print(f"[RETRY] Best-of-N: using earlier attempt ({_best_issue_count} issues remaining vs {len(final_issues)} in last)")
+        print(
+            f"[RETRY] Best-of-N: using earlier attempt "
+            f"({_best_issue_count} issues remaining vs {len(final_issues)} in last)"
+        )
     raw = _best_raw
 
-    # ── Enforce hard limits (deterministic trim after AI output) ─────────────
-    result = _enforce_limits(raw)
+    # ── Enforce hard limits — role-type-aware ────────────────────────────────
+    result = _enforce_limits(raw, role_type=role_type)
 
-    # ── Semantic review — 1 pass, no retry (catches what lint can’t) ────────
+    # ── Semantic review — 1 pass, no retry ──────────────────────────────────
     pre_review_hash = hash(result)
-    result = await review_resume(result, job_description, api_key, provider, model, profile_skills=profile_skills)
+    result = await review_resume(
+        result, job_description, api_key, provider, model,
+        profile_skills=profile_skills,
+    )
     if hash(result) != pre_review_hash:
         print("[REVIEW] Reviewer made changes")
     else:
         print("[REVIEW] Reviewer made no changes — check if checks are triggering")
 
-    # ── Post-review lint — log WARN only, no retry ───────────────────────
+    # ── Post-review lint — log WARN only, no retry ───────────────────────────
     post_issues = lint_resume(result, job_description)
     if post_issues:
         print(f"[WARN] post-review lint ({len(post_issues)}):")

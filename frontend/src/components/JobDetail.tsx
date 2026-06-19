@@ -476,11 +476,23 @@ function ResumeTab({ job, tailoring, onTailor, onCancel, onToast }: {
   job: Job; tailoring: boolean; onTailor: () => void; onCancel: () => void; onToast: (m: string, t?: "success" | "error") => void;
 }) {
   // Hooks MUST be at top level — never inside conditionals
-  const [elapsed, setElapsed] = useState(0);
+  const TAILOR_START_KEY = `jh_tailor_start_${job.id}`;
+  const [elapsed, setElapsed] = useState(() => {
+    const ts = sessionStorage.getItem(TAILOR_START_KEY);
+    return ts ? Math.floor((Date.now() - parseInt(ts, 10)) / 1000) : 0;
+  });
   useEffect(() => {
-    if (!tailoring) { setElapsed(0); return; }
-    setElapsed(0);
-    const t = setInterval(() => setElapsed(s => s + 1), 1000);
+    if (!tailoring) {
+      sessionStorage.removeItem(TAILOR_START_KEY);
+      setElapsed(0);
+      return;
+    }
+    if (!sessionStorage.getItem(TAILOR_START_KEY)) {
+      sessionStorage.setItem(TAILOR_START_KEY, String(Date.now()));
+    }
+    const startTs = parseInt(sessionStorage.getItem(TAILOR_START_KEY)!, 10);
+    setElapsed(Math.floor((Date.now() - startTs) / 1000));
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - startTs) / 1000)), 1000);
     return () => clearInterval(t);
   }, [tailoring]);
 

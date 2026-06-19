@@ -429,6 +429,7 @@ STEP 1 — Open a <plan> block. Fill in EVERY field explicitly before writing a 
   TIMELINE: [each role's start–end years + which JD tools were already mainstream enterprise-standard by then]
   TIMELINE_BLOCKS: [any JD tool that fails the timeline check → placed in Skills-only or dropped; write "none" if all tools are plausible]
   GAP_FILLS: [for each JD hard skill absent from resume: 4-anchor test result → role assignment or DROP to Skills-only]
+  WRONG_JOB_CHECK: [list each skill whose only existing bullet is at an older role → confirm gap-fill written at most recent plausible role instead]
   CUTS: [which existing bullets are displaced to make room, and from which role]
   COMPLIANCE_DROPS: [frameworks skipped because legally impossible in candidate's real domain; write "none" if all apply]
 Close </plan>.

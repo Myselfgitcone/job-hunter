@@ -192,11 +192,12 @@ For each hard skill the JD names that is missing from the resume, ask this test:
   → NO: add the tool to TECHNICAL SKILLS only, or drop it entirely
   Never write a gap bullet just to achieve coverage — only write one if it sounds genuinely earned.
 
-THE 4 ANCHORS (every gap bullet needs all four):
+THE 5 ANCHORS (every gap bullet needs all five):
   1. SPECIFIC ACTION — exact technique, pattern, or operation (not "used X" — say what you did WITH X)
   2. NAMED TOOL — the JD's exact tool/framework/technology name
   3. REAL DOMAIN CONTEXT — anchor to the employer's actual industry (commodity data at Cargill, patient records at Molina, transactions at JPMorgan)
   4. CONCRETE OUTCOME — a realistic number or tangible result (≤18 words total for the full bullet)
+  5. STACK CONTINUITY — the tool must appear in the DECLARED SKILLS list OR anywhere in the ORIGINAL RESUME text (including Technologies Used lines). If it appears in neither → TECHNICAL SKILLS only, never a gap-fill bullet. This prevents inventing a parallel career with a completely foreign tech stack.
 
 TONE RULES:
   • Past tense, confident, zero hedging
@@ -218,6 +219,7 @@ VOCABULARY MIRRORING TRAP — CRITICAL:
   • Insurance "quotes, binds, premium" → agribusiness "procurement bids, contract volumes, margin thresholds"
   • IT "tickets, incidents" → manufacturing "work orders, downtime events"
   • SaaS "tenant, subscription" → banking "account, portfolio"
+  • Oil & gas "upstream" = wellhead/production data; DE "upstream" = source systems — NEVER use "upstream data flows" in agribusiness or supply chain context
   Anchor to the EMPLOYER's vocabulary, not the JD's vocabulary. A sharp recruiter will notice cross-industry jargon instantly.
 
   COMPLIANCE ESCAPE HATCH: If the JD requires a strict regulatory framework (e.g., SOX, FedRAMP, ITAR, FISMA) that is legally impossible or highly improbable in the candidate's real historical domains (e.g., a private agribusiness cannot be SOX-regulated; a regional hospital cannot be FedRAMP-certified), DROP THE REQUIREMENT ENTIRELY. Do not write a gap bullet. Do not write "SOX-adjacent" or any approximation. Credibility matters more than coverage.
@@ -428,7 +430,7 @@ STEP 1 — Open a <plan> block. Fill in EVERY field explicitly before writing a 
   DOMAINS: [each company → its real industry; derive from resume text, never invent]
   TIMELINE: [each role's start–end years + which JD tools were already mainstream enterprise-standard by then]
   TIMELINE_BLOCKS: [any JD tool that fails the timeline check → placed in Skills-only or dropped; write "none" if all tools are plausible]
-  GAP_FILLS: [for each JD hard skill absent from resume: 4-anchor test result → role assignment or DROP to Skills-only]
+  GAP_FILLS: [for each JD hard skill absent from resume: 5-anchor test result (including stack continuity check) → role assignment or DROP to Skills-only]
   WRONG_JOB_CHECK: [list each skill whose only existing bullet is at an older role → confirm gap-fill written at most recent plausible role instead]
   CUTS: [which existing bullets are displaced to make room, and from which role]
   COMPLIANCE_DROPS: [frameworks skipped because legally impossible in candidate's real domain; write "none" if all apply]

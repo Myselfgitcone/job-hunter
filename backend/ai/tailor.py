@@ -130,8 +130,10 @@ BULLET BUDGET (hard total: 30, summary included):
 
 FORMAT — ATS-SAFE:
   Single column. "•" bullets only. Plain text — NO tables, columns, graphics, or markdown.
-  HEADER (line 1):  Full Name — Job Title
-    Example: Jagadish Reddy Butukuri — Senior Data Engineer
+  HEADER (line 1):  Full Name — [JD Target Role Title]
+    The header title = the JD's target role (e.g. "Data Architect", "Senior Data Engineer", "Analytics Engineer").
+    Extract the exact role title from the JD and use it here. This is the candidate's brand for this application.
+    Job-level titles inside each role block (e.g. "Senior Data Engineer @ Cargill") are FACTUAL and NEVER change.
     One line, em-dash (—) separator. NEVER split across two lines.
   CONTACT (line 2): phone | email
   SECTION HEADERS — use exactly these labels followed by colon:
@@ -149,7 +151,7 @@ NEVER alter: name, phone, email, job titles, company names, employment dates, lo
 NEVER change the years-of-experience claim (e.g. "6+ years"). Copy the exact number from the base resume. Do NOT recalculate from dates — the candidate knows their own experience.
 NEVER add a job that does not appear in the ORIGINAL RESUME. Do not invent roles from training data, context clues, or the candidate's name. If a company is not in the original resume, it does not exist.
 ALWAYS include every education entry from the original resume. Never drop a degree to make room for more bullets.
-Keep the candidate's REAL title in the header. Bridge to the JD's target role in the SUMMARY only.
+Header title = JD's target role title (brand, not employment record). Job block titles inside each role are factual and NEVER change.
 
 ═══ COVERAGE — 80–90%, NOT 100% ═══
 Cover every HARD SKILL the JD names, every core RESPONSIBILITY, the SENIORITY level, and the top 3–5 distinctive JD phrases.
@@ -414,7 +416,7 @@ async def tailor_resume(base_resume: str, job_description: str,
     user_msg = f"""Tailor this resume to the JD. Hard limit: 30 bullets total (5 summary + 25 experience). Output: plain text resume only.
 {declared_section}
 STEP 1 — Open a <plan> block. Fill in EVERY field explicitly before writing a single resume line:
-  SUMMARY_TITLE: [candidate's actual title as it appears in the resume] → [exact text of summary bullet 1, showing how the JD's target role is bridged without fabricating a new title]
+  SUMMARY_TITLE: [JD target role title extracted from JD] → [exact text of summary bullet 1 — opens with JD target title + years of experience]
   JOB_HEADERS: [list every job header from the base resume exactly as written — title, company, location, dates — then confirm each will appear UNCHANGED in the output. Title fabrication = auto-fail.]
   DOMAINS: [each company → its real industry; derive from resume text, never invent]
   TIMELINE: [each role's start–end years + which JD tools were already mainstream enterprise-standard by then]

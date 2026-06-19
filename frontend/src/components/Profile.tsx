@@ -327,16 +327,7 @@ export function Profile() {
     } catch { setSaveStatus("unsaved"); }
   };
 
-  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
-  useEffect(() => {
-    api.getSettings().then((s: any) => setHasApiKey(!!(s && s.ai_api_key))).catch(() => {});
-  }, []);
-
   const handleUploadClick = () => {
-    if (hasApiKey === false) {
-      setParseError("No AI API key found! Please go to Settings and add your API key before uploading a resume.");
-      return;
-    }
     fileRef.current?.click();
   };
 

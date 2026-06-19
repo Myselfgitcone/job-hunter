@@ -766,11 +766,11 @@ function InfoTab({ job, onUpdate, onToast }: {
 }
 
 // ── Main JobDetail ─────────────────────────────────────────────────────────────
-export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction, onCancel }: {
+export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId, runAction, onCancel }: {
   job: Job | null; tab: string; setTab: (t: string) => void;
   onUpdate: (patch: Partial<Job>) => void;
   onToast: (m: string, t?: "success" | "error") => void;
-  busy: string | null; runAction: (a: string) => void; onCancel: () => void;
+  busy: string | null; busyJobId: string | null; runAction: (a: string) => void; onCancel: () => void;
 }) {
   if (!job) {
     return (
@@ -853,10 +853,10 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
               <Ic d={I.link} size={14} /> Apply
             </a>
             <button onClick={() => runAction("resume")} disabled={!!busy} className="act ai">
-              {busy === "resume" ? <><Spinner size={13} /> Tailoring…</> : <><Ic d={I.sparkles} size={14} /> Tailor Resume</>}
+              {busy === "resume" && busyJobId === job.id ? <><Spinner size={13} /> Tailoring…</> : <><Ic d={I.sparkles} size={14} /> Tailor Resume</>}
             </button>
             <button onClick={() => runAction("qualify")} disabled={!!busy} className="act ai">
-              {busy === "qualify" ? <><Spinner size={13} /> Analyzing…</> : <><Ic d={I.target} size={14} /> Qualify</>}
+              {busy === "qualify" && busyJobId === job.id ? <><Spinner size={13} /> Analyzing…</> : <><Ic d={I.target} size={14} /> Qualify</>}
             </button>
             <button className="act" onClick={() => handleStatusChange("applied")}>
               <Ic d={I.checkCircle} size={14} /> Mark Applied
@@ -899,17 +899,17 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, runAction
           {tab === "jobdetails" && subTab === "jobinfo"     && <JobInfoTab job={job} />}
           {tab === "jobdetails" && subTab === "companyinfo" && <CompanyInfoTab job={job} />}
           {tab === "jobdetails" && subTab === "description" && <DescriptionTab job={job} onUpdate={onUpdate} onToast={onToast} />}
-          {tab === "qualify"  && <QualifyTab job={job} running={busy === "qualify"} onRun={() => runAction("qualify")} />}
+          {tab === "qualify"  && <QualifyTab job={job} running={busy === "qualify" && busyJobId === job.id} onRun={() => runAction("qualify")} />}
           {tab === "resume"   && (
             <div style={{ display: "flex", flexDirection: "column" }}>
-              <ResumeTab job={job} tailoring={busy === "resume"} onTailor={() => runAction("resume")} onCancel={onCancel} onToast={onToast} />
+              <ResumeTab job={job} tailoring={busy === "resume" && busyJobId === job.id} onTailor={() => runAction("resume")} onCancel={onCancel} onToast={onToast} />
               <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 20, marginTop: 24 }}>
                 <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 12 }}>Fit & Tips</div>
-                <FitTab job={job} running={busy === "fit"} onRun={() => runAction("fit")} />
+                <FitTab job={job} running={busy === "fit" && busyJobId === job.id} onRun={() => runAction("fit")} />
               </div>
             </div>
           )}
-          {tab === "cover"    && <CoverTab job={job} generating={busy === "cover"} onGenerate={() => runAction("cover")} onChange={v => onUpdate({ cover_letter: v })} onToast={onToast} />}
+          {tab === "cover"    && <CoverTab job={job} generating={busy === "cover" && busyJobId === job.id} onGenerate={() => runAction("cover")} onChange={v => onUpdate({ cover_letter: v })} onToast={onToast} />}
         </div>
       </div>
     </div>

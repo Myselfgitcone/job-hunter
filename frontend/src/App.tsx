@@ -242,6 +242,7 @@ export default function App() {
   const [activeFamily, setActiveFamily] = useState<string>(""); // user role chip filter
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("jh_sidebar") === "1");
   const [busy, setBusy]             = useState<string | null>(null);
+  const [busyJobId, setBusyJobId]   = useState<string | null>(null);
   const abortRef                    = useRef<AbortController | null>(null);
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem("jh_welcomed"));
   const { toasts, toast }           = useToasts();
@@ -532,7 +533,7 @@ export default function App() {
   };
 
   const runAction = async (action: string) => {
-    if (!selectedJob || busy) return; setBusy(action);
+    if (!selectedJob || busy) return; setBusy(action); setBusyJobId(selectedJob.id);
     try {
       if (action === "qualify") {
         const r = await api.qualifyJob(selectedJob.id);
@@ -560,7 +561,7 @@ export default function App() {
       }
       await refreshJob(selectedJob.id);
     } catch (e: any) { if (e?.name !== "AbortError") toast(e.message || "Failed", "error"); }
-    finally { setBusy(null); abortRef.current = null; }
+    finally { setBusy(null); setBusyJobId(null); abortRef.current = null; }
   };
 
   const cancelAction = () => { abortRef.current?.abort(); };
@@ -833,7 +834,7 @@ export default function App() {
                     )}
                   </div>
                 </div>
-                <JobDetail job={selectedJob} tab={tab} setTab={setTab} onUpdate={(patch: Partial<Job>) => selectedJob && updateJob(selectedJob.id, patch)} onToast={toast} busy={busy} runAction={runAction} onCancel={cancelAction} />
+                <JobDetail job={selectedJob} tab={tab} setTab={setTab} onUpdate={(patch: Partial<Job>) => selectedJob && updateJob(selectedJob.id, patch)} onToast={toast} busy={busy} busyJobId={busyJobId} runAction={runAction} onCancel={cancelAction} />
               </div>
             )}
           </>

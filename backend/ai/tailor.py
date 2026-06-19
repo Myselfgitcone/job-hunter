@@ -146,6 +146,7 @@ FORMAT — ATS-SAFE:
 
 ═══ AUTHENTICITY — NEVER FABRICATE ═══
 NEVER alter: name, phone, email, job titles, company names, employment dates, locations, degrees, certifications, licenses. These are externally verifiable — changing them is auto-reject.
+NEVER change the years-of-experience claim (e.g. "6+ years"). Copy the exact number from the base resume. Do NOT recalculate from dates — the candidate knows their own experience.
 Keep the candidate's REAL title in the header. Bridge to the JD's target role in the SUMMARY only.
 
 ═══ COVERAGE — 80–90%, NOT 100% ═══

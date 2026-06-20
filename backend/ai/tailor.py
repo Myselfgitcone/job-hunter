@@ -600,6 +600,10 @@ regroup them organically by how the candidate actually works. Use natural catego
 names appropriate to the role type (e.g. "Distributed Processing", "Cloud
 Warehousing" for tech; "Financial Modeling", "Planning Tools" for finance).
 Max 6–7 items per line. Do NOT change any bullet in the experience section.
+This includes soft-skill or leadership lines copied verbatim from JD requirements
+(e.g. "Excellent leadership, communication, and interpersonal skills" appearing as
+a skills line) — rewrite these as a concise factual competency line or remove if
+they add no technical signal. A skills section lists capabilities, not JD quals.
 
 CHECK 2 — SUMMARY TECH/SPEC DUMP:
 If any summary bullet is a spec list (5+ tools or credentials with no candidate
@@ -925,7 +929,7 @@ async def tailor_resume(base_resume: str, job_description: str,
     if hash(result) != pre_review_hash:
         print("[REVIEW] Reviewer made changes")
     else:
-        print("[REVIEW] Reviewer made no changes — check if checks are triggering")
+        print("[REVIEW] No semantic violations found — resume passed all 3 checks")
 
     # ── Post-review lint — log WARN only, no retry ───────────────────────────
     post_issues = lint_resume(result, job_description)

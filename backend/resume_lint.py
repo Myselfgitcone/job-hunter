@@ -142,6 +142,219 @@ def detect_role_type(jd: str) -> str:
     return best_role
 
 
+
+
+# ── JD hard-skill extraction / coverage scoring ───────────────────────────────
+# This is intentionally keyword-based. It does NOT prove real experience.
+# It helps the tailoring layer identify whether the final resume covers enough
+# recruiter-visible hard skills from the JD.
+_ROLE_HARD_SKILLS: dict[str, dict[str, list[str]]] = {
+    TECH: {
+        "Python": [r"\bpython\b"],
+        "SQL": [r"\bsql\b", r"\bpl/sql\b", r"\bt-sql\b"],
+        "PySpark": [r"\bpyspark\b"],
+        "Spark": [r"\bspark\b", r"\bapache spark\b"],
+        "Databricks": [r"\bdatabricks\b"],
+        "Snowflake": [r"\bsnowflake\b"],
+        "Redshift": [r"\bredshift\b"],
+        "BigQuery": [r"\bbigquery\b"],
+        "AWS": [r"\baws\b", r"\bamazon web services\b"],
+        "Azure": [r"\bazure\b"],
+        "GCP": [r"\bgcp\b", r"\bgoogle cloud\b"],
+        "S3": [r"\bs3\b"],
+        "Glue": [r"\bglue\b", r"\baws glue\b"],
+        "EMR": [r"\bemr\b"],
+        "Lambda": [r"\blambda\b"],
+        "Lake Formation": [r"\blake formation\b"],
+        "Airflow": [r"\bairflow\b", r"\bapache airflow\b"],
+        "Dagster": [r"\bdagster\b"],
+        "dbt": [r"\bdbt\b"],
+        "Kafka": [r"\bkafka\b", r"\bapache kafka\b"],
+        "Flink": [r"\bflink\b", r"\bapache flink\b"],
+        "Debezium": [r"\bdebezium\b"],
+        "NoSQL": [r"\bnosql\b", r"\bmongodb\b", r"\bcassandra\b", r"\bdynamodb\b"],
+        "Cassandra": [r"\bcassandra\b"],
+        "Redis": [r"\bredis\b"],
+        "MongoDB": [r"\bmongodb\b"],
+        "Terraform": [r"\bterraform\b"],
+        "Docker": [r"\bdocker\b"],
+        "Kubernetes": [r"\bkubernetes\b", r"\bk8s\b"],
+        "CI/CD": [r"\bci/cd\b", r"\bgithub actions\b", r"\bjenkins\b", r"\bgitlab ci\b"],
+        "Tableau": [r"\btableau\b"],
+        "Power BI": [r"\bpower\s*bi\b"],
+        "Data Modeling": [r"\bdata model", r"\bdimensional model", r"\bstar schema\b", r"\bdata vault\b"],
+        "MDM": [r"\bmdm\b", r"\bmaster data management\b"],
+        "Data Quality": [r"\bdata quality\b", r"\bgreat expectations\b", r"\bsoda\b"],
+        "Governance": [r"\bgovernance\b", r"\blineage\b", r"\bmetadata\b", r"\bcatalog\b"],
+    },
+    FINANCE: {
+        "Excel": [r"\bexcel\b"],
+        "PowerPoint": [r"\bpowerpoint\b"],
+        "SQL": [r"\bsql\b"],
+        "Power BI": [r"\bpower\s*bi\b"],
+        "Tableau": [r"\btableau\b"],
+        "FP&A": [r"\bfp&a\b", r"\bfinancial planning\b"],
+        "Forecasting": [r"\bforecast"],
+        "Budgeting": [r"\bbudget"],
+        "Variance Analysis": [r"\bvariance analysis\b"],
+        "Financial Modeling": [r"\bfinancial model", r"\bthree[-\s]?statement\b", r"\b3[-\s]?statement\b"],
+        "GAAP": [r"\bgaap\b"],
+        "SOX": [r"\bsox\b"],
+        "SAP": [r"\bsap\b"],
+        "Oracle": [r"\boracle\b"],
+        "Anaplan": [r"\banaplan\b"],
+        "Hyperion": [r"\bhyperion\b"],
+    },
+    IB: {
+        "Excel": [r"\bexcel\b"],
+        "PowerPoint": [r"\bpowerpoint\b"],
+        "DCF": [r"\bdcf\b", r"\bdiscounted cash flow\b"],
+        "LBO": [r"\blbo\b", r"\bleveraged buyout\b"],
+        "Merger Model": [r"\bmerger model\b", r"\baccretion\b", r"\bdilution\b"],
+        "M&A": [r"\bm&a\b", r"\bmergers? and acquisitions?\b"],
+        "Valuation": [r"\bvaluation\b", r"\bcomparable compan", r"\bprecedent transaction"],
+        "Capital Markets": [r"\bcapital markets\b", r"\becm\b", r"\bdcm\b"],
+        "Pitch Books": [r"\bpitch book", r"\bpitchbook\b"],
+        "Data Room": [r"\bdata room\b"],
+        "Bloomberg": [r"\bbloomberg\b"],
+        "Capital IQ": [r"\bcapital iq\b", r"\bcapiq\b"],
+    },
+    CYBER: {
+        "SIEM": [r"\bsiem\b", r"\bsplunk\b", r"\bsentinel\b"],
+        "Splunk": [r"\bsplunk\b"],
+        "EDR": [r"\bedr\b", r"\bcrowdstrike\b", r"\bdefender for endpoint\b"],
+        "Incident Response": [r"\bincident response\b", r"\bir\b"],
+        "Threat Hunting": [r"\bthreat hunting\b"],
+        "Vulnerability Management": [r"\bvulnerability management\b", r"\bnessus\b", r"\bqualys\b"],
+        "IAM": [r"\biam\b", r"\bidentity and access\b"],
+        "Cloud Security": [r"\bcloud security\b", r"\baws security\b", r"\bazure security\b"],
+        "GRC": [r"\bgrc\b", r"\brisk compliance\b"],
+        "MITRE ATT&CK": [r"\bmitre\b", r"\batt&ck\b"],
+        "Python": [r"\bpython\b"],
+        "PowerShell": [r"\bpowershell\b"],
+    },
+    HEALTHCARE: {
+        "Epic": [r"\bepic\b"],
+        "Cerner": [r"\bcerner\b"],
+        "EHR": [r"\behr\b", r"\belectronic health record"],
+        "HIPAA": [r"\bhipaa\b"],
+        "Clinical Documentation": [r"\bclinical documentation\b"],
+        "Care Coordination": [r"\bcare coordination\b"],
+        "Patient Care": [r"\bpatient care\b"],
+        "Claims": [r"\bclaims\b"],
+        "SQL": [r"\bsql\b"],
+        "Power BI": [r"\bpower\s*bi\b"],
+    },
+    CONSULTING: {
+        "Excel": [r"\bexcel\b"],
+        "PowerPoint": [r"\bpowerpoint\b"],
+        "Tableau": [r"\btableau\b"],
+        "Power BI": [r"\bpower\s*bi\b"],
+        "SQL": [r"\bsql\b"],
+        "Strategy": [r"\bstrategy\b"],
+        "Transformation": [r"\btransformation\b"],
+        "Process Improvement": [r"\bprocess improvement\b"],
+        "Change Management": [r"\bchange management\b"],
+        "Stakeholder Management": [r"\bstakeholder management\b"],
+        "Financial Modeling": [r"\bfinancial model"],
+    },
+    GENERAL: {
+        "Excel": [r"\bexcel\b"],
+        "PowerPoint": [r"\bpowerpoint\b"],
+        "SQL": [r"\bsql\b"],
+        "Salesforce": [r"\bsalesforce\b"],
+        "Tableau": [r"\btableau\b"],
+        "Power BI": [r"\bpower\s*bi\b"],
+        "Jira": [r"\bjira\b"],
+        "ServiceNow": [r"\bservicenow\b"],
+        "CRM": [r"\bcrm\b"],
+        "Project Management": [r"\bproject management\b"],
+        "Agile": [r"\bagile\b", r"\bscrum\b"],
+    },
+}
+
+# Some tools/skills are useful across multiple role types.
+_GLOBAL_HARD_SKILLS: dict[str, list[str]] = {
+    "SQL": [r"\bsql\b"],
+    "Python": [r"\bpython\b"],
+    "Excel": [r"\bexcel\b"],
+    "Power BI": [r"\bpower\s*bi\b"],
+    "Tableau": [r"\btableau\b"],
+    "Salesforce": [r"\bsalesforce\b"],
+    "SAP": [r"\bsap\b"],
+    "Oracle": [r"\boracle\b"],
+    "ServiceNow": [r"\bservicenow\b"],
+    "Jira": [r"\bjira\b"],
+}
+
+
+def _skill_catalog_for_role(role_type: str) -> dict[str, list[str]]:
+    catalog: dict[str, list[str]] = {}
+    catalog.update(_GLOBAL_HARD_SKILLS)
+    catalog.update(_ROLE_HARD_SKILLS.get(role_type, {}))
+    return catalog
+
+
+def extract_jd_hard_skills(job_description: str, role_type: Optional[str] = None) -> list[str]:
+    """Return canonical hard skills explicitly visible in the JD."""
+    if not job_description:
+        return []
+    role = role_type or detect_role_type(job_description)
+    jd_low = job_description.lower()
+    found: list[str] = []
+    for skill, patterns in _skill_catalog_for_role(role).items():
+        if any(re.search(p, jd_low) for p in patterns):
+            found.append(skill)
+    return found
+
+
+def skill_coverage_report(
+    resume_text: str,
+    job_description: str,
+    role_type: Optional[str] = None,
+    profile_skills: Optional[list[str]] = None,
+) -> dict:
+    """
+    Compare JD-visible hard skills against the final resume.
+    This is an ATS/recruiter coverage heuristic, not a truth verifier.
+    """
+    role = role_type or detect_role_type(job_description)
+    jd_skills = extract_jd_hard_skills(job_description, role)
+    if not jd_skills:
+        return {
+            "role_type": role,
+            "jd_skills": [],
+            "covered": [],
+            "missing": [],
+            "coverage_ratio": 1.0,
+            "coverage_text": "0/0",
+        }
+
+    resume_blob = (resume_text or "").lower()
+    if profile_skills:
+        resume_blob += "\n" + ", ".join(profile_skills).lower()
+
+    catalog = _skill_catalog_for_role(role)
+    covered: list[str] = []
+    missing: list[str] = []
+    for skill in jd_skills:
+        patterns = catalog.get(skill, [rf"\b{re.escape(skill.lower())}\b"])
+        if any(re.search(p, resume_blob) for p in patterns):
+            covered.append(skill)
+        else:
+            missing.append(skill)
+
+    ratio = len(covered) / len(jd_skills) if jd_skills else 1.0
+    return {
+        "role_type": role,
+        "jd_skills": jd_skills,
+        "covered": covered,
+        "missing": missing,
+        "coverage_ratio": ratio,
+        "coverage_text": f"{len(covered)}/{len(jd_skills)}",
+    }
+
+
 # ── Valid section headers per role type ───────────────────────────────────────
 # Maps role type → set of uppercase header names (without trailing colon) that are VALID.
 # Any other UPPERCASE: line triggers an "unexpected header" warning.
@@ -599,6 +812,26 @@ def lint_resume(text: str, job_description: str = "") -> list[str]:
                     f"Vary phrasing; keep ≤2 uses."
                 )
 
+
+    # JD hard-skill VISIBILITY check — this is a presence/absence check only.
+    # It can confirm a skill word appears SOMEWHERE on the resume (bullet, stretch
+    # bullet, or skills/project section). It CANNOT distinguish a WORK-SUPPORTED
+    # claim from a SELF-IMPLEMENTABLE skills-only mention — that distinction lives
+    # in the prompt's tier rules and is not mechanically verified here.
+    # Target is visibility (100%), not production-claim coverage (85-95%, prompt-side only).
+    if job_description:
+        coverage = skill_coverage_report(text, job_description, role_type=role_type)
+        jd_skill_count = len(coverage["jd_skills"])
+        if jd_skill_count >= 6 and coverage["coverage_ratio"] < 0.85:
+            missing_preview = ", ".join(coverage["missing"][:6])
+            issues.append(
+                f"[LOW JD SKILL VISIBILITY] {coverage['coverage_text']} JD hard skills visible on resume "
+                f"({coverage['coverage_ratio']:.0%}; target ~100% visibility). "
+                f"For each missing skill below, add it via the appropriate tier — WORK-SUPPORTED bullet, "
+                f"ADJACENT-STRETCH bullet, or SELF-IMPLEMENTABLE/HIGH-RISK skills-project wording. "
+                f"Visibility through skills/project wording is acceptable; do not force production claims: {missing_preview}."
+            )
+
     return issues
 
 
@@ -619,6 +852,7 @@ RETRY_RULES: dict[str, str] = {
     "[LOW METRICS]":           "Add quantified outcomes to more experience bullets (role-appropriate target).",
     "[HIGH METRICS]":          "Remove forced numbers from process/collaboration bullets — looks artificial.",
     "[JD ECHO]":               "A JD word repeated 3+ times reads as keyword stuffing. Vary phrasing.",
+    "[LOW JD SKILL VISIBILITY]": "Add 1–3 missing skills via the correct tier: WORK-SUPPORTED bullet, ADJACENT-STRETCH bullet (max 1/job, 2 total), or SELF-IMPLEMENTABLE/HIGH-RISK skills-project wording. Visibility-only placement is acceptable — never force a production claim.",
 }
 
 

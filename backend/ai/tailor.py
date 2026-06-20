@@ -3,6 +3,12 @@ from ai.llm import chat
 from resume_lint import lint_resume, detect_role_type, BULLET_BUDGETS
 from resume_lint import TECH, IB, FINANCE, CYBER, HEALTHCARE, CONSULTING, GENERAL
 
+try:
+    from resume_lint import skill_coverage_report, extract_jd_hard_skills
+except ImportError:  # Backward compatibility if older resume_lint.py is used.
+    skill_coverage_report = None
+    extract_jd_hard_skills = None
+
 
 # ── Hard limits enforced in Python (AI cannot count) ─────────────────────────
 # Bullet limits are now role-type-aware. Loaded dynamically from resume_lint.
@@ -334,6 +340,49 @@ Cover every hard skill the JD names, every core responsibility, the seniority le
 Skip: soft skills, culture words, boilerplate, inflation keywords.
 Each skill appears once or twice — never five times.
 
+═══ MARKET COVERAGE / DEFENSIBLE STRETCH RULE ═══
+Two separate targets — do not conflate them:
+  VISIBILITY TARGET (the word appears somewhere on the resume, in any honest form): aim for 100% of JD hard skills when a defensible placement exists for each one.
+  PRODUCTION-CLAIM TARGET (the word appears as something the candidate actually owned/operated/shipped in real employer work): caps at 85–95%. Never push this toward 100% by inventing production history.
+
+A skill can satisfy VISIBILITY without ever touching PRODUCTION-CLAIM — that is the entire point of the SELF-IMPLEMENTABLE and HIGH-RISK tiers below. Visibility through skills/project wording is not a fallback or a consolation prize; it is a fully acceptable, fully honest way to cover a skill the candidate hasn't used in production.
+
+For EVERY JD-required hard skill the base resume doesn't already support, classify it and apply exactly one rule:
+
+  1. WORK-SUPPORTED — candidate used it in real work.
+     → Add to an experience bullet AND the skills section. Counts toward both visibility and production-claim.
+
+  2. ADJACENT-STRETCH — candidate used the same underlying pattern with a related tool, method, or domain.
+     → Add ONE defensible stretch bullet in the most relevant job. Counts toward both visibility and production-claim — this is the only stretch tier allowed to touch production-claim coverage.
+
+  3. SELF-IMPLEMENTABLE — candidate has not used it in employer production, but could implement it independently.
+     → Add to the skills section. If format permits, add an optional project/prototype-style bullet.
+     → Counts toward VISIBILITY ONLY. Do NOT attach it to an employer as production ownership. Do NOT count it toward the 85–95% production-claim target.
+
+  4. HIGH-RISK / NO BASIS — no real exposure, true coverage gap.
+     → Include ONLY as skills/project exposure, and only if the JD treats it as genuinely required (not just mentioned once).
+     → Counts toward VISIBILITY ONLY. Never claim employer production ownership, enterprise scale, team leadership, or regulated/client usage.
+
+Allowed safe wording for tiers 3 and 4 (visibility-only placements):
+  "Built prototype...", "Configured local implementation...", "Developed proof-of-concept...",
+  "Designed implementation pattern...", "Hands-on project with...", "Working knowledge of..."
+
+Unsafe wording unless the skill is genuinely WORK-SUPPORTED or ADJACENT-STRETCH:
+  "Owned production...", "Led enterprise rollout...", "Architected company-wide...",
+  "Managed real-time platform...", "Processed X million events daily..."
+
+Hard limits:
+  • Maximum 2 stretch bullets (tier 2, ADJACENT-STRETCH) per resume.
+  • Maximum 1 stretch bullet per job.
+  • Tiers 3 and 4 are NOT bullet-capped in the same way — they live in skills/projects, not as new production claims, so they don't compete for the limited experience-bullet budget.
+  • Never fabricate titles, companies, dates, degrees, certifications, licenses, transactions, clients, regulated experience, or production ownership — at any tier.
+
+Targets, stated explicitly:
+  • JD hard-skill VISIBILITY: 11/11 (100%) when each missing skill has a defensible placement at tier 1–4.
+  • PRODUCTION-CLAIM coverage (tiers 1–2 only): 85–95% — this is the ceiling, not a floor to hit by force.
+  • The gap between visibility and production-claim is filled by tiers 3–4 (skills/project/prototype wording) — that gap is expected and correct, not a shortfall.
+  • Do not force a skill into tier 1 or 2 just to hit a number. If a skill only honestly qualifies for tier 3 or 4, leave it there — full visibility through honest skills/project wording beats inflated production-claim coverage every time.
+
 ═══ DOMAIN BRIDGE RULE ═══
 When the target company's domain differs from the candidate's past employers:
 
@@ -561,13 +610,112 @@ CHECK 3 — UNSUPPORTED SKILLS ONLY:
 If a tool or skill appears in the skills/competencies section but has zero
 supporting bullets anywhere in the WORK EXPERIENCE section AND it does NOT appear
 in the CANDIDATE'S DECLARED SKILLS list provided in this message, remove it from
-that skills line entirely. Tools that ARE in the Declared Skills list are the
-candidate's own claims — keep them regardless of bullet support.
-Do NOT add any label — just delete the unsupported item.
+that skills line entirely UNLESS it is explicitly listed as a hard requirement in
+the JD. JD-required missing skills may remain in the skills section as market
+coverage, but do NOT add employer production ownership or fake experience bullets.
+Tools that ARE in the Declared Skills list are the candidate's own claims — keep
+them regardless of bullet support.
+Do NOT add any label — just delete unsupported, non-JD-required items.
 
 CONSTRAINT — NOTHING ELSE:
 Reproduce every other line exactly as given. No commentary. No plan blocks.
 Return the complete corrected resume as plain text only."""
+
+
+# ── Tier-compliance audit prompt ──────────────────────────────────────────────
+# Second AI pass, narrow and specific: verify that skills added to close JD
+# coverage gaps were placed at the tier the prompt actually allows for them.
+# This is a TRUTH check, not a pattern-match — it reads the bullet and judges
+# whether it reads as real employer production work vs. honest stretch/skills
+# wording. Runs once, no retry, report-only — never silently edits the resume.
+TIER_AUDIT_PROMPT = """You are a skeptical technical recruiter doing a final truth-audit on a tailored resume.
+
+You will be given:
+1. The CANDIDATE'S ORIGINAL RESUME (ground truth — what they actually did)
+2. A list of SKILLS THAT WERE MISSING from the original resume but appear in the FINAL RESUME
+3. The FINAL TAILORED RESUME
+
+Your only job: for EACH skill in the missing-skills list, find where it appears in the final
+resume and classify how it was placed. Do NOT rewrite, fix, or edit anything. Report only.
+
+For each skill, decide:
+
+  TIER 1/2 — WORK-SUPPORTED or ADJACENT-STRETCH (acceptable as a production claim):
+    The skill appears in a bullet that reads as something the candidate actually did, at a real
+    employer, doing real work. This is only legitimate if the original resume shows clear evidence
+    the candidate did related real work this skill could plausibly extend from.
+
+  TIER 3/4 — SELF-IMPLEMENTABLE or HIGH-RISK (visibility-only, should NOT read as production work):
+    The skill appears only in the skills/competencies section, or in a bullet using safe non-production
+    wording ("Built prototype...", "Working knowledge of...", "Hands-on project with...").
+
+  VIOLATION — the skill was placed as if it were a real production claim (specific company context,
+    metric, ownership verb like "Owned"/"Led"/"Architected", woven into an otherwise-real bullet)
+    but the ORIGINAL RESUME shows no real or adjacent basis for it. This is the case you are
+    specifically hunting for — a fabricated or unsupported claim dressed up to look real.
+
+Return your findings as plain text, one line per skill, in exactly this format:
+  SKILL_NAME | TIER_FOUND | VERDICT (OK or VIOLATION) | ONE-LINE REASON
+
+If a skill from the missing-skills list does not appear anywhere in the final resume, report:
+  SKILL_NAME | NOT_PRESENT | OK | skill was not added
+
+After the per-skill lines, add a final line:
+  SUMMARY: N skills audited, M violations found
+
+Return ONLY this report. No commentary, no resume rewriting, no markdown formatting."""
+
+
+def _parse_tier_audit(report: str) -> list[str]:
+    """Parse the tier audit report and return only the VIOLATION lines as issue strings."""
+    violations = []
+    for line in report.strip().split("\n"):
+        line = line.strip()
+        if not line or line.upper().startswith("SUMMARY:"):
+            continue
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) >= 4 and parts[2].upper() == "VIOLATION":
+            skill, tier_found, _, reason = parts[0], parts[1], parts[2], parts[3]
+            violations.append(
+                f"[TIER VIOLATION] '{skill}' placed as {tier_found} but original resume "
+                f"shows no real/adjacent basis — {reason}"
+            )
+    return violations
+
+
+async def audit_tier_compliance(
+    base_resume: str,
+    final_resume: str,
+    missing_skills: list[str],
+    api_key: str, provider: str, model: str,
+) -> tuple[list[str], str]:
+    """
+    Truth-audit pass: verifies skills added to close JD coverage gaps were placed
+    at an honest tier (visibility-only vs. production-claim). Report-only — never
+    edits the resume. Returns (violation_issues, raw_report).
+    If missing_skills is empty, skips the call entirely (nothing to audit).
+    """
+    if not missing_skills:
+        return [], ""
+
+    msg = (
+        f"=== SKILLS THAT WERE MISSING FROM THE ORIGINAL RESUME ===\n"
+        f"{', '.join(missing_skills)}\n\n"
+        f"=== CANDIDATE'S ORIGINAL RESUME (ground truth) ===\n{base_resume}\n\n"
+        f"=== FINAL TAILORED RESUME ===\n{final_resume}"
+    )
+
+    report = await chat(
+        system=TIER_AUDIT_PROMPT,
+        user=msg,
+        api_key=api_key,
+        provider=provider,
+        model=model,
+        max_tokens=2048,
+    )
+    report = report.strip()
+    violations = _parse_tier_audit(report)
+    return violations, report
 
 
 async def review_resume(tailored: str, job_description: str,
@@ -619,6 +767,7 @@ _RETRY_RULES = {
     "[LOW METRICS]":           "Add quantified outcomes to more experience bullets to meet the role-appropriate target.",
     "[HIGH METRICS]":          "Remove forced numbers from process/collaboration bullets — looks artificial.",
     "[JD ECHO]":               "A JD word repeated 3+ times reads as keyword stuffing. Vary phrasing; keep ≤2 uses.",
+    "[LOW JD SKILL VISIBILITY]": "Add 1–3 missing skills via the correct tier: WORK-SUPPORTED bullet, ADJACENT-STRETCH bullet (max 1/job, 2 total), or SELF-IMPLEMENTABLE/HIGH-RISK skills-project wording. Visibility-only placement is acceptable — never force a production claim.",
 }
 
 
@@ -631,6 +780,32 @@ async def tailor_resume(base_resume: str, job_description: str,
     budget    = BULLET_BUDGETS[role_type]
     hard_total = budget[5]
     exp_total  = hard_total - 5  # subtract summary
+
+    jd_hard_skills = []
+    if extract_jd_hard_skills is not None:
+        jd_hard_skills = extract_jd_hard_skills(job_description, role_type)
+
+    # Snapshot which JD hard skills are missing from the ORIGINAL resume —
+    # this is the ground-truth list the tier-compliance audit checks against
+    # later. Computed once, before any tailoring happens.
+    skills_missing_from_original: list[str] = []
+    if skill_coverage_report is not None and jd_hard_skills:
+        original_coverage = skill_coverage_report(
+            base_resume, job_description, role_type=role_type, profile_skills=profile_skills
+        )
+        skills_missing_from_original = original_coverage.get("missing", [])
+
+    jd_skills_section = ""
+    if jd_hard_skills:
+        jd_skills_section = (
+            "\n=== JD HARD SKILLS DETECTED ===\n"
+            + ", ".join(jd_hard_skills)
+            + "\nVISIBILITY target: 100% — every skill above should appear somewhere on the resume "
+              "(experience bullet, stretch bullet, or skills/project section) when a defensible placement exists.\n"
+            + "PRODUCTION-CLAIM target: 85–95% — only WORK-SUPPORTED and ADJACENT-STRETCH skills may read as "
+              "real employer production work. SELF-IMPLEMENTABLE and HIGH-RISK skills satisfy visibility only, "
+              "via skills/project/prototype wording — never as employer production claims.\n"
+        )
 
     declared_section = ""
     if profile_skills:
@@ -657,7 +832,9 @@ async def tailor_resume(base_resume: str, job_description: str,
         "  DOMAINS: [each company → its real industry; derive from resume text, never invent]\n"
         "  TIMELINE: [each role's start–end years + which JD tools were enterprise-ready by then]\n"
         "  TIMELINE_BLOCKS: [any JD tool failing timeline check → skills-only or dropped; 'none' if all clear]\n"
-        "  GAP_FILLS: [for each JD hard skill absent from resume: 5-anchor test result → role assignment or DROP]\n"
+        "  JD_SKILL_COVERAGE: [JD hard skills detected → present in base resume / missing → target: 100% visibility, 85–95% production-claim]\n"
+        "  MISSING_SKILL_PLACEMENT: [each missing hard skill → WORK-SUPPORTED / ADJACENT-STRETCH / SELF-IMPLEMENTABLE / HIGH-RISK, exact placement, and which target it counts toward (visibility-only vs. production-claim)]\n"
+        "  GAP_FILLS: [for each JD hard skill absent from resume: market-coverage class + 5-anchor test result → role assignment / skills only / project / DROP]\n"
         "  WRONG_JOB_CHECK: [skills whose only bullet is at an older role → confirm gap-fill at most recent plausible role]\n"
         "  CUTS: [which existing bullets are displaced to make room, and from which role]\n"
         "  COMPLIANCE_DROPS: [frameworks skipped because legally impossible in candidate's domain; 'none' if all apply]\n"
@@ -756,5 +933,38 @@ async def tailor_resume(base_resume: str, job_description: str,
         print(f"[WARN] post-review lint ({len(post_issues)}):")
         for iss in post_issues:
             print(f"  • {iss}")
+
+    if skill_coverage_report is not None:
+        coverage = skill_coverage_report(
+            result, job_description, role_type=role_type, profile_skills=profile_skills
+        )
+        if coverage.get("jd_skills"):
+            print(
+                f"[VISIBILITY] JD hard skills visible on resume: {coverage['coverage_text']} "
+                f"({coverage['coverage_ratio']:.0%}) — presence check only, "
+                f"not a verification of production-claim tier."
+            )
+            if coverage.get("missing"):
+                print("[VISIBILITY] Missing: " + ", ".join(coverage["missing"]))
+
+    # ── Tier-compliance audit — second AI pass, truth check, report-only ─────
+    # Checks only the skills that were genuinely missing from the ORIGINAL
+    # resume. Never edits the resume — surfaces violations for human review
+    # (or for a future hard-gate retry, if you decide to make this blocking).
+    if skills_missing_from_original:
+        try:
+            violations, raw_report = await audit_tier_compliance(
+                base_resume, result, skills_missing_from_original,
+                api_key, provider, model,
+            )
+            if violations:
+                print(f"[TIER AUDIT] {len(violations)} violation(s) found:")
+                for v in violations:
+                    print(f"  • {v}")
+            else:
+                print(f"[TIER AUDIT] Clean — {len(skills_missing_from_original)} gap-filled skill(s) audited, no violations.")
+        except Exception as e:
+            # Audit failure should never block resume delivery — log and move on.
+            print(f"[TIER AUDIT] Audit pass failed to run: {e}")
 
     return result

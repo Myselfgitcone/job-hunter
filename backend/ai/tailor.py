@@ -921,12 +921,12 @@ async def tailor_resume(base_resume: str, job_description: str,
     result = _enforce_limits(raw, role_type=role_type)
 
     # ── Semantic review — 1 pass, no retry ──────────────────────────────────
-    pre_review_hash = hash(result)
+    pre_review = result
     result = await review_resume(
         result, job_description, api_key, provider, model,
         profile_skills=profile_skills,
     )
-    if hash(result) != pre_review_hash:
+    if result != pre_review:
         print("[REVIEW] Reviewer made changes")
     else:
         print("[REVIEW] No semantic violations found — resume passed all 3 checks")

@@ -172,6 +172,16 @@ class UserJob(Base):
     saved_at             = Column(String, default="")
 
 
+class QuickTailorHistory(Base):
+    __tablename__ = "quick_tailor_history"
+    id             = Column(String, primary_key=True)
+    user_id        = Column(String, nullable=False)
+    company        = Column(String, default="")
+    jd             = Column(Text, default="")
+    tailored_resume= Column(Text, default="")
+    created_at     = Column(String, default="")
+
+
 class AppLog(Base):
     __tablename__ = "app_logs"
     id        = Column(Integer, primary_key=True, autoincrement=True)

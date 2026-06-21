@@ -174,6 +174,9 @@ export const api = {
 
   quickTailorPdfUrl: () => `${BASE}/api/quick-tailor/pdf`,
   quickTailorDocxUrl: () => `${BASE}/api/quick-tailor/docx`,
+  quickHistoryPdfUrl:  (id: string) => `${BASE}/api/quick-tailor/history/${id}/pdf`,
+  quickHistoryDocxUrl: (id: string) => `${BASE}/api/quick-tailor/history/${id}/docx`,
+  quickHistoryJdUrl:   (id: string) => `${BASE}/api/quick-tailor/history/${id}/jd`,
 
   savePackageUrl: (job_id: string) => `${BASE}/api/jobs/${job_id}/save-package`,
 

@@ -22,7 +22,7 @@ load_dotenv()
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from database import init_db, SessionLocal, engine, Job, Setting, User, UserSettings, UserJob, Company, AppLog
+from database import init_db, SessionLocal, engine, Job, Setting, User, UserSettings, UserJob, Company, AppLog, QuickTailorHistory
 from auth import get_current_user_id, get_optional_user_id, hash_password, verify_password, create_token
 from scrapers import run_all_scrapers, run_group_fast, run_group_greenhouse, run_group_hiringcafe, run_group_jobo, run_group_fantasticjobs
 from scrapers.jobspy_scraper import fetch as jobspy_fetch
@@ -2489,6 +2489,19 @@ async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_curr
 
     profile_skills = await _load_profile_skills(user_id)
     tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model, profile_skills=profile_skills)
+
+    async with SessionLocal() as db:
+        record = QuickTailorHistory(
+            id=str(_uuid.uuid4()),
+            user_id=user_id,
+            company=body.company or "",
+            jd=body.jd,
+            tailored_resume=tailored,
+            created_at=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        )
+        db.add(record)
+        await db.commit()
+
     return {"tailored_resume": tailored}
 
 
@@ -2608,7 +2621,57 @@ async def quick_save_package(body: QuickSaveRequest, user_id: str = Depends(get_
     return StreamingResponse(
         iter([zip_bytes]),
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="Package_{slug}.zip"'},
+        headers={“Content-Disposition”: f'attachment; filename=”Package_{slug}.zip”'},
+    )
+
+
+# ── Quick Tailor History downloads ────────────────────────────────────────────
+
+@app.get(“/api/quick-tailor/history/{record_id}/pdf”)
+async def quick_tailor_history_pdf(record_id: str, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        record = await db.get(QuickTailorHistory, record_id)
+    if not record or record.user_id != user_id:
+        raise HTTPException(404, “Not found”)
+    user_cfg = await _get_user_settings(user_id)
+    cand = _candidate_slug(user_cfg.get(“profile_name”, “”))
+    slug = re.sub(r”[^\w]+”, “_”, record.company or “Quick”).strip(“_”)
+    pdf_bytes = generate_pdf(record.tailored_resume, “”, record.company)
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type=”application/pdf”,
+        headers={“Content-Disposition”: f'attachment; filename=”{cand}_{slug}.pdf”'},
+    )
+
+
+@app.get(“/api/quick-tailor/history/{record_id}/docx”)
+async def quick_tailor_history_docx(record_id: str, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        record = await db.get(QuickTailorHistory, record_id)
+    if not record or record.user_id != user_id:
+        raise HTTPException(404, “Not found”)
+    user_cfg = await _get_user_settings(user_id)
+    cand = _candidate_slug(user_cfg.get(“profile_name”, “”))
+    slug = re.sub(r”[^\w]+”, “_”, record.company or “Quick”).strip(“_”)
+    docx_bytes = generate_docx(record.tailored_resume, “”, record.company)
+    return StreamingResponse(
+        iter([docx_bytes]),
+        media_type=”application/vnd.openxmlformats-officedocument.wordprocessingml.document”,
+        headers={“Content-Disposition”: f'attachment; filename=”{cand}_{slug}.docx”'},
+    )
+
+
+@app.get(“/api/quick-tailor/history/{record_id}/jd”)
+async def quick_tailor_history_jd(record_id: str, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        record = await db.get(QuickTailorHistory, record_id)
+    if not record or record.user_id != user_id:
+        raise HTTPException(404, “Not found”)
+    slug = re.sub(r”[^\w]+”, “_”, record.company or “Quick”).strip(“_”)
+    return StreamingResponse(
+        iter([record.jd.encode()]),
+        media_type=”text/plain”,
+        headers={“Content-Disposition”: f'attachment; filename=”JD_{slug}.txt”'},
     )
 
 
@@ -2745,6 +2808,24 @@ async def get_analytics(user_id: str = Depends(get_current_user_id)):
 
     async with SessionLocal() as db:
         ls = await db.get(Setting, "last_scraped_at")
+        qt_result = await db.execute(
+            select(QuickTailorHistory)
+            .where(QuickTailorHistory.user_id == user_id)
+            .order_by(QuickTailorHistory.created_at.desc())
+            .limit(50)
+        )
+        qt_records = qt_result.scalars().all()
+
+    quick_tailored_jobs = [
+        {
+            "id": r.id,
+            "company": r.company,
+            "title": "",
+            "tailored_at": r.created_at,
+        }
+        for r in qt_records
+    ]
+
     return {
         "total": total,
         "last_scraped_at": ls.value if ls else "",
@@ -2756,8 +2837,9 @@ async def get_analytics(user_id: str = Depends(get_current_user_id)):
         "by_source":  sorted(by_source.items(),  key=lambda x: -x[1]),
         "timeline":   timeline,
         "monthly":    monthly,
-        "applied_jobs":  sorted(applied_jobs,  key=lambda j: j.get("tailored_at") or j.get("applied_at") or "", reverse=True)[:50],
-        "tailored_jobs": sorted(tailored_jobs, key=lambda j: j.get("tailored_at") or "", reverse=True)[:50],
+        "applied_jobs":       sorted(applied_jobs,  key=lambda j: j.get("tailored_at") or j.get("applied_at") or "", reverse=True)[:50],
+        "tailored_jobs":      sorted(tailored_jobs, key=lambda j: j.get("tailored_at") or "", reverse=True)[:50],
+        "quick_tailored_jobs": quick_tailored_jobs,
     }
 
 

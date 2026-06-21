@@ -257,14 +257,16 @@ function _fmtFullDate(iso: string): string {
 }
 
 // ResumeVar-style column: search, big cards, status pill, pagination
+const QUICK_ACCENT = "#d97706";  // amber-600
+
 function ResumeList({ title, accent, items, icon, badge, showDownloads }: {
   title: string; accent: string;
-  items: Array<{ id?: string; company: string; title: string; when: string; whenFull: string; location: string; exp: string }>;
+  items: Array<{ id?: string; company: string; title: string; when: string; whenFull: string; location: string; exp: string; source?: "job" | "quick" }>;
   icon: string; badge: string; showDownloads?: boolean;
 }) {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
-  const PER = 10;  // 10 per page inside a fixed scrollbox, like ResumeVar
+  const PER = 10;
   const PATH: Record<string, string> = {
     applied:   '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
     sparkles:  '<path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/>',
@@ -286,6 +288,10 @@ function ResumeList({ title, accent, items, icon, badge, showDownloads }: {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: PATH[icon] || PATH.applied }} />
         {title}
         <span className="rh-count">{items.length}</span>
+        <span style={{ marginLeft: 8, display: "flex", gap: 6, alignItems: "center" }}>
+          <span style={{ fontSize: 10.5, padding: "1px 7px", borderRadius: 6, background: accent + "1c", color: accent, border: `1px solid ${accent}55` }}>✓ Tailored</span>
+          <span style={{ fontSize: 10.5, padding: "1px 7px", borderRadius: 6, background: QUICK_ACCENT + "1c", color: QUICK_ACCENT, border: `1px solid ${QUICK_ACCENT}55` }}>⚡ Quick</span>
+        </span>
       </div>
 
       <input value={q} onChange={e => { setQ(e.target.value); setPage(1); }}
@@ -297,46 +303,65 @@ function ResumeList({ title, accent, items, icon, badge, showDownloads }: {
         maxHeight: 430, overflowY: "auto", paddingRight: 4,
         scrollbarWidth: "thin", scrollbarColor: "var(--line-hi) transparent" }}>
         {shown.length === 0 && <div style={{ padding: "24px 8px", fontSize: 12.5, color: "var(--tx-3)", textAlign: "center" }}>None yet</div>}
-        {shown.map((it, i) => (
-          <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "14px 16px",
-            borderRadius: 12, border: "1px solid var(--line)", background: "var(--bg-elevated)" }}>
-            <span style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, display: "grid", placeItems: "center",
-              background: accent + "18", color: accent }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 3v5h5"/><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
-            </span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--tx)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                <span style={{ color: "var(--tx-3)", fontFamily: "var(--f-mono)", fontWeight: 600, marginRight: 6 }}>#{(cur - 1) * PER + i + 1}</span>
-                {it.company} – {it.title}
-              </div>
-              <div style={{ fontSize: 12, color: "var(--tx-3)", marginTop: 4 }}>
-                {badge}: <b style={{ color: "var(--tx-2)" }}>{it.whenFull}</b>{it.when && <span> ({it.when} ago)</span>}
-              </div>
-              {it.location && <div style={{ fontSize: 12, color: "var(--tx-3)", marginTop: 2 }}>Location: {it.location}</div>}
-              {it.exp && <div style={{ fontSize: 12, color: "var(--tx-3)", marginTop: 2 }}>Exp Needed: {it.exp} yrs</div>}
-            </div>
-            <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-              <span style={{ fontSize: 11.5, fontWeight: 700, padding: "4px 12px", borderRadius: 999,
-                background: accent + "1c", color: accent }}>✓ {badge}</span>
-              {showDownloads && it.id && (
-                <div style={{ display: "flex", gap: 5 }}>
-                  {([
-                    { label: "PDF",  url: api.pdfUrl(it.id),  file: "resume.pdf"  },
-                    { label: "DOCX", url: api.docxUrl(it.id), file: "resume.docx" },
-                    { label: "JD",   url: api.jdUrl(it.id),   file: "jd.txt"      },
-                  ] as { label: string; url: string; file: string }[]).map(({ label, url, file }) => (
-                    <button key={label} onClick={() => downloadFile(url, file)}
-                      style={{ fontSize: 10.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6,
-                        border: "1px solid var(--line)", background: "var(--bg-surface)",
-                        color: "var(--tx-2)", cursor: "pointer" }}>
-                      {label}
-                    </button>
-                  ))}
+        {shown.map((it, i) => {
+          const isQuick = it.source === "quick";
+          const cardAccent = isQuick ? QUICK_ACCENT : accent;
+          const cardBg = isQuick ? QUICK_ACCENT + "0d" : "var(--bg-elevated)";
+          const dlUrls = it.id
+            ? isQuick
+              ? [
+                  { label: "PDF",  url: api.quickHistoryPdfUrl(it.id),  file: "resume.pdf"  },
+                  { label: "DOCX", url: api.quickHistoryDocxUrl(it.id), file: "resume.docx" },
+                  { label: "JD",   url: api.quickHistoryJdUrl(it.id),   file: "jd.txt"      },
+                ]
+              : [
+                  { label: "PDF",  url: api.pdfUrl(it.id),  file: "resume.pdf"  },
+                  { label: "DOCX", url: api.docxUrl(it.id), file: "resume.docx" },
+                  { label: "JD",   url: api.jdUrl(it.id),   file: "jd.txt"      },
+                ]
+            : [];
+          return (
+            <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "14px 16px",
+              borderRadius: 12, border: `1px solid ${isQuick ? QUICK_ACCENT + "44" : "var(--line)"}`, background: cardBg }}>
+              <span style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, display: "grid", placeItems: "center",
+                background: cardAccent + "18", color: cardAccent }}>
+                {isQuick
+                  ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                  : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 3v5h5"/><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
+                }
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--tx)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <span style={{ color: "var(--tx-3)", fontFamily: "var(--f-mono)", fontWeight: 600, marginRight: 6 }}>#{(cur - 1) * PER + i + 1}</span>
+                  {it.company}{it.title ? ` – ${it.title}` : ""}
                 </div>
-              )}
+                <div style={{ fontSize: 12, color: "var(--tx-3)", marginTop: 4 }}>
+                  {isQuick ? "Quick Tailor" : badge}: <b style={{ color: "var(--tx-2)" }}>{it.whenFull}</b>{it.when && <span> ({it.when} ago)</span>}
+                </div>
+                {it.location && <div style={{ fontSize: 12, color: "var(--tx-3)", marginTop: 2 }}>Location: {it.location}</div>}
+                {it.exp && <div style={{ fontSize: 12, color: "var(--tx-3)", marginTop: 2 }}>Exp Needed: {it.exp} yrs</div>}
+              </div>
+              <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                <span style={{ fontSize: 11.5, fontWeight: 700, padding: "4px 10px", borderRadius: 999,
+                  background: cardAccent + "1c", color: cardAccent }}>
+                  {isQuick ? "⚡ Quick" : `✓ ${badge}`}
+                </span>
+                {showDownloads && dlUrls.length > 0 && (
+                  <div style={{ display: "flex", gap: 5 }}>
+                    {dlUrls.map(({ label, url, file }) => (
+                      <button key={label} onClick={() => downloadFile(url, file)}
+                        style={{ fontSize: 10.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6,
+                          border: "1px solid var(--line)", background: "var(--bg-surface)",
+                          color: "var(--tx-2)", cursor: "pointer" }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {pages > 1 && (
@@ -480,10 +505,18 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
     company: j.company, title: j.title, location: j.location || "", exp: j.experience_level || "",
     when: timeAgo(j.applied_at || j.scraped_at), whenFull: _fmtFullDate(j.applied_at || j.scraped_at),
   }));
-  const tailoredJobs = (data.tailored_jobs || []).map((j: any) => ({
+  const jobTailored = (data.tailored_jobs || []).map((j: any) => ({
     id: j.id, company: j.company, title: j.title, location: j.location || "", exp: j.experience_level || "",
     when: timeAgo(j.tailored_at || j.scraped_at), whenFull: _fmtFullDate(j.tailored_at || j.scraped_at),
+    source: "job" as const, tailored_at: j.tailored_at || j.scraped_at || "",
   }));
+  const quickTailored = (data.quick_tailored_jobs || []).map((j: any) => ({
+    id: j.id, company: j.company, title: "", location: "", exp: "",
+    when: timeAgo(j.tailored_at), whenFull: _fmtFullDate(j.tailored_at),
+    source: "quick" as const, tailored_at: j.tailored_at || "",
+  }));
+  const tailoredJobs = [...jobTailored, ...quickTailored]
+    .sort((a, b) => (b.tailored_at > a.tailored_at ? 1 : -1));
 
   // Reminders mapped
   const remList = (reminders || []).map((r: any) => ({

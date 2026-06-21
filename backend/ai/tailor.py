@@ -39,6 +39,49 @@ _SKILLS_SECTION_KEYWORDS = {
 }
 
 
+def _extract_education_section(text: str) -> str:
+    """Return the content lines under the EDUCATION header (stripped, newline-joined)."""
+    lines = text.split("\n")
+    edu_lines: list[str] = []
+    in_edu = False
+    for line in lines:
+        stripped = line.strip()
+        if re.match(r'^EDUCATION:?\s*$', stripped, re.IGNORECASE):
+            in_edu = True
+            continue
+        if in_edu:
+            # Any new ALL-CAPS section header ends the block
+            if stripped and stripped == stripped.upper() and len(stripped) > 3 and not stripped.startswith("•"):
+                break
+            if stripped:
+                edu_lines.append(stripped)
+    return "\n".join(edu_lines)
+
+
+def _replace_education_section(text: str, correct_edu: str) -> str:
+    """Splice correct_edu into text, replacing whatever the AI generated under EDUCATION."""
+    lines = text.split("\n")
+    out: list[str] = []
+    in_edu = False
+    for line in lines:
+        stripped = line.strip()
+        if re.match(r'^EDUCATION:?\s*$', stripped, re.IGNORECASE):
+            in_edu = True
+            out.append(line)
+            for edu_line in correct_edu.split("\n"):
+                if edu_line.strip():
+                    out.append(edu_line)
+            continue
+        if in_edu:
+            if stripped and stripped == stripped.upper() and len(stripped) > 3 and not stripped.startswith("•"):
+                in_edu = False
+                out.append(line)
+            # else: discard AI-generated education content
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
 def _enforce_limits(text: str, role_type: str = TECH) -> str:
     """
     Post-process AI output to hard-enforce bullet counts per section.
@@ -284,6 +327,13 @@ NEVER drop any license, certification, or deal from the original resume.
 ALWAYS include every education entry. Never drop a degree.
 ALWAYS include graduation year if present in the original resume.
 Header title = JD's target role title. Job block titles are factual and NEVER change.
+
+EDUCATION SECTION — COPY VERBATIM:
+The EDUCATION section must be copied character-for-character from the candidate's original resume.
+Never alter, infer, regenerate, or replace the degree name, institution name, or graduation year under any circumstance.
+Do not paraphrase, reorder, abbreviate, or reformat it in any way.
+Even minor changes — dropping part of an institution name, shortening a degree title, swapping a year — are fabrications that cause immediate rejection.
+If the original resume shows "Master of Science in Information Systems @ Saint Louis University | 2024", the output must show exactly "Master of Science in Information Systems @ Saint Louis University | 2024".
 
 ═══ STEP 2 — COMPANY STAGE CALIBRATION ═══
 Infer the TARGET COMPANY's stage from signals in the JD:
@@ -690,6 +740,24 @@ Tools that ARE in the Declared Skills list are the candidate's own claims — ke
 them regardless of bullet support.
 Do NOT add any label — just delete unsupported, non-JD-required items.
 
+CHECK 4 — SUMMARY UNSUPPORTED EXPERIENCE CLAIMS:
+Read the PROFESSIONAL SUMMARY. For each summary bullet, check whether it claims
+an experience TYPE (not a skill) that is completely absent from the WORK EXPERIENCE bullets below.
+
+Specifically catch and correct:
+  "client-facing advisory / consulting experience" — only valid if the work bullets
+    show actual external client work or consultancy employment. If no such bullets exist,
+    replace that claim with what the bullets actually show (e.g. "cross-functional
+    stakeholder collaboration within enterprise data teams").
+  "managed / led a team of N" / "direct reports" — only valid if the work bullets
+    mention headcount, people management, or direct-report responsibility. Remove if absent.
+  "advisory" or "trusted advisor" role framing — only valid if experience bullets
+    show consulting or external advisory work with named clients.
+
+Do NOT remove the entire summary bullet — only remove or rewrite the unsupported
+portion within it. If the rest of the bullet is valid, keep it.
+If no unsupported experience claims exist in the summary, leave all summary bullets unchanged.
+
 CONSTRAINT — NOTHING ELSE:
 Reproduce every other line exactly as given. No commentary. No plan blocks.
 Return the complete corrected resume as plain text only."""
@@ -1039,5 +1107,17 @@ async def tailor_resume(base_resume: str, job_description: str,
         except Exception as e:
             # Audit failure should never block resume delivery — log and move on.
             print(f"[TIER AUDIT] Audit pass failed to run: {e}")
+
+    # ── Education section safety net — deterministic, no AI involvement ──────
+    # Runs after all AI passes. Compares EDUCATION section of final output
+    # against the original base resume. If the AI altered it (degree name,
+    # institution, year), hard-replaces with the verbatim original content.
+    original_edu = _extract_education_section(base_resume)
+    result_edu   = _extract_education_section(result)
+    if original_edu and result_edu != original_edu:
+        print("[EDUCATION MISMATCH] AI altered education section — reverting to original.")
+        print(f"  Original : {original_edu[:120]}")
+        print(f"  AI had   : {result_edu[:120]}")
+        result = _replace_education_section(result, original_edu)
 
     return result

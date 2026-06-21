@@ -97,7 +97,9 @@ _ROLE_SIGNALS: dict[str, list[tuple[str, int]]] = {
     ],
     CONSULTING: [
         (r"\bconsulting\b", 2), (r"\bmanagement consultant\b", 3), (r"\bstrategy consultant\b", 3),
-        (r"\bengagement\b", 2), (r"\bclient (delivery|relationship|facing)", 2),
+        (r"\bengagement\b", 2), (r"\bclient[-\s](delivery|relationship|facing)\b", 2),
+        (r"\btrusted advisor\b", 3), (r"\bstorytelling\b", 2),
+        (r"\bbusiness valuation\b", 2), (r"\bproject scoping\b", 2),
         (r"\bworkstream\b", 2), (r"\bprocess improvement\b", 2), (r"\bchange management\b", 2),
         (r"\boperational excellence\b", 2), (r"\btransformation\b", 1),
         (r"\bcase team\b", 2), (r"\bmckinsey|bain|bcg|deloitte|accenture|kpmg|pwc|ey\b", 2),

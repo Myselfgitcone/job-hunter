@@ -82,6 +82,122 @@ def _replace_education_section(text: str, correct_edu: str) -> str:
     return "\n".join(out)
 
 
+_EDU_WORDS = ("university", "college", "institute", "bachelor", "master", "phd", "degree")
+
+def _is_job_header_line(s: str) -> bool:
+    if " @ " not in s or s.startswith("•"):
+        return False
+    if any(d in s.lower() for d in _EDU_WORDS):
+        return False
+    return bool(re.search(r' @ .+? \|', s))
+
+
+def _extract_job_companies(text: str) -> list[str]:
+    """Return company names from job headers in document order."""
+    companies = []
+    for line in text.split("\n"):
+        s = line.strip()
+        if _is_job_header_line(s):
+            m = re.search(r' @ (.+?) \|', s)
+            if m:
+                companies.append(m.group(1).strip())
+    return companies
+
+
+def _extract_job_block(text: str, company: str) -> str:
+    """Extract the full text block (header + bullets) for a given company."""
+    co_lo = company.lower()
+    lines = text.split("\n")
+    block: list[str] = []
+    in_block = False
+    for line in lines:
+        s = line.strip()
+        if _is_job_header_line(s):
+            m = re.search(r' @ (.+?) \|', s)
+            this_co = m.group(1).strip().lower() if m else ""
+            if co_lo in this_co or this_co in co_lo:
+                in_block = True
+                block.append(line)
+                continue
+            elif in_block:
+                break  # next job started
+        if in_block:
+            # Stop at any section header
+            if s and s == s.upper() and s.endswith(":") and len(s) > 3 and not s.startswith("•"):
+                break
+            block.append(line)
+    return "\n".join(block).strip()
+
+
+def _enforce_job_integrity(result: str, base_resume: str) -> tuple[str, list[str], list[str]]:
+    """
+    Remove hallucinated job blocks (company not in base_resume) and
+    re-insert any real job blocks that were dropped by the AI verbatim.
+    Returns (fixed_result, removed_companies, reinserted_companies).
+    """
+    def in_list(company: str, lst: list[str]) -> bool:
+        co = company.lower()
+        return any(co in b.lower() or b.lower() in co for b in lst)
+
+    base_cos   = _extract_job_companies(base_resume)
+    result_cos = _extract_job_companies(result)
+
+    hallucinated = [c for c in result_cos if not in_list(c, base_cos)]
+    dropped      = [c for c in base_cos   if not in_list(c, result_cos)]
+
+    if not hallucinated and not dropped:
+        return result, [], []
+
+    # ── Remove hallucinated job blocks ───────────────────────────────────────
+    if hallucinated:
+        hall_lo = [h.lower() for h in hallucinated]
+        lines   = result.split("\n")
+        out: list[str] = []
+        skip = False
+        for line in lines:
+            s = line.strip()
+            if _is_job_header_line(s):
+                m  = re.search(r' @ (.+?) \|', s)
+                co = m.group(1).strip() if m else ""
+                if any(co.lower() in h or h in co.lower() for h in hall_lo):
+                    skip = True
+                    continue
+                else:
+                    skip = False
+            if skip:
+                if s and s == s.upper() and s.endswith(":") and len(s) > 3 and not s.startswith("•"):
+                    skip = False
+                    out.append(line)
+                continue
+            out.append(line)
+        result = "\n".join(out)
+
+    # ── Re-insert dropped real jobs verbatim at end of WORK EXPERIENCE ───────
+    reinserted: list[str] = []
+    for company in dropped:
+        block = _extract_job_block(base_resume, company)
+        if not block:
+            continue
+        # Find insertion point: just before first non-job-experience section header
+        lines = result.split("\n")
+        insert_at = len(lines)
+        in_exp = False
+        for i, line in enumerate(lines):
+            s = line.strip()
+            if "WORK EXPERIENCE" in s.upper():
+                in_exp = True
+                continue
+            if in_exp and s and s == s.upper() and s.endswith(":") and len(s) > 3 and not s.startswith("•"):
+                insert_at = i
+                break
+        lines.insert(insert_at, "")
+        lines.insert(insert_at + 1, block)
+        result = "\n".join(lines)
+        reinserted.append(company)
+
+    return result, hallucinated, reinserted
+
+
 def _enforce_limits(text: str, role_type: str = TECH) -> str:
     """
     Post-process AI output to hard-enforce bullet counts per section.
@@ -1056,6 +1172,14 @@ async def tailor_resume(base_resume: str, job_description: str,
 
     # ── Enforce hard limits — role-type-aware ────────────────────────────────
     result = _enforce_limits(raw, role_type=role_type)
+
+    # ── Job integrity safety net — deterministic, no AI involvement ──────────
+    # Runs before review so the reviewer never sees hallucinated companies.
+    result, removed_jobs, reinserted_jobs = _enforce_job_integrity(result, base_resume)
+    if removed_jobs:
+        print(f"[JOB HALLUCINATION] Removed {len(removed_jobs)} fake job block(s): {', '.join(removed_jobs)}")
+    if reinserted_jobs:
+        print(f"[JOB RESTORED] Re-inserted {len(reinserted_jobs)} real job(s) verbatim: {', '.join(reinserted_jobs)}")
 
     # ── Semantic review — 1 pass, no retry ──────────────────────────────────
     pre_review = result

@@ -335,6 +335,75 @@ Apply by ROLE TYPE:
 
 If a bullet only shows exposure, rewrite it to surface the real execution mechanics.
 
+═══ INFLUENCE-SIGNAL SURFACING RULE ═══
+When the JD requires leadership, coaching, stakeholder influence, or team-direction signal,
+scan the candidate's EXISTING bullets for these 5 patterns. If a pattern is genuinely
+present, reframe the bullet to make the already-true influence visible — using the
+candidate's own domain vocabulary. NEVER invent management titles, direct reports, formal
+authority, or leadership experiences that do not exist in the original resume.
+
+PATTERN 1 — STANDARD-SETTING:
+  Work that became a pattern, template, or configuration that other people/teams now
+  build on or must conform to.
+  Signal words: "standardized", "established", "defined", "created template for",
+  "adopted across", "configuration across teams/environments"
+  Example (TECH): "Standardized Terraform config across dev, staging, prod"
+  → "Established Terraform infrastructure standards adopted across 3 environments —
+  eliminating environment drift for all engineers building on the platform."
+
+PATTERN 2 — GATEKEEPING / QUALITY CONTROL:
+  Work that controls, reviews, or blocks other people's output before it can proceed.
+  The candidate's work sits between other people's work and its destination.
+  Signal words: "blocked", "prevented", "validated before", "caught violations",
+  "flagged before load", "enforced before deployment", "checks before"
+  Example (FINANCE): "Built variance-check process flagging discrepancies before month-end close"
+  → "Authored variance controls preventing reporting errors from reaching month-end close —
+  protecting downstream financial statements from undetected discrepancies."
+
+PATTERN 3 — DEPENDENCY / SLA RELATIONSHIPS:
+  Other teams or people structurally depend on this candidate's output — uptime, data
+  freshness, delivery cadence, or service availability.
+  Signal words: "SLA", "uptime", "freshness", "supported N teams", "consumed by",
+  "downstream", "relied on", "used by N"
+  Example (IT / GENERAL): "Maintained uptime SLA for ticketing system used by 40-person team"
+  → "Owned uptime SLA for the support team's primary ticketing platform — 40 staff depended
+  on this system's availability for all daily operations."
+
+PATTERN 4 — CROSS-STAKEHOLDER COORDINATION:
+  Work that required gathering requirements, aligning schemas, or coordinating across
+  multiple owners or business domains — even informally, without a formal PM role.
+  Signal words: "across N source systems", "across N departments/domains/teams",
+  "N clinical domains", "N business units", "multiple stakeholders"
+  Example (HEALTHCARE): "Integrated data from 5 clinical departments into one model"
+  → "Designed a unified data model spanning 5 clinical departments — translating
+  divergent reporting requirements from multiple business owners into one governed structure."
+
+PATTERN 5 — ORG-WIDE ENFORCEMENT:
+  Compliance, governance, or policy that the candidate applied or enforced across multiple
+  teams, environments, or business units — not just their own work.
+  Signal words: "across N environments", "enforced across", "org-wide", "all teams",
+  "entire organization", "across business units", "applied to all"
+  Example (CYBER): "Enforced access control policy across 6 business units"
+  → "Authored and enforced access control standards across 6 business units — ensuring
+  org-wide compliance without per-team exceptions."
+
+APPLICATION RULE:
+  • Scan every bullet in every role for all 5 patterns regardless of detected ROLE TYPE.
+  • When a pattern is found AND the JD asks for leadership/influence signal: surface the
+    influence angle within the same existing bullet (≤22 words). Do not add new bullets.
+  • When the JD does NOT require leadership/influence signal: skip this rule entirely.
+    Apply only when JD explicitly names coaching, stakeholder engagement, team direction,
+    standards ownership, client-facing influence, or "directing teams."
+
+CRITICAL GUARDRAIL — DO NOT STRETCH:
+  This reframing ONLY applies when the pattern is ALREADY genuinely present in the
+  original resume text. If a candidate's bullets show pure isolated task execution —
+  no standard-setting, gatekeeping, dependency, coordination, or enforcement language
+  anywhere — leave every bullet as IC work. Do NOT reframe "Built X" as "Led team to
+  build X." Do NOT imply direct reports, coaching, or formal management authority that
+  didn't happen. The goal is to surface what is already true, not to promote the
+  candidate into a role they have not held.
+
 ═══ COVERAGE — 80–90%, NOT 100% ═══
 Cover every hard skill the JD names, every core responsibility, the seniority level, and the top 3–5 distinctive JD phrases.
 Skip: soft skills, culture words, boilerplate, inflation keywords.

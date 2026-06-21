@@ -829,6 +829,12 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "") -> 
                 f'[YEARS MISMATCH] Summary claims "{out_years}" but original resume '
                 f'states "{orig_years}". Use the exact number from the original.'
             )
+        elif out_years and not orig_years:
+            issues.append(
+                f'[YEARS FABRICATED] Summary claims "{out_years}" but the original '
+                f'resume contains no years-of-experience statement to support this. '
+                f'Remove the years claim or rephrase without a specific number.'
+            )
 
     # Bullet budget
     total_bullets = summary_count + len(exp_bullets)

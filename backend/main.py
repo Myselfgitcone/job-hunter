@@ -55,7 +55,7 @@ _CORS_ORIGINS += [
 ]
 _CORS_ORIGINS = list(set(_CORS_ORIGINS))
 
-# â”€â”€ Raw ASGI CORS â€” works with file uploads, streaming, and exceptions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Raw ASGI CORS — works with file uploads, streaming, and exceptions â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 _CORS_HEADERS = [
     (b"access-control-allow-origin",  b"*"),
     (b"access-control-allow-methods", b"GET, POST, PUT, DELETE, OPTIONS, PATCH"),
@@ -73,7 +73,7 @@ class RawCORSMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Handle OPTIONS preflight immediately â€” no auth, no routing
+        # Handle OPTIONS preflight immediately — no auth, no routing
         if scope.get("method") == "OPTIONS":
             await send({
                 "type": "http.response.start",
@@ -83,7 +83,7 @@ class RawCORSMiddleware:
             await send({"type": "http.response.body", "body": b""})
             return
 
-        # For all other requests â€” inject CORS headers into the response
+        # For all other requests — inject CORS headers into the response
         async def send_with_cors(message):
             if message["type"] == "http.response.start":
                 # Merge existing headers with CORS headers
@@ -105,7 +105,7 @@ app.add_middleware(
     expose_headers=["Content-Disposition"],
 )
 
-# â”€â”€ Global exception handlers â€” always include CORS headers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Global exception handlers — always include CORS headers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 from fastapi import Request as _Request
 from fastapi.responses import JSONResponse as _JSONResponse
 from fastapi.exception_handlers import http_exception_handler as _default_http_handler
@@ -585,7 +585,7 @@ async def startup():
     except Exception as e:
         print(f"[Startup] DB migration error: {e}")
 
-    # â”€â”€ Init Telegram + Seed companies in background (non-blocking) â”€â”€â”€â”€â”€â”€
+    # â"€â"€ Init Telegram + Seed companies in background (non-blocking) â"€â"€â"€â"€â"€â"€
     async def _background_init():
         try:
             async with SessionLocal() as db:
@@ -766,7 +766,7 @@ async def startup():
 
 
 
-# â”€â”€ Auth â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Auth â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 class RegisterBody(BaseModel):
     email: str
@@ -847,7 +847,7 @@ async def get_me(user_id: str = Depends(get_current_user_id)):
         return {"id": user.id, "email": user.email, "name": user.name, "created_at": user.created_at, "status": user.status or "approved"}
 
 
-# â”€â”€ Change Password (logged-in users) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Change Password (logged-in users) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 class ChangePasswordBody(BaseModel):
     current_password: str
@@ -869,7 +869,7 @@ async def change_password(body: ChangePasswordBody, user_id: str = Depends(get_c
     return {"ok": True, "message": "Password changed successfully"}
 
 
-# â”€â”€ Forgot Password â€” sends reset email via Resend â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Forgot Password — sends reset email via Resend â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 import secrets as _secrets
 import os as _os
@@ -939,7 +939,7 @@ async def forgot_password(body: ForgotPasswordBody):
       </p>
       <a href="{reset_link}"
          style="display:inline-block;background:linear-gradient(135deg,#1d4ed8,#2563eb);color:#fff;text-decoration:none;font-size:15px;font-weight:700;padding:14px 28px;border-radius:10px;letter-spacing:-0.01em;">
-        Reset Password â†’
+        Reset Password â†'
       </a>
       <p style="font-size:12px;color:#94a3b8;margin-top:28px;line-height:1.6;">
         If you didn't request this, you can safely ignore this email. Your password won't change.<br/>
@@ -958,7 +958,7 @@ async def forgot_password(body: ForgotPasswordBody):
     return _SAFE_RESPONSE
 
 
-# â”€â”€ Reset Password with token â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Reset Password with token â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 class ResetPasswordBody(BaseModel):
     token: str
@@ -1180,7 +1180,7 @@ async def github_callback(request: Request, code: str = None, error: str = None,
 
 import telegram_bot
 
-# â”€â”€ Settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Settings â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 ADMIN_EMAIL = "Jaggubhai8766@gmail.com"
 
@@ -1445,7 +1445,7 @@ async def test_telegram(body: dict = Body(...), user_id: str = Depends(get_curre
         raise HTTPException(status_code=400, detail=f"Telegram error: {msg}")
 
 
-# â”€â”€ Companies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Companies â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @app.get("/api/companies")
 async def list_companies(user_id: str = Depends(get_current_user_id)):
@@ -1515,11 +1515,11 @@ async def toggle_company(company_id: str, user_id: str = Depends(get_current_use
         return {"id": c.id, "active": c.active}
 
 
-# â”€â”€ Jobs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Jobs â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @app.get("/api/jobs/count")
 async def public_job_count():
-    """Public endpoint â€” no auth needed. Returns total job count for login page."""
+    """Public endpoint — no auth needed. Returns total job count for login page."""
     async with SessionLocal() as db:
         result = await db.execute(select(func.count()).select_from(Job))
         count = result.scalar() or 0
@@ -1527,7 +1527,7 @@ async def public_job_count():
 
 @app.get("/api/stats/today")
 async def public_today_stats():
-    """Public endpoint â€” live stats for login page (no auth needed)."""
+    """Public endpoint — live stats for login page (no auth needed)."""
     from datetime import datetime, timezone
     today = datetime.now(EST).strftime("%Y-%m-%d")
     async with SessionLocal() as db:
@@ -1626,7 +1626,7 @@ async def list_jobs(
     if status:
         jobs = [j for j in jobs if get_uj_status(j) == status]
 
-    # Time filter in Python â€” use posted_at when available, fallback to scraped_at
+    # Time filter in Python — use posted_at when available, fallback to scraped_at
     def parse_dt(s: str):
         try:
             dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
@@ -1635,7 +1635,7 @@ async def list_jobs(
             return None
 
     def effective_dt(j) -> datetime:
-        """Use scraped_at (when WE found it) â€” avoids old posted_at dates from jobspy filtering out fresh scrapes."""
+        """Use scraped_at (when WE found it) — avoids old posted_at dates from jobspy filtering out fresh scrapes."""
         return parse_dt(j.scraped_at or "") or parse_dt(j.posted_at or "") or now
 
     if time_range == "24h":
@@ -1703,14 +1703,14 @@ async def get_job(job_id: str, user_id: str = Depends(get_current_user_id)):
         return d
 
 
-# â”€â”€ Live job verification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Live job verification â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @app.get("/api/jobs/{job_id}/verify")
 async def verify_job_live(job_id: str, user_id: str = Depends(get_current_user_id)):
     """
     HEAD-ping the job URL to check if it still exists.
     Returns: {alive: bool|null, status_code: int|null}
-    null = couldn't reach (network error) â€” don't assume dead.
+    null = couldn't reach (network error) — don't assume dead.
     """
     async with SessionLocal() as db:
         job = await db.get(Job, job_id)
@@ -1734,7 +1734,7 @@ async def verify_job_live(job_id: str, user_id: str = Depends(get_current_user_i
             except Exception:
                 resp = None
 
-            # Some servers block HEAD â€” fall back to GET
+            # Some servers block HEAD — fall back to GET
             if resp is None or resp.status_code == 405:
                 resp = await client.get(url)
 
@@ -1753,7 +1753,7 @@ async def verify_job_live(job_id: str, user_id: str = Depends(get_current_user_i
             return {"alive": alive, "status_code": code}
 
     except Exception as e:
-        # Network error â€” unknown, don't flag as dead
+        # Network error — unknown, don't flag as dead
         return {"alive": None, "status_code": None, "error": str(e)[:120]}
 
 
@@ -1787,7 +1787,7 @@ async def set_status(job_id: str, body: StatusUpdate, user_id: str = Depends(get
     return {"ok": True}
 
 
-# â”€â”€ Clear All Jobs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Clear All Jobs â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @app.delete("/api/jobs/all")
 async def clear_all_jobs(user_id: str = Depends(get_current_user_id)):
@@ -2110,11 +2110,11 @@ async def fix_descriptions_status(user_id: str = Depends(get_current_user_id)):
     return _jd_fix_state
 
 
-# â”€â”€ Debug JobSpy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Debug JobSpy â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @app.get("/api/debug/jobspy")
 async def debug_jobspy(user_id: str = Depends(get_current_user_id)):
-    """Test JobSpy directly â€” bypasses DB, shows raw counts."""
+    """Test JobSpy directly — bypasses DB, shows raw counts."""
     jobs = await jobspy_fetch({})
     by_source: dict = {}
     for j in jobs:
@@ -2376,7 +2376,7 @@ async def update_notes(job_id: str, body: NotesUpdate, user_id: str = Depends(ge
     return {"ok": True}
 
 
-# â”€â”€ PDF Download â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ PDF Download â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 
 def _candidate_slug(profile_name: str) -> str:
@@ -2416,7 +2416,7 @@ async def download_pdf(job_id: str, user_id: str = Depends(get_current_user_id))
     )
 
 
-# â”€â”€ DOCX Download â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ DOCX Download â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @app.get("/api/jobs/{job_id}/resume/docx")
 async def download_docx(job_id: str, user_id: str = Depends(get_current_user_id)):
@@ -2445,7 +2445,7 @@ async def download_docx(job_id: str, user_id: str = Depends(get_current_user_id)
     )
 
 
-# â”€â”€ Quick Tailor (paste any JD, no job record needed) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Quick Tailor (paste any JD, no job record needed) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @app.get("/api/jobs/{job_id}/jd")
 async def download_jd(job_id: str, user_id: str = Depends(get_current_user_id)):
@@ -2556,7 +2556,7 @@ async def quick_tailor_docx(body: QuickTailorRequest, user_id: str = Depends(get
     )
 
 
-# â”€â”€ Save Package (create folder + write all files to disk) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Save Package (create folder + write all files to disk) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 def _build_package_zip(
     company: str,
@@ -2621,61 +2621,61 @@ async def quick_save_package(body: QuickSaveRequest, user_id: str = Depends(get_
     return StreamingResponse(
         iter([zip_bytes]),
         media_type="application/zip",
-        headers={“Content-Disposition”: f'attachment; filename=”Package_{slug}.zip”'},
+        headers={"Content-Disposition": f'attachment; filename="Package_{slug}.zip"'},
     )
 
 
 # ── Quick Tailor History downloads ────────────────────────────────────────────
 
-@app.get(“/api/quick-tailor/history/{record_id}/pdf”)
+@app.get("/api/quick-tailor/history/{record_id}/pdf")
 async def quick_tailor_history_pdf(record_id: str, user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
         record = await db.get(QuickTailorHistory, record_id)
     if not record or record.user_id != user_id:
-        raise HTTPException(404, “Not found”)
+        raise HTTPException(404, "Not found")
     user_cfg = await _get_user_settings(user_id)
-    cand = _candidate_slug(user_cfg.get(“profile_name”, “”))
-    slug = re.sub(r”[^\w]+”, “_”, record.company or “Quick”).strip(“_”)
-    pdf_bytes = generate_pdf(record.tailored_resume, “”, record.company)
+    cand = _candidate_slug(user_cfg.get("profile_name", ""))
+    slug = re.sub(r"[^\w]+", "_", record.company or "Quick").strip("_")
+    pdf_bytes = generate_pdf(record.tailored_resume, "", record.company)
     return StreamingResponse(
         iter([pdf_bytes]),
-        media_type=”application/pdf”,
-        headers={“Content-Disposition”: f'attachment; filename=”{cand}_{slug}.pdf”'},
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{cand}_{slug}.pdf"'},
     )
 
 
-@app.get(“/api/quick-tailor/history/{record_id}/docx”)
+@app.get("/api/quick-tailor/history/{record_id}/docx")
 async def quick_tailor_history_docx(record_id: str, user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
         record = await db.get(QuickTailorHistory, record_id)
     if not record or record.user_id != user_id:
-        raise HTTPException(404, “Not found”)
+        raise HTTPException(404, "Not found")
     user_cfg = await _get_user_settings(user_id)
-    cand = _candidate_slug(user_cfg.get(“profile_name”, “”))
-    slug = re.sub(r”[^\w]+”, “_”, record.company or “Quick”).strip(“_”)
-    docx_bytes = generate_docx(record.tailored_resume, “”, record.company)
+    cand = _candidate_slug(user_cfg.get("profile_name", ""))
+    slug = re.sub(r"[^\w]+", "_", record.company or "Quick").strip("_")
+    docx_bytes = generate_docx(record.tailored_resume, "", record.company)
     return StreamingResponse(
         iter([docx_bytes]),
-        media_type=”application/vnd.openxmlformats-officedocument.wordprocessingml.document”,
-        headers={“Content-Disposition”: f'attachment; filename=”{cand}_{slug}.docx”'},
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{cand}_{slug}.docx"'},
     )
 
 
-@app.get(“/api/quick-tailor/history/{record_id}/jd”)
+@app.get("/api/quick-tailor/history/{record_id}/jd")
 async def quick_tailor_history_jd(record_id: str, user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
         record = await db.get(QuickTailorHistory, record_id)
     if not record or record.user_id != user_id:
-        raise HTTPException(404, “Not found”)
-    slug = re.sub(r”[^\w]+”, “_”, record.company or “Quick”).strip(“_”)
+        raise HTTPException(404, "Not found")
+    slug = re.sub(r"[^\w]+", "_", record.company or "Quick").strip("_")
     return StreamingResponse(
         iter([record.jd.encode()]),
-        media_type=”text/plain”,
-        headers={“Content-Disposition”: f'attachment; filename=”JD_{slug}.txt”'},
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="JD_{slug}.txt"'},
     )
 
 
-# â”€â”€ Analytics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Analytics â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @app.get("/api/analytics")
 async def get_analytics(user_id: str = Depends(get_current_user_id)):
@@ -2843,7 +2843,7 @@ async def get_analytics(user_id: str = Depends(get_current_user_id)):
     }
 
 
-# â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 def _job_to_dict(job: Job) -> dict:
     return {
@@ -2891,7 +2891,7 @@ def _job_to_dict(job: Job) -> dict:
         "ai_keywords":       json.loads(job.ai_keywords)  if getattr(job, "ai_keywords",  None) else [],
     }
 
-# â”€â”€ Deadline / Interview Date / Priority â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Deadline / Interview Date / Priority â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 class DeadlineUpdate(BaseModel):
     deadline: Optional[str] = None        # ISO date "2025-03-15"
@@ -2922,7 +2922,7 @@ async def update_job_meta(job_id: str, body: DeadlineUpdate, user_id: str = Depe
     return {"ok": True}
 
 
-# â”€â”€ Search endpoint â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Search endpoint â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @app.get("/api/search")
 async def search_jobs(
@@ -2999,7 +2999,7 @@ async def search_jobs(
     }
 
 
-# â”€â”€ Upcoming deadlines / reminders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Upcoming deadlines / reminders â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @app.get("/api/reminders")
 async def get_reminders(user_id: str = Depends(get_current_user_id)):
@@ -3042,7 +3042,7 @@ async def get_reminders(user_id: str = Depends(get_current_user_id)):
     return reminders
 
 
-# â”€â”€ Scheduler control â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Scheduler control â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 class SchedulerConfig(BaseModel):
     cron: str  # e.g. "0 */6 * * *"
@@ -3106,7 +3106,7 @@ async def run_scraper_now(user_id: str = Depends(get_current_user_id)):
 
 
 
-# â”€â”€ Structured Profile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Structured Profile â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 class ProfileExperience(BaseModel):
     role: str = ""
@@ -3162,7 +3162,7 @@ def _profile_to_resume_text(p: dict) -> str:
     location = p.get("location", "")
     contact = " | ".join(filter(None, [phone, email, location]))
     if name:
-        lines.append(f"{name} â€” Senior Data Engineer")
+        lines.append(f"{name} — Senior Data Engineer")
     if contact:
         lines.append(contact)
     lines.append("")
@@ -3243,7 +3243,7 @@ async def save_profile(body: ProfileData, user_id: str = Depends(get_current_use
     return {"ok": True}
 
 
-# â”€â”€ Parse Resume File â†’ structured profile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Parse Resume File â†' structured profile â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @app.post("/api/profile/parse-resume")
 async def parse_resume_file(file: UploadFile = File(...), user_id: str = Depends(get_current_user_id)):
@@ -3297,15 +3297,15 @@ async def parse_resume_file(file: UploadFile = File(...), user_id: str = Depends
   "linkedin": "",
   "github": "",
   "summary": "",
-  “experience”: [
+  "experience": [
     {
-      “role”: “”,
-      “company”: “”,
-      “location”: “”,
-      “start_date”: “Jan 2022”,
-      “end_date”: “Present”,
-      “years”: 2.5,
-      “bullets”: [“All bullet points exactly as written in resume â€” do not skip, summarize, or truncate any”]
+      "role": "",
+      "company": "",
+      "location": "",
+      "start_date": "Jan 2022",
+      "end_date": "Present",
+      "years": 2.5,
+      "bullets": ["All bullet points exactly as written in resume — do not skip, summarize, or truncate any"]
     }
   ],
   "education": [
@@ -3329,7 +3329,7 @@ Rules:
 - location (experience): city/state where the job was located (e.g. "Minneapolis, MN"). Use "" if not found.
 - start_date / end_date: exact date format from resume (e.g. "Sep 2023", "Jan 2021", "Present"). Use "" if not found.
 - years: calculate as decimal from start to end (2 years 6 months = 2.5). Estimate if dates missing.
-- bullets: extract EVERY bullet point for each role exactly as written â€” do NOT truncate, skip, or summarize any bullet.
+- bullets: extract EVERY bullet point for each role exactly as written — do NOT truncate, skip, or summarize any bullet.
 - skills: technical only (languages, frameworks, tools, platforms, databases, cloud services). No soft skills.
 - certifications: only actual certs/licenses. Empty array [] if none.
 - education: ALWAYS extract even if at the bottom. Include degree, university/school name, graduation year, GPA if present.
@@ -3360,7 +3360,7 @@ Rules:
 
 
 
-# â”€â”€ Job Qualification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Job Qualification â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @app.post("/api/jobs/{job_id}/qualify")
 async def qualify_job_endpoint(job_id: str, user_id: str = Depends(get_current_user_id)):
@@ -3536,7 +3536,7 @@ async def _run_qualify_all_inner(new_job_ids: list | None = None):
 
 
 
-# â”€â”€ Clean HTML descriptions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Clean HTML descriptions â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @app.post("/api/jobs/clean-descriptions")
 async def clean_html_descriptions(user_id: str = Depends(get_current_user_id)):
@@ -3556,7 +3556,7 @@ async def clean_html_descriptions(user_id: str = Depends(get_current_user_id)):
             desc = job.description or ""
             if _HTML_RE.search(desc):
                 clean = BeautifulSoup(desc, "lxml").get_text(separator="\n", strip=True)
-                # Collapse 3+ newlines â†’ 2
+                # Collapse 3+ newlines â†' 2
                 clean = re.sub(r'\n{3,}', '\n\n', clean).strip()
                 j = await db.get(Job, job.id)
                 j.description = clean[:10000]

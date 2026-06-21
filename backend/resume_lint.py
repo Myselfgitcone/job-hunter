@@ -60,6 +60,49 @@ DEGREE_SIGNALS = {
     "b.s.", "m.s.", "b.a.", "m.a.", "m.eng.", "degree",
 }
 
+# ── Summary unsupported-claim checks ──────────────────────────────────────────
+# Each entry: (pattern_in_summary, [evidence_patterns_in_work_bullets], label)
+# If a summary bullet matches the pattern but NO work bullet matches ANY evidence
+# pattern, a [UNSUPPORTED EXPERIENCE CLAIM] lint issue is raised.
+_SUMMARY_RISK_CLAIMS: list[tuple[str, list[str], str]] = [
+    # client-facing: only valid if work bullets mention actual external clients/customers
+    (
+        r"\bclient[-\s]facing\b",
+        [r"\bclient\b", r"\bcustomer\b", r"\bexternal (client|partner|stakeholder)\b"],
+        "client-facing",
+    ),
+    # advisory / trusted advisor: only valid if advisory or consulting work exists in bullets
+    (
+        r"\badvisory\b|\btrusted advisor\b",
+        [r"\badvisor\b", r"\bclient\b", r"\bconsultan", r"\bengagement\b"],
+        "advisory / trusted advisor",
+    ),
+    # consulting experience as a claim: only valid if consulting work in bullets
+    (
+        r"\bconsulting experience\b|\bmanagement consult",
+        [r"\bconsult", r"\bclient\b", r"\bengagement\b"],
+        "consulting experience",
+    ),
+    # team management: only valid if managing-people language in bullets
+    (
+        r"\bmanaged (a |the )?(team|group|staff|people)\b|\bteam of \d+\b",
+        [r"\bmanag\w*.{0,40}(team|people|staff|headcount|report)", r"\bdirect report", r"\bheadcount\b"],
+        "team management",
+    ),
+    # direct reports: only valid if direct-report or headcount language in bullets
+    (
+        r"\bdirect reports?\b",
+        [r"\bdirect report", r"\bmanag\w*.{0,40}(people|staff|headcount)"],
+        "direct reports",
+    ),
+    # P&L ownership: only valid if budget/revenue ownership language in bullets
+    (
+        r"\bP&L (ownership|responsibility)\b|\bprofit.and.loss\b",
+        [r"\bP&L\b", r"\bprofit\b.{0,30}(own|respon)", r"\bbudget\b.{0,30}own"],
+        "P&L ownership",
+    ),
+]
+
 # ── Role-type detection ────────────────────────────────────────────────────────
 
 # Signals weighted by specificity. More specific signals scored higher.
@@ -594,6 +637,7 @@ def lint_resume(text: str, job_description: str = "") -> list[str]:
     # ── Parse pass ───────────────────────────────────────────────────────────
     section:              Optional[str] = None
     summary_count:        int = 0
+    summary_bullets:      list[str] = []               # body_lo of each summary bullet
     exp_bullets:          list[tuple[str, bool]] = []   # (body, has_metric)
     long_bullets:         list[tuple[int, str]] = []
     multi_idea_bullets:   list[tuple[int, str]] = []
@@ -671,6 +715,7 @@ def lint_resume(text: str, job_description: str = "") -> list[str]:
 
             if section and "SUMMARY" in section:
                 summary_count += 1
+                summary_bullets.append(body_lo)
                 prev_verb = None
                 continue
 
@@ -738,6 +783,24 @@ def lint_resume(text: str, job_description: str = "") -> list[str]:
         issues.append(
             f"[SUMMARY] {summary_count} bullets in summary (must be exactly {SUMMARY_EXACT}). {direction}"
         )
+
+    # Unsupported experience claims in summary
+    # Checks whether high-risk claim phrases in summary bullets are backed by
+    # any work experience bullet. Fires as a lint issue -> triggers retry loop.
+    if summary_bullets and exp_bullets:
+        summary_text = " ".join(summary_bullets)
+        work_text    = " ".join(body.lower() for body, _ in exp_bullets)
+        for claim_re, evidence_res, label in _SUMMARY_RISK_CLAIMS:
+            if re.search(claim_re, summary_text, re.IGNORECASE):
+                has_evidence = any(
+                    re.search(ev, work_text, re.IGNORECASE) for ev in evidence_res
+                )
+                if not has_evidence:
+                    issues.append(
+                        f'[UNSUPPORTED EXPERIENCE CLAIM] Summary claims "{label}" '
+                        f"but no supporting work bullet found. "
+                        f"Remove or rewrite the claim to match actual experience."
+                    )
 
     # Bullet budget
     total_bullets = summary_count + len(exp_bullets)

@@ -750,10 +750,14 @@ async def startup():
 
     asyncio.create_task(_background_init())
     # Start auto-scraper scheduler
-    async with SessionLocal() as db:
-        result = await db.execute(select(Setting).where(Setting.key == "auto_scrape_cron"))
-        row = result.scalar_one_or_none()
-        cron_expr = row.value if row and row.value else "0 * * * *"
+    cron_expr = "0 * * * *"
+    try:
+        async with SessionLocal() as db:
+            result = await db.execute(select(Setting).where(Setting.key == "auto_scrape_cron"))
+            row = result.scalar_one_or_none()
+            cron_expr = row.value if row and row.value else "0 * * * *"
+    except Exception as e:
+        print(f"[Startup] Cron setting fetch failed (using default): {e}")
 
     # All crons pinned to Eastern Time (app-wide standard)
     _scheduler.add_job(_auto_scrape,         CronTrigger.from_crontab(cron_expr, timezone=EST),    id="auto_scrape",    replace_existing=True)

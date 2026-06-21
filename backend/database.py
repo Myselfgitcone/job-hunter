@@ -21,7 +21,11 @@ _is_postgres = DATABASE_URL.startswith("postgresql")
 
 # PostgreSQL on Railway external URL requires SSL; SQLite needs check_same_thread=False
 if _is_postgres:
-    _connect_args = {"ssl": "require"}
+    _connect_args = {
+        "ssl": "require",
+        "timeout": 10,           # fail fast if DB unreachable (asyncpg connect timeout)
+        "command_timeout": 30,   # per-query timeout so no single stmt hangs startup
+    }
 else:
     _connect_args = {"check_same_thread": False}
 

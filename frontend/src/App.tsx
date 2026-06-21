@@ -32,7 +32,7 @@ import { Toasts, useToasts, Spinner } from "./components/primitives";
 import Auth from "./components/Auth";
 import { Onboarding } from "./components/Onboarding";
 
-type View = "jobs" | "dashboard" | "profile" | "settings";
+type View = "jobs" | "dashboard" | "profile" | "settings" | "tailor";
 type ViewMode = "list" | "kanban";
 // Matches design's filter shape exactly (INTERACTIONS.md)
 type Filters = {
@@ -114,7 +114,7 @@ export default function App() {
 
   const getInitialView = (): View => {
     const hash = window.location.hash.replace("#", "");
-    return ["jobs", "dashboard", "profile", "settings"].includes(hash) ? (hash as View) : "jobs";
+    return ["jobs", "dashboard", "profile", "settings", "tailor"].includes(hash) ? (hash as View) : "jobs";
   };
   const [view, setView]             = useState<View>(getInitialView);
 
@@ -125,7 +125,7 @@ export default function App() {
   useEffect(() => {
     const handleHash = () => {
       const hash = window.location.hash.replace("#", "");
-      if (["jobs", "dashboard", "profile", "settings"].includes(hash)) setView(hash as View);
+      if (["jobs", "dashboard", "profile", "settings", "tailor"].includes(hash)) setView(hash as View);
     };
     window.addEventListener("hashchange", handleHash);
     return () => window.removeEventListener("hashchange", handleHash);
@@ -237,7 +237,6 @@ export default function App() {
     api.saveSettings({ visa_filter: visa, level_filter: exp } as any).catch(() => {});
   }, []);
 
-  const [tailorOpen, setTailorOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [activeFamily, setActiveFamily] = useState<string>(""); // user role chip filter
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("jh_sidebar") === "1");
@@ -580,7 +579,7 @@ export default function App() {
   const handleSelect = (id: string) => { setSelectedId(id); setTab("jobdetails"); };
   // Expose nav to Settings component for "Go to Profile" link
   useEffect(() => { (window as any).__navToProfile = () => setView("profile"); }, []);
-  const handleNav = (v: string) => { if (v === "tailor") { setTailorOpen(true); return; } setView(v as View); };
+  const handleNav = (v: string) => { setView(v as View); };
   const activeFilterCount = filters.category.length + filters.level.length + filters.type.length + filters.country.length + filters.source.length + filters.years.length + filters.visa.length + (filters.score !== "any" ? 1 : 0);
   const filtersActive = activeFilterCount > 0 || filters.q !== "";
   const isAdmin = currentUser?.email?.toLowerCase() === "jaggubhai8766@gmail.com";
@@ -758,6 +757,7 @@ export default function App() {
         {view === "dashboard" && <Dashboard isAdmin={isAdmin} />}
         {view === "profile"   && <Profile />}
         {view === "settings"  && (isAdmin ? <Settings onToast={toast} onErrorsSeen={() => setUnseenErrors(0)} /> : <div style={{padding: 40, color: "#f87171", fontSize: 16}}>Restricted Access. Only the Master Admin can view Settings.</div>)}
+        {view === "tailor"    && <QuickTailor pageMode onClose={() => setView("jobs")} onToast={toast} />}
 
         {view === "jobs" && (
           <>
@@ -852,7 +852,6 @@ export default function App() {
         )}
       </div>
 
-      <QuickTailor open={tailorOpen} onClose={() => setTailorOpen(false)} onToast={toast} tailorModel={userSettings?.ai_model_tailor || ""} />
       <Toasts toasts={toasts} />
 
       {/* Welcome modal removed */}

@@ -3,9 +3,9 @@ import { api } from "../api";
 import type { Company } from "../types";
 import { Sparkles, Loader2, Download, X, FileText, FolderDown } from "lucide-react";
 
-interface Props { open?: boolean; onClose: () => void; tailorModel?: string; }
+interface Props { open?: boolean; onClose: () => void; tailorModel?: string; pageMode?: boolean; }
 
-export function QuickTailor({ open = true, onClose, onToast, tailorModel }: Props & { open?: boolean; onToast?: (m:string,t?:"success"|"error")=>void }) {
+export function QuickTailor({ open = true, onClose, onToast, pageMode = false }: Props & { open?: boolean; onToast?: (m:string,t?:"success"|"error")=>void }) {
   const [jd, setJd]           = useState("");
   const [company, setCompany] = useState("");
   const [tailored, setTailored] = useState("");
@@ -95,20 +95,21 @@ export function QuickTailor({ open = true, onClose, onToast, tailorModel }: Prop
     }
   };
 
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
+  if (!open && !pageMode) return null;
 
+  const inner = (
+    <>
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700">
           <div className="flex items-center gap-2">
             <Sparkles size={16} className="text-purple-400" />
             <h2 className="text-sm font-semibold text-slate-100">Quick Tailor — Paste Any JD</h2>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors">
-            <X size={16} />
-          </button>
+          {!pageMode && (
+            <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors">
+              <X size={16} />
+            </button>
+          )}
         </div>
 
         <div className="flex flex-1 gap-0 overflow-hidden">
@@ -213,6 +214,21 @@ export function QuickTailor({ open = true, onClose, onToast, tailorModel }: Prop
             )}
           </div>
         </div>
+    </>
+  );
+
+  if (pageMode) {
+    return (
+      <div className="flex flex-col bg-slate-900 border border-slate-700 rounded-xl shadow-2xl" style={{ margin: 24, flex: 1, overflow: "hidden" }}>
+        {inner}
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
+        {inner}
       </div>
     </div>
   );

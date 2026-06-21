@@ -129,15 +129,33 @@ def _extract_job_block(text: str, company: str) -> str:
     return "\n".join(block).strip()
 
 
+def _parse_header_parts(s: str) -> dict:
+    """Extract title, company, location, and year-list from a job header line."""
+    m_ti = re.match(r'^(.+?) @ ', s)
+    m_co = re.search(r' @ (.+?) \|', s)
+    # Location: between '| ' and either 2+ spaces/tab or a month/year token
+    m_lo = re.search(r'\|\s+(.+?)(?:\s{2,}|\t|\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4}))', s)
+    return {
+        "title":    m_ti.group(1).strip() if m_ti else "",
+        "company":  m_co.group(1).strip() if m_co else "",
+        "location": m_lo.group(1).strip() if m_lo else "",
+        "years":    re.findall(r'\b(20\d{2}|19\d{2})\b', s),
+    }
+
+
 def _enforce_job_integrity(result: str, base_resume: str) -> tuple[str, list[str], list[str]]:
     """
-    Remove hallucinated job blocks (company not in base_resume) and
-    re-insert any real job blocks that were dropped by the AI verbatim.
+    1. Remove hallucinated job blocks (company not in base_resume).
+    2. Re-insert dropped real job blocks verbatim.
+    3. Fix mismatched job headers (title, location, dates) per matched company.
     Returns (fixed_result, removed_companies, reinserted_companies).
     """
     def in_list(company: str, lst: list[str]) -> bool:
         co = company.lower()
         return any(co in b.lower() or b.lower() in co for b in lst)
+
+    def norm(s: str) -> str:
+        return re.sub(r'\s+', ' ', s.strip())
 
     base_cos   = _extract_job_companies(base_resume)
     result_cos = _extract_job_companies(result)
@@ -145,10 +163,7 @@ def _enforce_job_integrity(result: str, base_resume: str) -> tuple[str, list[str
     hallucinated = [c for c in result_cos if not in_list(c, base_cos)]
     dropped      = [c for c in base_cos   if not in_list(c, result_cos)]
 
-    if not hallucinated and not dropped:
-        return result, [], []
-
-    # ── Remove hallucinated job blocks ───────────────────────────────────────
+    # ── Phase 1: Remove hallucinated job blocks ──────────────────────────────
     if hallucinated:
         hall_lo = [h.lower() for h in hallucinated]
         lines   = result.split("\n")
@@ -172,13 +187,12 @@ def _enforce_job_integrity(result: str, base_resume: str) -> tuple[str, list[str
             out.append(line)
         result = "\n".join(out)
 
-    # ── Re-insert dropped real jobs verbatim at end of WORK EXPERIENCE ───────
+    # ── Phase 2: Re-insert dropped real jobs verbatim ────────────────────────
     reinserted: list[str] = []
     for company in dropped:
         block = _extract_job_block(base_resume, company)
         if not block:
             continue
-        # Find insertion point: just before first non-job-experience section header
         lines = result.split("\n")
         insert_at = len(lines)
         in_exp = False
@@ -194,6 +208,41 @@ def _enforce_job_integrity(result: str, base_resume: str) -> tuple[str, list[str
         lines.insert(insert_at + 1, block)
         result = "\n".join(lines)
         reinserted.append(company)
+
+    # ── Phase 3: Fix mismatched headers (title / location / dates) ───────────
+    # Build company_lo -> canonical_header_line map from base_resume
+    base_header_map: dict[str, str] = {}
+    for line in base_resume.split("\n"):
+        s = line.strip()
+        if _is_job_header_line(s):
+            m = re.search(r' @ (.+?) \|', s)
+            if m:
+                base_header_map[m.group(1).strip().lower()] = s
+
+    lines = result.split("\n")
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if not _is_job_header_line(s):
+            continue
+        m = re.search(r' @ (.+?) \|', s)
+        if not m:
+            continue
+        result_co = m.group(1).strip().lower()
+        # Find matching base header
+        for base_co, base_header in base_header_map.items():
+            if base_co in result_co or result_co in base_co:
+                if norm(s) != norm(base_header):
+                    rp = _parse_header_parts(s)
+                    bp = _parse_header_parts(base_header)
+                    changes: list[str] = []
+                    if rp["title"]    != bp["title"]:    changes.append(f"title '{rp['title']}' -> '{bp['title']}'")
+                    if rp["location"] != bp["location"]: changes.append(f"location '{rp['location']}' -> '{bp['location']}'")
+                    if rp["years"]    != bp["years"]:    changes.append(f"years {rp['years']} -> {bp['years']}")
+                    if changes:
+                        print(f"[HEADER MISMATCH] {bp['company']}: {'; '.join(changes)} -- reverted to original")
+                        lines[i] = base_header
+                break
+    result = "\n".join(lines)
 
     return result, hallucinated, reinserted
 
@@ -1025,6 +1074,8 @@ _RETRY_RULES = {
     "[HIGH METRICS]":          "Remove forced numbers from process/collaboration bullets — looks artificial.",
     "[JD ECHO]":               "A JD word repeated 3+ times reads as keyword stuffing. Vary phrasing; keep ≤2 uses.",
     "[LOW JD SKILL VISIBILITY]": "Add 1–3 missing skills via the correct tier: WORK-SUPPORTED bullet, ADJACENT-STRETCH bullet (max 1/job, 2 total), or SELF-IMPLEMENTABLE/HIGH-RISK skills-project wording. Visibility-only placement is acceptable — never force a production claim.",
+    "[YEARS MISMATCH]":          "Use the exact years-of-experience number from the ORIGINAL RESUME — do not inflate or deflate it.",
+    "[UNSUPPORTED EXPERIENCE CLAIM]": "Remove or rewrite the summary claim to only reflect experience types supported by the work bullets below it.",
 }
 
 
@@ -1118,10 +1169,10 @@ async def tailor_resume(base_resume: str, job_description: str,
 
     # ── Quality gate: lint → up to 3 retries, best-of-N ────────────────────
     _best_raw         = raw
-    _best_issue_count = len(lint_resume(raw, job_description))
+    _best_issue_count = len(lint_resume(raw, job_description, base_resume=base_resume))
 
     for attempt in range(3):
-        issues = lint_resume(raw, job_description)
+        issues = lint_resume(raw, job_description, base_resume=base_resume)
 
         if len(issues) <= _best_issue_count:
             _best_issue_count = len(issues)
@@ -1159,7 +1210,7 @@ async def tailor_resume(base_resume: str, job_description: str,
         raw = re.sub(r'<plan>.*?</plan>', '', raw, flags=re.DOTALL).strip()
 
     # Best-of-N final check
-    final_issues = lint_resume(raw, job_description)
+    final_issues = lint_resume(raw, job_description, base_resume=base_resume)
     if len(final_issues) < _best_issue_count:
         _best_raw = raw
         _best_issue_count = len(final_issues)
@@ -1193,7 +1244,7 @@ async def tailor_resume(base_resume: str, job_description: str,
         print("[REVIEW] No semantic violations found — resume passed all 3 checks")
 
     # ── Post-review lint — log WARN only, no retry ───────────────────────────
-    post_issues = lint_resume(result, job_description)
+    post_issues = lint_resume(result, job_description, base_resume=base_resume)
     if post_issues:
         print(f"[WARN] post-review lint ({len(post_issues)}):")
         for iss in post_issues:

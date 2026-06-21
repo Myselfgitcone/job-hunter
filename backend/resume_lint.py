@@ -611,10 +611,28 @@ def _has_banned_closing_label(line: str, role_type: str) -> Optional[str]:
     return None
 
 
-def lint_resume(text: str, job_description: str = "") -> list[str]:
+def _extract_years_claim(text: str) -> Optional[str]:
+    """Return the first 'X+ years' or 'X years' token found in the summary section."""
+    in_summary = False
+    for line in text.split("\n"):
+        s = line.strip()
+        if "PROFESSIONAL SUMMARY" in s.upper():
+            in_summary = True
+            continue
+        if in_summary:
+            if s and s == s.upper() and s.endswith(":") and len(s) > 3:
+                break
+            m = re.search(r'\b(\d+)\+?\s*year', s, re.IGNORECASE)
+            if m:
+                return m.group(0).strip()
+    return None
+
+
+def lint_resume(text: str, job_description: str = "", base_resume: str = "") -> list[str]:
     """
     Lint a tailored resume against the job description.
     Auto-detects role type from job_description.
+    Pass base_resume to enable years-of-experience drift check.
     Returns list of issue strings. Empty = clean.
     """
     issues: list[str] = []
@@ -801,6 +819,16 @@ def lint_resume(text: str, job_description: str = "") -> list[str]:
                         f"but no supporting work bullet found. "
                         f"Remove or rewrite the claim to match actual experience."
                     )
+
+    # Years-of-experience drift check (only when base_resume provided)
+    if base_resume:
+        orig_years = _extract_years_claim(base_resume)
+        out_years  = _extract_years_claim(text)
+        if orig_years and out_years and orig_years.lower() != out_years.lower():
+            issues.append(
+                f'[YEARS MISMATCH] Summary claims "{out_years}" but original resume '
+                f'states "{orig_years}". Use the exact number from the original.'
+            )
 
     # Bullet budget
     total_bullets = summary_count + len(exp_bullets)

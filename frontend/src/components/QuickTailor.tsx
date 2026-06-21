@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api } from "../api";
 import { Sparkles, Loader2, Download, X, FileText, FolderDown } from "lucide-react";
 
@@ -13,6 +13,18 @@ export function QuickTailor({ open = true, onClose, onToast, tailorModel }: Prop
   const [downloading, setDownloading] = useState<"pdf" | "docx" | null>(null);
   const [saving, setSaving]           = useState(false);
   const [saveMsg, setSaveMsg]         = useState("");
+  const [elapsed, setElapsed]         = useState(0);
+  const timerRef                       = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (loading) {
+      setElapsed(0);
+      timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
+    } else {
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [loading]);
 
   const handleTailor = async () => {
     if (!jd.trim()) return;
@@ -76,11 +88,6 @@ export function QuickTailor({ open = true, onClose, onToast, tailorModel }: Prop
           <div className="flex items-center gap-2">
             <Sparkles size={16} className="text-purple-400" />
             <h2 className="text-sm font-semibold text-slate-100">Quick Tailor — Paste Any JD</h2>
-            {tailorModel && (
-              <span style={{ fontSize: 10.5, background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)", borderRadius: 6, padding: "1px 7px", fontWeight: 500 }}>
-                {tailorModel.split("/").pop()?.replace(/-/g, " ")}
-              </span>
-            )}
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors">
             <X size={16} />
@@ -111,7 +118,7 @@ export function QuickTailor({ open = true, onClose, onToast, tailorModel }: Prop
               className="mt-3 flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-xs rounded-lg transition-colors font-medium"
             >
               {loading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-              {loading ? "Tailoring…" : "Tailor Resume"}
+              {loading ? `Tailoring… ${elapsed}s` : "Tailor Resume"}
             </button>
             {error && <p className="mt-2 text-[11px] text-red-400">{error}</p>}
           </div>

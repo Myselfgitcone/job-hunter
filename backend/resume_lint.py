@@ -1397,16 +1397,34 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "") -> 
     # Target is visibility (100%), not production-claim coverage (85-95%, prompt-side only).
     if job_description:
         coverage = skill_coverage_report(text, job_description, role_type=role_type)
-        jd_skill_count = len(coverage["jd_skills"])
+        jd_skill_count  = len(coverage["jd_skills"])
+        tailored_missing = set(coverage.get("missing", []))
+
+        # ── Ratio-based check: overall visibility too low ─────────────────────
         if jd_skill_count >= 6 and coverage["coverage_ratio"] < 0.90:
-            missing_preview = ", ".join(coverage["missing"][:6])
+            missing_preview = ", ".join(list(tailored_missing)[:6])
             issues.append(
                 f"[LOW JD SKILL VISIBILITY] {coverage['coverage_text']} JD hard skills visible on resume "
                 f"({coverage['coverage_ratio']:.0%}; target ~100% visibility). "
                 f"For each missing skill below, add it via the appropriate tier — WORK-SUPPORTED bullet, "
                 f"ADJACENT-STRETCH bullet, or SELF-IMPLEMENTABLE/HIGH-RISK skills-project wording. "
-                f"Visibility through skills/project wording is acceptable; do not force production claims: {missing_preview}."
+                f"Visibility through skills/project wording is acceptable; do not force production claims: "
+                f"{missing_preview}."
             )
+
+        # ── Profile-backed dropout check: skills present in base resume but ───
+        # dropped from tailored output — zero tolerance regardless of ratio.
+        if base_resume and tailored_missing:
+            base_cov     = skill_coverage_report(base_resume, job_description, role_type=role_type)
+            base_covered = set(base_cov.get("covered", []))
+            dropped      = sorted(base_covered & tailored_missing)
+            if dropped:
+                issues.append(
+                    f"[PROFILE SKILL DROPPED] {', '.join(dropped)} — these skills exist in the original "
+                    f"resume but are absent from the tailored output. They are WORK-SUPPORTED (Case 1): "
+                    f"add each back via a real job bullet + Technologies Used + Technical Skills. "
+                    f"Do not use JD 'or' phrasing as justification to omit them."
+                )
 
     return issues
 
@@ -1429,6 +1447,7 @@ RETRY_RULES: dict[str, str] = {
     "[HIGH METRICS]":          "Remove forced numbers from process/collaboration bullets — looks artificial.",
     "[JD ECHO]":               "A JD word repeated 3+ times reads as keyword stuffing. Vary phrasing.",
     "[LOW JD SKILL VISIBILITY]": "Add 1–3 missing skills via the correct tier: WORK-SUPPORTED bullet, ADJACENT-STRETCH bullet (max 1/job, 2 total), or SELF-IMPLEMENTABLE/HIGH-RISK skills-project wording. Visibility-only placement is acceptable — never force a production claim.",
+    "[PROFILE SKILL DROPPED]":   "These skills exist in the candidate's original resume — they are WORK-SUPPORTED. Add each back: write a real bullet in the most relevant job, add to that job's Technologies Used, add to Technical Skills. Do not omit them because the JD listed them as 'or' alternatives.",
 }
 
 

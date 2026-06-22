@@ -323,12 +323,34 @@ _DYN_PROP_SKIP_LOWER: set[str] = {w.lower() for w in _DYN_PROP_SKIP}
 
 # ALL-CAPS sequences that are NOT tech skills
 _DYN_ACRONYM_SKIP: set[str] = {
+    # English words typed ALL-CAPS (section headers, emphasis)
     "THE","AND","OR","NOT","FOR","ARE","HAS","INC","LLC","LTD",
     "GET","SET","PUT","USE","RUN","LET","CAN","MAY","WILL","MUST",
     "HAVE","WITH","FROM","INTO","THAT","THIS","THEY","ALSO","BOTH",
-    "EACH","OVER","BEEN","WERE","EEO","EOE","PTO","ADA",
+    "EACH","OVER","BEEN","WERE","WHAT","WILL","WHO","HOW","WHY",
+    "YOU","YOUR","WE","OUR","ALL","ANY","DO","DID","HAS","HAD",
+    "ITS","WAS","BUT","YET","TOO","NOW","OWN","END","NEW","OLD",
+    # HR/Legal/generic
+    "EEO","EOE","PTO","ADA","MOS","TRS","REQ","URF",
+    # Geography
     "USA","US","NYC","SF","LA","DC","UK","EU","SAN","LOS","NEW",
+    "TX","CA","NY","FL","IL","WA","GA","MA","PA","OH","VA",
+    # Fragment noise from slash notation splits
     "ASQ","IT","CI","CD",
+}
+
+# US state names that appear in JD location lines — not skills
+_DYN_GEO_SKIP: set[str] = {
+    "Texas","California","York","Jersey","Mexico","Hampshire","Orleans",
+    "Florida","Georgia","Illinois","Washington","Colorado","Arizona",
+    "Virginia","Carolina","Massachusetts","Pennsylvania","Ohio","Indiana",
+    "Michigan","Tennessee","Missouri","Maryland","Minnesota","Wisconsin",
+    "Oregon","Nevada","Kentucky","Oklahoma","Connecticut","Utah","Iowa",
+    "Mississippi","Arkansas","Kansas","Nebraska","Idaho","Montana",
+    "Wyoming","Dakota","Delaware","Hawaii","Alaska","Vermont","Maine",
+    "Austin","Dallas","Houston","Atlanta","Seattle","Chicago","Denver",
+    "Phoenix","Portland","Boston","Detroit","Nashville","Charlotte",
+    "Francisco","Angeles","Diego","Antonio","Minneapolis","Cleveland",
 }
 
 # These acronyms/tools are independent skills — never removed as sub-components
@@ -402,7 +424,7 @@ def extract_jd_keywords_dynamic(jd_text: str) -> list[str]:
     # Catches: Databricks, Snowflake, Airflow, Hadoop, Terraform, Oracle, etc.
     for m in re.finditer(r"[,;:\(]\s*([A-Z][a-z]{2,18})\b", text_body):
         w = m.group(1)
-        if w not in _DYN_PROP_SKIP and w.lower() not in _DYN_PROP_SKIP_LOWER:
+        if w not in _DYN_PROP_SKIP and w.lower() not in _DYN_PROP_SKIP_LOWER and w not in _DYN_GEO_SKIP:
             found.add(w)
 
     # 5. ALL-CAPS acronyms 2-6 chars (ETL, AWS, SQL, GCP, HDFS, MDM, HIPAA)

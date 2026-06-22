@@ -1345,10 +1345,9 @@ async def tailor_resume(base_resume: str, job_description: str,
             if coverage.get("missing"):
                 print("[VISIBILITY] Missing: " + ", ".join(coverage["missing"]))
 
-    # ── Tier-compliance audit — second AI pass, truth check, report-only ─────
-    # Checks only the skills that were genuinely missing from the ORIGINAL
-    # resume. Never edits the resume — surfaces violations for human review
-    # (or for a future hard-gate retry, if you decide to make this blocking).
+    # ── Tier-compliance audit + hard-gate correction ─────────────────────────
+    # Checks skills added to close JD gaps. If violations found, runs one
+    # correction pass to remove/downgrade fabricated production claims.
     if skills_missing_from_original:
         try:
             violations, raw_report = await audit_tier_compliance(
@@ -1359,10 +1358,40 @@ async def tailor_resume(base_resume: str, job_description: str,
                 print(f"[TIER AUDIT] {len(violations)} violation(s) found:")
                 for v in violations:
                     print(f"  • {v}")
+                # Hard-gate: correct violations — remove fabricated bullets,
+                # downgrade to skills-section-only placement.
+                violation_summary = "\n".join(f"- {v}" for v in violations)
+                correction_msg = (
+                    f"The following bullets in the tailored resume are fabrications — "
+                    f"the candidate has no real basis for these specific production claims:\n"
+                    f"{violation_summary}\n\n"
+                    f"For each violating bullet:\n"
+                    f"  1. REMOVE the bullet entirely from the work experience section.\n"
+                    f"  2. If the skill still needs visibility, keep it ONLY in the "
+                    f"     Technical Skills section — never as a work experience bullet.\n"
+                    f"  3. Do NOT replace with another invented bullet.\n"
+                    f"  4. Do NOT change any other bullets.\n"
+                    f"Return the complete corrected resume as plain text only.\n\n"
+                    f"=== ORIGINAL RESUME (ground truth) ===\n{base_resume}\n\n"
+                    f"=== TAILORED RESUME TO CORRECT ===\n{result}"
+                )
+                corrected = await chat(
+                    system=SYSTEM_PROMPT,
+                    user=correction_msg,
+                    api_key=api_key,
+                    provider=provider,
+                    model=model,
+                    max_tokens=6000,
+                )
+                corrected = re.sub(r'<plan>.*?</plan>', '', corrected, flags=re.DOTALL).strip()
+                if corrected and len(corrected) > len(result) // 2:
+                    result = corrected
+                    print(f"[TIER AUDIT] Correction applied — fabricated bullet(s) removed.")
+                else:
+                    print(f"[TIER AUDIT] Correction pass returned unexpected output — keeping original.")
             else:
                 print(f"[TIER AUDIT] Clean — {len(skills_missing_from_original)} gap-filled skill(s) audited, no violations.")
         except Exception as e:
-            # Audit failure should never block resume delivery — log and move on.
             print(f"[TIER AUDIT] Audit pass failed to run: {e}")
 
     # ── Education section safety net — deterministic, no AI involvement ──────

@@ -213,7 +213,7 @@ _ROLE_HARD_SKILLS: dict[str, dict[str, list[str]]] = {
         # ── Data architecture concepts ───────────────────────────────────────
         "ETL":               [r"\betl\b", r"\bextract.transform.load\b"],
         "ELT":               [r"\belt\b", r"\bextract.load.transform\b"],
-        "Data Warehouse":    [r"\bdata\s+warehouses?\b", r"\bdwh\b", r"\bedw\b"],
+        "Data Warehouse":    [r"\bdata\s+warehous", r"\bdwh\b", r"\bedw\b"],
         "Data Lake":         [r"\bdata\s+lakes?\b"],
         "Data Lakehouse":    [r"\blakehouse\b", r"\bdata\s+lakehouse\b"],
         "Data Pipeline":     [r"\bdata\s+pipelines?\b", r"\bpipelines?\b"],
@@ -789,6 +789,28 @@ def extract_jd_hard_skills(job_description: str, role_type: Optional[str] = None
     return sorted(set(merged))
 
 
+def _dynamic_coverage_pattern(skill: str) -> str:
+    """
+    Build a word-boundary regex pattern dynamically from the skill name.
+    No catalog lookup — derived entirely from the extracted skill string.
+
+    Rules:
+      Multi-word: flexible whitespace between words, optional plural on last word.
+        "Data Warehouse" -> r'\bdata\s+warehouses?\b'
+        "AWS Certified"  -> r'\baws\s+certifieds?\b'
+      Single-word: exact word boundary.
+        "Kafka"          -> r'\bkafka\b'
+        "ETL"            -> r'\betl\b'
+    """
+    s = skill.lower().strip()
+    words = s.split()
+    if len(words) == 1:
+        return rf"\b{re.escape(s)}\b"
+    interior = r"\s+".join(re.escape(w) for w in words[:-1])
+    last     = re.escape(words[-1])
+    return rf"\b{interior}\s+{last}s?\b"
+
+
 def skill_coverage_report(
     resume_text: str,
     job_description: str,
@@ -797,7 +819,7 @@ def skill_coverage_report(
 ) -> dict:
     """
     Compare JD-visible hard skills against the final resume.
-    This is an ATS/recruiter coverage heuristic, not a truth verifier.
+    Uses dynamic patterns derived from extracted skill names — no hardcoded catalog.
     """
     role = role_type or detect_role_type(job_description)
     jd_skills = extract_jd_hard_skills(job_description, role)
@@ -815,12 +837,11 @@ def skill_coverage_report(
     if profile_skills:
         resume_blob += "\n" + ", ".join(profile_skills).lower()
 
-    catalog = _skill_catalog_for_role(role)
     covered: list[str] = []
     missing: list[str] = []
     for skill in jd_skills:
-        patterns = catalog.get(skill, [rf"\b{re.escape(skill.lower())}\b"])
-        if any(re.search(p, resume_blob) for p in patterns):
+        pattern = _dynamic_coverage_pattern(skill)
+        if re.search(pattern, resume_blob):
             covered.append(skill)
         else:
             missing.append(skill)

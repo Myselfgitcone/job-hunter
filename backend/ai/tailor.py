@@ -635,6 +635,21 @@ This is fully dynamic — derive it from the actual JD, not from any preset list
 If the JD has NO clear responsibility verb (poorly written or just a skills list), skip this rule.
 Apply to any role type — the JD's own language is always stronger signal than a generic verb bank.
 
+═══ JD VOCABULARY — USE EXACT JD FORM, NOT BASE RESUME FORM ═══
+When the JD uses a specific phrasing, that exact phrasing must appear in at least one bullet — even if the base resume uses a different grammatical form of the same concept.
+
+The JD's form is what ATS scanners and recruiters look for. The base resume's form is irrelevant to that check.
+
+Examples of required substitution:
+  JD says "data modeling"   → base resume says "data models"         → write "data modeling" in a bullet
+  JD says "data warehousing"→ base resume says "data warehouse"      → write "data warehousing" in a bullet
+  JD says "pipeline orchestration" → base says "Airflow DAGs"        → write "pipeline orchestration" in a bullet
+  JD says "data governance" → base says "governance policies"        → write "data governance" in a bullet
+  JD says "ETL/ELT"         → base says "ELT pipelines"             → write "ETL/ELT" in a bullet
+
+Rule: scan the JD's hard skill list. For each skill, check: does the tailored resume contain the JD's EXACT phrase (not just related words)? If not, reframe the most relevant existing bullet to include it.
+This is not about adding new content — it is about ensuring the existing content uses the vocabulary the JD expects.
+
 ═══ JD "OR" ALTERNATIVES — NEVER DROP PROFILE SKILLS ═══
 When a JD lists skills as "or" alternatives — "Snowflake, Databricks, BigQuery, or Redshift" — do NOT use "or" as justification to omit any skill already present in the candidate's base resume.
 Rule: if the candidate has evidence of multiple skills from an "or" list, include ALL of them.

@@ -815,20 +815,36 @@ def _dynamic_coverage_pattern(skill: str) -> str:
     No catalog lookup — derived entirely from the extracted skill string.
 
     Rules:
-      Multi-word: flexible whitespace between words, optional plural on last word.
+      Single-word: exact word boundary.
+        "Kafka" -> r'\bkafka\b', "ETL" -> r'\betl\b'
+
+      Multi-word, last word is a gerund (ends in 'ing', len > 4):
+        Strip 'ing' to get the stem, then match stem + any word chars.
+        This catches noun/plural/gerund variants of the same root concept.
+        "Data Modeling"    -> r'\bdata\s+model\w*\b'
+           matches: "data modeling", "data models", "data model" ✓
+        "Data Warehousing" -> r'\bdata\s+warehous\w*\b'
+           matches: "data warehousing", "data warehouse", "data warehouses" ✓
+        "Machine Learning" -> r'\bmachine\s+learn\w*\b'
+           matches: "machine learning", "machine learned" ✓
+
+      Multi-word, last word is not a gerund:
+        Match last word + optional plural 's'.
         "Data Warehouse" -> r'\bdata\s+warehouses?\b'
         "AWS Certified"  -> r'\baws\s+certifieds?\b'
-      Single-word: exact word boundary.
-        "Kafka"          -> r'\bkafka\b'
-        "ETL"            -> r'\betl\b'
     """
     s = skill.lower().strip()
     words = s.split()
     if len(words) == 1:
         return rf"\b{re.escape(s)}\b"
     interior = r"\s+".join(re.escape(w) for w in words[:-1])
-    last     = re.escape(words[-1])
-    return rf"\b{interior}\s+{last}s?\b"
+    last = words[-1]
+    if last.endswith("ing") and len(last) > 4:
+        # Gerund: strip 'ing' to get stem, match stem + any word chars
+        # "modeling" -> "model", "warehousing" -> "warehous", "learning" -> "learn"
+        stem = re.escape(last[:-3])
+        return rf"\b{interior}\s+{stem}\w*\b"
+    return rf"\b{interior}\s+{re.escape(last)}s?\b"
 
 
 def skill_coverage_report(

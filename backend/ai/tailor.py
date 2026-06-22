@@ -619,6 +619,31 @@ CRITICAL GUARDRAIL — DO NOT STRETCH:
   didn't happen. The goal is to surface what is already true, not to promote the
   candidate into a role they have not held.
 
+═══ JD RESPONSIBILITY VERB MIRRORING ═══
+Read every line in the JD's responsibilities / job duties section.
+Extract the primary action verb from each responsibility line — these are the EXACT verbs the hiring manager uses to describe the role's value.
+At least 3 of these JD-native verbs MUST appear in the resume's experience bullets (not only in the summary, not only in the skills section).
+
+This is fully dynamic — derive it from the actual JD, not from any preset list:
+  • JD says "Evaluate and recommend data technologies" → at least one bullet uses "Evaluated and recommended [specific tool] for [reason] — [outcome]"
+  • JD says "Define data architecture standards" → at least one bullet uses "Defined" or "Established [standard] adopted across [scope]"
+  • JD says "Support strategic vision and roadmap" → at least one bullet frames a decision in strategic/roadmap language
+  • JD says "Advise senior stakeholders" → at least one bullet uses advisory framing
+  • JD says "Monitor and report on" → at least one bullet uses monitoring + reporting language
+  • JD says "Detect, investigate, respond" → at least one bullet uses those exact verbs
+
+If the JD has NO clear responsibility verb (poorly written or just a skills list), skip this rule.
+Apply to any role type — the JD's own language is always stronger signal than a generic verb bank.
+
+═══ EXPLICITLY NAMED TOOLS → BULLETS RULE ═══
+If the JD contains a line in the form "Experience with X, Y, Z" or "Proficiency in X, Y, Z" or "Tools: X, Y, Z" — each named item must appear in at least one WORK EXPERIENCE BULLET, not only in Technologies Used or Technical Skills.
+
+Why: skills section placement is zero signal. A recruiter reads bullets. ATS weights bullet context above skills rows.
+
+Exception: if a named tool has no plausible connection to ANY role in the candidate's history, skills section is acceptable. But this must be the last resort — not the default.
+
+Apply to any domain: "Experience with NoSQL, Kafka, Middleware" → all 3 in bullets. "Tools: Splunk, CrowdStrike, Nessus" → all 3 in bullets. "Proficiency in Excel, Hyperion, SAP" → all 3 in bullets.
+
 ═══ COVERAGE — 80–90%, NOT 100% ═══
 Cover every hard skill the JD names, every core responsibility, the seniority level, and the top 3–5 distinctive JD phrases.
 Skip: soft skills, culture words, boilerplate, inflation keywords.
@@ -812,11 +837,21 @@ Never force metrics onto process, documentation, or collaboration bullets.
 Never 100% (fake). Never 0% (weak). Keep magnitudes plausible.
 
 ═══ SENIORITY — CALIBRATE VERBS AND SCOPE ═══
+Detect seniority from JD signals: title words, years required, responsibility scope, ownership language.
+
 JD seniority → verb register:
-  Director / VP / Partner / C-suite: Established, Defined, Governed, Owned, Transformed, Scaled
-  Senior / Lead / Manager:           Designed, Led, Drove, Built, Architected, Managed
-  Mid-level / Associate:             Developed, Implemented, Created, Optimized, Delivered
-  Junior / Analyst / Coordinator:    Supported, Contributed, Assisted, Prepared, Maintained
+  Director / VP / Partner / C-suite:          Established, Defined, Governed, Owned, Transformed, Scaled
+  Architect / Principal / Staff / Tech Lead:  Designed, Architected, Evaluated, Defined standards, Governed, Established, Recommended, Led adoption
+  Senior / Lead / Manager:                    Designed, Led, Drove, Built, Architected, Managed
+  Mid-level / Associate:                      Developed, Implemented, Created, Optimized, Delivered
+  Junior / Analyst / Coordinator:             Supported, Contributed, Assisted, Prepared, Maintained
+
+ARCHITECT / PRINCIPAL / STAFF tier — additional rules:
+  These roles own technical decisions, not just execution. Bullets must include at minimum:
+  • 1 bullet showing technology evaluation or selection ("Evaluated X vs Y, selected X because Z")
+  • 1 bullet showing standards definition or adoption ("Defined [standard] adopted across [scope]")
+  • 1 bullet showing cross-team or org-level impact (not just own ticket/project scope)
+  These 3 are derived from the candidate's real work using the JD-RESPONSIBILITY-VERB-MIRRORING and INFLUENCE-SIGNAL-SURFACING rules — never fabricated.
 
 Career progression within the resume:
   Oldest role → most junior language, narrowest scope, foundational tools

@@ -1066,6 +1066,59 @@ After the per-skill lines, add a final line:
 Return ONLY this report. No commentary, no resume rewriting, no markdown formatting."""
 
 
+def _inject_missing_keywords(resume: str, missing: list[str]) -> str:
+    """
+    Mechanical post-generation keyword injection.
+    For each missing JD keyword: find the best-matching Technical Skills row
+    by label similarity and append the keyword. Falls back to the last skills
+    row. No AI call — pure string manipulation. Guarantees keyword visibility.
+    """
+    if not missing:
+        return resume
+
+    # Find the Technical Skills / Core Competencies section
+    sec_m = re.search(
+        r'(TECHNICAL SKILLS|CORE COMPETENCIES|SKILLS & EXPERTISE|SKILLS):?\s*\n',
+        resume, re.IGNORECASE
+    )
+    if not sec_m:
+        return resume
+
+    sec_start = sec_m.end()
+
+    # Find end of skills section (next all-caps section header)
+    next_sec = re.search(r'\n(?:[A-Z][A-Z &]+):\s*\n', resume[sec_start:])
+    sec_end   = sec_start + next_sec.start() if next_sec else len(resume)
+
+    skills_block = resume[sec_start:sec_end]
+    lines = skills_block.split('\n')
+
+    # Index rows that have a label (contain ':')
+    row_indices = [i for i, l in enumerate(lines) if ':' in l and l.strip()]
+
+    for kw in missing:
+        # Skip if already present anywhere in resume (coverage false negative)
+        if re.search(r'\b' + re.escape(kw) + r'\b', resume, re.IGNORECASE):
+            continue
+
+        # Score each skills row: sum of LENGTHS of matching words from kw in row LABEL
+        # Longer word match beats shorter — "visualization" (13) > "data" (4)
+        kw_words = [w for w in kw.lower().split() if len(w) > 2]
+        best_idx, best_score = -1, 0
+        for i in row_indices:
+            label = lines[i].split(':')[0].lower()
+            score = sum(len(w) for w in kw_words if w in label)
+            if score > best_score:
+                best_score, best_idx = score, i
+
+        target = best_idx if best_score > 0 else (row_indices[-1] if row_indices else -1)
+        if target >= 0:
+            lines[target] = lines[target].rstrip().rstrip(',') + f", {kw}"
+
+    new_skills = '\n'.join(lines)
+    return resume[:sec_start] + new_skills + resume[sec_end:]
+
+
 def _parse_tier_audit(report: str) -> list[str]:
     """Parse the tier audit report and return only the VIOLATION lines as issue strings."""
     violations = []
@@ -1408,6 +1461,27 @@ async def tailor_resume(base_resume: str, job_description: str,
                 print(f"[TIER AUDIT] Clean — {len(skills_missing_from_original)} gap-filled skill(s) audited, no violations.")
         except Exception as e:
             print(f"[TIER AUDIT] Audit pass failed to run: {e}")
+
+    # ── Mechanical keyword injection — deterministic 100% visibility ─────────
+    # Runs after all AI passes. For any JD keyword still absent from the
+    # resume, injects it into the best-matching Technical Skills row.
+    # No AI call. No retry. Guarantees keyword shows up somewhere honest.
+    if job_description and skill_coverage_report is not None:
+        try:
+            final_cov  = skill_coverage_report(result, job_description, role_type=role_type)
+            still_gone = final_cov.get("missing", [])
+            if still_gone:
+                result = _inject_missing_keywords(result, still_gone)
+                # Confirm injection worked
+                injected = [k for k in still_gone
+                            if re.search(r'\b' + re.escape(k) + r'\b', result, re.IGNORECASE)]
+                if injected:
+                    print(f"[KEYWORD INJECT] Injected into skills section: {', '.join(injected)}")
+                skipped = [k for k in still_gone if k not in injected]
+                if skipped:
+                    print(f"[KEYWORD INJECT] Could not inject (no skills section found): {', '.join(skipped)}")
+        except Exception as e:
+            print(f"[KEYWORD INJECT] Failed: {e}")
 
     # ── Education section safety net — deterministic, no AI involvement ──────
     # Runs after all AI passes. Compares EDUCATION section of final output

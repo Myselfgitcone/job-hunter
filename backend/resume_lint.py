@@ -547,6 +547,15 @@ _DYN_COMPOUND_PHRASES: list[tuple[str, str]] = [
     ("Data Lineage",            r"\bdata\s+lineage\b"),
     ("Machine Learning",        r"\bmachine\s+learning\b"),
     ("Business Intelligence",   r"\bbusiness\s+intelligence\b"),
+    ("Data Visualization",      r"\bdata\s+visuali"),
+    ("Financial Modeling",      r"\bfinancial\s+model"),
+    ("Process Improvement",     r"\bprocess\s+improvement\b"),
+    ("Change Management",       r"\bchange\s+management\b"),
+    ("Master Data Management",  r"\bmaster\s+data\s+management\b"),
+    ("Risk Management",         r"\brisk\s+management\b"),
+    ("Cloud Security",          r"\bcloud\s+security\b"),
+    ("Incident Response",       r"\bincident\s+response\b"),
+    ("Threat Hunting",          r"\bthreat\s+hunting\b"),
     ("Data Mesh",               r"\bdata\s+mesh\b"),
     ("Data Fabric",             r"\bdata\s+fabric\b"),
     ("Medallion Architecture",  r"\bmedallion\b"),
@@ -611,6 +620,13 @@ _DYN_MULTI_WORD: list[tuple[str, str]] = [
     (r"\bprofessional\s+data\s+engineer\b",     "GCP Certified"),
     (r"\bmicrosoft\s+sentinel\b",               "Microsoft Sentinel"),
     (r"\bpub/sub\b",                            "Pub/Sub"),
+    # Ampersand-notation compound terms — must normalize before ALL-CAPS step splits them
+    (r"\bfp\s*&\s*a\b",                         "FP&A"),
+    (r"\bm\s*&\s*a\b",                          "M&A"),
+    (r"\batt&ck\b",                             "ATT&CK"),
+    (r"\bmitre\s+att&ck\b",                     "MITRE ATT&CK"),
+    (r"\becm\b",                                "ECM"),
+    (r"\bdcm\b",                                "DCM"),
 ]
 
 # Capitalized words that appear in JDs but are NOT tech skills
@@ -673,7 +689,11 @@ _DYN_SIGNAL_RE = re.compile(
 
 
 def _dyn_remove_components(items: list[str]) -> list[str]:
-    """Remove single-word items that are mere fragments of multi-word compounds."""
+    """
+    Remove items that are fragments of larger compound terms already in the set.
+    Handles both space-separated compounds (Six Sigma -> Six, Sigma)
+    and slash/ampersand compounds (FP&A -> FP, ATT&CK -> ATT/CK).
+    """
     s = set(items)
     result = []
     for item in items:
@@ -682,7 +702,7 @@ def _dyn_remove_components(items: list[str]) -> list[str]:
             continue
         is_component = any(
             item != other
-            and len(other.split()) > 1
+            and (len(other.split()) > 1 or bool(re.search(r"[/&]", other)))
             and re.search(r"\b" + re.escape(item) + r"\b", other, re.IGNORECASE)
             for other in s
         )
@@ -734,8 +754,8 @@ def extract_jd_keywords_dynamic(jd_text: str) -> list[str]:
         if a not in _DYN_ACRONYM_SKIP and a not in _DYN_PROP_SKIP:
             found.add(a)
 
-    # 7. Slash notation: CI/CD, ETL/ELT
-    for s in re.findall(r"\b[A-Za-z]{2,8}/[A-Za-z]{2,8}\b", text_full):
+    # 7. Slash / ampersand notation: CI/CD, ETL/ELT, FP&A, ATT&CK, M&A
+    for s in re.findall(r"\b[A-Za-z]{1,8}[/&][A-Za-z]{1,8}\b", text_full):
         if s.upper() not in _DYN_ACRONYM_SKIP:
             found.add(s)
 

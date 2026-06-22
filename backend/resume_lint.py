@@ -213,7 +213,7 @@ _ROLE_HARD_SKILLS: dict[str, dict[str, list[str]]] = {
         # ── Data architecture concepts ───────────────────────────────────────
         "ETL":               [r"\betl\b", r"\bextract.transform.load\b"],
         "ELT":               [r"\belt\b", r"\bextract.load.transform\b"],
-        "Data Warehouse":    [r"\bdata\s+warehous", r"\bdwh\b", r"\bedw\b"],
+        "Data Warehouse":    [r"\bdata\s+warehouses?\b", r"\bdwh\b", r"\bedw\b"],
         "Data Lake":         [r"\bdata\s+lakes?\b"],
         "Data Lakehouse":    [r"\blakehouse\b", r"\bdata\s+lakehouse\b"],
         "Data Pipeline":     [r"\bdata\s+pipelines?\b", r"\bpipelines?\b"],
@@ -1357,7 +1357,7 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "") -> 
     if job_description:
         coverage = skill_coverage_report(text, job_description, role_type=role_type)
         jd_skill_count = len(coverage["jd_skills"])
-        if jd_skill_count >= 6 and coverage["coverage_ratio"] < 0.85:
+        if jd_skill_count >= 6 and coverage["coverage_ratio"] < 0.90:
             missing_preview = ", ".join(coverage["missing"][:6])
             issues.append(
                 f"[LOW JD SKILL VISIBILITY] {coverage['coverage_text']} JD hard skills visible on resume "

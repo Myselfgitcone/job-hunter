@@ -519,11 +519,8 @@ _GLOBAL_HARD_SKILLS: dict[str, list[str]] = {
 }
 
 
-def _skill_catalog_for_role(role_type: str) -> dict[str, list[str]]:
-    catalog: dict[str, list[str]] = {}
-    catalog.update(_GLOBAL_HARD_SKILLS)
-    catalog.update(_ROLE_HARD_SKILLS.get(role_type, {}))
-    return catalog
+# _ROLE_HARD_SKILLS and _GLOBAL_HARD_SKILLS are retained as reference only.
+# No code path uses them — extraction and coverage are fully dynamic.
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -790,23 +787,7 @@ def extract_jd_hard_skills(job_description: str, role_type: Optional[str] = None
     """
     if not job_description:
         return []
-    dynamic = extract_jd_keywords_dynamic(job_description)
-    if len(dynamic) >= 5:
-        return dynamic
-    # Fallback: thin/poorly-structured JD — use catalog matching
-    role = role_type or detect_role_type(job_description)
-    jd_low = job_description.lower()
-    catalog_found: list[str] = []
-    for skill, patterns in _skill_catalog_for_role(role).items():
-        if any(re.search(p, jd_low) for p in patterns):
-            catalog_found.append(skill)
-    # Merge: dynamic results + any catalog hits not already present
-    merged = list(dynamic)
-    dynamic_lower = {d.lower() for d in dynamic}
-    for s in catalog_found:
-        if s.lower() not in dynamic_lower:
-            merged.append(s)
-    return sorted(set(merged))
+    return extract_jd_keywords_dynamic(job_description)
 
 
 def _dynamic_coverage_pattern(skill: str) -> str:

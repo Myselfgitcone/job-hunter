@@ -526,17 +526,267 @@ def _skill_catalog_for_role(role_type: str) -> dict[str, list[str]]:
     return catalog
 
 
+# ════════════════════════════════════════════════════════════════════════════
+# Dynamic JD keyword extractor (primary method — no hardcoded catalog needed)
+# ════════════════════════════════════════════════════════════════════════════
+
+# Small seed list: compound phrases that are ambiguous as single words
+_DYN_COMPOUND_PHRASES: list[tuple[str, str]] = [
+    ("Data Warehouse",          r"\bdata\s+warehou"),
+    ("Data Lake",               r"\bdata\s+lakes?\b"),
+    ("Delta Lake",              r"\bdelta\s+lake\b"),
+    ("Data Lakehouse",          r"\blakehouse\b"),
+    ("Data Pipeline",           r"\bdata\s+pipelines?\b"),
+    ("Data Modeling",           r"\bdata\s+model(?:ing|s)?\b"),
+    ("Data Integration",        r"\bdata\s+integration\b"),
+    ("Data Architecture",       r"\bdata\s+architect(?:ure)?\b"),
+    ("Metadata Management",     r"\bmetadata\s+management\b"),
+    ("Data Governance",         r"\bdata\s+governance\b"),
+    ("Data Quality",            r"\bdata\s+quality\b"),
+    ("Data Catalog",            r"\bdata\s+catalog\b"),
+    ("Data Lineage",            r"\bdata\s+lineage\b"),
+    ("Machine Learning",        r"\bmachine\s+learning\b"),
+    ("Business Intelligence",   r"\bbusiness\s+intelligence\b"),
+    ("Data Mesh",               r"\bdata\s+mesh\b"),
+    ("Data Fabric",             r"\bdata\s+fabric\b"),
+    ("Medallion Architecture",  r"\bmedallion\b"),
+    ("Star Schema",             r"\bstar\s+schema\b"),
+    ("Data Vault",              r"\bdata\s+vault\b"),
+    ("Zero Trust",              r"\bzero\s+trust\b"),
+    ("Change Data Capture",     r"\bchange\s+data\s+capture\b"),
+    ("Middleware",              r"\bmiddleware\b"),
+    ("Event-Driven",            r"\bevent[-\s]driven\b"),
+]
+
+# Multi-word vendor names -> canonical single form
+_DYN_MULTI_WORD: list[tuple[str, str]] = [
+    (r"\bapache\s+kafka\b",                     "Kafka"),
+    (r"\bapache\s+spark\b",                     "Spark"),
+    (r"\bapache\s+flink\b",                     "Flink"),
+    (r"\bapache\s+airflow\b",                   "Airflow"),
+    (r"\bapache\s+iceberg\b",                   "Iceberg"),
+    (r"\bapache\s+hudi\b",                      "Hudi"),
+    (r"\bapache\s+hadoop\b",                    "Hadoop"),
+    (r"\bapache\s+hive\b",                      "Hive"),
+    (r"\bapache\s+atlas\b",                     "Apache Atlas"),
+    (r"\bapache\s+pulsar\b",                    "Pulsar"),
+    (r"\bapache\s+superset\b",                  "Superset"),
+    (r"\bgoogle\s+bigquery\b",                  "BigQuery"),
+    (r"\bgoogle\s+cloud\s+platform\b",          "GCP"),
+    (r"\bgoogle\s+cloud\b",                     "GCP"),
+    (r"\bamazon\s+web\s+services\b",            "AWS"),
+    (r"\bmicrosoft\s+azure\b",                  "Azure"),
+    (r"\bazure\s+synapse(?:\s+analytics)?\b",   "Synapse Analytics"),
+    (r"\bazure\s+data\s+factory\b",             "Azure Data Factory"),
+    (r"\bazure\s+devops\b",                     "Azure DevOps"),
+    (r"\bazure\s+key\s+vault\b",                "Azure Key Vault"),
+    (r"\bazure\s+purview\b",                    "Azure Purview"),
+    (r"\bazure\s+event\s+hubs?\b",              "Event Hubs"),
+    (r"\bpower\s+bi\b",                         "Power BI"),
+    (r"\bgithub\s+actions\b",                   "GitHub Actions"),
+    (r"\bgitlab\s+ci(?:/cd)?\b",                "GitLab CI"),
+    (r"\bdbt\s+(?:core|cloud)\b",               "dbt"),
+    (r"\bsql\s+server\b",                       "SQL Server"),
+    (r"\bcloud\s+composer\b",                   "Cloud Composer"),
+    (r"\bstep\s+functions\b",                   "AWS Step Functions"),
+    (r"\blake\s+formation\b",                   "Lake Formation"),
+    (r"\bgreat\s+expectations\b",               "Great Expectations"),
+    (r"\bmonte\s+carlo\b",                      "Monte Carlo"),
+    (r"\bunity\s+catalog\b",                    "Unity Catalog"),
+    (r"\bapache\s+ranger\b",                    "Apache Ranger"),
+    (r"\bsix\s+sigma\b",                        "Six Sigma"),
+    (r"\bburp\s+suite\b",                       "Burp Suite"),
+    (r"\bcapital\s+iq\b",                       "Capital IQ"),
+    (r"\bpalo\s+alto\b",                        "Palo Alto"),
+    (r"\bvertex\s+ai\b",                        "Vertex AI"),
+    (r"\bfeature\s+store\b",                    "Feature Store"),
+    (r"\bvector\s+database\b",                  "Vector Database"),
+    (r"\bmaster\s+data\s+management\b",         "MDM"),
+    (r"\bnatural\s+language\s+processing\b",    "NLP"),
+    (r"\bcertified\s+solutions?\s+architect\b", "AWS Certified"),
+    (r"\baws\s+certif",                         "AWS Certified"),
+    (r"\baws\s+certified\s+data\s+analytics\b", "AWS Certified"),
+    (r"\bgcp\s+certif",                         "GCP Certified"),
+    (r"\bgoogle\s+cloud\s+certif",              "GCP Certified"),
+    (r"\bprofessional\s+data\s+engineer\b",     "GCP Certified"),
+    (r"\bmicrosoft\s+sentinel\b",               "Microsoft Sentinel"),
+    (r"\bpub/sub\b",                            "Pub/Sub"),
+]
+
+# Capitalized words that appear in JDs but are NOT tech skills
+_DYN_PROP_SKIP: set[str] = {
+    "We","Our","You","Your","They","This","That","All","Both","Each","The","A","An",
+    "New","High","Low","Large","Small","Strong","Good","Great","Best",
+    "Excellent","Robust","Scalable","Dynamic","Fast","Effective","Complex",
+    "Company","Organization","Team","Group","Department","Business",
+    "Enterprise","Environment","Solution","Solutions","System","Systems",
+    "Platform","Service","Services","Product","Products","Customer",
+    "Industry","Market","Global","International","Partner",
+    "Engineer","Developer","Architect","Analyst","Manager",
+    "Director","Lead","Senior","Junior","Principal","Staff","Owner",
+    "Experience","Knowledge","Proficiency","Familiarity","Ability",
+    "Skills","Required","Preferred","Minimum","Desired","Plus",
+    "Understanding","Demonstrated","Proven","Hands",
+    "Bachelor","Master","Degree","Education","University","College",
+    "Certification","Certifications",
+    "Communication","Collaboration","Leadership","Problem","Solving",
+    "Analytical","Strategic","Creative","Innovative","Motivated",
+    "Technical","Technology","Technologies","Tools","Tool",
+    "Programming","Development","Design","Management",
+    "Framework","Frameworks","Library","Libraries","Integration",
+    "Analytics","Core","Certified","Six","Sigma","Delta",
+    "Build","Develop","Implement","Maintain","Support",
+    "Manage","Drive","Ensure","Provide","Deliver","Enable","Create",
+    "Establish","Define","Collaborate","Work","Use","Based",
+    "Apache","Microsoft","Amazon","Google",
+    "Position","Summary","Responsibilities","Qualifications","Job","Role",
+    "Data","Cloud","Health",
+}
+_DYN_PROP_SKIP_LOWER: set[str] = {w.lower() for w in _DYN_PROP_SKIP}
+
+# ALL-CAPS sequences that are NOT tech skills
+_DYN_ACRONYM_SKIP: set[str] = {
+    "THE","AND","OR","NOT","FOR","ARE","HAS","INC","LLC","LTD",
+    "GET","SET","PUT","USE","RUN","LET","CAN","MAY","WILL","MUST",
+    "HAVE","WITH","FROM","INTO","THAT","THIS","THEY","ALSO","BOTH",
+    "EACH","OVER","BEEN","WERE","EEO","EOE","PTO","ADA",
+    "USA","US","NYC","SF","LA","DC","UK","EU","SAN","LOS","NEW",
+    "ASQ","IT","CI","CD",
+}
+
+# These acronyms/tools are independent skills — never removed as sub-components
+_DYN_NEVER_REMOVE: set[str] = {
+    "AWS","GCP","Azure","SQL","ETL","ELT","MDM","HIPAA","GDPR","SOC",
+    "RBAC","PII","Python","Java","Scala","Kafka","Spark","dbt",
+    "Docker","Git","Hadoop","HDFS","NoSQL","DB2",
+}
+
+_DYN_SIGNAL_RE = re.compile(
+    r"(?:experience\s+(?:with|in|using|building|implementing)|"
+    r"proficien(?:t|cy)\s+in|knowledge\s+of|familiarity\s+with|"
+    r"hands.on\s+(?:with|in|experience\s+with)|expertise\s+in|"
+    r"working\s+(?:with|knowledge\s+of)|background\s+in|"
+    r"exposure\s+to|such\s+as|e\.g\.|including|tools?:?)"
+    r"[,:\s]+([^\n.;]{3,200})",
+    re.IGNORECASE,
+)
+
+
+def _dyn_remove_components(items: list[str]) -> list[str]:
+    """Remove single-word items that are mere fragments of multi-word compounds."""
+    s = set(items)
+    result = []
+    for item in items:
+        if item in _DYN_NEVER_REMOVE:
+            result.append(item)
+            continue
+        is_component = any(
+            item != other
+            and len(other.split()) > 1
+            and re.search(r"\b" + re.escape(item) + r"\b", other, re.IGNORECASE)
+            for other in s
+        )
+        if not is_component:
+            result.append(item)
+    return result
+
+
+def extract_jd_keywords_dynamic(jd_text: str) -> list[str]:
+    """
+    Extract technical keywords directly from JD text.
+    No hardcoded catalog — derives keywords from the actual JD content.
+    """
+    found: set[str] = set()
+    lines = jd_text.strip().splitlines()
+    # Skip first line (job title/company — common source of false positives)
+    text_body = "\n".join(lines[1:]) if len(lines) > 1 else jd_text
+    text_full = jd_text
+
+    # 1. Compound tech phrases (context-dependent, case-insensitive)
+    for display, pat in _DYN_COMPOUND_PHRASES:
+        if re.search(pat, text_full, re.IGNORECASE):
+            found.add(display)
+
+    # 2. Multi-word vendor names -> canonical
+    for pat, canonical in _DYN_MULTI_WORD:
+        if re.search(pat, text_full, re.IGNORECASE):
+            found.add(canonical)
+
+    # 3. CamelCase single-word tech terms (PySpark, BigQuery, QuickSight, MLflow)
+    for w in re.findall(r"\b[A-Z][a-z]+(?:[A-Z][a-zA-Z0-9]*)+\b", text_body):
+        if w not in _DYN_PROP_SKIP and w.lower() not in _DYN_PROP_SKIP_LOWER:
+            found.add(w)
+
+    # 4. TitleCase words in comma-separated tech-list context
+    # Catches: Databricks, Snowflake, Airflow, Hadoop, Terraform, Oracle, etc.
+    for m in re.finditer(r"[,;:\(]\s*([A-Z][a-z]{2,18})\b", text_body):
+        w = m.group(1)
+        if w not in _DYN_PROP_SKIP and w.lower() not in _DYN_PROP_SKIP_LOWER:
+            found.add(w)
+
+    # 5. ALL-CAPS acronyms 2-6 chars (ETL, AWS, SQL, GCP, HDFS, MDM, HIPAA)
+    for a in re.findall(r"\b[A-Z]{2,6}\b", text_body):
+        if a not in _DYN_ACRONYM_SKIP:
+            found.add(a)
+
+    # 6. Alphanumeric tool names: DB2, S3, H2O
+    for a in re.findall(r"\b[A-Z]{1,4}\d[a-zA-Z0-9]*\b", text_body):
+        if a not in _DYN_ACRONYM_SKIP and a not in _DYN_PROP_SKIP:
+            found.add(a)
+
+    # 7. Slash notation: CI/CD, ETL/ELT
+    for s in re.findall(r"\b[A-Za-z]{2,8}/[A-Za-z]{2,8}\b", text_full):
+        if s.upper() not in _DYN_ACRONYM_SKIP:
+            found.add(s)
+
+    # 8. Capitalized words after skill-signal phrases
+    for m in _DYN_SIGNAL_RE.finditer(text_full):
+        for w in re.findall(r"\b[A-Z][a-zA-Z0-9+#.]{1,20}\b", m.group(1)):
+            if w not in _DYN_PROP_SKIP and w.lower() not in _DYN_PROP_SKIP_LOWER:
+                found.add(w)
+
+    # 9. Version-tagged tools: "Python 3", "Spark 3.x" -> extract tool name
+    for v in re.findall(r"\b([A-Z][a-zA-Z0-9+#.]+)\s+\d+(?:\.\d+)*[x+]?\b", text_full):
+        if v not in _DYN_PROP_SKIP and v.lower() not in _DYN_PROP_SKIP_LOWER:
+            found.add(v)
+
+    # 10. Always-lowercase canonical tools
+    if re.search(r"\bdbt\b", text_full, re.IGNORECASE):
+        found.add("dbt")
+
+    filtered = sorted(
+        f for f in found
+        if len(f) > 1
+        and f not in _DYN_PROP_SKIP
+        and f.upper() not in _DYN_ACRONYM_SKIP
+    )
+    return _dyn_remove_components(filtered)
+
+
 def extract_jd_hard_skills(job_description: str, role_type: Optional[str] = None) -> list[str]:
-    """Return canonical hard skills explicitly visible in the JD."""
+    """
+    Hybrid: dynamic extraction (primary) with catalog fallback for thin JDs.
+    Returns deduplicated list of hard skills visible in the JD.
+    """
     if not job_description:
         return []
+    dynamic = extract_jd_keywords_dynamic(job_description)
+    if len(dynamic) >= 5:
+        return dynamic
+    # Fallback: thin/poorly-structured JD — use catalog matching
     role = role_type or detect_role_type(job_description)
     jd_low = job_description.lower()
-    found: list[str] = []
+    catalog_found: list[str] = []
     for skill, patterns in _skill_catalog_for_role(role).items():
         if any(re.search(p, jd_low) for p in patterns):
-            found.append(skill)
-    return found
+            catalog_found.append(skill)
+    # Merge: dynamic results + any catalog hits not already present
+    merged = list(dynamic)
+    dynamic_lower = {d.lower() for d in dynamic}
+    for s in catalog_found:
+        if s.lower() not in dynamic_lower:
+            merged.append(s)
+    return sorted(set(merged))
 
 
 def skill_coverage_report(

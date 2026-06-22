@@ -644,6 +644,42 @@ Exception: if a named tool has no plausible connection to ANY role in the candid
 
 Apply to any domain: "Experience with NoSQL, Kafka, Middleware" → all 3 in bullets. "Tools: Splunk, CrowdStrike, Nessus" → all 3 in bullets. "Proficiency in Excel, Hyperion, SAP" → all 3 in bullets.
 
+═══ JD KEYWORD PLACEMENT — 3 CASES ═══
+For every hard skill the JD names, determine which case applies and act accordingly:
+
+CASE 1 — Skill exists in original resume: in skills list + used in a job bullet + in Technologies Used
+  → Strengthen the existing bullet (make the usage more specific/impactful)
+  → Keep in Technical Skills section
+  → Keep in that job's Technologies Used line
+  All 3 locations stay in sync. Do not remove from any of them.
+
+CASE 2 — Skill exists in original resume skills only (no supporting bullet)
+  → Write a real bullet in the most relevant job — specific action, real domain context, outcome
+  → Add to that job's Technologies Used line
+  → Keep in Technical Skills section
+  All 3 locations now populated. Do not leave it as skills-only.
+
+CASE 3 — Skill NOT in original resume at all (JD requires it, candidate has no exposure)
+  PATH A: Skill fits a real job context (adjacent domain, related tool, plausible usage)
+    → Write a real contextual bullet at that job — use the ADJACENT-STRETCH tier rules
+    → Add to that job's Technologies Used
+    → Add to Technical Skills under the correct category
+  PATH B: Skill cannot fit any real job context naturally
+    → Write ONE soft-framed bullet as the LAST bullet of the most recent job
+      Allowed framing: "Applied [skill] to...", "Designed [skill]-based approach for...",
+      "Implemented [skill] patterns for..." — never claim enterprise production ownership
+    → Add to Technical Skills only — NOT to Technologies Used (no real production claim)
+    → Exception for certifications: never create a work bullet for a cert the candidate
+      does not hold. Skills/Certifications section only, or omit entirely.
+
+CONSISTENCY RULE — enforced across all 3 cases:
+  If a skill appears in ANY work experience bullet → it MUST also appear in:
+    1. That job's Technologies Used line
+    2. The Technical Skills section under the relevant category
+  The reverse is also true: if a skill is in Technologies Used → it must have at least
+  one supporting bullet in that same job. Never list a tool in Technologies Used with
+  zero bullets mentioning it.
+
 ═══ COVERAGE — 80–90%, NOT 100% ═══
 Cover every hard skill the JD names, every core responsibility, the seniority level, and the top 3–5 distinctive JD phrases.
 Skip: soft skills, culture words, boilerplate, inflation keywords.

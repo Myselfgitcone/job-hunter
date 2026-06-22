@@ -73,25 +73,21 @@ def _normalize(text: str) -> str:
 
 
 def score_ats(resume_text: str, job_description: str) -> dict:
-    jd_lower = _normalize(job_description)
-    resume_lower = _normalize(resume_text)
-
-    # Extract keywords that appear in JD
-    jd_keywords = [kw for kw in ALL_KEYWORDS if kw in jd_lower]
-
-    # Deduplicate (preserve order)
-    all_jd_keywords = list(dict.fromkeys(jd_keywords))
-    if not all_jd_keywords:
-        return {"score": 0, "matched": [], "missing": [], "total": 0}
-
-    matched = [kw for kw in all_jd_keywords if kw in resume_lower]
-    missing = [kw for kw in all_jd_keywords if kw not in resume_lower]
-
-    score = round(len(matched) / len(all_jd_keywords) * 100)
-
+    """
+    ATS keyword coverage using dynamic JD keyword extraction.
+    Delegates to skill_coverage_report() so it stays in sync with
+    the tailor pipeline — both use extract_jd_keywords_dynamic()
+    instead of a static keyword catalog.
+    """
+    from resume_lint import skill_coverage_report
+    cov = skill_coverage_report(resume_text, job_description)
+    total   = len(cov["jd_skills"])
+    matched = cov["covered"]
+    missing = cov["missing"]
+    score   = round(len(matched) / total * 100) if total else 0
     return {
-        "score": score,
+        "score":   score,
         "matched": matched,
         "missing": missing,
-        "total": len(all_jd_keywords),
+        "total":   total,
     }

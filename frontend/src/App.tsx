@@ -893,9 +893,7 @@ function deptTerms(dept: string): string[] {
   return [phrase, ...words];
 }
 
-function countPanelFilters(f: { category: string[]; level: string[]; type: string[]; country: string[]; source: string[]; years?: string[]; score: string }) {
-  return f.category.length + f.level.length + f.type.length + f.country.length + f.source.length + (f.years?.length || 0) + (f.score !== "any" ? 1 : 0);
-}
+
 
 // ── Topbar (exact match to shell.jsx TopBar) ────────────────────────────────────
 function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, setViewMode, IC, isAdmin, onOpenPreferences, userRoles, activeFamily, setActiveFamily, sidebarCollapsed, setSidebarCollapsed, preferencesNode, countries, countryFilter, setCountryFilter }: {

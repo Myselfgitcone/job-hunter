@@ -521,7 +521,10 @@ async def _run_exp_ai_sweep(limit: int = 400):
         async def infer_one(jid: str, title: str, desc: str):
             async with sem:
                 try:
-                    level = await infer_experience_ai(title or "", desc or "", api_key, provider, model)
+                    level = await asyncio.wait_for(
+                        infer_experience_ai(title or "", desc or "", api_key, provider, model),
+                        timeout=120,  # 90s per attempt × fallback models = cap at 120s total
+                    )
                     if level:
                         async with SessionLocal() as db:
                             await db.execute(update(Job).where(Job.id == jid).values(
@@ -530,6 +533,10 @@ async def _run_exp_ai_sweep(limit: int = 400):
                             ))
                             await db.commit()
                         done["ok"] += 1
+                except asyncio.TimeoutError:
+                    done["err"] += 1
+                    if done["err"] <= 3:
+                        await log_event("ERROR", "exp-tray", f"Timed out inferring exp for job {jid}")
                 except Exception as e:
                     done["err"] += 1
                     if done["err"] <= 3:  # log first few errors only
@@ -1701,9 +1708,17 @@ async def get_job(job_id: str, user_id: str = Depends(get_current_user_id)):
             d["cover_letter"] = uj.cover_letter or ""
             d["ats_score_before"] = uj.ats_score_before
             d["ats_score_after"] = uj.ats_score_after
+            d["ats_keywords_matched"] = json.loads(uj.ats_keywords_matched) if uj.ats_keywords_matched else []
+            d["ats_keywords_missing"] = json.loads(uj.ats_keywords_missing) if uj.ats_keywords_missing else []
+            d["fit_analysis"] = uj.fit_analysis
+            d["interview_tips"] = json.loads(uj.interview_tips) if uj.interview_tips else []
             d["notes"] = uj.notes or ""
             d["priority"] = uj.priority or 0
             d["qualify_result"] = json.loads(uj.qualify_result) if uj.qualify_result else None
+            d["deadline"] = uj.deadline or ""
+            d["interview_date"] = uj.interview_date or ""
+            d["applied_at"] = uj.applied_at or ""
+            d["tailored_at"] = uj.tailored_at or ""
         return d
 
 

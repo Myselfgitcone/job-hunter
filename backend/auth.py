@@ -11,6 +11,16 @@ from jose import JWTError, jwt
 import bcrypt
 
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production-please")
+if SECRET_KEY == "dev-secret-key-change-in-production-please":
+    import sys
+    print(
+        "\n" + "!" * 70 + "\n"
+        "  WARNING: SECRET_KEY is using the dev fallback.\n"
+        "  JWT tokens are signed with a KNOWN string.\n"
+        "  Set SECRET_KEY in your Railway environment variables immediately.\n"
+        + "!" * 70 + "\n",
+        file=sys.stderr,
+    )
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_DAYS = 90
 

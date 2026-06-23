@@ -1259,32 +1259,34 @@ def _trim_skills_to_layers(resume: str, jd_keywords: list[str], max_layer3: int 
 
 def _remove_concept_redundancy(resume: str) -> str:
     """
-    Remove concept/category words from the Technical Skills section when the
-    tools that prove the concept are already listed in the resume.
+    Dynamically remove concept/category words from Technical Skills when
+    the section's own row LABELS already describe that category.
 
-    e.g. 'Data Visualization' is removed when Power BI or Tableau is present,
-         'CI/CD' is removed when Jenkins or GitHub Actions is present.
+    No hardcoded concept lists. Structural heuristic only:
+      An item is a CONCEPT (not a tool) if at least one of its words
+      that is >= 6 characters long appears in the vocabulary built from
+      all row LABELS in the skills section.
+
+    Why this works:
+      - Brand/tool names (Power BI, GitHub Actions, Snowflake, Databricks,
+        Apache Spark) contain specific words that never appear in category
+        labels like "Orchestration & DevOps" or "Visualization & Reporting."
+      - Abstract concept words (visualization, warehousing, orchestration,
+        governance, integration) DO appear in those labels — because that
+        is how the AI names its categories.
+
+    Examples (label vocab built from actual section headers):
+      label vocab: {visualization, reporting, orchestration, warehousing,
+                    integration, governance, quality, processing, ...}
+      "Data Visualization" -> "visualization" (14 chars) in vocab -> concept -> drop
+      "Power BI"           -> "power" (5) too short, "bi" (2) too short -> tool -> keep
+      "Apache Airflow"     -> "apache" (6) not in vocab, "airflow" (7) not in vocab -> keep
+      "GitHub Actions"     -> neither word in vocab -> tool -> keep
+      "CI/CD"              -> "ci" (2), "cd" (2) -> both too short -> keep
+      "Data Warehousing"   -> "warehousing" (11) in vocab -> concept -> drop
+
+    Adapts automatically to any JD and any AI-generated section structure.
     """
-    CONCEPT_PROOFS: dict[str, list[str]] = {
-        "data visualization": ["power bi", "tableau", "grafana", "looker", "quicksight"],
-        "visualization":      ["power bi", "tableau", "grafana", "looker", "quicksight"],
-        "ci/cd":              ["jenkins", "github actions", "gitlab ci", "circleci", "argocd", "azure devops"],
-        "data warehousing":   ["snowflake", "redshift", "bigquery", "synapse", "databricks"],
-        "data lakes":         ["adls", "delta lake", "apache iceberg", "apache hudi", "gcs"],
-        "big data":           ["spark", "hadoop", "databricks", "hive"],
-        "cloud computing":    ["aws", "azure", "gcp", "google cloud"],
-        "machine learning":   ["mlflow", "tensorflow", "pytorch", "scikit-learn", "sagemaker"],
-        "data governance":    ["purview", "collibra", "unity catalog", "lake formation"],
-        "data quality":       ["great expectations", "soda", "monte carlo", "datafold"],
-        "orchestration":      ["airflow", "dagster", "prefect", "step functions"],
-        "etl/elt":            ["dbt", "informatica", "ssis", "fivetran", "data factory"],
-        "streaming":          ["kafka", "flink", "kinesis", "event hubs", "pulsar"],
-        "nosql":              ["dynamodb", "mongodb", "cassandra", "redis"],
-        "devops":             ["docker", "kubernetes", "jenkins", "terraform"],
-        "data architecture":  ["medallion", "data vault", "lakehouse"],
-        "agile/scrum":        ["jira", "confluence", "scrum"],
-    }
-
     sec_m = re.search(
         r'(TECHNICAL SKILLS|CORE COMPETENCIES|SKILLS & EXPERTISE|SKILLS):?\s*\n',
         resume, re.IGNORECASE
@@ -1295,23 +1297,31 @@ def _remove_concept_redundancy(resume: str) -> str:
     sec_start = sec_m.end()
     next_sec  = re.search(r'\n(?:[A-Z][A-Z &/]+):\s*\n', resume[sec_start:])
     sec_end   = sec_start + next_sec.start() if next_sec else len(resume)
-    resume_lo = resume.lower()
 
     skills_block = resume[sec_start:sec_end]
     lines        = skills_block.split('\n')
-    new_lines: list[str] = []
 
-    for line in lines:
+    # ── Build label vocabulary from this section's own row labels ─────────────
+    # Words >= 6 chars from labels = category-describing vocabulary.
+    # Tool names are never in this vocabulary.
+    label_vocab: set[str] = set()
+    row_data: list[tuple[int, str, list[str]]] = []
+
+    for i, line in enumerate(lines):
         stripped = line.strip()
         if ':' not in stripped or not stripped:
-            new_lines.append(line)
             continue
         colon_idx = stripped.index(':')
         label     = stripped[:colon_idx].strip()
         items_str = stripped[colon_idx + 1:].strip()
         if not items_str:
-            new_lines.append(line)
             continue
+
+        # Strip continuation suffix before extracting vocab
+        label_clean = re.sub(r'\s*\(cont\.?\)\s*$', '', label, flags=re.IGNORECASE)
+        for word in re.split(r'[\s&/\-()]+', label_clean.lower()):
+            if len(word) >= 3:   # same threshold used when checking items below
+                label_vocab.add(word)
 
         # Parse items respecting parentheses
         items: list[str] = []
@@ -1324,22 +1334,66 @@ def _remove_concept_redundancy(resume: str) -> str:
                 if t: items.append(t)
                 cur = ''
             else: cur += ch
+        row_data.append((i, label, items))
 
-        filtered, removed = [], []
+    if not label_vocab:
+        return resume
+
+    # ── Filter each row ───────────────────────────────────────────────────────
+    new_lines = list(lines)
+    for i, label, items in row_data:
+        concepts, concrete = [], []
         for item in items:
-            proofs = CONCEPT_PROOFS.get(item.lower().strip())
-            if proofs and any(p in resume_lo for p in proofs):
-                removed.append(item)
+            # An item is a CONCEPT word if ALL of its meaningful words
+            # (≥3 chars) appear in the label vocabulary built from this
+            # section's row labels.
+            #
+            # Rationale: category labels use abstract nouns. Tools/techniques
+            # have specific words that never appear in category label names.
+            #
+            # "Data Visualization": words {data, visualization}
+            #   "data" in label vocab (many labels use "data") ✓
+            #   "visualization" in vocab (from "Visualization & Reporting") ✓
+            #   ALL words in vocab → concept → remove
+            #
+            # "Shell Scripting": words {shell, scripting}
+            #   "scripting" in vocab (from "Languages & Scripting") ✓
+            #   "shell" NOT in vocab → NOT ALL → tool → keep ✓
+            #
+            # "Power BI": words {power, bi} — both < 3 chars or not in vocab
+            #   "power" not in vocab, "bi" < 3 chars → NOT all → keep ✓
+            #
+            # "Dimensional Modeling": words {dimensional, modeling}
+            #   "modeling" in vocab ✓, "dimensional" NOT in vocab → keep ✓
+            item_words = [w for w in re.split(r'[\s&/\-()]+', item.lower()) if len(w) >= 3]
+            is_concept = (
+                bool(item_words)
+                and all(w in label_vocab for w in item_words)
+            )
+            if is_concept:
+                concepts.append(item)
             else:
-                filtered.append(item)
+                concrete.append(item)
+
+
+
+        # Only remove concept words if at least 1 concrete tool remains.
+        # Never empty a row — if everything is a "concept," keep it all.
+        if concrete:
+            removed  = concepts
+            filtered = concrete
+        else:
+            removed  = []
+            filtered = items
 
         if removed:
             print(f"[CONCEPT DEDUP] Removed ({label}): {', '.join(removed)}")
 
-        indent = len(line) - len(line.lstrip())
+        indent = len(lines[i]) - len(lines[i].lstrip())
         if filtered:
-            new_lines.append(' ' * indent + label + ': ' + ', '.join(filtered))
-        # else: empty row — drop it
+            new_lines[i] = ' ' * indent + label + ': ' + ', '.join(filtered)
+        else:
+            new_lines[i] = ''
 
     new_skills = '\n'.join(new_lines)
     new_skills = re.sub(r'\n{3,}', '\n\n', new_skills)

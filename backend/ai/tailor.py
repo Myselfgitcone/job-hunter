@@ -1257,16 +1257,106 @@ def _trim_skills_to_layers(resume: str, jd_keywords: list[str], max_layer3: int 
     return resume[:sec_start] + new_skills + resume[sec_end:]
 
 
+def _remove_concept_redundancy(resume: str) -> str:
+    """
+    Remove concept/category words from the Technical Skills section when the
+    tools that prove the concept are already listed in the resume.
+
+    e.g. 'Data Visualization' is removed when Power BI or Tableau is present,
+         'CI/CD' is removed when Jenkins or GitHub Actions is present.
+    """
+    CONCEPT_PROOFS: dict[str, list[str]] = {
+        "data visualization": ["power bi", "tableau", "grafana", "looker", "quicksight"],
+        "visualization":      ["power bi", "tableau", "grafana", "looker", "quicksight"],
+        "ci/cd":              ["jenkins", "github actions", "gitlab ci", "circleci", "argocd", "azure devops"],
+        "data warehousing":   ["snowflake", "redshift", "bigquery", "synapse", "databricks"],
+        "data lakes":         ["adls", "delta lake", "apache iceberg", "apache hudi", "gcs"],
+        "big data":           ["spark", "hadoop", "databricks", "hive"],
+        "cloud computing":    ["aws", "azure", "gcp", "google cloud"],
+        "machine learning":   ["mlflow", "tensorflow", "pytorch", "scikit-learn", "sagemaker"],
+        "data governance":    ["purview", "collibra", "unity catalog", "lake formation"],
+        "data quality":       ["great expectations", "soda", "monte carlo", "datafold"],
+        "orchestration":      ["airflow", "dagster", "prefect", "step functions"],
+        "etl/elt":            ["dbt", "informatica", "ssis", "fivetran", "data factory"],
+        "streaming":          ["kafka", "flink", "kinesis", "event hubs", "pulsar"],
+        "nosql":              ["dynamodb", "mongodb", "cassandra", "redis"],
+        "devops":             ["docker", "kubernetes", "jenkins", "terraform"],
+        "data architecture":  ["medallion", "data vault", "lakehouse"],
+        "agile/scrum":        ["jira", "confluence", "scrum"],
+    }
+
+    sec_m = re.search(
+        r'(TECHNICAL SKILLS|CORE COMPETENCIES|SKILLS & EXPERTISE|SKILLS):?\s*\n',
+        resume, re.IGNORECASE
+    )
+    if not sec_m:
+        return resume
+
+    sec_start = sec_m.end()
+    next_sec  = re.search(r'\n(?:[A-Z][A-Z &/]+):\s*\n', resume[sec_start:])
+    sec_end   = sec_start + next_sec.start() if next_sec else len(resume)
+    resume_lo = resume.lower()
+
+    skills_block = resume[sec_start:sec_end]
+    lines        = skills_block.split('\n')
+    new_lines: list[str] = []
+
+    for line in lines:
+        stripped = line.strip()
+        if ':' not in stripped or not stripped:
+            new_lines.append(line)
+            continue
+        colon_idx = stripped.index(':')
+        label     = stripped[:colon_idx].strip()
+        items_str = stripped[colon_idx + 1:].strip()
+        if not items_str:
+            new_lines.append(line)
+            continue
+
+        # Parse items respecting parentheses
+        items: list[str] = []
+        cur, depth = '', 0
+        for ch in items_str + ',':
+            if ch == '(':   depth += 1; cur += ch
+            elif ch == ')': depth -= 1; cur += ch
+            elif ch == ',' and depth == 0:
+                t = cur.strip()
+                if t: items.append(t)
+                cur = ''
+            else: cur += ch
+
+        filtered, removed = [], []
+        for item in items:
+            proofs = CONCEPT_PROOFS.get(item.lower().strip())
+            if proofs and any(p in resume_lo for p in proofs):
+                removed.append(item)
+            else:
+                filtered.append(item)
+
+        if removed:
+            print(f"[CONCEPT DEDUP] Removed ({label}): {', '.join(removed)}")
+
+        indent = len(line) - len(line.lstrip())
+        if filtered:
+            new_lines.append(' ' * indent + label + ': ' + ', '.join(filtered))
+        # else: empty row — drop it
+
+    new_skills = '\n'.join(new_lines)
+    new_skills = re.sub(r'\n{3,}', '\n\n', new_skills)
+    return resume[:sec_start] + new_skills + resume[sec_end:]
+
+
 def _enforce_skills_line_limit(resume: str, max_items: int = 6) -> str:
     """
     Deterministic post-processing: split any skills row with > max_items
-    into multiple rows. Runs after _inject_missing_keywords so injected
-    keywords also respect the limit. No AI call.
+    into multiple rows. Uses BALANCED splitting to avoid orphan 1-item rows.
 
-    "Languages & Scripting: Python, SQL, PySpark, PowerShell, Java, Scala, Bash"
-      -> 7 items -> split ->
-    "Languages & Scripting: Python, SQL, PySpark, PowerShell, Java, Scala"
-    "Languages & Scripting (cont.): Bash"
+    7 items -> 4+3  (not 6+1)
+    8 items -> 4+4
+    9 items -> 5+4
+    10 items -> 5+5
+    11 items -> 6+5
+    12 items -> 6+6
     """
     sec_m = re.search(
         r'(TECHNICAL SKILLS|CORE COMPETENCIES|SKILLS & EXPERTISE|SKILLS):?\s*\n',
@@ -1322,11 +1412,14 @@ def _enforce_skills_line_limit(resume: str, max_items: int = 6) -> str:
             new_lines.append(line)
             continue
 
-        # Split into chunks
-        indent = len(line) - len(line.lstrip())
-        prefix = ' ' * indent
-        for chunk_start in range(0, len(items), max_items):
-            chunk = items[chunk_start:chunk_start + max_items]
+        # Balanced split — distribute evenly so no row has < 3 items
+        import math
+        n_rows   = math.ceil(len(items) / max_items)
+        row_size = math.ceil(len(items) / n_rows)   # <= max_items, balanced
+        indent   = len(line) - len(line.lstrip())
+        prefix   = ' ' * indent
+        for chunk_start in range(0, len(items), row_size):
+            chunk  = items[chunk_start:chunk_start + row_size]
             suffix = ' (cont.)' if chunk_start > 0 else ''
             new_lines.append(f"{prefix}{label}{suffix}: {', '.join(chunk)}")
 
@@ -1704,6 +1797,12 @@ async def tailor_resume(base_resume: str, job_description: str,
         result = _trim_skills_to_layers(result, jd_hard_skills, max_layer3=10)
     except Exception as e:
         print(f"[SKILLS TRIM] Failed: {e}")
+
+    # ── Concept-word deduplication — remove concept words proven by tools ──
+    try:
+        result = _remove_concept_redundancy(result)
+    except Exception as e:
+        print(f"[CONCEPT DEDUP] Failed: {e}")
 
     # ── Skills line-length enforcement — max 6 items per line ─────────────
     try:

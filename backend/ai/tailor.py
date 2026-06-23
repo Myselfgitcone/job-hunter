@@ -650,6 +650,36 @@ Examples of required substitution:
 Rule: scan the JD's hard skill list. For each skill, check: does the tailored resume contain the JD's EXACT phrase (not just related words)? If not, reframe the most relevant existing bullet to include it.
 This is not about adding new content — it is about ensuring the existing content uses the vocabulary the JD expects.
 
+═══ TOOL CATEGORY BRIDGING — MAP CANDIDATE TOOLS TO JD CATEGORY TERMS ═══
+When the JD names a RESPONSIBILITY by category (e.g., "data catalog", "feature store", "data mesh",
+"observability platform", "semantic layer", "data contract") and the candidate has a SPECIFIC TOOL
+that implements that category — use the JD's exact category term in the bullet alongside the tool.
+
+Why: ATS scans for the JD's words, not the tool's brand name. A recruiter reading "Azure Purview"
+does not automatically credit "data catalog" coverage. You must write both.
+
+Examples:
+  JD: "Manage data catalogs"        + candidate has Azure Purview, AWS Lake Formation, or Databricks Unity Catalog
+  → Write: "Maintained [Tool] data catalog tracking metadata lineage and classification policies across N source systems"
+
+  JD: "Implement data contracts"    + candidate has dbt tests, Great Expectations, or Soda
+  → Write: "Implemented data contracts using [Tool] with schema validation and freshness SLAs..."
+
+  JD: "Build observability platform"+ candidate has Monte Carlo, DataDog, or CloudWatch
+  → Write: "Built observability platform using [Tool] monitoring pipeline health across N datasets..."
+
+  JD: "Manage feature store"        + candidate has Feast, Tecton, or Hopsworks
+  → Write: "Managed feature store using [Tool] serving N features to ML models in production..."
+
+  JD: "Data mesh architecture"      + candidate has domain-owned datasets, dbt, or Databricks
+  → Write: "Designed data mesh architecture distributing ownership across N domain teams using [Tool]..."
+
+Rule: Read every RESPONSIBILITY line in the JD (the "WHAT YOU WILL DO" section). For each one that
+names a category, check if the candidate's resume contains a tool that implements it. If yes, reframe
+that bullet to include the JD's exact category term. This is NOT fabrication — it is accurate labeling
+of what the tool does in the context the JD expects.
+
+
 ═══ JD "OR" ALTERNATIVES — NEVER DROP PROFILE SKILLS ═══
 When a JD lists skills as "or" alternatives — "Snowflake, Databricks, BigQuery, or Redshift" — do NOT use "or" as justification to omit any skill already present in the candidate's base resume.
 Rule: if the candidate has evidence of multiple skills from an "or" list, include ALL of them.

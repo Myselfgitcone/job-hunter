@@ -1555,7 +1555,7 @@ async def audit_tier_compliance(
         user=msg,
         api_key=api_key,
         provider=provider,
-        model=model,
+        model=model,  # caller passes _sec here
         max_tokens=2500,
         pass_name="tier-audit",
     )
@@ -1624,7 +1624,11 @@ _RETRY_RULES = {
 
 async def tailor_resume(base_resume: str, job_description: str,
                         api_key: str, provider: str, model: str,
-                        profile_skills: list[str] | None = None) -> str:
+                        profile_skills: list[str] | None = None,
+                        secondary_model: str = "") -> str:
+    # secondary_model: cheaper model for reviewer, tier audit, correction, retries.
+    # Falls back to main model if not set.
+    _sec = secondary_model or model
 
     # Detect role type up front so _enforce_limits uses the right budget
     role_type = detect_role_type(job_description)
@@ -1674,28 +1678,12 @@ async def tailor_resume(base_resume: str, job_description: str,
         f"Output: plain text resume only.\n"
         f"{declared_section}"
         f"{jd_skills_section}\n"
-        "STEP 1 — Open a <plan> block. Fill in EVERY field explicitly before writing a single resume line:\n"
-        "  ROLE_TYPE: [detected role type and why — TECH / IB / FINANCE / CYBER / HEALTHCARE / CONSULTING / GENERAL]\n"
-        "  COMPANY_STAGE: [startup / enterprise / unknown — key signals from JD]\n"
-        "  SECTION_LABELS: [exact section header labels you will use for this role type]\n"
-        "  CLOSING_LINE_FORMAT: [exact closing line format per role type, or 'none' if not applicable]\n"
-        "  SUMMARY_TITLE: [JD target role title] → [exact text of summary bullet 1]\n"
-        "  PRIMARY_FUNCTIONS: [list each JD primary function and which 2+ bullets will cover it]\n"
-        "  JOB_HEADERS: [list every job header from the base resume exactly as written — confirm each appears UNCHANGED]\n"
-        "  DOMAINS: [each company → its real industry; derive from resume text, never invent]\n"
-        "  TIMELINE: [each role's start–end years + which JD tools were enterprise-ready by then]\n"
-        "  TIMELINE_BLOCKS: [any JD tool failing timeline check → skills-only or dropped; 'none' if all clear]\n"
-        "  JD_SKILL_COVERAGE: [JD hard skills detected → present in base resume / missing → target: 100% visibility, 85–95% production-claim]\n"
-        "  MISSING_SKILL_PLACEMENT: [each missing hard skill → WORK-SUPPORTED / ADJACENT-STRETCH / SELF-IMPLEMENTABLE / HIGH-RISK, exact placement, and which target it counts toward (visibility-only vs. production-claim)]\n"
-        "  GAP_FILLS: [for each JD hard skill absent from resume: market-coverage class + 5-anchor test result → role assignment / skills only / project / DROP]\n"
-        "  WRONG_JOB_CHECK: [skills whose only bullet is at an older role → confirm gap-fill at most recent plausible role]\n"
-        "  CUTS: [which existing bullets are displaced to make room, and from which role]\n"
-        "  COMPLIANCE_DROPS: [frameworks skipped because legally impossible in candidate's domain; 'none' if all apply]\n"
-        "  DEPTH_GAPS: [existing bullets that show only deployment/exposure for JD-critical skills → rewrite plan]\n"
+        "STEP 1 — Open a <plan> block with exactly 3 lines:\n"
+        "  1. ROLE: [role type] | STAGE: [startup/enterprise] | TITLE: [exact JD title for header]\n"
+        "  2. PRIMARY: [top 3 JD functions and which job each maps to]\n"
+        "  3. GAPS: [JD skills missing from resume → tier (W/A/S/H) and placement]\n"
         "Close </plan>.\n\n"
         "STEP 2 — Write the complete tailored resume following all system prompt rules.\n\n"
-        "STEP 3 — Within each job, confirm bullets are ordered highest-JD-relevance first, lowest last. "
-        "Count every bullet. Rewrite any over 22 words before finalizing.\n\n"
         f"=== JOB DESCRIPTION ===\n{job_description[:16000]}\n\n"
         f"=== ORIGINAL RESUME ===\n{base_resume}"
     )
@@ -1750,7 +1738,7 @@ async def tailor_resume(base_resume: str, job_description: str,
             user=fix_msg,
             api_key=api_key,
             provider=provider,
-            model=model,
+            model=_sec,
             max_tokens=2500,
             pass_name=f"retry-{attempt+1}",
         )
@@ -1782,7 +1770,7 @@ async def tailor_resume(base_resume: str, job_description: str,
     # ── Semantic review — 1 pass, no retry ──────────────────────────────────
     pre_review = result
     result = await review_resume(
-        result, job_description, api_key, provider, model,
+        result, job_description, api_key, provider, _sec,
         profile_skills=profile_skills,
     )
     if result != pre_review:
@@ -1817,7 +1805,7 @@ async def tailor_resume(base_resume: str, job_description: str,
         try:
             violations, raw_report = await audit_tier_compliance(
                 base_resume, result, skills_missing_from_original,
-                api_key, provider, model,
+                api_key, provider, _sec,
             )
             if violations:
                 print(f"[TIER AUDIT] {len(violations)} violation(s) found:")
@@ -1841,11 +1829,11 @@ async def tailor_resume(base_resume: str, job_description: str,
                     f"=== TAILORED RESUME TO CORRECT ===\n{result}"
                 )
                 corrected = await chat(
-                    system=SYSTEM_PROMPT,
+                    system="You are a precise resume editor. Remove only the specific fabricated bullets listed. Do not change anything else. Return the complete resume as plain text.",
                     user=correction_msg,
                     api_key=api_key,
                     provider=provider,
-                    model=model,
+                    model=_sec,
                     max_tokens=2500,
                     pass_name="tier-correction",
                 )

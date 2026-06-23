@@ -2293,7 +2293,7 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
 
     ats_before = score_ats(base_resume, jd)
 
-    tailored_text = await tailor_resume(base_resume, jd, api_key, provider, model, profile_skills=profile_skills)
+    tailored_text = await tailor_resume(base_resume, jd, api_key, provider, model, profile_skills=profile_skills, secondary_model=user_cfg.get("ai_model_secondary", "google/gemini-2.5-flash"))
     ats_after = score_ats(tailored_text, jd)
 
     fit = await analyze_fit(base_resume, jd, job.title, job.company, api_key, provider, model)
@@ -2507,7 +2507,7 @@ async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_curr
         raise HTTPException(400, "No base resume found. Add it in Settings.")
 
     profile_skills = await _load_profile_skills(user_id)
-    tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model, profile_skills=profile_skills)
+    tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model, profile_skills=profile_skills, secondary_model=user_cfg.get("ai_model_secondary", "google/gemini-2.5-flash"))
 
     async with SessionLocal() as db:
         record = QuickTailorHistory(
@@ -2539,7 +2539,7 @@ async def quick_tailor_pdf(body: QuickTailorRequest, user_id: str = Depends(get_
         raise HTTPException(400, "No base resume found.")
 
     profile_skills = await _load_profile_skills(user_id)
-    tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model, profile_skills=profile_skills)
+    tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model, profile_skills=profile_skills, secondary_model=user_cfg.get("ai_model_secondary", "google/gemini-2.5-flash"))
     pdf_bytes = generate_pdf(tailored, "", body.company)
     cand = _candidate_slug(user_cfg.get("profile_name", ""))
     company_slug = re.sub(r"[^\w]+", "_", body.company or "Company").strip("_")
@@ -2564,7 +2564,7 @@ async def quick_tailor_docx(body: QuickTailorRequest, user_id: str = Depends(get
         raise HTTPException(400, "No base resume found.")
 
     profile_skills = await _load_profile_skills(user_id)
-    tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model, profile_skills=profile_skills)
+    tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model, profile_skills=profile_skills, secondary_model=user_cfg.get("ai_model_secondary", "google/gemini-2.5-flash"))
     docx_bytes = generate_docx(tailored, "", body.company)
     cand = _candidate_slug(user_cfg.get("profile_name", ""))
     company_slug = re.sub(r"[^\w]+", "_", body.company or "Company").strip("_")

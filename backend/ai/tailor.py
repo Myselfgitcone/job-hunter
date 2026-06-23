@@ -1694,7 +1694,7 @@ async def tailor_resume(base_resume: str, job_description: str,
         api_key=api_key,
         provider=provider,
         model=model,
-        max_tokens=2500,
+        max_tokens=3000,
         pass_name="main-tailor",
     )
 

@@ -44,6 +44,7 @@ async def chat(
     provider: str = "openrouter",
     model: str = "anthropic/claude-sonnet-4-5",
     max_tokens: int = 4096,
+    pass_name: str = "",
 ) -> str:
     # Settings UI stores display names ("OpenRouter") — normalize once here
     # so every caller works regardless of casing
@@ -94,7 +95,16 @@ async def chat(
                 if not resp.is_success:
                     body = resp.text[:400]
                     raise ValueError(f"HTTP {resp.status_code} from {provider} using {current_model}: {body}")
-                return resp.json()["choices"][0]["message"]["content"]
+                data = resp.json()
+                content = data["choices"][0]["message"]["content"]
+                # Log output token count
+                out_tokens = (data.get("usage") or {}).get("completion_tokens", 0)
+                label = f"[{pass_name}]" if pass_name else "[chat]"
+                if out_tokens:
+                    print(f"{label} output tokens: {out_tokens}")
+                    if out_tokens > 2000:
+                        print(f"[WARN OVERSIZED OUTPUT] {label} produced {out_tokens} tokens — expected ≤2000. Plan block may not be stripped.")
+                return content
         except Exception as e:
             last_error = e
             continue

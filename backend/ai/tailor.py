@@ -1556,7 +1556,8 @@ async def audit_tier_compliance(
         api_key=api_key,
         provider=provider,
         model=model,
-        max_tokens=2048,
+        max_tokens=2500,
+        pass_name="tier-audit",
     )
     report = report.strip()
     violations = _parse_tier_audit(report)
@@ -1587,7 +1588,8 @@ async def review_resume(tailored: str, job_description: str,
         api_key=api_key,
         provider=provider,
         model=model,
-        max_tokens=4096,
+        max_tokens=2500,
+        pass_name="reviewer",
     )
     stripped = re.sub(r'<plan>.*?</plan>', '', reviewed, flags=re.DOTALL).strip()
     if stripped != reviewed:
@@ -1704,7 +1706,8 @@ async def tailor_resume(base_resume: str, job_description: str,
         api_key=api_key,
         provider=provider,
         model=model,
-        max_tokens=6000,
+        max_tokens=2500,
+        pass_name="main-tailor",
     )
 
     # Strip <plan> block
@@ -1748,7 +1751,8 @@ async def tailor_resume(base_resume: str, job_description: str,
             api_key=api_key,
             provider=provider,
             model=model,
-            max_tokens=6000,
+            max_tokens=2500,
+            pass_name=f"retry-{attempt+1}",
         )
         raw = re.sub(r'<plan>.*?</plan>', '', raw, flags=re.DOTALL).strip()
 
@@ -1842,7 +1846,8 @@ async def tailor_resume(base_resume: str, job_description: str,
                     api_key=api_key,
                     provider=provider,
                     model=model,
-                    max_tokens=6000,
+                    max_tokens=2500,
+                    pass_name="tier-correction",
                 )
                 corrected = re.sub(r'<plan>.*?</plan>', '', corrected, flags=re.DOTALL).strip()
                 if corrected and len(corrected) > len(result) // 2:

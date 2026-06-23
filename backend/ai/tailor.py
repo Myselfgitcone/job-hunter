@@ -773,13 +773,47 @@ STEP 5 — Never inject the JD's industry vocabulary into a bullet about a diffe
 ═══ SKILLS / COMPETENCIES SECTION ═══
 Section label is determined by ROLE TYPE (see Step 1 format rules above).
 
-TECH: All tools from candidate's declared skills. New JD tools only if supported by a bullet. Organize by JD-relevant categories (6–9 lines, ≤7 tools per line).
-IB: Financial modeling types (LBO, DCF, merger, accretion/dilution), markets covered, product knowledge (M&A, ECM, DCM), key tools (Excel, Bloomberg, CapIQ, Pitchbook). No padding.
-FINANCE: Financial tools (Excel, Hyperion, Anaplan, SAP, Oracle), modeling skills (3-statement, DCF, scenario analysis), reporting standards (GAAP, IFRS, SOX if applicable). 4–6 lines max.
-CYBER: Tools by category — SIEM, EDR, Vuln Mgmt, Cloud Security, Identity, scripting. Certifications go in CERTIFICATIONS section.
+THIS IS A TARGETED SKILLS SECTION — NOT A FULL INVENTORY.
+Do NOT dump every skill the candidate has ever used. This is a tailored resume for a specific JD.
+A human reading 150 items will skip the section entirely. Target: 30–50 items total across all rows.
+
+BUILD THE SECTION IN 3 LAYERS:
+
+LAYER 1 — JD-named skills (required — include every one):
+  Every tool, technology, or skill explicitly named in the JD must appear.
+  These take priority over everything else.
+
+LAYER 2 — Bullet-backed skills (required — include every one):
+  Every tool or technology that appears in at least one work experience bullet
+  in THIS tailored resume must appear.
+  If it earned a bullet mention, it belongs in the skills section.
+
+LAYER 3 — Related helpful skills (optional — max 10 total from this layer):
+  After layers 1 and 2 are populated, add up to 10 additional skills that meet ALL of:
+    a. Closely related to what this specific JD requires
+    b. A strong candidate in this role would typically also possess them
+    c. Their absence would look like a gap to a hiring manager for this role
+  Do NOT add generic filler. Do NOT add skills unrelated to the JD's core function.
+  Do NOT add a skill just because the candidate has it.
+
+DISCARD everything else — even if the candidate knows it, even if it's in their profile.
+A targeted section that shows 40 relevant skills is stronger than a dump of 150.
+
+FORMATTING — HARD RULES (no exceptions):
+  • Maximum 6 items per line. If a category needs more than 6, split into 2 lines.
+  • 5–9 total lines across the section
+  • No concept words next to the tools that already prove them:
+      Bad:  "Visualization: Power BI, Tableau, Data Visualization"
+      Good: "Visualization: Power BI, Tableau, Grafana"
+      (Power BI and Tableau already prove data visualization — the concept word adds nothing)
+  • Group by logical categories appropriate to this specific role type and JD
+
+IB: Financial modeling types (LBO, DCF, merger), markets, key tools (Excel, Bloomberg, CapIQ). No padding.
+FINANCE: Financial tools, modeling skills, reporting standards applicable to this JD. 4–6 lines.
+CYBER: Tools by category — SIEM, EDR, Vuln Mgmt, Cloud Security, Identity, scripting.
 HEALTHCARE: Clinical skills, EHR/systems if applicable, regulatory frameworks. No generic soft skills.
-CONSULTING: Frameworks and methodologies, analytical tools, industry expertise areas. 4–6 lines max.
-GENERAL: 4–6 lines. Only include skills that appear in or are directly supported by the work experience.
+CONSULTING: Frameworks and methodologies, analytical tools, industry expertise. 4–6 lines.
+GENERAL: 4–6 lines. Only skills in or directly supported by the work experience.
 
 NEVER mirror the JD's exact qualification wording verbatim as a skills line.
 
@@ -1119,7 +1153,188 @@ def _inject_missing_keywords(resume: str, missing: list[str]) -> str:
     return resume[:sec_start] + new_skills + resume[sec_end:]
 
 
-def _parse_tier_audit(report: str) -> list[str]:
+def _trim_skills_to_layers(resume: str, jd_keywords: list[str], max_layer3: int = 10) -> str:
+    """
+    Trim the Technical Skills section to 3-layer logic:
+      Layer 1 — JD-named keywords: always keep
+      Layer 2 — appears in a work bullet (• line): always keep
+      Layer 3 — everything else: keep at most max_layer3 total
+
+    Technologies Used lines are Layer 3 territory unless also in a bullet.
+    This reduces 150-item dumps to 35-55 targeted items.
+    """
+    sec_m = re.search(
+        r'(TECHNICAL SKILLS|CORE COMPETENCIES|SKILLS & EXPERTISE|SKILLS):?\s*\n',
+        resume, re.IGNORECASE
+    )
+    if not sec_m:
+        return resume
+
+    sec_start = sec_m.end()
+    next_sec  = re.search(r'\n(?:[A-Z][A-Z &/]+):\s*\n', resume[sec_start:])
+    sec_end   = sec_start + next_sec.start() if next_sec else len(resume)
+
+    # Build bullet text (• lines only — not Technologies Used)
+    bullet_text = ' '.join(
+        line for line in resume[:sec_start].splitlines()
+        if line.strip().startswith('•') or line.strip().startswith('*')
+        and 'Technologies Used:' not in line
+    ).lower()
+
+    jd_set = {k.lower() for k in jd_keywords}
+
+    def classify(item: str) -> int:
+        il = item.lower().strip()
+        # L1: JD keyword
+        for kw in jd_set:
+            if kw in il or il in kw:
+                return 1
+        # L2: in a bullet sentence
+        if re.search(r'\b' + re.escape(il) + r'\b', bullet_text):
+            return 2
+        return 3
+
+    skills_block = resume[sec_start:sec_end]
+    lines = skills_block.split('\n')
+
+    # Collect all items with their layer classification
+    all_items: list[tuple[int, str]] = []  # (layer, item)
+    row_meta: list[tuple[int, str, list[str]]] = []  # (line_idx, label, items)
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if ':' not in stripped or not stripped:
+            continue
+        colon = stripped.index(':')
+        label = stripped[:colon].strip()
+        items_str = stripped[colon+1:].strip()
+        if not items_str:
+            continue
+        # Parse items respecting parentheses
+        items: list[str] = []
+        cur, depth = '', 0
+        for ch in items_str + ',':
+            if ch == '(':   depth += 1; cur += ch
+            elif ch == ')': depth -= 1; cur += ch
+            elif ch == ',' and depth == 0:
+                t = cur.strip()
+                if t: items.append(t)
+                cur = ''
+            else: cur += ch
+        row_meta.append((i, label, items))
+        for it in items:
+            all_items.append((classify(it), it))
+
+    # Decide which to keep
+    l1 = {it for layer, it in all_items if layer == 1}
+    l2 = {it for layer, it in all_items if layer == 2}
+    l3_ordered = [it for layer, it in all_items if layer == 3]
+    # Deduplicate l3 preserving order
+    seen: set[str] = set()
+    l3_unique: list[str] = []
+    for it in l3_ordered:
+        if it not in seen and it not in l1 and it not in l2:
+            seen.add(it); l3_unique.append(it)
+    l3_keep = set(l3_unique[:max_layer3])
+
+    keep = l1 | l2 | l3_keep
+
+    # Rebuild skills block keeping only approved items
+    new_lines = list(lines)
+    for i, label, items in row_meta:
+        kept = [it for it in items if it in keep or any(
+            k.lower() in it.lower() or it.lower() in k.lower() for k in keep
+        )]
+        if kept:
+            indent = len(lines[i]) - len(lines[i].lstrip())
+            new_lines[i] = ' ' * indent + label + ': ' + ', '.join(kept)
+        else:
+            new_lines[i] = ''  # remove empty row
+
+    new_skills = '\n'.join(new_lines)
+    # Clean up consecutive blank lines
+    new_skills = re.sub(r'\n{3,}', '\n\n', new_skills)
+    return resume[:sec_start] + new_skills + resume[sec_end:]
+
+
+def _enforce_skills_line_limit(resume: str, max_items: int = 6) -> str:
+    """
+    Deterministic post-processing: split any skills row with > max_items
+    into multiple rows. Runs after _inject_missing_keywords so injected
+    keywords also respect the limit. No AI call.
+
+    "Languages & Scripting: Python, SQL, PySpark, PowerShell, Java, Scala, Bash"
+      -> 7 items -> split ->
+    "Languages & Scripting: Python, SQL, PySpark, PowerShell, Java, Scala"
+    "Languages & Scripting (cont.): Bash"
+    """
+    sec_m = re.search(
+        r'(TECHNICAL SKILLS|CORE COMPETENCIES|SKILLS & EXPERTISE|SKILLS):?\s*\n',
+        resume, re.IGNORECASE
+    )
+    if not sec_m:
+        return resume
+
+    sec_start = sec_m.end()
+    next_sec  = re.search(r'\n(?:[A-Z][A-Z &/]+):\s*\n', resume[sec_start:])
+    sec_end   = sec_start + next_sec.start() if next_sec else len(resume)
+
+    skills_block = resume[sec_start:sec_end]
+    lines = skills_block.split('\n')
+    new_lines: list[str] = []
+
+    for line in lines:
+        stripped = line.strip()
+        if ':' not in stripped or not stripped:
+            new_lines.append(line)
+            continue
+
+        colon_idx = stripped.index(':')
+        label     = stripped[:colon_idx].strip()
+        items_str = stripped[colon_idx + 1:].strip()
+
+        if not items_str:
+            new_lines.append(line)
+            continue
+
+        # Parse items — handle parenthetical groups like "AWS (S3, EMR)" as ONE item
+        items: list[str] = []
+        current = ''
+        depth = 0
+        for ch in items_str:
+            if ch == '(':
+                depth += 1
+                current += ch
+            elif ch == ')':
+                depth -= 1
+                current += ch
+            elif ch == ',' and depth == 0:
+                t = current.strip()
+                if t:
+                    items.append(t)
+                current = ''
+            else:
+                current += ch
+        if current.strip():
+            items.append(current.strip())
+
+        if len(items) <= max_items:
+            new_lines.append(line)
+            continue
+
+        # Split into chunks
+        indent = len(line) - len(line.lstrip())
+        prefix = ' ' * indent
+        for chunk_start in range(0, len(items), max_items):
+            chunk = items[chunk_start:chunk_start + max_items]
+            suffix = ' (cont.)' if chunk_start > 0 else ''
+            new_lines.append(f"{prefix}{label}{suffix}: {', '.join(chunk)}")
+
+    new_skills = '\n'.join(new_lines)
+    return resume[:sec_start] + new_skills + resume[sec_end:]
+
+
+def _parse_tier_audit(report: str):
     """Parse the tier audit report and return only the VIOLATION lines as issue strings."""
     violations = []
     for line in report.strip().split("\n"):
@@ -1178,7 +1393,7 @@ async def review_resume(tailored: str, job_description: str,
     skills_ctx = ""
     if profile_skills:
         skills_ctx = (
-            f"\n=== CANDIDATE'S DECLARED SKILLS (keep ALL in skills section) ===\n"
+            f"\n=== CANDIDATE'S FULL SKILL INVENTORY (reference only) ===\n"
             f"{', '.join(profile_skills)}\n"
         )
     msg = (
@@ -1267,9 +1482,10 @@ async def tailor_resume(base_resume: str, job_description: str,
     declared_section = ""
     if profile_skills:
         declared_section = (
-            "\n=== CANDIDATE'S DECLARED SKILLS — include ALL in skills/competencies section ===\n"
+            "\n=== CANDIDATE'S FULL SKILL INVENTORY (reference only — do NOT dump all of these) ===\n"
             + ", ".join(profile_skills)
-            + "\nOrganize by JD-relevant categories appropriate to the role type. Do NOT omit any declared skill.\n"
+            + "\nUse the 3-layer skills section rule: include JD-named + bullet-backed + up to 10 related helpful."
+            + " This list is a reference pool — not a mandate to include everything.\n"
         )
 
     user_msg = (
@@ -1482,6 +1698,18 @@ async def tailor_resume(base_resume: str, job_description: str,
                     print(f"[KEYWORD INJECT] Could not inject (no skills section found): {', '.join(skipped)}")
         except Exception as e:
             print(f"[KEYWORD INJECT] Failed: {e}")
+
+    # ── Skills 3-layer trim — remove non-JD, non-bullet Layer 3 overflow ──
+    try:
+        result = _trim_skills_to_layers(result, jd_hard_skills, max_layer3=10)
+    except Exception as e:
+        print(f"[SKILLS TRIM] Failed: {e}")
+
+    # ── Skills line-length enforcement — max 6 items per line ─────────────
+    try:
+        result = _enforce_skills_line_limit(result, max_items=6)
+    except Exception as e:
+        print(f"[SKILLS LIMIT] Enforcement failed: {e}")
 
     # ── Education section safety net — deterministic, no AI involvement ──────
     # Runs after all AI passes. Compares EDUCATION section of final output

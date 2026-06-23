@@ -332,6 +332,8 @@ _DYN_ACRONYM_SKIP: set[str] = {
     "ITS","WAS","BUT","YET","TOO","NOW","OWN","END","NEW","OLD",
     # HR/Legal/generic
     "EEO","EOE","PTO","ADA","MOS","TRS","REQ","URF",
+    # Company name abbreviations commonly appearing in JD titles
+    "CVS","IBM","JPM","JPMC","GE","GM","HP","AT","UPS","DHL","BP","PG",
     # Geography
     "USA","US","NYC","SF","LA","DC","UK","EU","SAN","LOS","NEW",
     "TX","CA","NY","FL","IL","WA","GA","MA","PA","OH","VA",

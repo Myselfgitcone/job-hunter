@@ -385,8 +385,8 @@ export default function App() {
         }
       }
       // 1b. Active family chip filter (non-admin role toggle)
-      const _isAdmin = currentUser?.email?.toLowerCase() === "jaggubhai8766@gmail.com";
-      if (!_isAdmin && activeFamily) {
+      const _effectiveIsAdmin = currentUser?.email?.toLowerCase() === "jaggubhai8766@gmail.com";
+      if (!_effectiveIsAdmin && activeFamily) {
         const group = ROLE_GROUPS.find(g => g.group === activeFamily);
         if (group) {
           const title = j.title.toLowerCase();
@@ -429,7 +429,7 @@ export default function App() {
         if (!ok) return false;
       }
       // country — non-admins always see USA only
-      const effectiveCountry = _isAdmin ? filters.country : ["USA"];
+      const effectiveCountry = _effectiveIsAdmin ? filters.country : ["USA"];
       if (effectiveCountry.length && !effectiveCountry.includes(j.country || "")) return false;
       // source
       if (filters.source.length && !filters.source.includes(j.source)) return false;
@@ -584,6 +584,18 @@ export default function App() {
   const filtersActive = activeFilterCount > 0 || filters.q !== "";
   const isAdmin = currentUser?.email?.toLowerCase() === "jaggubhai8766@gmail.com";
 
+  // Admin mode: "selecting" → show picker, "admin" → full admin, "personal" → regular user view
+  const [adminMode, setAdminMode] = React.useState<"selecting"|"admin"|"personal">(() => {
+    if (!effectiveIsAdmin) return "personal";
+    return (localStorage.getItem("jh_admin_mode") as any) || "selecting";
+  });
+  const switchAdminMode = (mode: "admin"|"personal") => {
+    localStorage.setItem("jh_admin_mode", mode);
+    setAdminMode(mode);
+  };
+  // effectiveIsAdmin: admin in "personal" mode sees regular-user UI
+  const effectiveIsAdmin = isAdmin && adminMode === "admin";
+
   // Pending-approval badge for the admin's Settings nav item
   const [pendingCount, setPendingCount] = useState(0);
   useEffect(() => {
@@ -592,7 +604,7 @@ export default function App() {
     load();
     const t = setInterval(load, 60000);
     return () => clearInterval(t);
-  }, [isAuthenticated, isAdmin]);
+  }, [isAuthenticated, effectiveIsAdmin]);
 
   // Unseen error badge for Settings nav (admin only)
   const [unseenErrors, setUnseenErrors] = useState(0);
@@ -602,13 +614,13 @@ export default function App() {
     load();
     const t = setInterval(load, 60000);
     return () => clearInterval(t);
-  }, [isAuthenticated, isAdmin]);
+  }, [isAuthenticated, effectiveIsAdmin]);
 
   const navItems = [
     { id: "jobs",      label: "Jobs",         ic: IC.search   },
     { id: "dashboard", label: "Dashboard",    ic: IC.dash     },
     { id: "profile",   label: "My Profile",   ic: IC.user     },
-    ...(isAdmin ? [{ id: "settings",  label: "Settings",     ic: IC.settings }] : []),
+    ...(effectiveIsAdmin ? [{ id: "settings",  label: "Settings",     ic: IC.settings }] : []),
     { id: "tailor",    label: "Quick Tailor", ic: IC.sparkles },
   ];
 
@@ -650,6 +662,47 @@ export default function App() {
         loadJobs();
       }}
     />;
+  }
+
+  // Admin mode selection screen
+  if (isAdmin && adminMode === "selecting") {
+    return (
+      <div style={{ minHeight: "100vh", background: "#0f0f1a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 32, padding: 24 }}>
+        <div style={{ textAlign: "center", marginBottom: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 8 }}>
+            <svg width="32" height="32" viewBox="0 0 60 60"><circle cx="30" cy="30" r="30" fill="#0f0f1a"/><path d="M30 9 L32.5 24 L46 27.5 L32.5 31 L30 46 L27.5 31 L14 27.5 L27.5 24 Z" fill="white"/><path d="M44 12 L45.2 16.8 L50 18 L45.2 19.2 L44 24 L42.8 19.2 L38 18 L42.8 16.8 Z" fill="#22d3ee"/></svg>
+            <span style={{ fontSize: 22, fontWeight: 700, color: "#f1f5f9" }}>Job <span style={{ color: "#a78bfa" }}>Hunter</span></span>
+          </div>
+          <p style={{ color: "#64748b", fontSize: 14 }}>Welcome back, {currentUser?.name || "Admin"}. How do you want to continue?</p>
+        </div>
+        <div style={{ display: "flex", gap: 20, flexWrap: "wrap", justifyContent: "center" }}>
+          <button onClick={() => switchAdminMode("admin")} style={{
+            background: "rgba(139,92,246,0.12)", border: "1.5px solid rgba(139,92,246,0.4)",
+            borderRadius: 16, padding: "32px 40px", cursor: "pointer", color: "#f1f5f9",
+            minWidth: 200, textAlign: "center", transition: "all 0.15s"
+          }}
+            onMouseEnter={e => (e.currentTarget.style.background = "rgba(139,92,246,0.22)")}
+            onMouseLeave={e => (e.currentTarget.style.background = "rgba(139,92,246,0.12)")}
+          >
+            <div style={{ fontSize: 32, marginBottom: 12 }}>⚙️</div>
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>Admin Dashboard</div>
+            <div style={{ fontSize: 12, color: "#94a3b8" }}>Manage users, view stats,<br/>system settings</div>
+          </button>
+          <button onClick={() => switchAdminMode("personal")} style={{
+            background: "rgba(34,211,238,0.08)", border: "1.5px solid rgba(34,211,238,0.3)",
+            borderRadius: 16, padding: "32px 40px", cursor: "pointer", color: "#f1f5f9",
+            minWidth: 200, textAlign: "center", transition: "all 0.15s"
+          }}
+            onMouseEnter={e => (e.currentTarget.style.background = "rgba(34,211,238,0.16)")}
+            onMouseLeave={e => (e.currentTarget.style.background = "rgba(34,211,238,0.08)")}
+          >
+            <div style={{ fontSize: 32, marginBottom: 12 }}>🎯</div>
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>My Job Search</div>
+            <div style={{ fontSize: 12, color: "#94a3b8" }}>Browse jobs, tailor resumes,<br/>track applications</div>
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -706,6 +759,21 @@ export default function App() {
 
         <div className="sidebar-spacer" />
 
+        {/* Admin mode switcher */}
+        {isAdmin && (
+          <button
+            onClick={() => switchAdminMode(adminMode === "admin" ? "personal" : "admin")}
+            style={{
+              margin: "0 12px 8px", padding: "7px 12px", borderRadius: 8, border: "1px solid rgba(139,92,246,0.3)",
+              background: "rgba(139,92,246,0.08)", color: "#a78bfa", fontSize: 11.5, fontWeight: 500,
+              cursor: "pointer", display: "flex", alignItems: "center", gap: 6, transition: "all 0.15s"
+            }}
+            title="Switch between Admin and My Job Search mode"
+          >
+            <span>{adminMode === "admin" ? "🎯" : "⚙️"}</span>
+            {adminMode === "admin" ? "Switch to My Job Search" : "Switch to Admin Dashboard"}
+          </button>
+        )}
 
         {/* Theme toggle */}
         <div className="theme-switch">
@@ -754,9 +822,9 @@ export default function App() {
           </div>
         )}
         
-        {view === "dashboard" && <Dashboard isAdmin={isAdmin} />}
+        {view === "dashboard" && <Dashboard isAdmin={effectiveIsAdmin} />}
         {view === "profile"   && <Profile />}
-        {view === "settings"  && (isAdmin ? <Settings onToast={toast} onErrorsSeen={() => setUnseenErrors(0)} /> : <div style={{padding: 40, color: "#f87171", fontSize: 16}}>Restricted Access. Only the Master Admin can view Settings.</div>)}
+        {view === "settings"  && (effectiveIsAdmin ? <Settings onToast={toast} onErrorsSeen={() => setUnseenErrors(0)} /> : <div style={{padding: 40, color: "#f87171", fontSize: 16}}>Restricted Access. Only the Master Admin can view Settings.</div>)}
         {view === "tailor"    && <QuickTailor pageMode onClose={() => setView("jobs")} onToast={toast} />}
 
         {view === "jobs" && (
@@ -766,23 +834,23 @@ export default function App() {
               onScrape={handleScrape} count={filteredJobs.length}
               totalJobs={allJobs.length}
               viewMode={viewMode} setViewMode={setViewMode} IC={IC}
-              isAdmin={isAdmin}
+              isAdmin={effectiveIsAdmin}
               onOpenPreferences={() => setPreferencesOpen(true)}
               userRoles={userSettings?.job_roles ? (Array.isArray(userSettings.job_roles) ? userSettings.job_roles : JSON.parse(userSettings.job_roles)) : []}
-              activeFamily={isAdmin ? "" : activeFamily}
-              setActiveFamily={isAdmin ? undefined : setActiveFamily}
+              activeFamily={effectiveIsAdmin ? "" : activeFamily}
+              setActiveFamily={effectiveIsAdmin ? undefined : setActiveFamily}
               sidebarCollapsed={sidebarCollapsed}
               setSidebarCollapsed={setSidebarCollapsed}
-              countries={isAdmin ? COUNTRIES : undefined}
-              countryFilter={isAdmin ? filters.country : undefined}
-              setCountryFilter={isAdmin ? (v: string[]) => setFilters(f => ({ ...f, country: v })) : undefined}
+              countries={effectiveIsAdmin ? COUNTRIES : undefined}
+              countryFilter={effectiveIsAdmin ? filters.country : undefined}
+              setCountryFilter={effectiveIsAdmin ? (v: string[]) => setFilters(f => ({ ...f, country: v })) : undefined}
               preferencesNode={
                 <JobPreferencesModal
                   open={preferencesOpen}
                   onClose={() => setPreferencesOpen(false)}
                   onToast={toast}
                   onSaved={(s) => setUserSettings(s)}
-                  isAdmin={isAdmin}
+                  isAdmin={effectiveIsAdmin}
                 />
               }
             />
@@ -791,7 +859,7 @@ export default function App() {
               SOURCES={SOURCES} yearsCounts={yearsCounts}
               visaFilter={visaFilter} setVisaFilter={(v) => { setVisaFilter(v); saveFilterToggle(v, expFilter); }}
               expFilter={expFilter}   setExpFilter={(v) => { setExpFilter(v); saveFilterToggle(visaFilter, v); }}
-              isAdmin={isAdmin}
+              isAdmin={effectiveIsAdmin}
               sidebarCollapsed={sidebarCollapsed}
             />
               {scraping && (
@@ -899,7 +967,7 @@ function deptTerms(dept: string): string[] {
 function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, setViewMode, IC, isAdmin, onOpenPreferences, userRoles, activeFamily, setActiveFamily, sidebarCollapsed, setSidebarCollapsed, preferencesNode, countries, countryFilter, setCountryFilter }: {
   scraping: boolean; lastScraped: string; onScrape: () => void;
   count: number; totalJobs: number; viewMode: string; setViewMode: (m: ViewMode) => void;
-  IC: Record<string, string>; isAdmin: boolean; onOpenPreferences?: () => void; userRoles?: string[];
+  IC: Record<string, string>; isAdmin?: boolean; onOpenPreferences?: () => void; userRoles?: string[];
   activeFamily?: string; setActiveFamily?: (f: string) => void;
   sidebarCollapsed: boolean; setSidebarCollapsed: (v: boolean) => void;
   preferencesNode?: React.ReactNode;
@@ -1198,7 +1266,7 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
   SOURCES?: string[]; yearsCounts?: Record<string, number>;
   visaFilter: boolean; setVisaFilter: (v: boolean) => void;
   expFilter: boolean; setExpFilter: (v: boolean) => void;
-  isAdmin: boolean;
+  isAdmin?: boolean;
   sidebarCollapsed?: boolean;
 }) {
   const set = (k: keyof Filters, v: any) => setFilters(f => ({ ...f, [k]: v }));

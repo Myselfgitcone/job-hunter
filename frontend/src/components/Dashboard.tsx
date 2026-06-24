@@ -426,11 +426,22 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
   const [resumeModal, setResumeModal]   = useState<any>(null);
 
   useEffect(() => {
-    const scope = isAdmin ? undefined : "personal" as const;
-    api.getAnalytics(scope).then(setData).catch(console.error).finally(() => setLoading(false));
-    api.getReminders().then(setReminders).catch(() => {});
+    setLoading(true);
+    setData(null);
+    setAdminData(null);
     if (isAdmin) {
-      api.getAdminOverview().then(setAdminData).catch(console.error);
+      // Admin mode: load ONLY all-users aggregate data
+      api.getAdminOverview()
+        .then(setAdminData)
+        .catch(console.error)
+        .finally(() => setLoading(false));
+    } else {
+      // Personal mode: load ONLY own data, scoped to this user
+      api.getAnalytics("personal")
+        .then(setData)
+        .catch(console.error)
+        .finally(() => setLoading(false));
+      api.getReminders().then(setReminders).catch(() => {});
     }
   }, [isAdmin]);
 
@@ -442,6 +453,170 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
       </div>
     </div></div>
   );
+
+  // ── ADMIN MODE: pure all-users aggregate view ──────────────────────────────
+  if (isAdmin) {
+    if (!adminData) return null;
+    const ad = adminData;
+    return (
+      <div className="dash-scroll">
+        <div className="dash-inner">
+          {/* Totals */}
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", color: "var(--tx-3)", textTransform: "uppercase", marginBottom: 12 }}>All Users — Summary</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 20 }}>
+            {[
+              { label: "Total Applied", value: ad.totals?.applied ?? 0, color: "#10b981" },
+              { label: "Interviews", value: ad.totals?.interview ?? 0, color: "#f59e0b" },
+              { label: "AI Tailored", value: ad.totals?.tailored ?? 0, color: "#8b5cf6" },
+              { label: "Quick Tailored", value: ad.totals?.quick_tailored ?? 0, color: "#22d3ee" },
+            ].map(s => (
+              <div key={s.label} className="chart-card" style={{ textAlign: "center", padding: "20px 12px" }}>
+                <div style={{ fontSize: 32, fontWeight: 700, color: s.color }}>{s.value}</div>
+                <div style={{ fontSize: 11, color: "var(--tx-3)", marginTop: 6 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Status breakdown */}
+          <div className="chart-card" style={{ marginBottom: 14 }}>
+            <div className="chart-head"><span className="chart-title">Status Breakdown — All Users</span></div>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", padding: "8px 4px" }}>
+              {Object.entries(ad.status_breakdown || {}).map(([k, v]: any) => (
+                <div key={k} style={{ textAlign: "center", minWidth: 70 }}>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: k === "applied" ? "#10b981" : k === "interview" ? "#f59e0b" : k === "skipped" ? "#ef4444" : "var(--tx-2)" }}>{v}</div>
+                  <div style={{ fontSize: 10, color: "var(--tx-3)", textTransform: "capitalize" }}>{k}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Monthly trends */}
+          <div className="chart-card" style={{ marginBottom: 14 }}>
+            <div className="chart-head"><span className="chart-title">Monthly Trends — All Users</span></div>
+            <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 90, padding: "0 8px 8px" }}>
+              {(ad.monthly || []).map((m: any) => {
+                const maxV = Math.max(...(ad.monthly || []).map((x: any) => Math.max(x.applied || 0, x.tailored || 0)), 1);
+                return (
+                  <div key={m.month} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                    <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 70 }}>
+                      <div style={{ width: 10, background: "#10b981", borderRadius: 2, height: `${Math.max(3, ((m.applied||0) / maxV) * 70)}px` }} title={`Applied: ${m.applied}`} />
+                      <div style={{ width: 10, background: "#8b5cf6", borderRadius: 2, height: `${Math.max(3, ((m.tailored||0) / maxV) * 70)}px` }} title={`Tailored: ${m.tailored}`} />
+                    </div>
+                    <div style={{ fontSize: 9, color: "var(--tx-3)" }}>{m.month.split(" ")[0]}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 10, color: "var(--tx-3)", padding: "0 8px 8px" }}>
+              <span style={{ color: "#10b981" }}>■</span> Applied &nbsp;<span style={{ color: "#8b5cf6" }}>■</span> Tailored
+            </div>
+          </div>
+
+          {/* 30-day user activity */}
+          <div className="chart-card" style={{ marginBottom: 14 }}>
+            <div className="chart-head"><span className="chart-title">30-Day Activity — Per User</span></div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ color: "var(--tx-3)", fontSize: 10, borderBottom: "1px solid var(--border)" }}>
+                  <th style={{ textAlign: "left", padding: "8px", fontWeight: 600 }}>User</th>
+                  <th style={{ textAlign: "center", padding: "8px", fontWeight: 600 }}>Applied</th>
+                  <th style={{ textAlign: "center", padding: "8px", fontWeight: 600 }}>AI Tailored</th>
+                  <th style={{ textAlign: "center", padding: "8px", fontWeight: 600 }}>Quick Tailored</th>
+                  <th style={{ textAlign: "center", padding: "8px", fontWeight: 600 }}>All-Time Applied</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(ad.user_activity || []).map((u: any) => (
+                  <tr key={u.email} style={{ borderTop: "1px solid var(--border)" }}>
+                    <td style={{ padding: "10px 8px" }}>
+                      <div style={{ fontWeight: 600, color: "var(--tx-1)", fontSize: 12 }}>{u.name}</div>
+                      <div style={{ fontSize: 10, color: "var(--tx-3)" }}>{u.email}</div>
+                    </td>
+                    <td style={{ textAlign: "center", color: "#10b981", fontWeight: 700 }}>{u.applied_30d}</td>
+                    <td style={{ textAlign: "center", color: "#8b5cf6", fontWeight: 700 }}>{u.tailored_30d}</td>
+                    <td style={{ textAlign: "center", color: "#22d3ee", fontWeight: 700 }}>{u.quick_tailored_30d}</td>
+                    <td style={{ textAlign: "center", color: "var(--tx-2)" }}>{u.total_applied}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Tailored resumes by user */}
+          <div className="chart-card">
+            <div className="chart-head"><span className="chart-title">Tailored Resumes — By User</span></div>
+            {(ad.tailored_users || []).length === 0 && (
+              <div style={{ padding: 20, textAlign: "center", color: "var(--tx-3)", fontSize: 12 }}>No tailored resumes yet</div>
+            )}
+            {(ad.tailored_users || []).map((u: any) => (
+              <div key={u.user_id} style={{ borderTop: "1px solid var(--border)" }}>
+                <button
+                  onClick={() => setExpandedUser(expandedUser === u.user_id ? null : u.user_id)}
+                  style={{ width: "100%", background: "none", border: "none", padding: "12px 8px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", color: "var(--tx-1)" }}
+                >
+                  <div style={{ textAlign: "left" }}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{u.name}</div>
+                    <div style={{ fontSize: 10, color: "var(--tx-3)" }}>{u.email}</div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", borderRadius: 12, padding: "2px 10px", fontSize: 11, fontWeight: 600 }}>{u.resume_count}</span>
+                    <span style={{ color: "var(--tx-3)", fontSize: 11 }}>{expandedUser === u.user_id ? "▲" : "▼"}</span>
+                  </div>
+                </button>
+                {expandedUser === u.user_id && (
+                  <div style={{ padding: "0 8px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
+                    {u.resumes.map((r: any) => (
+                      <div key={r.job_id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", background: "var(--bg-2)", borderRadius: 8 }}>
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--tx-1)" }}>{r.company} — {r.title || "Untitled"}</div>
+                          <div style={{ fontSize: 10, color: "var(--tx-3)", marginTop: 2 }}>{r.tailored_at?.slice(0, 10)}</div>
+                        </div>
+                        {r.has_resume && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                const res = await api.getAdminTailoredResume(r.job_id, u.user_id);
+                                setResumeModal(res);
+                              } catch { alert("Failed to load resume"); }
+                            }}
+                            style={{ fontSize: 11, padding: "5px 14px", background: "rgba(139,92,246,0.15)", border: "1px solid rgba(139,92,246,0.3)", borderRadius: 6, color: "#a78bfa", cursor: "pointer", whiteSpace: "nowrap" }}
+                          >
+                            View Resume
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Resume modal */}
+          {resumeModal && (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
+              onClick={() => setResumeModal(null)}>
+              <div style={{ background: "var(--bg-1)", borderRadius: 12, width: "100%", maxWidth: 720, maxHeight: "85vh", overflow: "auto", padding: 24 }}
+                onClick={e => e.stopPropagation()}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: "var(--tx-1)" }}>{resumeModal.user_name}</div>
+                    <div style={{ fontSize: 12, color: "var(--tx-3)", marginTop: 2 }}>{resumeModal.company} — {resumeModal.job_title} · {resumeModal.tailored_at?.slice(0, 10)}</div>
+                  </div>
+                  <button onClick={() => setResumeModal(null)} style={{ background: "none", border: "none", color: "var(--tx-3)", cursor: "pointer", fontSize: 20, lineHeight: 1 }}>✕</button>
+                </div>
+                <pre style={{ fontSize: 11, lineHeight: 1.65, color: "var(--tx-1)", whiteSpace: "pre-wrap", fontFamily: "monospace", margin: 0 }}>
+                  {resumeModal.tailored_resume || "No resume text saved"}
+                </pre>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── PERSONAL / REGULAR USER MODE ───────────────────────────────────────────
   if (!data) return null;
 
   // Map API data to design shape
@@ -666,11 +841,10 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
           </div>
         </div>
 
-        {/* ── Admin Overview Section ── */}
-        {isAdmin && adminData && (
+        {/* (admin overview removed — now in separate branch above) */}
+        {false && (
           <div style={{ marginTop: 24 }}>
-            {/* Aggregate totals */}
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", color: "var(--tx-3)", textTransform: "uppercase", marginBottom: 12 }}>All Users — Overview</div>
+            <div style={{ fontSize: 11 }}>placeholder</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 20 }}>
               {[
                 { label: "Total Applied", value: adminData.totals?.applied ?? 0, color: "#10b981" },

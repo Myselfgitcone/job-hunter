@@ -595,6 +595,8 @@ export default function App() {
   const switchAdminMode = (mode: "admin"|"personal") => {
     localStorage.setItem("jh_admin_mode", mode);
     setAdminMode(mode);
+    // Settings is admin-only — redirect to Jobs when switching to personal
+    if (mode === "personal" && view === "settings") setView("jobs");
   };
   // effectiveIsAdmin: admin in "personal" mode sees regular-user UI
   const effectiveIsAdmin = isAdmin && adminMode === "admin";

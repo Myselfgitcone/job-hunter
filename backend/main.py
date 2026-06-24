@@ -2268,11 +2268,39 @@ async def fetch_jd(job_id: str, user_id: str = Depends(get_current_user_id)):
     return {"description": full_desc, "date": job.posted_at, "experience_level": job.experience_level}
 
 
+DAILY_TAILOR_LIMIT = 45
+
+async def _get_daily_tailor_count(user_id: str, db) -> int:
+    """Count job tailors + quick tailors this user has run today (UTC)."""
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    job_count = (await db.execute(
+        select(func.count()).select_from(UserJob)
+        .where(UserJob.user_id == user_id, UserJob.tailored_at.like(f"{today}%"))
+    )).scalar() or 0
+    quick_count = (await db.execute(
+        select(func.count()).select_from(QuickTailorHistory)
+        .where(QuickTailorHistory.user_id == user_id,
+               QuickTailorHistory.created_at.like(f"{today}%"))
+    )).scalar() or 0
+    return job_count + quick_count
+
+
+@app.get("/api/usage/today")
+async def get_daily_usage(user_id: str = Depends(get_current_user_id)):
+    """How many tailoring runs the user has done today vs their daily limit."""
+    async with SessionLocal() as db:
+        used = await _get_daily_tailor_count(user_id, db)
+    return {"used": used, "limit": DAILY_TAILOR_LIMIT, "remaining": max(0, DAILY_TAILOR_LIMIT - used)}
+
+
 # ————————————————————————————————————————————————————————————————————————————————
 
 @app.post("/api/jobs/{job_id}/tailor")
 async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
+        used = await _get_daily_tailor_count(user_id, db)
+        if used >= DAILY_TAILOR_LIMIT:
+            raise HTTPException(429, f"Daily limit reached: {used}/{DAILY_TAILOR_LIMIT} tailoring runs used today. Resets at midnight UTC.")
         job = await db.get(Job, job_id)
         if not job:
             raise HTTPException(404, "Job not found")
@@ -2499,6 +2527,11 @@ async def _load_profile_skills(user_id: str) -> list[str]:
 
 @app.post("/api/quick-tailor")
 async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        used = await _get_daily_tailor_count(user_id, db)
+    if used >= DAILY_TAILOR_LIMIT:
+        raise HTTPException(429, f"Daily limit reached: {used}/{DAILY_TAILOR_LIMIT} tailoring runs used today. Resets at midnight UTC.")
+
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()

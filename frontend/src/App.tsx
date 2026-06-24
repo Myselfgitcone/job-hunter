@@ -604,6 +604,16 @@ export default function App() {
     return () => clearInterval(t);
   }, [isAuthenticated, isAdmin]);
 
+  // Daily tailor usage
+  const [dailyUsage, setDailyUsage] = useState<{ used: number; limit: number; remaining: number } | null>(null);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const load = () => api.getDailyUsage().then(setDailyUsage).catch(() => {});
+    load();
+    const t = setInterval(load, 60000);
+    return () => clearInterval(t);
+  }, [isAuthenticated]);
+
   const navItems: { id: string; label: string; ic: string }[] = [
     { id: "jobs",      label: "Jobs",         ic: IC.search   },
     { id: "dashboard", label: isAdmin ? "All Users Dashboard" : "Dashboard", ic: IC.dash },
@@ -707,6 +717,30 @@ export default function App() {
 
         <div className="sidebar-spacer" />
 
+        {/* Daily tailor usage */}
+        {dailyUsage && (
+          <div style={{ margin: "0 12px 10px", padding: "10px 12px", borderRadius: 8, background: "var(--bg-2)", border: "1px solid var(--border)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--tx-2)" }}>Tailors today</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: dailyUsage.remaining === 0 ? "#ef4444" : dailyUsage.remaining < 10 ? "#f59e0b" : "var(--tx-2)" }}>
+                {dailyUsage.used} / {dailyUsage.limit}
+              </span>
+            </div>
+            <div style={{ height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}>
+              <div style={{
+                height: "100%", borderRadius: 2, transition: "width 0.3s",
+                width: `${Math.min(100, (dailyUsage.used / dailyUsage.limit) * 100)}%`,
+                background: dailyUsage.remaining === 0 ? "#ef4444" : dailyUsage.remaining < 10 ? "#f59e0b" : "#8b5cf6"
+              }} />
+            </div>
+            {dailyUsage.remaining === 0 && (
+              <div style={{ fontSize: 10, color: "#ef4444", marginTop: 4 }}>Limit reached — resets midnight UTC</div>
+            )}
+            {dailyUsage.remaining > 0 && dailyUsage.remaining < 10 && (
+              <div style={{ fontSize: 10, color: "#f59e0b", marginTop: 4 }}>{dailyUsage.remaining} remaining today</div>
+            )}
+          </div>
+        )}
 
         {/* Theme toggle */}
         <div className="theme-switch">

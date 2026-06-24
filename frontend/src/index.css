@@ -656,7 +656,7 @@ textarea { resize: none; }
 .jobcard:hover .skip-quick { opacity: 1; transform: translateY(-50%) scale(1); pointer-events: auto; }
 .skip-quick:hover { color: #f87171; border-color: rgba(248,113,113,.4); }
 .skip-quick svg { width: 13px; height: 13px; }
-.jobcard:hover .jc-right { opacity: 0; }
+.jobcard:hover .jc-right { opacity: 1; }
 .jc-right { transition: opacity .12s; }
 
 /* ---- PADDED CARD mode ---- */

@@ -800,6 +800,39 @@ STEP 4 — The summary may bridge domains explicitly — ONE bullet only. Factua
 
 STEP 5 — Never inject the JD's industry vocabulary into a bullet about a different employer.
 
+═══ RECRUITER SCORING DIMENSIONS — EVERY BULLET MUST BUILD EVIDENCE ═══
+Real hiring systems score resumes on 4 dimensions. Write every bullet to strengthen at least one:
+
+DIMENSION 1 — PRODUCTION EXPERIENCE (highest weight):
+  Evidence that passes: real company names + real scale + real outcomes.
+  "Built pipelines processing 500M+ daily records at JPMorgan Chase" → strong.
+  "Worked on data systems" → scores zero.
+  Signal words that score: production, scale (TB/GB/records/users), SLA, compliance, regulatory, enterprise.
+
+DIMENSION 2 — TECHNICAL SKILLS DEPTH:
+  Specific tools + specific decisions + why that tool.
+  "Evaluated DuckDB vs Spark for sub-50GB workloads — adopted DuckDB, eliminating cluster overhead" → strong.
+  "Used various data tools" → scores zero.
+  Depth signal: show the decision, not just the tool name.
+
+DIMENSION 3 — SELF PROJECTS (for any projects section):
+  Complex beats simple. Real-world beats academic.
+  High-scoring projects: full-stack, multiple technologies, user adoption, deployed, has live link.
+  Low-scoring projects: todo lists, calculators, weather apps, basic CRUD, tutorial-based.
+  CRITICAL: Every project must have a GitHub URL or live demo URL — projects without links receive automatic deductions.
+  Frame projects as: "Built X that does Y for real users/purpose" — not "Created project to learn Z."
+
+DIMENSION 4 — OPEN SOURCE (if applicable):
+  Contributing to OTHER people's projects scores. Your own repos do not count as open source.
+  If the candidate has open source contributions to repos with 1000+ stars, surface them explicitly.
+  If not — do not fabricate. Skip this dimension.
+
+DEDUCTION AVOIDANCE RULES:
+  NEVER use generic project names: "Calculator", "Todo App", "Weather App", "Note App"
+  NEVER frame bullets as learning exercises: "built to learn X", "exploring Y", "practice project"
+  NEVER mention university name, GPA, CGPA, or college tier — these do not affect scoring and can introduce bias
+  NEVER list a project without a URL if one exists in the original resume
+
 ═══ SKILLS / COMPETENCIES SECTION ═══
 Section label is determined by ROLE TYPE (see Step 1 format rules above).
 

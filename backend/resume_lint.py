@@ -246,6 +246,9 @@ _DYN_MULTI_WORD: list[tuple[str, str]] = [
     (r"\bgoogle\s+cloud\b",                     "GCP"),
     (r"\bamazon\s+web\s+services\b",            "AWS"),
     (r"\bmicrosoft\s+azure\b",                  "Azure"),
+    (r"\bmicrosoft\s+fabric\b",                 "Microsoft Fabric"),
+    (r"\bmicrosoft\s+dynamics\b",               "Microsoft Dynamics"),
+    (r"\bmicrosoft\s+dataverse\b",              "Dataverse"),
     (r"\bazure\s+synapse(?:\s+analytics)?\b",   "Synapse Analytics"),
     (r"\bazure\s+data\s+factory\b",             "Azure Data Factory"),
     (r"\bazure\s+devops\b",                     "Azure DevOps"),
@@ -347,6 +350,8 @@ _DYN_ACRONYM_SKIP: set[str] = {
     "EEO","EOE","PTO","ADA","MOS","TRS","REQ","URF",
     # Benefits/HR acronyms — appear in JD perks sections, not technical skills
     "HSA","FSA","HRA","PPO","HMO","EPO","COBRA","STD","LTD","EAP","PFL","FMLA",
+    # Business model / org structure terms — not technical skills
+    "B2B","B2C","B2G","D2C","VP","SVP","EVP","CEO","CTO","CFO","COO","CIO","GM",
     # Company name abbreviations commonly appearing in JD titles
     "CVS","IBM","JPM","JPMC","GE","GM","HP","AT","UPS","DHL","BP","PG",
     # Geography

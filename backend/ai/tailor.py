@@ -831,6 +831,8 @@ A targeted section that shows 40 relevant skills is stronger than a dump of 150.
 
 FORMATTING — HARD RULES (no exceptions):
   • Maximum 6 items per line. If a category needs more than 6, split into 2 lines.
+  • Minimum 2 items per line — NEVER create a skills row or continuation row with only 1 item.
+    If a category would have only 1 item, merge it into the nearest related row.
   • 5–9 total lines across the section
   • No concept words next to the tools that already prove them:
       Bad:  "Visualization: Power BI, Tableau, Data Visualization"

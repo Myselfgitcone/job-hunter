@@ -37,6 +37,15 @@ RECOMMENDED_MODELS = {
 }
 
 
+# Optional hook: set this to an async fn(message: str) to receive fallback alerts
+# Set from main.py after telegram bot is initialized
+_fallback_notify = None
+
+def set_fallback_notifier(fn):
+    global _fallback_notify
+    _fallback_notify = fn
+
+
 async def chat(
     system: str,
     user: str,
@@ -45,9 +54,8 @@ async def chat(
     model: str = "anthropic/claude-sonnet-4-5",
     max_tokens: int = 4096,
     pass_name: str = "",
+    allow_fallback: bool = True,
 ) -> str:
-    # Settings UI stores display names ("OpenRouter") — normalize once here
-    # so every caller works regardless of casing
     provider = (provider or "openrouter").lower().strip()
     if provider == "anthropic":
         return await _call_anthropic(system, user, api_key, model, max_tokens)
@@ -56,11 +64,11 @@ async def chat(
     if not url:
         raise ValueError(f"Unknown provider: {provider}. Use openrouter / groq / nvidia / anthropic")
 
+    # allow_fallback=False: try primary only — fail immediately if it fails.
+    # Used for main-tailor so a Sonnet failure doesn't silently produce
+    # a low-quality Gemini-generated resume.
     models_to_try = [model]
-    if provider == "openrouter":
-        # Fallbacks are CHEAP models only — never silently escalate a failed
-        # call to gpt-5/opus pricing. Premium models run only when explicitly
-        # selected in Settings.
+    if allow_fallback and provider == "openrouter":
         fallback_models = [
             "google/gemini-2.5-flash",
             "google/gemini-2.5-flash-lite",
@@ -70,9 +78,24 @@ async def chat(
             if fm not in models_to_try:
                 models_to_try.append(fm)
 
+    label = f"[{pass_name}]" if pass_name else "[chat]"
     last_error = None
-    for current_model in models_to_try:
+
+    for idx, current_model in enumerate(models_to_try):
+        is_fallback = idx > 0
         try:
+            if is_fallback:
+                msg = f"[FALLBACK] {label} primary={model} failed — using fallback: {current_model}"
+                print(msg)
+                if _fallback_notify:
+                    try:
+                        import asyncio
+                        asyncio.create_task(_fallback_notify(
+                            f"⚠️ Model fallback fired\nPass: {pass_name or 'unknown'}\nPrimary: {model}\nFallback: {current_model}\nError: {str(last_error)[:200]}"
+                        ))
+                    except Exception:
+                        pass
+
             headers = {
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
@@ -97,9 +120,7 @@ async def chat(
                     raise ValueError(f"HTTP {resp.status_code} from {provider} using {current_model}: {body}")
                 data = resp.json()
                 content = data["choices"][0]["message"]["content"]
-                # Log output token count
                 out_tokens = (data.get("usage") or {}).get("completion_tokens", 0)
-                label = f"[{pass_name}]" if pass_name else "[chat]"
                 if out_tokens:
                     print(f"{label} output tokens: {out_tokens}")
                     if out_tokens > 2500:

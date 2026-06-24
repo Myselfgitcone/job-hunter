@@ -1698,6 +1698,7 @@ async def tailor_resume(base_resume: str, job_description: str,
         model=model,
         max_tokens=3000,
         pass_name="main-tailor",
+        allow_fallback=False,
     )
 
     # Strip <plan> block

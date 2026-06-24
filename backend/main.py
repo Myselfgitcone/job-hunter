@@ -28,6 +28,7 @@ from scrapers import run_all_scrapers, run_group_fast, run_group_greenhouse, run
 from scrapers.jobspy_scraper import fetch as jobspy_fetch
 from ai.ats import score_ats
 from ai.tailor import tailor_resume
+from ai.llm import set_fallback_notifier
 from ai.fit import analyze_fit
 from ai.cover_letter import generate_cover_letter
 from pdf_gen import generate_pdf
@@ -604,6 +605,8 @@ async def startup():
                 row = result.fetchone()
                 if row and row[0] and row[1]:
                     await telegram_bot.init_bot(row[0], row[1])
+                    # Wire fallback notifier so model failures alert via Telegram
+                    set_fallback_notifier(telegram_bot.send_message)
         except Exception as e:
             print(f"[Startup] Telegram init skipped: {e}")
         # Approval migration: grandfather existing accounts as approved so the

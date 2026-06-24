@@ -370,15 +370,24 @@ EDUCATION:
 Master of Science in Information Systems @ Saint Louis University"""
 
 async def mark_expired_jobs_closed(fj_ids: list[int]) -> int:
-    """Marks all jobs in the given list of Fantastic.jobs IDs as closed."""
+    """Marks all jobs in the given list of Fantastic.jobs IDs as closed.
+    Batches in chunks of 1000 to stay well below asyncpg's 32767 param limit."""
     if not fj_ids:
         return 0
     from sqlalchemy import update
+    CHUNK = 1000
+    total_closed = 0
     async with SessionLocal() as db:
-        stmt = update(Job).where(Job.fj_id.in_(fj_ids)).where(Job.status == "new").values(status="closed")
-        result = await db.execute(stmt)
+        for i in range(0, len(fj_ids), CHUNK):
+            chunk = fj_ids[i:i + CHUNK]
+            stmt = (update(Job)
+                    .where(Job.fj_id.in_(chunk))
+                    .where(Job.status == "new")
+                    .values(status="closed"))
+            result = await db.execute(stmt)
+            total_closed += result.rowcount
         await db.commit()
-        return result.rowcount
+    return total_closed
 
 
 async def update_modified_jobs(job_updates: list[dict]) -> int:

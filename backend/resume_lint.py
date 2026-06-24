@@ -318,6 +318,12 @@ _DYN_PROP_SKIP: set[str] = {
     "Apache","Microsoft","Amazon","Google",
     "Position","Summary","Responsibilities","Qualifications","Job","Role",
     "Data","Cloud","Health",
+    # Benefits/perks/company words that appear in JD noise sections
+    "Benefits","Perks","Transportation","Parking","Dental","Vision","Medical",
+    "Insurance","Retirement","Equity","Bonus","Salary","Compensation","Stipend",
+    "Reimbursement","Coverage","Premium","Deductible","Wellness","Volunteer",
+    "Vacation","Holiday","Leave","Parental","Childcare","Fertility",
+    "Free","Identify","Subsidized","Inclusive","Culture","Belonging",
 }
 _DYN_PROP_SKIP_LOWER: set[str] = {w.lower() for w in _DYN_PROP_SKIP}
 
@@ -332,6 +338,8 @@ _DYN_ACRONYM_SKIP: set[str] = {
     "ITS","WAS","BUT","YET","TOO","NOW","OWN","END","NEW","OLD",
     # HR/Legal/generic
     "EEO","EOE","PTO","ADA","MOS","TRS","REQ","URF",
+    # Benefits/HR acronyms — appear in JD perks sections, not technical skills
+    "HSA","FSA","HRA","PPO","HMO","EPO","COBRA","STD","LTD","EAP","PFL","FMLA",
     # Company name abbreviations commonly appearing in JD titles
     "CVS","IBM","JPM","JPMC","GE","GM","HP","AT","UPS","DHL","BP","PG",
     # Geography
@@ -396,16 +404,47 @@ def _dyn_remove_components(items: list[str]) -> list[str]:
     return result
 
 
+_JD_NOISE_HEADERS = re.compile(
+    r"^(benefits?[\s&+]*perks?|life\s+at\s+\w+|why\s+\w+|about\s+\w+|"
+    r"equal\s+opportunity|eeo|diversity|culture\s+club|compensation|"
+    r"what\s+we\s+offer|we\s+offer|perks?|our\s+benefits?|"
+    r"employee\s+benefits?|what.s\s+in\s+it|working\s+at\s+\w+|"
+    r"the\s+perks|why\s+join|join\s+us)\b",
+    re.IGNORECASE,
+)
+
+def _strip_jd_noise(jd_text: str) -> str:
+    """
+    Remove benefits/culture/company sections from JD text before keyword extraction.
+    These sections contain words like HSA, FSA, Transportation, Free that are not
+    technical skills and pollute the extracted keyword list.
+    """
+    lines = jd_text.splitlines()
+    result = []
+    skip = False
+    for line in lines:
+        stripped = line.strip()
+        if _JD_NOISE_HEADERS.match(stripped):
+            skip = True
+        if not skip:
+            result.append(line)
+    return "\n".join(result)
+
+
 def extract_jd_keywords_dynamic(jd_text: str) -> list[str]:
     """
     Extract technical keywords directly from JD text.
     No hardcoded catalog — derives keywords from the actual JD content.
+    Strips benefits/perks/culture sections before extraction to avoid
+    injecting non-technical words (HSA, FSA, Transportation, etc.) as skills.
     """
     found: set[str] = set()
-    lines = jd_text.strip().splitlines()
+    # Strip noise sections FIRST — benefits, culture, EEO, etc.
+    jd_clean = _strip_jd_noise(jd_text)
+    lines = jd_clean.strip().splitlines()
     # Skip first line (job title/company — common source of false positives)
-    text_body = "\n".join(lines[1:]) if len(lines) > 1 else jd_text
-    text_full = jd_text
+    text_body = "\n".join(lines[1:]) if len(lines) > 1 else jd_clean
+    text_full = jd_clean
 
     # 1. Compound tech phrases (context-dependent, case-insensitive)
     for display, pat in _DYN_COMPOUND_PHRASES:

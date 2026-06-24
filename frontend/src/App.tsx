@@ -32,7 +32,7 @@ import { Toasts, useToasts, Spinner } from "./components/primitives";
 import Auth from "./components/Auth";
 import { Onboarding } from "./components/Onboarding";
 
-type View = "jobs" | "dashboard" | "profile" | "settings" | "tailor";
+type View = "jobs" | "dashboard" | "mystats" | "profile" | "settings" | "tailor";
 type ViewMode = "list" | "kanban";
 // Matches design's filter shape exactly (INTERACTIONS.md)
 type Filters = {
@@ -114,7 +114,7 @@ export default function App() {
 
   const getInitialView = (): View => {
     const hash = window.location.hash.replace("#", "");
-    return ["jobs", "dashboard", "profile", "settings", "tailor"].includes(hash) ? (hash as View) : "jobs";
+    return ["jobs", "dashboard", "mystats", "profile", "settings", "tailor"].includes(hash) ? (hash as View) : "jobs";
   };
   const [view, setView]             = useState<View>(getInitialView);
 
@@ -125,7 +125,7 @@ export default function App() {
   useEffect(() => {
     const handleHash = () => {
       const hash = window.location.hash.replace("#", "");
-      if (["jobs", "dashboard", "profile", "settings", "tailor"].includes(hash)) setView(hash as View);
+      if (["jobs", "dashboard", "mystats", "profile", "settings", "tailor"].includes(hash)) setView(hash as View);
     };
     window.addEventListener("hashchange", handleHash);
     return () => window.removeEventListener("hashchange", handleHash);
@@ -604,9 +604,10 @@ export default function App() {
     return () => clearInterval(t);
   }, [isAuthenticated, isAdmin]);
 
-  const navItems = [
+  const navItems: { id: string; label: string; ic: string }[] = [
     { id: "jobs",      label: "Jobs",         ic: IC.search   },
-    { id: "dashboard", label: "Dashboard",    ic: IC.dash     },
+    { id: "dashboard", label: isAdmin ? "All Users Dashboard" : "Dashboard", ic: IC.dash },
+    ...(isAdmin ? [{ id: "mystats", label: "My Stats", ic: IC.target }] : []),
     { id: "profile",   label: "My Profile",   ic: IC.user     },
     ...(isAdmin ? [{ id: "settings",  label: "Settings",     ic: IC.settings }] : []),
     { id: "tailor",    label: "Quick Tailor", ic: IC.sparkles },
@@ -755,6 +756,7 @@ export default function App() {
         )}
         
         {view === "dashboard" && <Dashboard isAdmin={isAdmin} />}
+        {view === "mystats"   && <Dashboard isAdmin={false} />}
         {view === "profile"   && <Profile />}
         {view === "settings"  && (isAdmin ? <Settings onToast={toast} onErrorsSeen={() => setUnseenErrors(0)} /> : <div style={{padding: 40, color: "#f87171", fontSize: 16}}>Restricted Access. Only the Master Admin can view Settings.</div>)}
         {view === "tailor"    && <QuickTailor pageMode onClose={() => setView("jobs")} onToast={toast} />}

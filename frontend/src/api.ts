@@ -189,7 +189,7 @@ export const api = {
   verifyJob: (id: string) =>
     req<{ alive: boolean | null; status_code: number | null; error?: string }>(`/api/jobs/${id}/verify`),
 
-  getAnalytics: () => req<any>("/api/analytics"),
+  getAnalytics: (personal?: boolean) => req<any>(`/api/analytics${personal ? "?personal=1" : ""}`),
 
   getSettings: () => req<Settings>("/api/settings"),
 

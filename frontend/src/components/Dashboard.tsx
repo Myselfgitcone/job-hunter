@@ -418,14 +418,20 @@ function timeAgo(iso: string) {
 
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
-  const [data, setData]       = useState<any>(null);
+  const [data, setData]         = useState<any>(null);
   const [reminders, setReminders] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]   = useState(true);
 
   useEffect(() => {
-    api.getAnalytics().then(setData).catch(console.error).finally(() => setLoading(false));
+    setLoading(true);
+    setData(null);
+    // isAdmin=true  → "All Users Dashboard": admin sees everyone's data
+    // isAdmin=false → "My Stats" or regular user: sees only own data (?personal=1)
+    // !isAdmin → personal=true → ?personal=1 (own data only, even for admin)
+    // isAdmin  → personal=false → no param (admin sees all users)
+    api.getAnalytics(!isAdmin).then(setData).catch(console.error).finally(() => setLoading(false));
     api.getReminders().then(setReminders).catch(() => {});
-  }, []);
+  }, [isAdmin]);
 
   if (loading) return (
     <div className="dash-scroll"><div className="dash-inner" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 300 }}>

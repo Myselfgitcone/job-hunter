@@ -2836,13 +2836,17 @@ async def admin_get_tailored_resume(job_id: str, target_user_id: str,
 
 
 @app.get("/api/analytics")
-async def get_analytics(user_id: str = Depends(get_current_user_id)):
+async def get_analytics(user_id: str = Depends(get_current_user_id),
+                        personal: int = 0):
     from collections import defaultdict
     from datetime import date, timedelta
 
     async with SessionLocal() as db:
         u_row = await db.get(User, user_id)
-        is_admin_analytics = bool(u_row and u_row.email.lower() == ADMIN_EMAIL.lower())
+        # personal=1 forces own-data-only even for admin (used by "My Stats" nav)
+        is_admin_analytics = bool(
+            u_row and u_row.email.lower() == ADMIN_EMAIL.lower() and not personal
+        )
         user_roles_analytics: list = []
         if not is_admin_analytics:
             s_res = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))

@@ -670,38 +670,36 @@ export default function App() {
   // Admin mode selection screen
   if (isAdmin && adminMode === "selecting") {
     return (
-      <div style={{ minHeight: "100vh", background: "#0f0f1a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 32, padding: 24 }}>
-        <div style={{ textAlign: "center", marginBottom: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 8 }}>
-            <svg width="32" height="32" viewBox="0 0 60 60"><circle cx="30" cy="30" r="30" fill="#0f0f1a"/><path d="M30 9 L32.5 24 L46 27.5 L32.5 31 L30 46 L27.5 31 L14 27.5 L27.5 24 Z" fill="white"/><path d="M44 12 L45.2 16.8 L50 18 L45.2 19.2 L44 24 L42.8 19.2 L38 18 L42.8 16.8 Z" fill="#22d3ee"/></svg>
-            <span style={{ fontSize: 22, fontWeight: 700, color: "#f1f5f9" }}>Job <span style={{ color: "#a78bfa" }}>Hunter</span></span>
-          </div>
-          <p style={{ color: "#64748b", fontSize: 14 }}>Welcome back, {currentUser?.name || "Admin"}. How do you want to continue?</p>
+      <div style={{ minHeight: "100vh", background: "#0f0f1a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 40, padding: 24 }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 13, letterSpacing: "0.12em", color: "#475569", textTransform: "uppercase", fontWeight: 600, marginBottom: 10 }}>Job Hunter</div>
+          <div style={{ fontSize: 26, fontWeight: 700, color: "#f1f5f9", marginBottom: 6 }}>Choose your workspace</div>
+          <div style={{ fontSize: 13, color: "#475569" }}>Welcome back, {currentUser?.name || "Admin"}</div>
         </div>
-        <div style={{ display: "flex", gap: 20, flexWrap: "wrap", justifyContent: "center" }}>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", justifyContent: "center" }}>
           <button onClick={() => switchAdminMode("admin")} style={{
-            background: "rgba(139,92,246,0.12)", border: "1.5px solid rgba(139,92,246,0.4)",
-            borderRadius: 16, padding: "32px 40px", cursor: "pointer", color: "#f1f5f9",
-            minWidth: 200, textAlign: "center", transition: "all 0.15s"
+            background: "#111827", border: "1px solid #312e81",
+            borderRadius: 12, padding: "28px 36px", cursor: "pointer", color: "#f1f5f9",
+            minWidth: 220, textAlign: "left", transition: "border-color 0.15s", display: "block"
           }}
-            onMouseEnter={e => (e.currentTarget.style.background = "rgba(139,92,246,0.22)")}
-            onMouseLeave={e => (e.currentTarget.style.background = "rgba(139,92,246,0.12)")}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = "#6d28d9")}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = "#312e81")}
           >
-            <div style={{ fontSize: 32, marginBottom: 12 }}>⚙️</div>
-            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>Admin Dashboard</div>
-            <div style={{ fontSize: 12, color: "#94a3b8" }}>Manage users, view stats,<br/>system settings</div>
+            <div style={{ fontSize: 10, letterSpacing: "0.1em", color: "#7c3aed", textTransform: "uppercase", fontWeight: 700, marginBottom: 10 }}>ADMIN</div>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6, color: "#f1f5f9" }}>Admin Dashboard</div>
+            <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.6 }}>Manage users · View system stats<br/>Control settings & approvals</div>
           </button>
           <button onClick={() => switchAdminMode("personal")} style={{
-            background: "rgba(34,211,238,0.08)", border: "1.5px solid rgba(34,211,238,0.3)",
-            borderRadius: 16, padding: "32px 40px", cursor: "pointer", color: "#f1f5f9",
-            minWidth: 200, textAlign: "center", transition: "all 0.15s"
+            background: "#111827", border: "1px solid #164e63",
+            borderRadius: 12, padding: "28px 36px", cursor: "pointer", color: "#f1f5f9",
+            minWidth: 220, textAlign: "left", transition: "border-color 0.15s", display: "block"
           }}
-            onMouseEnter={e => (e.currentTarget.style.background = "rgba(34,211,238,0.16)")}
-            onMouseLeave={e => (e.currentTarget.style.background = "rgba(34,211,238,0.08)")}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = "#0891b2")}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = "#164e63")}
           >
-            <div style={{ fontSize: 32, marginBottom: 12 }}>🎯</div>
-            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>My Job Search</div>
-            <div style={{ fontSize: 12, color: "#94a3b8" }}>Browse jobs, tailor resumes,<br/>track applications</div>
+            <div style={{ fontSize: 10, letterSpacing: "0.1em", color: "#0891b2", textTransform: "uppercase", fontWeight: 700, marginBottom: 10 }}>PERSONAL</div>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6, color: "#f1f5f9" }}>My Job Search</div>
+            <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.6 }}>Browse jobs · Tailor resumes<br/>Track your applications</div>
           </button>
         </div>
       </div>
@@ -767,14 +765,22 @@ export default function App() {
           <button
             onClick={() => switchAdminMode(adminMode === "admin" ? "personal" : "admin")}
             style={{
-              margin: "0 12px 8px", padding: "7px 12px", borderRadius: 8, border: "1px solid rgba(139,92,246,0.3)",
-              background: "rgba(139,92,246,0.08)", color: "#a78bfa", fontSize: 11.5, fontWeight: 500,
-              cursor: "pointer", display: "flex", alignItems: "center", gap: 6, transition: "all 0.15s"
+              margin: "0 12px 8px", padding: "7px 12px", borderRadius: 8,
+              border: `1px solid ${adminMode === "admin" ? "rgba(8,145,178,0.35)" : "rgba(139,92,246,0.35)"}`,
+              background: "transparent",
+              color: adminMode === "admin" ? "#22d3ee" : "#a78bfa",
+              fontSize: 11, fontWeight: 600, cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              letterSpacing: "0.04em", transition: "all 0.15s"
             }}
-            title="Switch between Admin and My Job Search mode"
+            title="Switch workspace mode"
           >
-            <span>{adminMode === "admin" ? "🎯" : "⚙️"}</span>
-            {adminMode === "admin" ? "Switch to My Job Search" : "Switch to Admin Dashboard"}
+            <span style={{ fontSize: 9, opacity: 0.6, textTransform: "uppercase", letterSpacing: "0.1em" }}>
+              {adminMode === "admin" ? "ADMIN" : "PERSONAL"}
+            </span>
+            <span style={{ fontSize: 11 }}>
+              {adminMode === "admin" ? "→ My Job Search" : "→ Admin Dashboard"}
+            </span>
           </button>
         )}
 

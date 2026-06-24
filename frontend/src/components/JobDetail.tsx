@@ -482,11 +482,16 @@ function QualifyTab({ job, running, onRun }: { job: Job; running: boolean; onRun
 }
 
 // ── Resume tab ─────────────────────────────────────────────────────────────────
-function ResumeTab({ job, tailoring, onTailor, onCancel, onToast }: {
-  job: Job; tailoring: boolean; onTailor: () => void; onCancel: () => void; onToast: (m: string, t?: "success" | "error") => void;
+function ResumeTab({ job, tailoring, onTailor, onCancel, onToast, onUpdate }: {
+  job: Job; tailoring: boolean; onTailor: () => void; onCancel: () => void;
+  onToast: (m: string, t?: "success" | "error") => void;
+  onUpdate: (patch: Partial<Job>) => void;
 }) {
   // Hooks MUST be at top level — never inside conditionals
   const TAILOR_START_KEY = `jh_tailor_start_${job.id}`;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft]     = useState("");
+  const [saving, setSaving]   = useState(false);
   const [elapsed, setElapsed] = useState(() => {
     const ts = sessionStorage.getItem(TAILOR_START_KEY);
     return ts ? Math.floor((Date.now() - parseInt(ts, 10)) / 1000) : 0;
@@ -556,12 +561,50 @@ function ResumeTab({ job, tailoring, onTailor, onCancel, onToast }: {
   return (
     <div style={{ display: "flex", gap: 18, maxWidth: 980 }}>
       <div style={{ flex: 1.5, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 8 }}>Tailored Resume</div>
-        <pre className="mono" style={{ flex: 1, background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, padding: 18, fontSize: 11.5, lineHeight: 1.7, color: "var(--text-secondary)", overflow: "auto", whiteSpace: "pre-wrap", maxHeight: 500 }}>{job.tailored_resume}</pre>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)" }}>Tailored Resume</div>
+          {!editing ? (
+            <button className="btn btn-ghost" style={{ fontSize: 11, height: 28, padding: "0 10px" }}
+              onClick={() => { setDraft(job.tailored_resume || ""); setEditing(true); }}>
+              ✏️ Edit
+            </button>
+          ) : (
+            <div style={{ display: "flex", gap: 6 }}>
+              <button className="btn btn-ghost" style={{ fontSize: 11, height: 28, padding: "0 10px" }}
+                onClick={() => setEditing(false)}>
+                Cancel
+              </button>
+              <button className="btn btn-accent" style={{ fontSize: 11, height: 28, padding: "0 12px" }}
+                disabled={saving}
+                onClick={async () => {
+                  setSaving(true);
+                  try {
+                    await api.saveTailoredResume(job.id, draft);
+                    onUpdate({ tailored_resume: draft } as any);
+                    setEditing(false);
+                    onToast("Resume saved", "success");
+                  } catch (e: any) {
+                    onToast(e.message || "Save failed", "error");
+                  } finally { setSaving(false); }
+                }}>
+                {saving ? "Saving…" : "💾 Save"}
+              </button>
+            </div>
+          )}
+        </div>
+        {editing ? (
+          <textarea
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            style={{ flex: 1, width: "100%", background: "var(--bg-surface)", border: "1px solid var(--purple)", borderRadius: 12, padding: 18, fontSize: 11.5, lineHeight: 1.7, color: "var(--text-primary)", resize: "vertical", minHeight: 420, fontFamily: "var(--f-mono, monospace)", outline: "none", boxSizing: "border-box" }}
+          />
+        ) : (
+          <pre className="mono" style={{ flex: 1, background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, padding: 18, fontSize: 11.5, lineHeight: 1.7, color: "var(--text-secondary)", overflow: "auto", whiteSpace: "pre-wrap", maxHeight: 500 }}>{job.tailored_resume}</pre>
+        )}
         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
           <button className="btn btn-ghost" onClick={() => downloadFile(api.pdfUrl(job.id), "resume.pdf").catch(e => onToast(e.message, "error"))}><Ic d={I.download} size={14} /> PDF</button>
           <button className="btn btn-ghost" onClick={() => downloadFile(api.docxUrl(job.id), "resume.docx").catch(e => onToast(e.message, "error"))}><Ic d={I.download} size={14} /> DOCX</button>
-          <button className="btn btn-ghost" onClick={() => { navigator.clipboard.writeText(job.tailored_resume || ""); onToast("Copied!", "success"); }}><Ic d={I.copy} size={14} /> Copy</button>
+          <button className="btn btn-ghost" onClick={() => { navigator.clipboard.writeText(editing ? draft : (job.tailored_resume || "")); onToast("Copied!", "success"); }}><Ic d={I.copy} size={14} /> Copy</button>
           <button className="btn btn-subtle" onClick={() => downloadFile(api.savePackageUrl(job.id), "package.zip").catch(e => onToast(e.message, "error"))}>
             <Ic d={I.folder} size={14} /> Save Package
           </button>
@@ -921,7 +964,7 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
           {tab === "qualify"  && <QualifyTab job={job} running={busy === "qualify" && busyJobId === job.id} onRun={() => runAction("qualify")} />}
           {tab === "resume"   && (
             <div style={{ display: "flex", flexDirection: "column" }}>
-              <ResumeTab job={job} tailoring={busy === "resume" && busyJobId === job.id} onTailor={() => runAction("resume")} onCancel={onCancel} onToast={onToast} />
+              <ResumeTab job={job} tailoring={busy === "resume" && busyJobId === job.id} onTailor={() => runAction("resume")} onCancel={onCancel} onToast={onToast} onUpdate={onUpdate} />
               <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 20, marginTop: 24 }}>
                 <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 12 }}>Fit & Tips</div>
                 <FitTab job={job} running={busy === "fit" && busyJobId === job.id} onRun={() => runAction("fit")} />

@@ -324,6 +324,10 @@ _DYN_PROP_SKIP: set[str] = {
     "Reimbursement","Coverage","Premium","Deductible","Wellness","Volunteer",
     "Vacation","Holiday","Leave","Parental","Childcare","Fertility",
     "Free","Identify","Subsidized","Inclusive","Culture","Belonging",
+    # Education-requirement words (appear in 'Bachelor's in Computer Science/Engineering')
+    "Computer","Engineering","Bachelor","Science","Mathematics","Statistics",
+    # Generic company/org words
+    "Market","Company","Corporation","Inc","Ltd","LLC","Healthcare","Finance",
 }
 _DYN_PROP_SKIP_LOWER: set[str] = {w.lower() for w in _DYN_PROP_SKIP}
 
@@ -480,6 +484,10 @@ def extract_jd_keywords_dynamic(jd_text: str) -> list[str]:
 
     # 7. Slash / ampersand notation: CI/CD, ETL/ELT, FP&A, ATT&CK, M&A
     for s in re.findall(r"\b[A-Za-z]{1,8}[/&][A-Za-z]{1,8}\b", text_full):
+        # Skip if both sides are identical (e.g. "dbt/dbt" — not a real term)
+        parts = re.split(r"[/&]", s)
+        if len(parts) == 2 and parts[0].lower() == parts[1].lower():
+            continue
         if s.upper() not in _DYN_ACRONYM_SKIP:
             found.add(s)
 

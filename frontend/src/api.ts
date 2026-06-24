@@ -138,6 +138,9 @@ export const api = {
   saveNotes: (id: string, notes: string) =>
     req(`/api/jobs/${id}/notes`, { method: "PUT", body: JSON.stringify({ notes }) }),
 
+  saveTailoredResume: (id: string, tailored_resume: string) =>
+    req(`/api/jobs/${id}/tailored-resume`, { method: "PUT", body: JSON.stringify({ tailored_resume }) }),
+
   pdfUrl:  (id: string) => `${BASE}/api/jobs/${id}/resume/pdf`,
   docxUrl: (id: string) => `${BASE}/api/jobs/${id}/resume/docx`,
   jdUrl:   (id: string) => `${BASE}/api/jobs/${id}/jd`,

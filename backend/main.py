@@ -2411,6 +2411,28 @@ class NotesUpdate(BaseModel):
     notes: str
 
 
+class TailoredResumeUpdate(BaseModel):
+    tailored_resume: str
+
+@app.put("/api/jobs/{job_id}/tailored-resume")
+async def update_tailored_resume(job_id: str, body: TailoredResumeUpdate, user_id: str = Depends(get_current_user_id)):
+    """Save manually edited tailored resume text."""
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        if not uj:
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.utcnow().isoformat())
+            db.add(uj)
+        uj.tailored_resume = body.tailored_resume
+        await db.commit()
+    return {"ok": True}
+
+
 @app.put("/api/jobs/{job_id}/notes")
 async def update_notes(job_id: str, body: NotesUpdate, user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:

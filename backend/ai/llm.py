@@ -5,6 +5,7 @@ Single LLM call function. Works with any OpenAI-compatible endpoint:
   - Nvidia NIM  (integrate.api.nvidia.com)
   - Anthropic direct (via anthropic SDK)
 """
+import asyncio
 import httpx
 
 PROVIDER_URLS = {
@@ -55,7 +56,11 @@ async def chat(
     max_tokens: int = 4096,
     pass_name: str = "",
     allow_fallback: bool = True,
+    retry_on_ratelimit: int = 0,
 ) -> str:
+    # retry_on_ratelimit: how many times to retry the SAME model on 429.
+    # Used for main-tailor so a transient rate limit doesn't kill the job.
+    # Retries with exponential delay: 5s, 10s, 15s...
     provider = (provider or "openrouter").lower().strip()
     if provider == "anthropic":
         return await _call_anthropic(system, user, api_key, model, max_tokens)
@@ -113,19 +118,47 @@ async def chat(
                 ],
             }
 
-            async with httpx.AsyncClient(timeout=90) as client:
-                resp = await client.post(url, headers=headers, json=payload)
-                if not resp.is_success:
-                    body = resp.text[:400]
-                    raise ValueError(f"HTTP {resp.status_code} from {provider} using {current_model}: {body}")
-                data = resp.json()
-                content = data["choices"][0]["message"]["content"]
-                out_tokens = (data.get("usage") or {}).get("completion_tokens", 0)
-                if out_tokens:
-                    print(f"{label} output tokens: {out_tokens}")
-                    if out_tokens > 2500:
-                        print(f"[WARN OVERSIZED OUTPUT] {label} produced {out_tokens} tokens — expected ≤2500. Plan block may not be stripped.")
-                return content
+            for rate_attempt in range(retry_on_ratelimit + 1):
+                try:
+                    async with httpx.AsyncClient(timeout=90) as client:
+                        resp = await client.post(url, headers=headers, json=payload)
+
+                    if resp.status_code == 429:
+                        if rate_attempt < retry_on_ratelimit:
+                            wait = 5 * (rate_attempt + 1)
+                            notify_msg = (
+                                f"⚠️ Rate limit (429)\nPass: {pass_name or 'unknown'}\n"
+                                f"Model: {current_model}\nRetrying in {wait}s "
+                                f"(attempt {rate_attempt + 1}/{retry_on_ratelimit})"
+                            )
+                            print(f"[RATE LIMIT] {label} got 429 on {current_model}. Waiting {wait}s...")
+                            if _fallback_notify:
+                                try:
+                                    asyncio.create_task(_fallback_notify(notify_msg))
+                                except Exception:
+                                    pass
+                            await asyncio.sleep(wait)
+                            continue
+                        # Exhausted retries on this model
+                        raise ValueError(f"HTTP 429 rate limit on {current_model} after {retry_on_ratelimit} retries")
+
+                    if not resp.is_success:
+                        body = resp.text[:400]
+                        raise ValueError(f"HTTP {resp.status_code} from {provider} using {current_model}: {body}")
+
+                    data = resp.json()
+                    content = data["choices"][0]["message"]["content"]
+                    out_tokens = (data.get("usage") or {}).get("completion_tokens", 0)
+                    if out_tokens:
+                        print(f"{label} output tokens: {out_tokens}")
+                        if out_tokens > 2500:
+                            print(f"[WARN OVERSIZED OUTPUT] {label} produced {out_tokens} tokens — expected ≤2500. Plan block may not be stripped.")
+                    return content
+
+                except ValueError:
+                    raise
+                except Exception as e:
+                    raise e
         except Exception as e:
             last_error = e
             continue

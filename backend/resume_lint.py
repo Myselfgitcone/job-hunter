@@ -349,6 +349,8 @@ _DYN_ACRONYM_SKIP: set[str] = {
     # Geography
     "USA","US","NYC","SF","LA","DC","UK","EU","SAN","LOS","NEW",
     "TX","CA","NY","FL","IL","WA","GA","MA","PA","OH","VA",
+    "CO","OR","MN","WI","IN","MO","TN","MD","AZ","NV","UT",
+    "CT","IA","KS","NE","NM","ID","MT","WY","ND","SD","WV","ME","NH","VT","RI","DE","AK","HI",
     # Fragment noise from slash notation splits
     "ASQ","IT","CI","CD",
 }
@@ -413,15 +415,28 @@ _JD_NOISE_HEADERS = re.compile(
     r"equal\s+opportunity|eeo|diversity|culture\s+club|compensation|"
     r"what\s+we\s+offer|we\s+offer|perks?|our\s+benefits?|"
     r"employee\s+benefits?|what.s\s+in\s+it|working\s+at\s+\w+|"
-    r"the\s+perks|why\s+join|join\s+us)\b",
+    r"the\s+perks|why\s+join|join\s+us|"
+    r"physical\s+environment|view\s+all\s+jobs?|"
+    r"complies\s+with\s+all\s+applicable|equal\s+opportunity\s+employer|"
+    r"all\s+qualified\s+applicants)\b",
+    re.IGNORECASE,
+)
+
+# Line-level physical/legal signal — skip individual lines even mid-section
+_PHYSICAL_SIGNALS = re.compile(
+    r"\b(lift\s+and/or|push/pull|bend.*reach|noise\s+level|"
+    r"qualified\s+applicants?\s+will\s+receive|"
+    r"without\s+regard\s+to\s+race|bank\s+secrecy\s+act|"
+    r"patriot\s+act|anti.money\s+laundering|"
+    r"view\s+all\s+jobs?)\b",
     re.IGNORECASE,
 )
 
 def _strip_jd_noise(jd_text: str) -> str:
     """
-    Remove benefits/culture/company sections from JD text before keyword extraction.
-    These sections contain words like HSA, FSA, Transportation, Free that are not
-    technical skills and pollute the extracted keyword list.
+    Remove benefits/culture/legal/physical sections from JD text before extraction.
+    Sections starting with noise headers are dropped entirely.
+    Individual lines matching physical/legal boilerplate are also dropped.
     """
     lines = jd_text.splitlines()
     result = []
@@ -430,8 +445,12 @@ def _strip_jd_noise(jd_text: str) -> str:
         stripped = line.strip()
         if _JD_NOISE_HEADERS.match(stripped):
             skip = True
-        if not skip:
-            result.append(line)
+        if skip:
+            continue
+        # Also drop individual physical/legal lines even outside a noise section
+        if _PHYSICAL_SIGNALS.search(stripped):
+            continue
+        result.append(line)
     return "\n".join(result)
 
 
@@ -484,9 +503,20 @@ def extract_jd_keywords_dynamic(jd_text: str) -> list[str]:
 
     # 7. Slash / ampersand notation: CI/CD, ETL/ELT, FP&A, ATT&CK, M&A
     for s in re.findall(r"\b[A-Za-z]{1,8}[/&][A-Za-z]{1,8}\b", text_full):
-        # Skip if both sides are identical (e.g. "dbt/dbt" — not a real term)
         parts = re.split(r"[/&]", s)
-        if len(parts) == 2 and parts[0].lower() == parts[1].lower():
+        if len(parts) != 2:
+            continue
+        a, b = parts
+        # Skip if both sides are identical (dbt/dbt, and/or, days/days)
+        if a.lower() == b.lower():
+            continue
+        # Only keep if BOTH sides are ALL-CAPS (CI/CD, ETL/ELT, TCP/IP)
+        # OR ampersand with at least one uppercase side (FP&A, M&A, ATT&CK)
+        # OR known lowercase tech compound (pub/sub)
+        is_both_caps = a.isupper() and b.isupper()
+        is_amp_tech  = "&" in s and (a.isupper() or b.isupper())
+        is_known     = s.lower() in {"pub/sub", "read/write", "r/w"}
+        if not (is_both_caps or is_amp_tech or is_known):
             continue
         if s.upper() not in _DYN_ACRONYM_SKIP:
             found.add(s)

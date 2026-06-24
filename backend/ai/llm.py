@@ -92,9 +92,10 @@ async def chat(
             if is_fallback:
                 msg = f"[FALLBACK] {label} primary={model} failed — using fallback: {current_model}"
                 print(msg)
-                if _fallback_notify:
+                # Suppress Telegram alerts for background/bulk sweeps — too noisy
+                _silent_passes = {"exp-sweep", "qualify"}
+                if _fallback_notify and pass_name not in _silent_passes:
                     try:
-                        import asyncio
                         asyncio.create_task(_fallback_notify(
                             f"⚠️ Model fallback fired\nPass: {pass_name or 'unknown'}\nPrimary: {model}\nFallback: {current_model}\nError: {str(last_error)[:200]}"
                         ))

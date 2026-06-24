@@ -492,8 +492,11 @@ async def _run_exp_ai_sweep(limit: int = 400):
             admin_s = await _get_admin_settings(db)
         api_key  = (admin_s.ai_api_key  or "") if admin_s else ""
         provider = (admin_s.ai_provider or "openrouter") if admin_s else "openrouter"
-        # DeepSeek R1 free — better seniority reasoning than flash-lite, zero cost
-        model = "deepseek/deepseek-r1:free"
+        # Use admin's configured qualify model (Gemini Flash by default).
+        # DeepSeek R1 free was unreliable — caused 64 fallback Telegram alerts per sweep.
+        model = (admin_s.ai_model_qualify or "google/gemini-2.5-flash") if admin_s else "google/gemini-2.5-flash"
+        if not model:
+            model = "google/gemini-2.5-flash"
         if not api_key:
             print("[ExpSweep] No API key — skipping AI experience inference")
             await log_event("WARNING", "exp-tray", "Skipped — no OpenRouter API key configured")
@@ -513,7 +516,7 @@ async def _run_exp_ai_sweep(limit: int = 400):
             pending = rows.fetchall()
         if not pending:
             return
-        print(f"[ExpSweep] AI-inferring experience for {len(pending)} jobs (DeepSeek R1 free)...")
+        print(f"[ExpSweep] AI-inferring experience for {len(pending)} jobs ({model})...")
         await log_event("INFO", "exp-tray", f"Starting sweep: {len(pending)} jobs to process")
 
         sem = asyncio.Semaphore(2)  # R1 is slower; 2 concurrent keeps rate-limit safe

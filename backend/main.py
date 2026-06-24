@@ -2701,14 +2701,153 @@ async def quick_tailor_history_jd(record_id: str, user_id: str = Depends(get_cur
 
 # â"€â"€ Analytics â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
+@app.get("/api/admin/overview")
+async def admin_overview(user_id: str = Depends(get_current_user_id)):
+    """All-user aggregate stats for admin dashboard."""
+    await _verify_admin(user_id)
+    from collections import defaultdict
+    from datetime import date, timedelta
+
+    async with SessionLocal() as db:
+        # All users with their basic info
+        users_res = await db.execute(select(User.id, User.name, User.email))
+        all_users = {r[0]: {"name": r[1] or r[2], "email": r[2]} for r in users_res.fetchall()}
+
+        # All UserJob records
+        uj_res = await db.execute(
+            select(UserJob.user_id, UserJob.job_id, UserJob.status,
+                   UserJob.tailored_at, UserJob.tailored_resume,
+                   UserJob.applied_at, Job.title, Job.company, Job.location)
+            .join(Job, UserJob.job_id == Job.id)
+        )
+        uj_rows = uj_res.fetchall()
+
+        # QuickTailor history counts per user
+        qt_res = await db.execute(
+            select(QuickTailorHistory.user_id, func.count().label("cnt"))
+            .group_by(QuickTailorHistory.user_id)
+        )
+        quick_tailor_counts = {r[0]: r[1] for r in qt_res.fetchall()}
+
+    # Aggregate
+    total_applied = sum(1 for r in uj_rows if r[2] == "applied")
+    total_interview = sum(1 for r in uj_rows if r[2] == "interview")
+    total_tailored = sum(1 for r in uj_rows if r[3])
+
+    status_breakdown = defaultdict(int)
+    for r in uj_rows:
+        status_breakdown[r[2] or "new"] += 1
+
+    # Monthly trends (last 6 months) — applied + tailored across all users
+    today = date.today()
+    monthly_map = defaultdict(lambda: {"applied": 0, "tailored": 0})
+    for r in uj_rows:
+        if r[5]:  # applied_at
+            m = r[5][:7]
+            monthly_map[m]["applied"] += 1
+        if r[3]:  # tailored_at
+            m = r[3][:7]
+            monthly_map[m]["tailored"] += 1
+
+    monthly = []
+    for i in range(5, -1, -1):
+        yr, mon = today.year, today.month - i
+        while mon <= 0: mon += 12; yr -= 1
+        key = f"{yr}-{mon:02d}"
+        vals = monthly_map.get(key, {"applied": 0, "tailored": 0})
+        monthly.append({"month": date(yr, mon, 1).strftime("%b %Y"), **vals})
+
+    # 30-day activity per user
+    thirty_ago = (today - timedelta(days=30)).isoformat()
+    user_activity = {}
+    for uid, info in all_users.items():
+        user_rows = [r for r in uj_rows if r[0] == uid]
+        recent_applied = sum(1 for r in user_rows if r[5] and r[5][:10] >= thirty_ago)
+        recent_tailored = sum(1 for r in user_rows if r[3] and r[3][:10] >= thirty_ago)
+        user_activity[uid] = {
+            "name": info["name"],
+            "email": info["email"],
+            "applied_30d": recent_applied,
+            "tailored_30d": recent_tailored,
+            "quick_tailored_30d": quick_tailor_counts.get(uid, 0),
+            "total_applied": sum(1 for r in user_rows if r[2] == "applied"),
+            "total_tailored": sum(1 for r in user_rows if r[3]),
+        }
+
+    # Tailored resumes grouped by user
+    tailored_by_user = defaultdict(list)
+    for r in uj_rows:
+        uid, jid, status, tai, resume, applied_at, title, company, location = r
+        if tai:
+            tailored_by_user[uid].append({
+                "job_id": jid, "title": title or "", "company": company or "",
+                "location": location or "", "tailored_at": tai,
+                "has_resume": bool(resume),
+            })
+
+    tailored_users = []
+    for uid, resumes in tailored_by_user.items():
+        info = all_users.get(uid, {})
+        tailored_users.append({
+            "user_id": uid,
+            "name": info.get("name", "Unknown"),
+            "email": info.get("email", ""),
+            "resume_count": len(resumes),
+            "resumes": sorted(resumes, key=lambda x: x["tailored_at"], reverse=True),
+        })
+    tailored_users.sort(key=lambda x: x["resume_count"], reverse=True)
+
+    return {
+        "totals": {
+            "applied": total_applied,
+            "interview": total_interview,
+            "tailored": total_tailored,
+            "quick_tailored": sum(quick_tailor_counts.values()),
+        },
+        "status_breakdown": dict(status_breakdown),
+        "monthly": monthly,
+        "user_activity": list(user_activity.values()),
+        "tailored_users": tailored_users,
+    }
+
+
+@app.get("/api/admin/tailored-resume/{job_id}")
+async def admin_get_tailored_resume(job_id: str, target_user_id: str,
+                                     user_id: str = Depends(get_current_user_id)):
+    """Fetch a specific user's tailored resume for a job."""
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        res = await db.execute(
+            select(UserJob.tailored_resume, UserJob.tailored_at, Job.title, Job.company, User.name)
+            .join(Job, UserJob.job_id == Job.id)
+            .join(User, UserJob.user_id == User.id)
+            .where(UserJob.job_id == job_id, UserJob.user_id == target_user_id)
+        )
+        row = res.fetchone()
+    if not row:
+        raise HTTPException(404, "Not found")
+    return {
+        "tailored_resume": row[0] or "",
+        "tailored_at": row[1],
+        "job_title": row[2],
+        "company": row[3],
+        "user_name": row[4],
+    }
+
+
 @app.get("/api/analytics")
-async def get_analytics(user_id: str = Depends(get_current_user_id)):
+async def get_analytics(user_id: str = Depends(get_current_user_id),
+                        scope: str = "default"):
     from collections import defaultdict
     from datetime import date, timedelta
 
     async with SessionLocal() as db:
         u_row = await db.get(User, user_id)
-        is_admin_analytics = bool(u_row and u_row.email.lower() == ADMIN_EMAIL.lower())
+        # scope=personal: admin sees only their own data (personal job search mode)
+        is_admin_analytics = bool(
+            u_row and u_row.email.lower() == ADMIN_EMAIL.lower()
+            and scope != "personal"
+        )
         user_roles_analytics: list = []
         if not is_admin_analytics:
             s_res = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))

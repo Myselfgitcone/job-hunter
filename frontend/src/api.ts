@@ -189,7 +189,10 @@ export const api = {
   verifyJob: (id: string) =>
     req<{ alive: boolean | null; status_code: number | null; error?: string }>(`/api/jobs/${id}/verify`),
 
-  getAnalytics: () => req<any>("/api/analytics"),
+  getAnalytics: (scope?: "personal") => req<any>(`/api/analytics${scope ? `?scope=${scope}` : ""}`),
+  getAdminOverview: () => req<any>("/api/admin/overview"),
+  getAdminTailoredResume: (jobId: string, targetUserId: string) =>
+    req<any>(`/api/admin/tailored-resume/${jobId}?target_user_id=${targetUserId}`),
 
   getSettings: () => req<Settings>("/api/settings"),
 

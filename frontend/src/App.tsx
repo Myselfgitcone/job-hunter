@@ -775,12 +775,7 @@ export default function App() {
             }}
             title="Switch workspace mode"
           >
-            <span style={{ fontSize: 9, opacity: 0.6, textTransform: "uppercase", letterSpacing: "0.1em" }}>
-              {adminMode === "admin" ? "ADMIN" : "PERSONAL"}
-            </span>
-            <span style={{ fontSize: 11 }}>
-              {adminMode === "admin" ? "→ My Job Search" : "→ Admin Dashboard"}
-            </span>
+            {adminMode === "admin" ? "Switch to My Job Search" : "Switch to Admin Dashboard"}
           </button>
         )}
 

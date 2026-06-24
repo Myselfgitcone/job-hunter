@@ -267,7 +267,7 @@ _DYN_MULTI_WORD: list[tuple[str, str]] = [
     (r"\bsix\s+sigma\b",                        "Six Sigma"),
     (r"\bburp\s+suite\b",                       "Burp Suite"),
     (r"\bcapital\s+iq\b",                       "Capital IQ"),
-    (r"\bpalo\s+alto\b",                        "Palo Alto"),
+    (r"\bpalo\s+alto\s+networks?\b",             "Palo Alto Networks"),
     (r"\bvertex\s+ai\b",                        "Vertex AI"),
     (r"\bfeature\s+store\b",                    "Feature Store"),
     (r"\bvector\s+database\b",                  "Vector Database"),
@@ -324,6 +324,9 @@ _DYN_PROP_SKIP: set[str] = {
     "Reimbursement","Coverage","Premium","Deductible","Wellness","Volunteer",
     "Vacation","Holiday","Leave","Parental","Childcare","Fertility",
     "Free","Identify","Subsidized","Inclusive","Culture","Belonging",
+    # Work arrangements / job posting words
+    "Remote","Hybrid","Onsite","Fulltime","Parttime","Contract","Permanent",
+    "Candidates","Applicants","Hiring","Openings","Posting","Opportunity",
     # Education-requirement words (appear in 'Bachelor's in Computer Science/Engineering')
     "Computer","Engineering","Bachelor","Science","Mathematics","Statistics",
     # Generic company/org words
@@ -418,7 +421,23 @@ _JD_NOISE_HEADERS = re.compile(
     r"the\s+perks|why\s+join|join\s+us|"
     r"physical\s+environment|view\s+all\s+jobs?|"
     r"complies\s+with\s+all\s+applicable|equal\s+opportunity\s+employer|"
-    r"all\s+qualified\s+applicants)\b",
+    r"all\s+qualified\s+applicants|"
+    # Company description (safe to strip — no tech requirements)
+    r"who\s+we\s+are|a\s+highlight\s+of|will\s+you\s+join|apply\s+now|"
+    r"our\s+culture|our\s+values|our\s+mission|"
+    r"about\s+the\s+(company|team))\b",
+    re.IGNORECASE,
+)
+
+# Section headers that RE-ENABLE extraction after a noise section
+_JD_CONTENT_HEADERS = re.compile(
+    r"^(what\s+you.ll\s+do|what\s+you\s+will\s+do|responsibilities|"
+    r"requirements?|qualifications?|what\s+we.re?\s+looking|"
+    r"key\s+responsibilities|the\s+role|your\s+role|"
+    r"what\s+you.ll\s+bring|what\s+you\s+bring|experience\s+required|"
+    r"skills?\s+required|technical\s+requirements?|"
+    r"the\s+opportunity|who\s+you\s+are|"
+    r"what\s+a\s+(great\s+)?candidate|what\s+we.re\s+looking)\b",
     re.IGNORECASE,
 )
 
@@ -435,19 +454,25 @@ _PHYSICAL_SIGNALS = re.compile(
 def _strip_jd_noise(jd_text: str) -> str:
     """
     Remove benefits/culture/legal/physical sections from JD text before extraction.
-    Sections starting with noise headers are dropped entirely.
-    Individual lines matching physical/legal boilerplate are also dropped.
+    - Noise headers (benefits, EEO, company description) trigger skip=True
+    - Content headers (requirements, responsibilities, opportunity) trigger skip=False
+    - This lets the function handle JDs where requirements come AFTER company description
+    - Individual physical/legal boilerplate lines are always dropped regardless
     """
     lines = jd_text.splitlines()
     result = []
     skip = False
     for line in lines:
         stripped = line.strip()
-        if _JD_NOISE_HEADERS.match(stripped):
+        # Re-enable if we hit a requirements/responsibilities section
+        if _JD_CONTENT_HEADERS.match(stripped):
+            skip = False
+        # Disable if we hit a noise section
+        elif _JD_NOISE_HEADERS.match(stripped):
             skip = True
         if skip:
             continue
-        # Also drop individual physical/legal lines even outside a noise section
+        # Drop individual physical/legal lines even outside a noise section
         if _PHYSICAL_SIGNALS.search(stripped):
             continue
         result.append(line)

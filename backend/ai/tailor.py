@@ -1130,17 +1130,44 @@ After the per-skill lines, add a final line:
 Return ONLY this report. No commentary, no resume rewriting, no markdown formatting."""
 
 
+_INJECTION_SKIP = {
+    # Work arrangements — never a technical skill
+    "remote", "hybrid", "onsite", "in-office", "office", "full-time", "part-time",
+    "contract", "permanent", "relocation", "candidates", "applicants",
+    # Vague business words
+    "opportunity", "position", "opening", "role", "join",
+    # Company/product names that slip through (added as seen)
+    "quantifind",
+}
+
+# Domain/compliance terms that don't belong in DevOps/tech rows — use their own row
+_COMPLIANCE_DOMAIN_KW = {
+    "kyc", "cdd", "aml", "osint", "bsa", "fincen", "fatf", "ofac", "kyb",
+    "fraud", "sanctions", "pep", "watchlist", "gdpr", "hipaa", "sox", "pci",
+}
+
+def _row_item_count(row_line: str) -> int:
+    """Count items in a skills row (comma-separated values after the colon)."""
+    if ':' not in row_line:
+        return 0
+    content = row_line.split(':', 1)[1]
+    return len([x for x in content.split(',') if x.strip()])
+
+
 def _inject_missing_keywords(resume: str, missing: list[str]) -> str:
     """
     Mechanical post-generation keyword injection.
-    For each missing JD keyword: find the best-matching Technical Skills row
-    by label similarity and append the keyword. Falls back to the last skills
-    row. No AI call — pure string manipulation. Guarantees keyword visibility.
+    Rules:
+      1. Skip if already in resume (false negative)
+      2. Skip if clearly not a technical skill (work arrangement, company name, location)
+      3. Compliance/domain terms (KYC, AML, OSINT) → own 'Compliance & Domain' row
+      4. Technical terms → best-matching skills row by label similarity
+      5. Respect 6-item-per-row limit: if target row is full, create a continuation row
+      6. No match found → create 'Additional Skills' row (never append to wrong category)
     """
     if not missing:
         return resume
 
-    # Find the Technical Skills / Core Competencies section
     sec_m = re.search(
         r'(TECHNICAL SKILLS|CORE COMPETENCIES|SKILLS & EXPERTISE|SKILLS):?\s*\n',
         resume, re.IGNORECASE
@@ -1149,24 +1176,39 @@ def _inject_missing_keywords(resume: str, missing: list[str]) -> str:
         return resume
 
     sec_start = sec_m.end()
-
-    # Find end of skills section (next all-caps section header)
-    next_sec = re.search(r'\n(?:[A-Z][A-Z &]+):\s*\n', resume[sec_start:])
+    next_sec  = re.search(r'\n(?:[A-Z][A-Z &]+):\s*\n', resume[sec_start:])
     sec_end   = sec_start + next_sec.start() if next_sec else len(resume)
 
     skills_block = resume[sec_start:sec_end]
     lines = skills_block.split('\n')
-
-    # Index rows that have a label (contain ':')
     row_indices = [i for i, l in enumerate(lines) if ':' in l and l.strip()]
 
+    # Buckets for unmatched items
+    compliance_queue: list[str] = []
+    other_queue:      list[str] = []
+
     for kw in missing:
-        # Skip if already present anywhere in resume (coverage false negative)
+        # 1. Already present
         if re.search(r'\b' + re.escape(kw) + r'\b', resume, re.IGNORECASE):
             continue
 
-        # Score each skills row: sum of LENGTHS of matching words from kw in row LABEL
-        # Longer word match beats shorter — "visualization" (13) > "data" (4)
+        # 2. Not a technical skill — skip entirely
+        if kw.lower() in _INJECTION_SKIP:
+            continue
+        # Skip single-word geographic-looking proper nouns (Palo, Alto, Atlanta, etc.)
+        if len(kw.split()) == 1 and kw[0].isupper() and kw.lower() not in {
+            "python","scala","java","rust","go","r",
+        } and not kw.isupper():
+            # Heuristic: single TitleCase word that's not a well-known language → skip if looks like a name/place
+            if len(kw) >= 4 and kw.isalpha() and kw.lower() not in _COMPLIANCE_DOMAIN_KW:
+                continue
+
+        # 3. Compliance/domain terms → separate bucket
+        if kw.lower() in _COMPLIANCE_DOMAIN_KW:
+            compliance_queue.append(kw)
+            continue
+
+        # 4. Score rows by label similarity
         kw_words = [w for w in kw.lower().split() if len(w) > 2]
         best_idx, best_score = -1, 0
         for i in row_indices:
@@ -1175,12 +1217,55 @@ def _inject_missing_keywords(resume: str, missing: list[str]) -> str:
             if score > best_score:
                 best_score, best_idx = score, i
 
-        target = best_idx if best_score > 0 else (row_indices[-1] if row_indices else -1)
-        if target >= 0:
-            lines[target] = lines[target].rstrip().rstrip(',') + f", {kw}"
+        if best_score > 0:
+            # Found a matching row — respect 6-item limit
+            if _row_item_count(lines[best_idx]) < 6:
+                lines[best_idx] = lines[best_idx].rstrip().rstrip(',') + f", {kw}"
+            else:
+                # Row is full — check if a continuation row already exists
+                cont_label = lines[best_idx].split(':')[0].strip() + " (cont.)"
+                cont_idx = next(
+                    (i for i in row_indices if lines[i].startswith(cont_label)), -1
+                )
+                if cont_idx >= 0 and _row_item_count(lines[cont_idx]) < 6:
+                    lines[cont_idx] = lines[cont_idx].rstrip().rstrip(',') + f", {kw}"
+                else:
+                    # Create new continuation row
+                    new_row = f"{cont_label}: {kw}"
+                    lines.insert(best_idx + 1, new_row)
+                    row_indices = [i for i, l in enumerate(lines) if ':' in l and l.strip()]
+        else:
+            # No label match — queue for 'Additional Skills' row
+            other_queue.append(kw)
 
-    new_skills = '\n'.join(lines)
-    return resume[:sec_start] + new_skills + resume[sec_end:]
+    # Append compliance/domain terms as their own row
+    if compliance_queue:
+        existing_comp = next(
+            (i for i, l in enumerate(lines)
+             if re.match(r'compliance|domain|financial crimes|risk', l.split(':')[0], re.I)), -1
+        )
+        if existing_comp >= 0:
+            for kw in compliance_queue:
+                if _row_item_count(lines[existing_comp]) < 6:
+                    lines[existing_comp] = lines[existing_comp].rstrip().rstrip(',') + f", {kw}"
+                else:
+                    lines.append(f"Compliance & Domain (cont.): {kw}")
+        else:
+            chunk = compliance_queue[:6]
+            rest  = compliance_queue[6:]
+            lines.append(f"Compliance & Domain: {', '.join(chunk)}")
+            if rest:
+                lines.append(f"Compliance & Domain (cont.): {', '.join(rest)}")
+
+    # Append unmatched technical terms
+    if other_queue:
+        chunk = other_queue[:6]
+        rest  = other_queue[6:]
+        lines.append(f"Additional Skills: {', '.join(chunk)}")
+        if rest:
+            lines.append(f"Additional Skills (cont.): {', '.join(rest)}")
+
+    return resume[:sec_start] + '\n'.join(lines) + resume[sec_end:]
 
 
 def _trim_skills_to_layers(resume: str, jd_keywords: list[str], max_layer3: int = 10) -> str:

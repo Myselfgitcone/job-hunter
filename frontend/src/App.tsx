@@ -584,10 +584,13 @@ export default function App() {
   const filtersActive = activeFilterCount > 0 || filters.q !== "";
   const isAdmin = currentUser?.email?.toLowerCase() === "jaggubhai8766@gmail.com";
 
-  // Admin mode: "selecting" → show picker, "admin" → full admin, "personal" → regular user view
+  // Admin mode: "admin" → full admin view, "personal" → regular user view
+  // Uses isAdmin (already declared) — NOT effectiveIsAdmin (declared below, would be circular)
   const [adminMode, setAdminMode] = React.useState<"selecting"|"admin"|"personal">(() => {
-    if (!effectiveIsAdmin) return "personal";
-    return (localStorage.getItem("jh_admin_mode") as any) || "selecting";
+    if (!isAdmin) return "personal";
+    const saved = localStorage.getItem("jh_admin_mode");
+    if (saved === "admin" || saved === "personal") return saved;
+    return "selecting"; // first login — no saved preference
   });
   const switchAdminMode = (mode: "admin"|"personal") => {
     localStorage.setItem("jh_admin_mode", mode);

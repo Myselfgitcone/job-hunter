@@ -134,6 +134,7 @@ class UserSettings(Base):
     ai_api_key           = Column(String, default="")
     ai_model_parse       = Column(String, default="")
     ai_model_tailor      = Column(String, default="")
+    ai_model_secondary   = Column(String, default="")
     ai_model_qualify     = Column(String, default="")
     ai_model_cover_letter= Column(String, default="")
     profile_name         = Column(String, default="")

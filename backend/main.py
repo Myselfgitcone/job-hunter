@@ -580,6 +580,7 @@ async def startup():
         ("user_settings", "telegram_bot_token", "VARCHAR"),
         ("user_settings", "telegram_chat_id",   "VARCHAR"),
         ("user_settings", "role_request",        "TEXT"),
+        ("user_settings", "ai_model_secondary",  "VARCHAR"),
     ]
     try:
         for table, col, typedef in new_columns:
@@ -1329,6 +1330,7 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
             "ai_api_key": s.ai_api_key or "",
             "ai_model_parse": s.ai_model_parse or "google/gemini-2.5-flash-lite",
             "ai_model_tailor": s.ai_model_tailor or "anthropic/claude-opus-4-8",
+            "ai_model_secondary": s.ai_model_secondary or "google/gemini-2.5-flash",
             "ai_model_qualify": s.ai_model_qualify or "anthropic/claude-opus-4-8",
             "ai_model_cover_letter": s.ai_model_cover_letter or "anthropic/claude-sonnet-4.6",
             "profile_name": s.profile_name or "",
@@ -1362,7 +1364,7 @@ async def update_settings(body: dict = Body(...), user_id: str = Depends(get_cur
         if not s:
             s = UserSettings(user_id=user_id)
             db.add(s)
-        for field in ["resume", "ai_provider", "ai_model_parse", "ai_model_tailor", "ai_model_qualify", "ai_model_cover_letter",
+        for field in ["resume", "ai_provider", "ai_model_parse", "ai_model_tailor", "ai_model_secondary", "ai_model_qualify", "ai_model_cover_letter",
                        "profile_name", "profile_visa",
                        "profile_phone", "profile_address", "profile_linkedin",
                        "profile_github", "profile_website", "profile_summary",

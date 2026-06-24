@@ -566,6 +566,7 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
   const [provider, setProvider] = useState("OpenRouter");
   const [modelParse, setModelParse] = useState("google/gemini-2.5-flash-lite");
   const [modelTailor, setModelTailor] = useState("anthropic/claude-sonnet-4.6");
+  const [modelSecondary, setModelSecondary] = useState("google/gemini-2.5-flash");
   const [modelQualify, setModelQualify] = useState("anthropic/claude-sonnet-4.6");
   const [modelCoverLetter, setModelCoverLetter] = useState("anthropic/claude-sonnet-4.6");
   const [apiKey, setApiKey]     = useState("");
@@ -590,6 +591,7 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
       setProvider(s.ai_provider || "OpenRouter");
       setModelParse(s.ai_model_parse || "google/gemini-2.5-flash-lite");
       setModelTailor(s.ai_model_tailor || "anthropic/claude-sonnet-4.6");
+      setModelSecondary(s.ai_model_secondary || "google/gemini-2.5-flash");
       setModelQualify(s.ai_model_qualify || "anthropic/claude-sonnet-4.6");
       setModelCoverLetter(s.ai_model_cover_letter || "anthropic/claude-sonnet-4.6");
       setApiKey(s.ai_api_key || "");
@@ -608,6 +610,7 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
         ai_provider: provider, ai_api_key: apiKey,
         jobo_api_key: joboApiKey,
         ai_model_parse: modelParse, ai_model_tailor: modelTailor,
+        ai_model_secondary: modelSecondary,
         ai_model_qualify: modelQualify, ai_model_cover_letter: modelCoverLetter,
         telegram_bot_token: botToken, telegram_chat_id: chatId,
         auto_scrape_cron: cron,
@@ -719,6 +722,21 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
               <span className="field-label">Tailoring Model</span>
               <select value={modelTailor} onChange={e => setModelTailor(e.target.value)}>
                 {AI_PROVIDERS[provider]?.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </label>
+            <label className="field">
+              <span className="field-label">Utility Model <span style={{fontSize:10,color:"#94a3b8",fontWeight:400}}>(Review · Audit · Correction · Retries)</span></span>
+              <select value={modelSecondary} onChange={e => setModelSecondary(e.target.value)}>
+                {provider === "OpenRouter" ? (
+                  <>
+                    <option value="google/gemini-2.5-flash">Gemini 2.5 Flash (Recommended)</option>
+                    <option value="google/gemini-2.5-flash-lite">Gemini 2.5 Lite (Cheapest)</option>
+                    <option value="anthropic/claude-haiku-4.5-20251001">Claude Haiku 4.5</option>
+                    <option value="anthropic/claude-sonnet-4.6">Claude Sonnet 4.6</option>
+                  </>
+                ) : (
+                  AI_PROVIDERS[provider]?.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
+                )}
               </select>
             </label>
             <label className="field">

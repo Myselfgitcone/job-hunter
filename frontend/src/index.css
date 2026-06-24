@@ -585,7 +585,7 @@ textarea { resize: none; }
    ============================================================ */
 .jobs-body { flex: 1; display: flex; min-height: 0; min-width: 0; overflow: hidden; }
 .list-pane {
-  width: 30%; min-width: 300px; max-width: 400px;
+  width: 38%; min-width: 340px; max-width: 480px;
   border-right: 1px solid var(--line); display: flex; flex-direction: column;
   background: rgba(10,11,16,.25); overflow: hidden;
 }
@@ -733,7 +733,7 @@ textarea { resize: none; }
 .tab .tcount { width: 5px; height: 5px; border-radius: 50%; background: var(--violet); flex-shrink: 0; opacity: 0.75; }
 .tab.on .tcount { background: var(--cyan); opacity: 1; }
 
-.tab-body { padding: 22px 26px 40px; max-width: 960px; }
+.tab-body { padding: 22px 26px 40px; max-width: 760px; }
 
 /* description markdown */
 .md h3, .jd-body h3 { font-family: var(--f-display); font-size: 14px; font-weight: 600; margin: 22px 0 8px; color: var(--tx); letter-spacing: -.01em; }
@@ -1647,7 +1647,7 @@ html.light .tag-pill button:hover { background: rgba(124,58,237,.15); }
    ============================================================ */
 .jobs-body { flex: 1; display: flex; overflow: hidden; }
 .list-pane {
-  width: 300px; flex-shrink: 0;
+  width: 378px; flex-shrink: 0;
   display: flex; flex-direction: column;
   background: var(--bg-base);
   border-right: 1px solid var(--line);

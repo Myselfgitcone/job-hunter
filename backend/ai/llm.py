@@ -102,8 +102,8 @@ async def chat(
                 label = f"[{pass_name}]" if pass_name else "[chat]"
                 if out_tokens:
                     print(f"{label} output tokens: {out_tokens}")
-                    if out_tokens > 2000:
-                        print(f"[WARN OVERSIZED OUTPUT] {label} produced {out_tokens} tokens — expected ≤2000. Plan block may not be stripped.")
+                    if out_tokens > 2500:
+                        print(f"[WARN OVERSIZED OUTPUT] {label} produced {out_tokens} tokens — expected ≤2500. Plan block may not be stripped.")
                 return content
         except Exception as e:
             last_error = e

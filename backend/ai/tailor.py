@@ -1608,6 +1608,45 @@ def _remove_concept_redundancy(resume: str) -> str:
     return resume[:sec_start] + new_skills + resume[sec_end:]
 
 
+def _merge_cont_rows(resume: str) -> str:
+    """
+    Merge 'Label (cont.): items' rows back into their base 'Label: ...' row.
+    Runs after all injection and limit-enforcement so the final output never
+    shows a repeated label with '(cont.)' appended.
+    """
+    sec_m = re.search(
+        r'(TECHNICAL SKILLS|CORE COMPETENCIES|SKILLS & EXPERTISE|SKILLS):?\s*\n',
+        resume, re.IGNORECASE
+    )
+    if not sec_m:
+        return resume
+
+    sec_start = sec_m.end()
+    next_sec  = re.search(r'\n(?:[A-Z][A-Z &/]+):\s*\n', resume[sec_start:])
+    sec_end   = sec_start + next_sec.start() if next_sec else len(resume)
+
+    lines = resume[sec_start:sec_end].split('\n')
+    out: list[str] = []
+
+    for line in lines:
+        m = re.match(r'^(\s*)(.+?) \(cont\.\): (.+)$', line)
+        if not m:
+            out.append(line)
+            continue
+        indent, base_label, extra = m.group(1), m.group(2), m.group(3)
+        base_prefix = indent + base_label + ':'
+        merged = False
+        for i in range(len(out) - 1, -1, -1):
+            if out[i].startswith(base_prefix):
+                out[i] = out[i].rstrip().rstrip(',') + ', ' + extra.strip()
+                merged = True
+                break
+        if not merged:
+            out.append(f"{indent}{base_label}: {extra}")
+
+    return resume[:sec_start] + '\n'.join(out) + resume[sec_end:]
+
+
 def _enforce_skills_line_limit(resume: str, max_items: int = 6) -> str:
     """
     Deterministic post-processing: split any skills row with > max_items
@@ -2074,6 +2113,12 @@ async def tailor_resume(base_resume: str, job_description: str,
         result = _enforce_skills_line_limit(result, max_items=6)
     except Exception as e:
         print(f"[SKILLS LIMIT] Enforcement failed: {e}")
+
+    # ── Merge cont. rows — no repeated labels in final output ──────────────
+    try:
+        result = _merge_cont_rows(result)
+    except Exception as e:
+        print(f"[MERGE CONT] Failed: {e}")
 
     # ── Education section safety net — deterministic, no AI involvement ──────
     # Runs after all AI passes. Compares EDUCATION section of final output

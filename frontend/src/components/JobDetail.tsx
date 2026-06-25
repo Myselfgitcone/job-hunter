@@ -651,6 +651,22 @@ function ResumeTab({ job, tailoring, onTailor, onCancel, onToast, onUpdate }: {
             <span style={{ fontSize: 22, fontWeight: 700, color: "#4ade80" }}>+{after - before}</span>
             <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 4 }}>pts</span>
           </div>
+          {(() => {
+            const matched = (job.ats_keywords_matched ?? []).length;
+            const missing = (job.ats_keywords_missing ?? []).length;
+            const total = matched + missing;
+            if (total === 0) return null;
+            const coverage = matched / total;
+            const score = Math.round(((after / 100) * 0.5 + coverage * 0.5) * 100) / 10;
+            const color = score >= 7 ? "#4ade80" : score >= 5 ? "#facc15" : "#f87171";
+            return (
+              <div style={{ marginTop: 12, textAlign: "center", padding: "10px 0", borderTop: "1px solid var(--border-subtle)" }}>
+                <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", marginBottom: 4 }}>Resume Score</div>
+                <span style={{ fontSize: 26, fontWeight: 700, color }}>{score.toFixed(1)}</span>
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>/10</span>
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>

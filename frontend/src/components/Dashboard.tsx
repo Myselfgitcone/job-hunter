@@ -336,7 +336,7 @@ function ResumeList({ title, accent, items, icon, badge, showDownloads }: {
                   {it.company}{it.title ? ` – ${it.title}` : ""}
                 </div>
                 <div style={{ fontSize: 12, color: "var(--tx-3)", marginTop: 4 }}>
-                  {isQuick ? "Quick Tailor" : badge}: <b style={{ color: "var(--tx-2)" }}>{it.whenFull}</b>{it.when && <span> ({it.when} ago)</span>}
+                  {isQuick ? "Quick Tailor" : badge}: <b style={{ color: "var(--tx-2)" }}>{it.whenFull}</b>{it.when && <span> ({it.when})</span>}
                 </div>
                 {it.location && <div style={{ fontSize: 12, color: "var(--tx-3)", marginTop: 2 }}>Location: {it.location}</div>}
                 {it.exp && <div style={{ fontSize: 12, color: "var(--tx-3)", marginTop: 2 }}>Exp Needed: {it.exp} yrs</div>}
@@ -397,7 +397,7 @@ function ScrapeStatus({ lastScrapedAt }: { lastScrapedAt?: string }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "flex-end", fontSize: 12, color: "var(--tx-3)" }}>
       <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <span className="live-pip" />
-        Last scraped <b style={{ color: "var(--tx-2)", fontFamily: "var(--f-mono)" }}>{lastScrapedAt ? `${timeAgo(lastScrapedAt)} ago` : "never"}</b>
+        Last scraped <b style={{ color: "var(--tx-2)", fontFamily: "var(--f-mono)" }}>{lastScrapedAt ? timeAgo(lastScrapedAt) : "never"}</b>
       </span>
       <span>Next scrape in <b style={{ color: "var(--tx-2)", fontFamily: "var(--f-mono)" }}>{mm}:{ss}</b></span>
     </div>

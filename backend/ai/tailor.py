@@ -1060,6 +1060,15 @@ they add no technical signal. A skills section lists capabilities, not JD quals.
 CONCEPT DEDUPLICATION (part of Check 1):
 Scan each item in the skills section. If an item is a concept/methodology word
 whose meaning is already captured by a row LABEL in the same section, REMOVE it.
+
+CATEGORIZATION CORRECTION (part of Check 1):
+Move tools to the correct category row if they are miscategorized.
+  Apache Spark, PySpark, Databricks = PROCESSING engines, not orchestration tools.
+    If they appear under a row labeled "Orchestration" or "Data Orchestration",
+    move them to a row labeled "Data Processing" or "Compute & Processing".
+  Airflow, Dagster, Prefect, Luigi = ORCHESTRATION tools (schedulers, DAG runners).
+  dbt, Fivetran, Airbyte = TRANSFORMATION/INTEGRATION tools.
+  Do not mix processing engines with orchestrators in the same row.
   Rule: for each item I, check if I appears as or within any row label L.
   If yes → I is redundant → remove I from its row.
   Examples of what to remove:
@@ -1425,6 +1434,35 @@ def _trim_skills_to_layers(resume: str, jd_keywords: list[str], max_layer3: int 
     # Clean up consecutive blank lines
     new_skills = re.sub(r'\n{3,}', '\n\n', new_skills)
     return resume[:sec_start] + new_skills + resume[sec_end:]
+
+
+def _fix_metric_grammar(resume: str) -> str:
+    """
+    Deterministically insert 'by' before bare percentage metrics in bullet points.
+    'cutting execution times 35%' → 'cutting execution times by 35%'
+    Skips rate/coverage percentages: '95%+ of', '95% of schema violations'.
+    Skips percentages already preceded by 'by'.
+    Only runs on bullet lines (starting with •).
+    """
+    def _add_by(m: re.Match) -> str:
+        start = m.start()
+        before = m.string[max(0, start - 4):start]
+        # Already has 'by' before it
+        if before.rstrip().endswith('by'):
+            return m.group(0)
+        after = m.string[m.end():m.end() + 4]
+        # Rate/coverage form: "95%+ of" or "95% of"
+        if after.startswith('+') or after.lstrip().startswith('of ') or after.lstrip().startswith('of\n'):
+            return m.group(0)
+        return 'by ' + m.group(0)
+
+    lines = resume.splitlines()
+    out = []
+    for line in lines:
+        if line.strip().startswith('•') or line.strip().startswith('*'):
+            line = re.sub(r'\b\d+(?:\.\d+)?%', _add_by, line)
+        out.append(line)
+    return '\n'.join(out)
 
 
 def _remove_concept_redundancy(resume: str) -> str:
@@ -2015,7 +2053,7 @@ async def tailor_resume(base_resume: str, job_description: str,
 
     # ── Skills 3-layer trim — remove non-JD, non-bullet Layer 3 overflow ──
     try:
-        result = _trim_skills_to_layers(result, jd_hard_skills, max_layer3=10)
+        result = _trim_skills_to_layers(result, jd_hard_skills, max_layer3=3)
     except Exception as e:
         print(f"[SKILLS TRIM] Failed: {e}")
 
@@ -2024,6 +2062,12 @@ async def tailor_resume(base_resume: str, job_description: str,
         result = _remove_concept_redundancy(result)
     except Exception as e:
         print(f"[CONCEPT DEDUP] Failed: {e}")
+
+    # ── Grammar fix — insert 'by' before bare metric percentages ──────────
+    try:
+        result = _fix_metric_grammar(result)
+    except Exception as e:
+        print(f"[GRAMMAR] Metric 'by' fix failed: {e}")
 
     # ── Skills line-length enforcement — max 6 items per line ─────────────
     try:

@@ -635,6 +635,47 @@ This is fully dynamic — derive it from the actual JD, not from any preset list
 If the JD has NO clear responsibility verb (poorly written or just a skills list), skip this rule.
 Apply to any role type — the JD's own language is always stronger signal than a generic verb bank.
 
+═══ OPERATIONAL RESPONSIBILITY GAP COVERAGE ═══
+Some JD responsibilities describe operational duties that are inherent to the work the candidate did
+but are simply not documented in the base resume. These are not fabrications — they are universal
+realities of the role. Cover them as ADJACENT-STRETCH bullets when ALL conditions are true:
+
+  Condition A — The JD explicitly lists this as a primary responsibility (in the responsibilities/duties section).
+  Condition B — The candidate performed the ENABLING work (built, deployed, or owned the output that triggers the duty).
+  Condition C — The duty is a natural operational consequence of condition B — i.e., anyone who did B
+                would inherently also do this (even if undocumented).
+
+Common operational gap patterns and their enabling work:
+
+  JD: "Provide support to end-users / troubleshoot dashboard issues"
+    Enabling work: candidate built or published dashboards or BI reports for business users
+    → Write a bullet: resolved dashboard issues for [team], triaged data discrepancy tickets,
+      supported self-service access for [N] stakeholders — grounded in the most relevant job
+
+  JD: "Conduct training sessions / educate users on dashboards or reports"
+    Enabling work: candidate built dashboards consumed by business users
+    → Write a bullet: conducted onboarding or training sessions for analysts/stakeholders
+      on [specific tool] reporting — scoped to real headcount where possible (use "X+" if uncertain)
+
+  JD: "Maintain and update dashboards based on business needs"
+    Enabling work: candidate built dashboards in any tool
+    → Write a bullet: maintained and refreshed dashboards as requirements evolved — grounded in context
+
+  JD: "Document data pipelines, models, or processes"
+    Enabling work: candidate built pipelines or data models
+    → Write a bullet: documented pipeline logic, data lineage, or model schemas using [tool if known]
+
+  JD: "Collaborate with business stakeholders / translate requirements"
+    Enabling work: candidate built analytics outputs for business users
+    → Ensure at least one bullet uses stakeholder/requirements language — reframe existing if possible
+
+Rules for operational gap bullets:
+  • Ground every bullet in the candidate's REAL employer context (company, tool, team) — no generic floating bullets
+  • Omit or estimate headcount ("X+ analysts", "5 business stakeholders") — never invent a precise number with no basis
+  • Do NOT count these against the ADJACENT-STRETCH 2-bullet cap — they cover documented JD duties, not technical skill gaps
+  • Write at most 1 operational gap bullet per JD responsibility cluster (support/training/docs each get at most 1)
+  • Skip if the base resume already has a bullet covering this duty — do not duplicate
+
 ═══ JD VOCABULARY — USE EXACT JD FORM, NOT BASE RESUME FORM ═══
 When the JD uses a specific phrasing, that exact phrasing must appear in at least one bullet — even if the base resume uses a different grammatical form of the same concept.
 

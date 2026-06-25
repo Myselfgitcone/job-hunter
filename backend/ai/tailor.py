@@ -838,6 +838,14 @@ FORMATTING — HARD RULES (no exceptions):
       Bad:  "Visualization: Power BI, Tableau, Data Visualization"
       Good: "Visualization: Power BI, Tableau, Grafana"
       (Power BI and Tableau already prove data visualization — the concept word adds nothing)
+  • DEDUPLICATION RULE — do not list a concept/methodology as a standalone skill item
+    if your skills section already has a category ROW LABEL that covers it:
+      Bad:  row label "Data Warehousing:" AND also "Data Warehouse" as an item in another row
+      Bad:  row label "Data Orchestration:" AND also "ETL/ELT" as a standalone item
+      Bad:  row label "Data Engineering:" AND also "Data Pipeline" as a standalone item
+    The category label already signals the expertise. Repeating the concept as an item
+    is redundant clutter. Scan your own output: if an item's meaning is already captured
+    by any row label in the same section, remove the item.
   • Group by logical categories appropriate to this specific role type and JD
 
 IB: Financial modeling types (LBO, DCF, merger), markets, key tools (Excel, Bloomberg, CapIQ). No padding.
@@ -1037,7 +1045,7 @@ these 3 checks. Do NOT: add bullets, remove bullets, change bullet content,
 change company names, dates, locations, titles, or bullet count.
 Every bullet you write or rewrite must be ≤ 22 words. Return plain text only.
 
-CHECK 1 — SKILLS ANTI-STUFFING:
+CHECK 1 — SKILLS ANTI-STUFFING AND CONCEPT DEDUPLICATION:
 If the skills/competencies section mirrors the JD's exact feature list verbatim
 (e.g. copied qualification wording pasted as category names or line content),
 regroup them organically by how the candidate actually works. Use natural category
@@ -1048,6 +1056,18 @@ This includes soft-skill or leadership lines copied verbatim from JD requirement
 (e.g. "Excellent leadership, communication, and interpersonal skills" appearing as
 a skills line) — rewrite these as a concise factual competency line or remove if
 they add no technical signal. A skills section lists capabilities, not JD quals.
+
+CONCEPT DEDUPLICATION (part of Check 1):
+Scan each item in the skills section. If an item is a concept/methodology word
+whose meaning is already captured by a row LABEL in the same section, REMOVE it.
+  Rule: for each item I, check if I appears as or within any row label L.
+  If yes → I is redundant → remove I from its row.
+  Examples of what to remove:
+    "ETL/ELT" as an item when a row is labeled "Data Orchestration" or "ETL/Orchestration"
+    "Data Warehouse" as an item when a row is labeled "Data Warehousing"
+    "Data Pipeline" as an item when a row is labeled "Data Engineering"
+    "Data Visualization" as an item when a row already has "Visualization" in its label
+  The label already signals the expertise. The item adds visual clutter, not signal.
 
 CHECK 2 — SUMMARY TECH/SPEC DUMP:
 If any summary bullet is a spec list (5+ tools or credentials with no candidate

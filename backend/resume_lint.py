@@ -201,6 +201,8 @@ _DYN_COMPOUND_PHRASES: list[tuple[str, str]] = [
     ("Data Modeling",           r"\bdata\s+model(?:ing|s)?\b"),
     ("Data Integration",        r"\bdata\s+integration\b"),
     ("Data Architecture",       r"\bdata\s+architect(?:ure)?\b"),
+    ("Data Engineering",        r"\bdata\s+engineering\b"),
+    ("Data Science",            r"\bdata\s+science\b"),
     ("Metadata Management",     r"\bmetadata\s+management\b"),
     ("Data Governance",         r"\bdata\s+governance\b"),
     ("Data Quality",            r"\bdata\s+quality\b"),
@@ -286,6 +288,12 @@ _DYN_MULTI_WORD: list[tuple[str, str]] = [
     (r"\bprofessional\s+data\s+engineer\b",     "GCP Certified"),
     (r"\bmicrosoft\s+sentinel\b",               "Microsoft Sentinel"),
     (r"\bpub/sub\b",                            "Pub/Sub"),
+    # Degree field names — normalizing prevents standalone fragments ("Computer",
+    # "Engineering", "Biomedical") from remaining after _dyn_remove_components
+    (r"\bcomputer\s+science\b",                "Computer Science"),
+    (r"\bbiomedical\s+informatics\b",          "Biomedical Informatics"),
+    (r"\bbiomedical\s+engineering\b",          "Biomedical Engineering"),
+    (r"\bhealth\s+informatics\b",              "Health Informatics"),
     # Ampersand-notation compound terms — must normalize before ALL-CAPS step splits them
     (r"\bfp\s*&\s*a\b",                         "FP&A"),
     (r"\bm\s*&\s*a\b",                          "M&A"),
@@ -307,8 +315,6 @@ _DYN_PROP_SKIP: set[str] = {
     "Apache","Microsoft","Amazon","Google",
     # Degree types — appear even in requirements sections
     "Bachelor","Master","Phd","Msc","Bsc","Mba",
-    # Degree field qualifiers — appear in requirements lists, never standalone skills
-    "Biomedical","Informatics","Computer","Engineering",
     # Role words that slip into skill lists
     "Engineer","Developer","Architect","Analyst","Manager","Director",
     "Lead","Senior","Junior","Principal","Staff",
@@ -317,13 +323,6 @@ _DYN_PROP_SKIP: set[str] = {
     "Application","Applications","Process","Processes","Platform","Platforms",
     "Environment","Environments","Product","Products","Team","Teams",
     "Organization","Company","Department","Business","Enterprise",
-    # Soft-skill qualifiers from KSA / behavioral requirements sections
-    # These appear capitalized when starting sentences — universally non-technical
-    "Ability","Willingness","Familiarity","Effective","Responsible","Direct","Identify",
-    # JD responsibility-sentence verbs that appear TitleCase at sentence start
-    # (e.g. "Designs and develops…", "Integrates, builds…", "Engages and communicates…")
-    "Designs","Integrates","Engages","Deploy","Write","Prepare","Maintain",
-    "Ensure","Conduct","Provide","Coordinate","Evaluate","Review","Support",
 }
 _DYN_PROP_SKIP_LOWER: set[str] = {w.lower() for w in _DYN_PROP_SKIP}
 
@@ -347,27 +346,41 @@ _DYN_ACRONYM_SKIP: set[str] = {
     "CI","CD","IT","ASQ",
 }
 
-# ── High-signal zone detection ────────────────────────────────────────────────
-# Steps that produce the most garbage (CamelCase, TitleCase, ALL-CAPS) run
-# ONLY on text from requirements/qualifications/skills sections.
-# This eliminates company descriptions, mission statements, and values sections
-# without needing per-word blacklisting.
+# ── Zone detection ────────────────────────────────────────────────────────────
+# HIGH-SIGNAL: requirements/qualifications/skills — Steps 3-6 run here.
+# MEDIUM-SIGNAL: duties/responsibilities — only Steps 5-6 (ALL-CAPS, alphanumeric)
+#   run here. Steps 3-4 (TitleCase/CamelCase) are suppressed to avoid extracting
+#   responsibility-sentence verbs ("Designs and develops", "Integrates, builds")
+#   as if they were technical skills.
+# This is purely structural — no per-word blacklisting needed.
 
 _HIGH_SIGNAL_ZONE_RE = re.compile(
-    r"^(responsibilities?|what\s+you.ll\s+do|what\s+you\s+will\s+do|"
-    r"key\s+responsibilities?|requirements?|qualifications?|"
+    r"^(requirements?|qualifications?|"
     r"technical\s+skills?|skills?\s+required|required\s+skills?|"
     r"what\s+we.re?\s+looking|preferred(?:\s+qualifications?)?|"
     r"experience\s+required|what\s+you.ll\s+bring|what\s+you\s+bring|"
-    r"who\s+you\s+are|the\s+opportunity|about\s+the\s+role|"
+    r"who\s+you\s+are|"
     r"what\s+a\s+(great\s+)?candidate|additional\s+requirements?|"
-    # Common hospital/enterprise JD headers that put "Requirements" mid-line
-    r"minimum\s+(?:job\s+)?requirements?|"
-    r"(?:job\s+)?specific\s+duties?|job\s+duties?|"
+    r"minimum\s+(?:job\s+)?requirements?)\b",
+    re.IGNORECASE,
+)
+
+# Duties/responsibilities AND KSA sections — medium signal:
+#   ALL-CAPS acronyms are valid (EHR, HL7, ETL appear in both duties and KSA)
+#   TitleCase verbs and soft-skill adjectives are NOT extracted (Steps 3-4 suppressed)
+_MEDIUM_SIGNAL_ZONE_RE = re.compile(
+    r"^(responsibilities?|what\s+you.ll\s+do|what\s+you\s+will\s+do|"
+    r"key\s+responsibilities?|job\s+specific\s+duties?|job\s+duties?|"
     r"essential\s+(?:job\s+)?(?:duties?|functions?)|"
     r"primary\s+(?:duties?|responsibilities?|functions?)|"
     r"position\s+(?:duties?|responsibilities?|summary)|"
-    r"role\s+(?:duties?|responsibilities?))\b",
+    r"role\s+(?:duties?|responsibilities?)|"
+    r"the\s+opportunity|about\s+the\s+role|"
+    # KSA sections: soft-skill words (TitleCase) suppressed, but ALL-CAPS tech
+    # acronyms (EHR, HL7, PeopleSoft via Step 8 on full text) still captured
+    r"knowledge,?\s+skills,?\s+(and\s+)?abilities?|"
+    r"knowledge\s+and\s+skills?|core\s+competencies?|"
+    r"behavioral\s+(competencies?|requirements?))\b",
     re.IGNORECASE,
 )
 
@@ -413,6 +426,31 @@ def _get_high_signal_text(jd_clean: str) -> str:
         return jd_clean
 
     return "\n".join(high)
+
+
+def _get_medium_signal_text(jd_clean: str) -> str:
+    """
+    Extract duties/responsibilities section content.
+    Only ALL-CAPS and alphanumeric steps run on this text — TitleCase/CamelCase
+    steps are suppressed to avoid extracting responsibility verbs as skills.
+    Returns empty string if no duties section found.
+    """
+    lines = jd_clean.splitlines()
+    medium: list[str] = []
+    in_zone = False
+
+    for line in lines:
+        stripped = line.strip()
+        if _MEDIUM_SIGNAL_ZONE_RE.match(stripped):
+            in_zone = True
+        elif _HIGH_SIGNAL_ZONE_RE.match(stripped) or _END_HIGH_SIGNAL_RE.match(stripped):
+            in_zone = False  # requirements or KSA section starts = duties zone ends
+
+        if in_zone:
+            medium.append(line)
+
+    return "\n".join(medium)
+
 
 # These acronyms/tools are independent skills — never removed as sub-components
 _DYN_NEVER_REMOVE: set[str] = {
@@ -539,8 +577,13 @@ def extract_jd_keywords_dynamic(jd_text: str) -> list[str]:
     # Pass 1: strip boilerplate (benefits, EEO, physical requirements, etc.)
     jd_clean = _strip_jd_noise(jd_text)
 
-    # Pass 2: isolate high-signal zones (requirements, skills, responsibilities)
+    # Pass 2a: requirements/qualifications zones → Steps 3-6 run here (all steps)
     jd_high = _get_high_signal_text(jd_clean)
+
+    # Pass 2b: duties/responsibilities zones → only Steps 5-6 run here.
+    # Suppressing Steps 3-4 (TitleCase/CamelCase) prevents responsibility-sentence
+    # verbs ("Designs and develops", "Integrates, builds") from being extracted as skills.
+    jd_medium = _get_medium_signal_text(jd_clean)
 
     lines_clean = jd_clean.strip().splitlines()
     # Skip first line (job title — common false positive source)
@@ -548,7 +591,11 @@ def extract_jd_keywords_dynamic(jd_text: str) -> list[str]:
 
     lines_high = jd_high.strip().splitlines()
     # High-signal body: also skip first line if it's the JD title
-    text_high  = "\n".join(lines_high[1:]) if len(lines_high) > 1 else jd_high
+    text_high   = "\n".join(lines_high[1:]) if len(lines_high) > 1 else jd_high
+    # Medium-signal: duties text (no first-line skip needed — section headers are the first line)
+    text_medium = jd_medium.strip()
+    # Combined text for Steps 5-6 (ALL-CAPS/alphanumeric — safe on duties text too)
+    text_caps   = text_high + ("\n" + text_medium if text_medium else "")
 
     # 1. Compound tech phrases — run on full cleaned text (targeted patterns)
     for display, pat in _DYN_COMPOUND_PHRASES:
@@ -577,12 +624,13 @@ def extract_jd_keywords_dynamic(jd_text: str) -> list[str]:
             found.add(w)
 
     # 5. ALL-CAPS acronyms 2-6 chars (ETL, AWS, SQL, GCP, HDFS, MDM, HIPAA)
-    for a in re.findall(r"\b[A-Z]{2,6}\b", text_high):
+    # Run on text_caps (high + medium) — acronyms in duties text are valid skills
+    for a in re.findall(r"\b[A-Z]{2,6}\b", text_caps):
         if a not in _DYN_ACRONYM_SKIP:
             found.add(a)
 
     # 6. Alphanumeric tool names: DB2, S3, H2O
-    for a in re.findall(r"\b[A-Z]{1,4}\d[a-zA-Z0-9]*\b", text_high):
+    for a in re.findall(r"\b[A-Z]{1,4}\d[a-zA-Z0-9]*\b", text_caps):
         if a not in _DYN_ACRONYM_SKIP and a not in _DYN_PROP_SKIP:
             found.add(a)
 

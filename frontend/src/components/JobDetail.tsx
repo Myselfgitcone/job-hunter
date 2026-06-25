@@ -558,8 +558,29 @@ function ResumeTab({ job, tailoring, onTailor, onCancel, onToast, onUpdate }: {
   }
   const before = job.ats_score_before ?? 45;
   const after  = job.ats_score_after ?? before;
+
+  // Surface qualify disqualifiers — AI already scored these, just not shown here
+  const qr = (job.qualify_result as any) ?? null;
+  const disqualifiers: string[] = [];
+  if (qr?.criteria && typeof qr.criteria === "object" && !Array.isArray(qr.criteria)) {
+    const failKeys = ["sponsorship", "location", "experience", "seniority"];
+    for (const key of failKeys) {
+      const c = qr.criteria[key];
+      if (c && c.pass === false) {
+        disqualifiers.push(`${key.replace(/_/g, " ").replace(/\b\w/g, (x: string) => x.toUpperCase())}: ${c.note}`);
+      }
+    }
+  }
+
   return (
-    <div style={{ display: "flex", gap: 18, maxWidth: 980 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 980 }}>
+      {disqualifiers.length > 0 && (
+        <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#f87171", marginBottom: 2 }}>⚠ Qualify flags — review before applying</div>
+          {disqualifiers.map((d, i) => <div key={i} style={{ fontSize: 12.5, color: "#fca5a5" }}>{d}</div>)}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 18 }}>
       <div style={{ flex: 1.5, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
           <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)" }}>Tailored Resume</div>
@@ -651,23 +672,8 @@ function ResumeTab({ job, tailoring, onTailor, onCancel, onToast, onUpdate }: {
             <span style={{ fontSize: 22, fontWeight: 700, color: "#4ade80" }}>+{after - before}</span>
             <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 4 }}>pts</span>
           </div>
-          {(() => {
-            const matched = (job.ats_keywords_matched ?? []).length;
-            const missing = (job.ats_keywords_missing ?? []).length;
-            const total = matched + missing;
-            if (total === 0) return null;
-            const coverage = matched / total;
-            const score = Math.round(((after / 100) * 0.5 + coverage * 0.5) * 100) / 10;
-            const color = score >= 7 ? "#4ade80" : score >= 5 ? "#facc15" : "#f87171";
-            return (
-              <div style={{ marginTop: 12, textAlign: "center", padding: "10px 0", borderTop: "1px solid var(--border-subtle)" }}>
-                <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", marginBottom: 4 }}>Resume Score</div>
-                <span style={{ fontSize: 26, fontWeight: 700, color }}>{score.toFixed(1)}</span>
-                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>/10</span>
-              </div>
-            );
-          })()}
         </div>
+      </div>
       </div>
     </div>
   );

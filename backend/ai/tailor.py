@@ -39,6 +39,47 @@ _SKILLS_SECTION_KEYWORDS = {
 }
 
 
+_HDR_PHONE_RE = re.compile(r'\(?\d{3}\)?[\s\-.]?\d{3}[\s\-.]?\d{4}')
+_HDR_EMAIL_RE = re.compile(r'[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}')
+
+
+def _ensure_header(result: str, base_resume: str) -> str:
+    """
+    Deterministic safety net: if AI dropped the name/contact header, restore it.
+    - If AI has a name line (contains '—') but missing contact → add contact from base.
+    - If AI dropped everything before PROFESSIONAL SUMMARY → prepend full header from base.
+    Preserves any title change the AI made on the name line.
+    """
+    result_stripped = result.strip()
+    result_lines    = result_stripped.splitlines()
+    top3            = "\n".join(result_lines[:3])
+
+    if _HDR_PHONE_RE.search(top3) and _HDR_EMAIL_RE.search(top3):
+        return result  # header intact
+
+    # Extract contact line from base resume (has phone + email)
+    base_lines   = [l for l in base_resume.strip().splitlines() if l.strip()]
+    contact_line = next((l for l in base_lines[:4] if _HDR_PHONE_RE.search(l)), "")
+    base_name    = base_lines[0] if base_lines else ""
+    if not contact_line:
+        return result  # can't restore — give up
+
+    # Find where PROFESSIONAL SUMMARY starts in the AI output
+    ps_m = re.search(r'^PROFESSIONAL SUMMARY', result_stripped, re.IGNORECASE | re.MULTILINE)
+    body = result_stripped[ps_m.start():] if ps_m else result_stripped
+
+    # AI has a name/title line before the summary?
+    first_line = result_lines[0].strip() if result_lines else ""
+    has_name_line = bool(re.search(r'\b[A-Z][a-z]+.+[A-Z][a-z]+', first_line)) and ps_m and ps_m.start() > len(first_line)
+
+    if has_name_line:
+        print("[HEADER MISSING] Contact line missing — restoring.")
+        return first_line + "\n" + contact_line + "\n\n" + body
+    else:
+        print("[HEADER MISSING] Full header missing — restoring from base resume.")
+        return base_name + "\n" + contact_line + "\n\n" + body
+
+
 def _extract_education_section(text: str) -> str:
     """Return the content lines under the EDUCATION header (stripped, newline-joined)."""
     lines = text.split("\n")
@@ -2172,5 +2213,13 @@ async def tailor_resume(base_resume: str, job_description: str,
         print(f"  Original : {original_edu[:120]}")
         print(f"  AI had   : {result_edu[:120]}")
         result = _replace_education_section(result, original_edu)
+
+    # ── Header safety net — deterministic, no AI ─────────────────────────────
+    # Checks that name + contact appear at the top. If AI dropped them (even
+    # after lint retries), restores from base resume without another AI call.
+    try:
+        result = _ensure_header(result, base_resume)
+    except Exception as e:
+        print(f"[HEADER] Safety net failed: {e}")
 
     return result

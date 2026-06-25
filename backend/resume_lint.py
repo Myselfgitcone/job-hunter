@@ -293,89 +293,103 @@ _DYN_MULTI_WORD: list[tuple[str, str]] = [
     (r"\bdcm\b",                                "DCM"),
 ]
 
-# Capitalized words that appear in JDs but are NOT tech skills
+# ── Minimal universal skip lists ─────────────────────────────────────────────
+# These are NOT per-JD patches. They are truly universal words that can never
+# be technical skills regardless of context. Keep this list stable and small.
+# The high-signal zone extraction (below) handles the rest structurally.
+
 _DYN_PROP_SKIP: set[str] = {
+    # Articles/pronouns that appear capitalized in section titles
     "We","Our","You","Your","They","This","That","All","Both","Each","The","A","An",
-    "New","High","Low","Large","Small","Strong","Good","Great","Best",
-    "Excellent","Robust","Scalable","Dynamic","Fast","Effective","Complex",
-    "Company","Organization","Team","Group","Department","Business",
-    "Enterprise","Environment","Solution","Solutions","System","Systems",
-    "Platform","Service","Services","Product","Products","Customer",
-    "Industry","Market","Global","International","Partner",
-    "Engineer","Developer","Architect","Analyst","Manager",
-    "Director","Lead","Senior","Junior","Principal","Staff","Owner",
-    "Experience","Knowledge","Proficiency","Familiarity","Ability",
-    "Skills","Required","Preferred","Minimum","Desired","Plus",
-    "Understanding","Demonstrated","Proven","Hands",
-    "Bachelor","Master","Degree","Education","University","College",
-    "Certification","Certifications",
-    "Communication","Collaboration","Leadership","Problem","Solving",
-    "Analytical","Strategic","Creative","Innovative","Motivated",
-    "Technical","Technology","Technologies","Tools","Tool",
-    "Programming","Development","Design","Management",
-    "Framework","Frameworks","Library","Libraries","Integration",
-    "Analytics","Core","Certified","Six","Sigma","Delta",
-    "Build","Develop","Implement","Maintain","Support",
-    "Manage","Drive","Ensure","Provide","Deliver","Enable","Create",
-    "Establish","Define","Collaborate","Work","Use","Based",
+    # Vendor name prefixes that split off as standalone words
     "Apache","Microsoft","Amazon","Google",
-    "Position","Summary","Responsibilities","Qualifications","Job","Role",
-    "Data","Cloud","Health",
-    # Benefits/perks/company words that appear in JD noise sections
-    "Benefits","Perks","Transportation","Parking","Dental","Vision","Medical",
-    "Insurance","Retirement","Equity","Bonus","Salary","Compensation","Stipend",
-    "Reimbursement","Coverage","Premium","Deductible","Wellness","Volunteer",
-    "Vacation","Holiday","Leave","Parental","Childcare","Fertility",
-    "Free","Identify","Subsidized","Inclusive","Culture","Belonging",
-    # Work arrangements / job posting words
-    "Remote","Hybrid","Onsite","Fulltime","Parttime","Contract","Permanent",
-    "Candidates","Applicants","Hiring","Openings","Posting","Opportunity",
-    # Education-requirement words (appear in 'Bachelor's in Computer Science/Engineering')
-    "Computer","Engineering","Bachelor","Science","Mathematics","Statistics",
-    # Generic company/org words
-    "Market","Company","Corporation","Inc","Ltd","LLC","Healthcare","Finance",
+    # Degree types — appear even in requirements sections
+    "Bachelor","Master","Phd","Msc","Bsc","Mba",
+    # Role words that slip into skill lists
+    "Engineer","Developer","Architect","Analyst","Manager","Director",
+    "Lead","Senior","Junior","Principal","Staff",
+    # Generic business nouns that can never be standalone skills
+    "Solution","Solutions","System","Systems","Service","Services",
+    "Application","Applications","Process","Processes","Platform","Platforms",
+    "Environment","Environments","Product","Products","Team","Teams",
+    "Organization","Company","Department","Business","Enterprise",
 }
 _DYN_PROP_SKIP_LOWER: set[str] = {w.lower() for w in _DYN_PROP_SKIP}
 
-# ALL-CAPS sequences that are NOT tech skills
 _DYN_ACRONYM_SKIP: set[str] = {
-    # English words typed ALL-CAPS (section headers, emphasis)
-    "THE","AND","OR","NOT","FOR","ARE","HAS","INC","LLC","LTD",
-    "GET","SET","PUT","USE","RUN","LET","CAN","MAY","WILL","MUST",
-    "HAVE","WITH","FROM","INTO","THAT","THIS","THEY","ALSO","BOTH",
-    "EACH","OVER","BEEN","WERE","WHAT","WILL","WHO","HOW","WHY",
-    "YOU","YOUR","WE","OUR","ALL","ANY","DO","DID","HAS","HAD",
-    "ITS","WAS","BUT","YET","TOO","NOW","OWN","END","NEW","OLD",
-    # HR/Legal/generic
-    "EEO","EOE","PTO","ADA","MOS","TRS","REQ","URF",
-    # Benefits/HR acronyms — appear in JD perks sections, not technical skills
-    "HSA","FSA","HRA","PPO","HMO","EPO","COBRA","STD","LTD","EAP","PFL","FMLA",
-    # Business model / org structure terms — not technical skills
-    "B2B","B2C","B2G","D2C","VP","SVP","EVP","CEO","CTO","CFO","COO","CIO","GM",
-    # Company name abbreviations commonly appearing in JD titles
-    "CVS","IBM","JPM","JPMC","GE","GM","HP","AT","UPS","DHL","BP","PG",
-    # Geography
-    "USA","US","NYC","SF","LA","DC","UK","EU","SAN","LOS","NEW",
+    # English function words that appear in ALL-CAPS for emphasis
+    "THE","AND","OR","NOT","FOR","ARE","HAS","WITH","FROM","THAT","THIS",
+    "THEY","ALSO","BOTH","EACH","HAVE","WILL","MUST","CAN","MAY","WHO","HOW",
+    "YOU","WE","ALL","ANY","DO","WAS","ITS","BUT","NOW","END","NEW","INC","LLC",
+    # Business model / org hierarchy — appear even in requirements sections
+    "B2B","B2C","B2G","D2C","VP","SVP","EVP","CEO","CTO","CFO","COO","CIO",
+    # Education qualifiers — appear in requirements ("BS/MS preferred")
+    "BS","MS","MBA","PHD","BA","AA",
+    # AI concepts used as company description jargon, not candidate skills
+    "AGI","ASI",
+    # US state abbreviations from location lines
+    "USA","US","NYC","SF","LA","DC","UK","EU",
     "TX","CA","NY","FL","IL","WA","GA","MA","PA","OH","VA",
     "CO","OR","MN","WI","IN","MO","TN","MD","AZ","NV","UT",
     "CT","IA","KS","NE","NM","ID","MT","WY","ND","SD","WV","ME","NH","VT","RI","DE","AK","HI",
-    # Fragment noise from slash notation splits
-    "ASQ","IT","CI","CD",
+    # Slash notation fragment noise
+    "CI","CD","IT","ASQ",
 }
 
-# US state names that appear in JD location lines — not skills
-_DYN_GEO_SKIP: set[str] = {
-    "Texas","California","York","Jersey","Mexico","Hampshire","Orleans",
-    "Florida","Georgia","Illinois","Washington","Colorado","Arizona",
-    "Virginia","Carolina","Massachusetts","Pennsylvania","Ohio","Indiana",
-    "Michigan","Tennessee","Missouri","Maryland","Minnesota","Wisconsin",
-    "Oregon","Nevada","Kentucky","Oklahoma","Connecticut","Utah","Iowa",
-    "Mississippi","Arkansas","Kansas","Nebraska","Idaho","Montana",
-    "Wyoming","Dakota","Delaware","Hawaii","Alaska","Vermont","Maine",
-    "Austin","Dallas","Houston","Atlanta","Seattle","Chicago","Denver",
-    "Phoenix","Portland","Boston","Detroit","Nashville","Charlotte",
-    "Francisco","Angeles","Diego","Antonio","Minneapolis","Cleveland",
-}
+# ── High-signal zone detection ────────────────────────────────────────────────
+# Steps that produce the most garbage (CamelCase, TitleCase, ALL-CAPS) run
+# ONLY on text from requirements/qualifications/skills sections.
+# This eliminates company descriptions, mission statements, and values sections
+# without needing per-word blacklisting.
+
+_HIGH_SIGNAL_ZONE_RE = re.compile(
+    r"^(responsibilities?|what\s+you.ll\s+do|what\s+you\s+will\s+do|"
+    r"key\s+responsibilities?|requirements?|qualifications?|"
+    r"technical\s+skills?|skills?\s+required|required\s+skills?|"
+    r"what\s+we.re?\s+looking|preferred(?:\s+qualifications?)?|"
+    r"experience\s+required|what\s+you.ll\s+bring|what\s+you\s+bring|"
+    r"who\s+you\s+are|the\s+opportunity|about\s+the\s+role|"
+    r"what\s+a\s+(great\s+)?candidate|additional\s+requirements?)\b",
+    re.IGNORECASE,
+)
+
+_END_HIGH_SIGNAL_RE = re.compile(
+    r"^(success\s+metrics?|leadership\s+competencies?|physical|"
+    r"compensation|salary\s+range?|benefits?|perks?|"
+    r"culture|why\s+join|about\s+(us|the\s+company|nimble|quantifind|\w+)|"
+    r"who\s+we\s+are|our\s+(mission|values|culture|story)|"
+    r"will\s+you\s+join|apply|contact\s+us)\b",
+    re.IGNORECASE,
+)
+
+
+def _get_high_signal_text(jd_clean: str) -> str:
+    """
+    Extract only requirements/qualifications/skills section content.
+    Runs AFTER _strip_jd_noise() — noise sections already removed.
+    Falls back to full cleaned text for unstructured JDs with no clear headers.
+    """
+    lines = jd_clean.splitlines()
+    high = []
+    in_zone = False
+    found_any = False
+
+    for line in lines:
+        stripped = line.strip()
+        if _HIGH_SIGNAL_ZONE_RE.match(stripped):
+            in_zone = True
+            found_any = True
+        elif _END_HIGH_SIGNAL_RE.match(stripped):
+            in_zone = False
+
+        if in_zone:
+            high.append(line)
+
+    # Unstructured JD (no clear headers) → use full cleaned text as fallback
+    if not found_any:
+        return jd_clean
+
+    return "\n".join(high)
 
 # These acronyms/tools are independent skills — never removed as sub-components
 _DYN_NEVER_REMOVE: set[str] = {
@@ -487,47 +501,63 @@ def _strip_jd_noise(jd_text: str) -> str:
 def extract_jd_keywords_dynamic(jd_text: str) -> list[str]:
     """
     Extract technical keywords directly from JD text.
-    No hardcoded catalog — derives keywords from the actual JD content.
-    Strips benefits/perks/culture sections before extraction to avoid
-    injecting non-technical words (HSA, FSA, Transportation, etc.) as skills.
+
+    Architecture: structural zone filtering, not word blacklisting.
+      1. _strip_jd_noise() removes boilerplate sections (benefits, EEO, company desc).
+      2. _get_high_signal_text() isolates requirements/qualifications/skills sections.
+      3. Steps 3-6 (CamelCase, TitleCase, ALL-CAPS, alphanumeric) run ONLY on
+         high-signal zones — eliminates garbage from company descriptions without
+         needing per-word skip lists.
+      4. Steps 1-2 (compound phrases, multi-word tools) and 7-10 run on full
+         cleaned text — they are targeted enough to not need zone restriction.
     """
     found: set[str] = set()
-    # Strip noise sections FIRST — benefits, culture, EEO, etc.
-    jd_clean = _strip_jd_noise(jd_text)
-    lines = jd_clean.strip().splitlines()
-    # Skip first line (job title/company — common source of false positives)
-    text_body = "\n".join(lines[1:]) if len(lines) > 1 else jd_clean
-    text_full = jd_clean
 
-    # 1. Compound tech phrases (context-dependent, case-insensitive)
+    # Pass 1: strip boilerplate (benefits, EEO, physical requirements, etc.)
+    jd_clean = _strip_jd_noise(jd_text)
+
+    # Pass 2: isolate high-signal zones (requirements, skills, responsibilities)
+    jd_high = _get_high_signal_text(jd_clean)
+
+    lines_clean = jd_clean.strip().splitlines()
+    # Skip first line (job title — common false positive source)
+    text_full  = "\n".join(lines_clean[1:]) if len(lines_clean) > 1 else jd_clean
+
+    lines_high = jd_high.strip().splitlines()
+    # High-signal body: also skip first line if it's the JD title
+    text_high  = "\n".join(lines_high[1:]) if len(lines_high) > 1 else jd_high
+
+    # 1. Compound tech phrases — run on full cleaned text (targeted patterns)
     for display, pat in _DYN_COMPOUND_PHRASES:
         if re.search(pat, text_full, re.IGNORECASE):
             found.add(display)
 
-    # 2. Multi-word vendor names -> canonical
+    # 2. Multi-word vendor names → canonical — run on full cleaned text
     for pat, canonical in _DYN_MULTI_WORD:
         if re.search(pat, text_full, re.IGNORECASE):
             found.add(canonical)
 
-    # 3. CamelCase single-word tech terms (PySpark, BigQuery, QuickSight, MLflow)
-    for w in re.findall(r"\b[A-Z][a-z]+(?:[A-Z][a-zA-Z0-9]*)+\b", text_body):
+    # 3-6: Run on HIGH-SIGNAL TEXT ONLY — zone filter eliminates company
+    # description garbage without needing per-word blacklisting.
+
+    # 3. CamelCase single-word tech terms (PySpark, BigQuery, MLflow, ClickHouse)
+    for w in re.findall(r"\b[A-Z][a-z]+(?:[A-Z][a-zA-Z0-9]*)+\b", text_high):
         if w not in _DYN_PROP_SKIP and w.lower() not in _DYN_PROP_SKIP_LOWER:
             found.add(w)
 
     # 4. TitleCase words in comma-separated tech-list context
-    # Catches: Databricks, Snowflake, Airflow, Hadoop, Terraform, Oracle, etc.
-    for m in re.finditer(r"[,;:\(]\s*([A-Z][a-z]{2,18})\b", text_body):
+    for m in re.finditer(r"[,;:\(]\s*([A-Z][a-z]{2,18})\b", text_high):
         w = m.group(1)
-        if w not in _DYN_PROP_SKIP and w.lower() not in _DYN_PROP_SKIP_LOWER and w not in _DYN_GEO_SKIP:
+        if w not in _DYN_PROP_SKIP and w.lower() not in _DYN_PROP_SKIP_LOWER:
             found.add(w)
 
     # 5. ALL-CAPS acronyms 2-6 chars (ETL, AWS, SQL, GCP, HDFS, MDM, HIPAA)
-    for a in re.findall(r"\b[A-Z]{2,6}\b", text_body):
+    for a in re.findall(r"\b[A-Z]{2,6}\b", text_high):
         if a not in _DYN_ACRONYM_SKIP:
             found.add(a)
 
     # 6. Alphanumeric tool names: DB2, S3, H2O
-    for a in re.findall(r"\b[A-Z]{1,4}\d[a-zA-Z0-9]*\b", text_body):
+    for a in re.findall(r"\b[A-Z]{1,4}\d[a-zA-Z0-9]*\b", text_high):
         if a not in _DYN_ACRONYM_SKIP and a not in _DYN_PROP_SKIP:
             found.add(a)
 
@@ -558,7 +588,8 @@ def extract_jd_keywords_dynamic(jd_text: str) -> list[str]:
                 found.add(w)
 
     # 9. Version-tagged tools: "Python 3", "Spark 3.x" -> extract tool name
-    for v in re.findall(r"\b([A-Z][a-zA-Z0-9+#.]+)\s+\d+(?:\.\d+)*[x+]?\b", text_full):
+    # Run on text_high to avoid "Lifts 10 lbs" type false positives from physical sections
+    for v in re.findall(r"\b([A-Z][a-zA-Z0-9+#.]+)\s+\d+(?:\.\d+)*[x+]?\b", text_high):
         if v not in _DYN_PROP_SKIP and v.lower() not in _DYN_PROP_SKIP_LOWER:
             found.add(v)
 

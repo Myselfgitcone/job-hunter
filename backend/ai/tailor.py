@@ -1138,8 +1138,19 @@ _INJECTION_SKIP = {
     "contract", "permanent", "relocation", "candidates", "applicants",
     # Vague business words
     "opportunity", "position", "opening", "role", "join",
-    # Company/product names that slip through (added as seen)
-    "quantifind",
+    # Education / qualification terms
+    "bs/ms", "ms/phd", "bs/phd", "phd", "msc", "bsc", "mba",
+    # AI/company jargon — not a skill a candidate claims
+    "agi", "asi",
+    # Company/product names that slip through
+    "quantifind", "nimble",
+}
+
+# Programming languages — route to Programming/Languages row when injecting
+_PROGRAMMING_LANG_KW = {
+    "rust", "go", "kotlin", "swift", "ruby", "php", "r", "matlab",
+    "typescript", "javascript", "c++", "c#", "elixir", "haskell", "lua",
+    "groovy", "dart", "zig", "clojure", "erlang", "f#",
 }
 
 # Domain/compliance terms that don't belong in DevOps/tech rows — use their own row
@@ -1209,6 +1220,27 @@ def _inject_missing_keywords(resume: str, missing: list[str]) -> str:
         if kw.lower() in _COMPLIANCE_DOMAIN_KW:
             compliance_queue.append(kw)
             continue
+
+        # 3b. Programming languages → target Programming/Languages row specifically
+        if kw.lower() in _PROGRAMMING_LANG_KW:
+            prog_idx = next(
+                (i for i in row_indices
+                 if re.search(r'program|language|scripting', lines[i].split(':')[0], re.I)), -1
+            )
+            if prog_idx >= 0:
+                if _row_item_count(lines[prog_idx]) < 6:
+                    lines[prog_idx] = lines[prog_idx].rstrip().rstrip(',') + f", {kw}"
+                else:
+                    cont_label = lines[prog_idx].split(':')[0].strip() + " (cont.)"
+                    cont_idx = next(
+                        (i for i in row_indices if lines[i].startswith(cont_label)), -1
+                    )
+                    if cont_idx >= 0 and _row_item_count(lines[cont_idx]) < 6:
+                        lines[cont_idx] = lines[cont_idx].rstrip().rstrip(',') + f", {kw}"
+                    else:
+                        lines.insert(prog_idx + 1, f"{cont_label}: {kw}")
+                        row_indices = [i for i, l in enumerate(lines) if ':' in l and l.strip()]
+                continue
 
         # 4. Score rows by label similarity
         kw_words = [w for w in kw.lower().split() if len(w) > 2]

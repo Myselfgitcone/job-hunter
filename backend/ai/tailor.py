@@ -1291,13 +1291,14 @@ def _inject_missing_keywords(resume: str, missing: list[str]) -> str:
             if rest:
                 lines.append(f"Compliance & Domain (cont.): {', '.join(rest)}")
 
-    # Append unmatched technical terms
+    # Unmatched terms: silently discard — no "Additional Skills" row.
+    # If a keyword doesn't fit any existing skills row, it's likely a
+    # non-technical term that slipped past extraction (NASDAQ, SFIX, USD,
+    # company names, etc.). Showing it as "Additional Skills" looks broken.
+    # The zone-based extractor already filters most garbage; anything that
+    # still doesn't fit a row is garbage and should not appear in the resume.
     if other_queue:
-        chunk = other_queue[:6]
-        rest  = other_queue[6:]
-        lines.append(f"Additional Skills: {', '.join(chunk)}")
-        if rest:
-            lines.append(f"Additional Skills (cont.): {', '.join(rest)}")
+        print(f"[KEYWORD INJECT] Discarded (no row match): {', '.join(other_queue)}")
 
     return resume[:sec_start] + '\n'.join(lines) + resume[sec_end:]
 

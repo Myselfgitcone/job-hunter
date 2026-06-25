@@ -254,6 +254,8 @@ _DYN_MULTI_WORD: list[tuple[str, str]] = [
     (r"\bazure\s+devops\b",                     "Azure DevOps"),
     (r"\bazure\s+key\s+vault\b",                "Azure Key Vault"),
     (r"\bazure\s+purview\b",                    "Azure Purview"),
+    (r"\bazure\s+functions?\b",                  "Azure Functions"),
+    (r"\bazure\s+cloud(?:\s+platform)?\b",      "Azure Cloud Platform"),
     (r"\bazure\s+event\s+hubs?\b",              "Event Hubs"),
     (r"\bpower\s+bi\b",                         "Power BI"),
     (r"\bgithub\s+actions\b",                   "GitHub Actions"),
@@ -546,7 +548,9 @@ def extract_jd_keywords_dynamic(jd_text: str) -> list[str]:
             found.add(w)
 
     # 4. TitleCase words in comma-separated tech-list context
-    for m in re.finditer(r"[,;:\(]\s*([A-Z][a-z]{2,18})\b", text_high):
+    # Use [^\S\n]* (not \s*) to prevent cross-line match: section headers ending
+    # with ":" would otherwise bleed into the first word of the next line.
+    for m in re.finditer(r"[,;:\(][^\S\n]*([A-Z][a-z]{2,18})\b", text_high):
         w = m.group(1)
         if w not in _DYN_PROP_SKIP and w.lower() not in _DYN_PROP_SKIP_LOWER:
             found.add(w)
@@ -582,8 +586,11 @@ def extract_jd_keywords_dynamic(jd_text: str) -> list[str]:
             found.add(s)
 
     # 8. Capitalized words after skill-signal phrases
+    # Strip parenthetical expansions before scanning inner words — "(Data Build Tool)"
+    # is an acronym expansion, not a list of independent skills.
     for m in _DYN_SIGNAL_RE.finditer(text_full):
-        for w in re.findall(r"\b[A-Z][a-zA-Z0-9+#.]{1,20}\b", m.group(1)):
+        group_text = re.sub(r"\([^)]+\)", "", m.group(1))
+        for w in re.findall(r"\b[A-Z][a-zA-Z0-9+#.]{1,20}\b", group_text):
             if w not in _DYN_PROP_SKIP and w.lower() not in _DYN_PROP_SKIP_LOWER:
                 found.add(w)
 

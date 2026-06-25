@@ -307,6 +307,8 @@ _DYN_PROP_SKIP: set[str] = {
     "Apache","Microsoft","Amazon","Google",
     # Degree types — appear even in requirements sections
     "Bachelor","Master","Phd","Msc","Bsc","Mba",
+    # Degree field qualifiers — appear in requirements lists, never standalone skills
+    "Biomedical","Informatics","Computer","Engineering",
     # Role words that slip into skill lists
     "Engineer","Developer","Architect","Analyst","Manager","Director",
     "Lead","Senior","Junior","Principal","Staff",
@@ -315,6 +317,13 @@ _DYN_PROP_SKIP: set[str] = {
     "Application","Applications","Process","Processes","Platform","Platforms",
     "Environment","Environments","Product","Products","Team","Teams",
     "Organization","Company","Department","Business","Enterprise",
+    # Soft-skill qualifiers from KSA / behavioral requirements sections
+    # These appear capitalized when starting sentences — universally non-technical
+    "Ability","Willingness","Familiarity","Effective","Responsible","Direct","Identify",
+    # JD responsibility-sentence verbs that appear TitleCase at sentence start
+    # (e.g. "Designs and develops…", "Integrates, builds…", "Engages and communicates…")
+    "Designs","Integrates","Engages","Deploy","Write","Prepare","Maintain",
+    "Ensure","Conduct","Provide","Coordinate","Evaluate","Review","Support",
 }
 _DYN_PROP_SKIP_LOWER: set[str] = {w.lower() for w in _DYN_PROP_SKIP}
 
@@ -351,7 +360,14 @@ _HIGH_SIGNAL_ZONE_RE = re.compile(
     r"what\s+we.re?\s+looking|preferred(?:\s+qualifications?)?|"
     r"experience\s+required|what\s+you.ll\s+bring|what\s+you\s+bring|"
     r"who\s+you\s+are|the\s+opportunity|about\s+the\s+role|"
-    r"what\s+a\s+(great\s+)?candidate|additional\s+requirements?)\b",
+    r"what\s+a\s+(great\s+)?candidate|additional\s+requirements?|"
+    # Common hospital/enterprise JD headers that put "Requirements" mid-line
+    r"minimum\s+(?:job\s+)?requirements?|"
+    r"(?:job\s+)?specific\s+duties?|job\s+duties?|"
+    r"essential\s+(?:job\s+)?(?:duties?|functions?)|"
+    r"primary\s+(?:duties?|responsibilities?|functions?)|"
+    r"position\s+(?:duties?|responsibilities?|summary)|"
+    r"role\s+(?:duties?|responsibilities?))\b",
     re.IGNORECASE,
 )
 
@@ -360,7 +376,12 @@ _END_HIGH_SIGNAL_RE = re.compile(
     r"compensation|salary\s+range?|benefits?|perks?|"
     r"culture|why\s+join|about\s+(us|the\s+company|nimble|quantifind|\w+)|"
     r"who\s+we\s+are|our\s+(mission|values|culture|story)|"
-    r"will\s+you\s+join|apply|contact\s+us)\b",
+    r"will\s+you\s+join|apply|contact\s+us|"
+    # KSA / behavioral sections — contain soft requirements, not technical skills
+    r"knowledge,?\s+skills,?\s+(and\s+)?abilities?|"
+    r"knowledge\s+and\s+skills?|core\s+competencies?|"
+    r"behavioral\s+(competencies?|requirements?)|"
+    r"additional\s+information)\b",
     re.IGNORECASE,
 )
 
@@ -590,7 +611,8 @@ def extract_jd_keywords_dynamic(jd_text: str) -> list[str]:
     # is an acronym expansion, not a list of independent skills.
     for m in _DYN_SIGNAL_RE.finditer(text_full):
         group_text = re.sub(r"\([^)]+\)", "", m.group(1))
-        for w in re.findall(r"\b[A-Z][a-zA-Z0-9+#.]{1,20}\b", group_text):
+        # Require ≥4 chars total to filter short generic words ("Use", "Web", "Go")
+        for w in re.findall(r"\b[A-Z][a-zA-Z0-9+#.]{3,20}\b", group_text):
             if w not in _DYN_PROP_SKIP and w.lower() not in _DYN_PROP_SKIP_LOWER:
                 found.add(w)
 
@@ -648,6 +670,11 @@ def _dynamic_coverage_pattern(skill: str) -> str:
         "AWS Certified"  -> r'\baws\s+certifieds?\b'
     """
     s = skill.lower().strip()
+    # Slash/ampersand notation (ETL/ELT, CI/CD, ELT/ETL): match either ordering
+    if re.match(r'^[a-z]+[/&][a-z]+$', s):
+        a, sep, b = re.split(r'([/&])', s)
+        escaped_sep = re.escape(sep)
+        return rf"\b({re.escape(a)}{escaped_sep}{re.escape(b)}|{re.escape(b)}{escaped_sep}{re.escape(a)})\b"
     words = s.split()
     if len(words) == 1:
         return rf"\b{re.escape(s)}\b"

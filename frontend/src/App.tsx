@@ -1299,21 +1299,44 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
 
   const committed = filters.source.length + (filters.score !== "any" ? 1 : 0);
   const draftCount = draft.source.length + (draft.score !== "any" ? 1 : 0);
-  // Last 10 UTC calendar dates — match UTC dates stored in DB (FJ date-only jobs = T00:00:00Z)
-  const dateDays: { val: string; label: string }[] = React.useMemo(() => {
-    const days = [];
-    const now = new Date();
-    const todayUtc = now.toISOString().substring(0, 10); // "YYYY-MM-DD" UTC today
-    for (let i = 0; i < 10; i++) {
+  // Date range helpers — 60-day retention, 10 quick chips + grouped older dropdown
+  const { dateDays, olderByMonth } = React.useMemo(() => {
+    const todayUtc = new Date().toISOString().substring(0, 10);
+    const allDays: { val: string; label: string; month: string }[] = [];
+    for (let i = 0; i < 60; i++) {
       const d = new Date(todayUtc + "T00:00:00Z");
       d.setUTCDate(d.getUTCDate() - i);
-      const val = d.toISOString().substring(0, 10); // YYYY-MM-DD
-      const [, m, day] = val.split("-");
-      const label = `${m}/${day}`; // MM/DD
-      days.push({ val, label });
+      const val   = d.toISOString().substring(0, 10);
+      const [y, m, day] = val.split("-");
+      const label = `${m}/${day}`;
+      const month = `${d.toLocaleString("en-US", { month: "long", timeZone: "UTC" })} ${y}`;
+      allDays.push({ val, label, month });
     }
-    return days;
+    const quick = allDays.slice(0, 10);
+    const older = allDays.slice(10);
+    // Group older days by month
+    const grouped: Record<string, { val: string; label: string }[]> = {};
+    const monthOrder: string[] = [];
+    for (const d of older) {
+      if (!grouped[d.month]) { grouped[d.month] = []; monthOrder.push(d.month); }
+      grouped[d.month].push({ val: d.val, label: d.label });
+    }
+    return { dateDays: quick, olderByMonth: { grouped, monthOrder } };
   }, []);
+
+  const [olderOpen, setOlderOpen]   = React.useState(false);
+  const [olderPos, setOlderPos]     = React.useState({ top: 0, left: 0 });
+  const olderBtnRef                 = React.useRef<HTMLButtonElement>(null);
+  const olderPanelRef               = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!olderOpen) return;
+    const fn = (e: MouseEvent) => {
+      if (!olderBtnRef.current?.contains(e.target as Node) && !olderPanelRef.current?.contains(e.target as Node))
+        setOlderOpen(false);
+    };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+  }, [olderOpen]);
   const sourceOpts = SOURCES && SOURCES.length ? SOURCES : ["FantasticJobs","LinkedIn","Indeed"];
   const scoreOpts: [string, string][] = [["any","Any"],["60","≥60%"],["70","≥70%"],["80","≥80%"],["90","≥90%"]];
 
@@ -1412,6 +1435,52 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
           <button key={val} className={filters.time === val ? "on" : ""} onClick={() => set("time", val)}>{label}</button>
         ))}
       </div>
+      {/* Older dates dropdown — days 11–60 grouped by month */}
+      <div style={{ position: "relative", flexShrink: 0 }}>
+        <button
+          ref={olderBtnRef}
+          className={`filters-btn${olderByMonth.monthOrder.some(m => olderByMonth.grouped[m].some(d => d.val === filters.time)) ? " has" : ""}`}
+          style={{ fontSize: 11, padding: "0 8px", height: 28 }}
+          onClick={() => {
+            if (!olderOpen && olderBtnRef.current) {
+              const r = olderBtnRef.current.getBoundingClientRect();
+              setOlderPos({ top: r.bottom + 6, left: r.left });
+            }
+            setOlderOpen(v => !v);
+          }}
+        >
+          Older
+          <svg className="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        {olderOpen && ReactDOM.createPortal(
+          <div ref={olderPanelRef} style={{
+            position: "fixed", top: olderPos.top, left: olderPos.left, zIndex: 9000,
+            background: "var(--bg-elevated)", border: "1px solid var(--line)",
+            borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
+            minWidth: 200, maxHeight: 340, overflowY: "auto", padding: "8px 0",
+          }}>
+            {olderByMonth.monthOrder.map(month => (
+              <div key={month}>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--tx-3)", padding: "6px 12px 3px" }}>{month}</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: "2px 10px 8px" }}>
+                  {olderByMonth.grouped[month].map(({ val, label }) => (
+                    <button key={val}
+                      onClick={() => { set("time", val); setOlderOpen(false); }}
+                      style={{
+                        fontSize: 11, padding: "3px 8px", borderRadius: 6, cursor: "pointer",
+                        border: "1px solid var(--line)", background: filters.time === val ? "var(--grad-soft)" : "var(--bg-surface)",
+                        color: filters.time === val ? "var(--tx)" : "var(--tx-2)",
+                        boxShadow: filters.time === val ? "inset 0 0 0 1px rgba(124,58,237,.4)" : "none",
+                      }}
+                    >{label}</button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>,
+          document.body
+        )}
+      </div>
       {/* Clock pills inline + ℹ tooltip for retention notice */}
       <div style={{ display: "flex", gap: 5, alignItems: "center", marginLeft: 10, paddingLeft: 10, borderLeft: "1px solid var(--line)", flexShrink: 0 }}>
         {([
@@ -1442,7 +1511,7 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
               padding: "6px 10px", borderRadius: 6, whiteSpace: "nowrap",
               boxShadow: "0 4px 12px rgba(0,0,0,0.35)", zIndex: 9999, pointerEvents: "none",
             }}>
-              Last 10 days only — jobs older than 10 days are automatically removed.
+              Jobs stored for 60 days — use "Older" for dates beyond the last 10 days.
             </div>
           )}
         </span>

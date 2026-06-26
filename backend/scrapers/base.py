@@ -7,7 +7,7 @@ import re
 
 RELEVANT_TITLE_TERMS = []  # empty = accept all titles
 
-CUTOFF_HOURS = 240  # 10 days
+CUTOFF_HOURS = 1440  # 60 days
 
 # Country detection keywords → country name
 # ORDER MATTERS — more specific first, USA last (has aggressive state abbreviations)

@@ -1552,10 +1552,12 @@ async def public_job_count():
 @app.get("/api/stats/today")
 async def public_today_stats():
     """Public endpoint — live stats for login page (no auth needed)."""
-    from datetime import datetime, timezone
-    today = datetime.now(EST).strftime("%Y-%m-%d")
+    from datetime import datetime, timezone as _tz
+    # scraped_at is stored as UTC Z-suffix; use UTC date to match correctly
+    now_utc = datetime.now(_tz.utc)
+    today   = now_utc.strftime("%Y-%m-%d")
     async with SessionLocal() as db:
-        # Jobs added today
+        # Jobs added today (UTC date prefix match covers both old EST and new UTC formats)
         added_r = await db.execute(
             select(func.count()).select_from(Job).where(Job.scraped_at.like(f"{today}%"))
         )
@@ -1578,7 +1580,7 @@ async def public_today_stats():
     if last_scraped_at:
         try:
             last_dt = datetime.fromisoformat(last_scraped_at.replace("Z", "+00:00"))
-            mins_ago = max(0, int((datetime.now(EST) - last_dt).total_seconds() / 60))
+            mins_ago = max(0, int((now_utc - last_dt).total_seconds() / 60))
         except Exception:
             pass
 

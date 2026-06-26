@@ -35,7 +35,7 @@ GENERAL     = "GENERAL"
 # ── Per-role bullet budgets ────────────────────────────────────────────────────
 # (most_recent, second, third, fourth_plus, summary, hard_total)
 BULLET_BUDGETS = {
-    TECH:       (11, 7, 5, 2, 5, 30),
+    TECH:       (11, 7, 6, 2, 5, 31),
     IB:         ( 5, 4, 3, 2, 5, 19),
     FINANCE:    ( 5, 4, 3, 2, 5, 19),
     CYBER:      ( 7, 5, 4, 2, 5, 23),

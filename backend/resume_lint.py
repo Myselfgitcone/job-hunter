@@ -45,8 +45,8 @@ BULLET_BUDGETS = {
 }
 
 SUMMARY_EXACT = 5
-WORD_LIMIT    = 22
-WORD_TARGET   = 18
+WORD_LIMIT    = 25
+WORD_TARGET   = 20
 
 BANNED_WORDS = ["utilized", "leveraged"]
 

@@ -646,7 +646,7 @@ PATTERN 5 — ORG-WIDE ENFORCEMENT:
 APPLICATION RULE:
   • Scan every bullet in every role for all 5 patterns regardless of detected ROLE TYPE.
   • When a pattern is found AND the JD asks for leadership/influence signal: surface the
-    influence angle within the same existing bullet (≤22 words). Do not add new bullets.
+    influence angle within the same existing bullet (≤25 words). Do not add new bullets.
   • When the JD does NOT require leadership/influence signal: skip this rule entirely.
     Apply only when JD explicitly names coaching, stakeholder engagement, team direction,
     standards ownership, client-facing influence, or "directing teams."
@@ -994,7 +994,7 @@ THE 5 ANCHORS:
   1. SPECIFIC ACTION — exact technique, process, or decision (not "did X" — say what you did WITH X and how)
   2. NAMED SKILL / TOOL / METHOD — the JD's exact term
   3. REAL DOMAIN CONTEXT — the employer's actual industry vocabulary, never the JD's if different
-  4. CONCRETE OUTCOME — number, deal size, time saved, rate improved (bullet ≤22 words total)
+  4. CONCRETE OUTCOME — number, deal size, time saved, rate improved (bullet ≤25 words total)
   5. CONTINUITY CHECK — the skill/tool must appear in the declared skills list OR original resume text. If neither → skills section only.
 
 QUALITY / CRAFT DEPTH ANCHOR:
@@ -1008,7 +1008,7 @@ QUALITY / CRAFT DEPTH ANCHOR:
 TONE RULES:
   • Past tense. Confident. Zero hedging.
   • NEVER: "gained experience in", "assisted with", "helped with", "exposure to", "familiar with", "leveraged", "utilized"
-  • One crisp idea per bullet — under 22 words
+  • One crisp idea per bullet — under 25 words
   • Verb variety — no two consecutive bullets open with the same verb
 
 ROLE-SPECIFIC VERB BANKS:
@@ -1114,7 +1114,7 @@ DOMAIN BRIDGE (optional): If candidate's background ≠ target company's domain,
   • No two consecutive bullets open with the same verb
   • Vary structure: metric-first, action-first, tool-first, outcome-first
   • No empty intensifiers without a real number
-  • Every bullet ≤ 22 words. Target 14–18. One idea only.
+  • Every bullet ≤ 25 words. Target 17–22. One idea only.
   • No distinctive JD word repeated 3+ times across the full resume
 
 ═══ CRITICAL REMINDERS ═══
@@ -1151,7 +1151,7 @@ REVIEWER_PROMPT = """You are a resume quality reviewer — NOT a resume writer.
 Fix exactly 3 semantic issues in the resume given to you. Change NOTHING outside
 these 3 checks. Do NOT: add bullets, remove bullets, change bullet content,
 change company names, dates, locations, titles, or bullet count.
-Every bullet you write or rewrite must be ≤ 22 words. Return plain text only.
+Every bullet you write or rewrite must be ≤ 25 words. Return plain text only.
 
 CHECK 1 — SKILLS ANTI-STUFFING AND CONCEPT DEDUPLICATION:
 If the skills/competencies section mirrors the JD's exact feature list verbatim
@@ -1189,7 +1189,7 @@ Move tools to the correct category row if they are miscategorized.
 CHECK 2 — SUMMARY TECH/SPEC DUMP:
 If any summary bullet is a spec list (5+ tools or credentials with no candidate
 context, no impact statement, no who-you-are signal), rewrite it as a single
-crisp who-you-are statement. ≤ 22 words. One idea only.
+crisp who-you-are statement. ≤ 25 words. One idea only.
 
 CHECK 3 — UNSUPPORTED SKILLS ONLY:
 If a tool or skill appears in the skills/competencies section but has zero
@@ -1949,7 +1949,7 @@ _RETRY_RULES = {
     "[BANNED CLOSING LABEL]":  "Use the exact closing line label required for this role type — no substitutes.",
     "[BANNED WORD]":           "Replace 'utilized' and 'leveraged' with active verbs: 'used', 'built', 'ran'.",
     "[META LEAK]":             "Remove all instruction text, placeholders, or commentary from the resume body.",
-    "[TOO LONG]":              "Shorten to ≤22 words. One idea per bullet only. Split compound bullets.",
+    "[TOO LONG]":              "Shorten to ≤25 words. One idea per bullet only. Split compound bullets.",
     "[MULTI-IDEA]":            "One accomplishment per bullet. Split into two or cut the weaker half.",
     "[SAME VERB]":             "No two consecutive experience bullets may open with the same verb — vary them.",
     "[SUMMARY]":               "PROFESSIONAL SUMMARY must have exactly 5 bullet lines — not 4, not 6.",

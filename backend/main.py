@@ -1363,7 +1363,12 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
         # Also fetch global settings for dashboard display
         global_setting = await db.get(Setting, "last_scraped_at")
         data["last_scraped_at"] = global_setting.value if global_setting else ""
-        
+
+        # Earliest scraped_at in DB — used by frontend to cap the date filter dropdown
+        earliest_r = await db.execute(select(func.min(Job.scraped_at)).select_from(Job))
+        earliest = earliest_r.scalar()
+        data["earliest_scraped_date"] = earliest[:10] if earliest else ""
+
         return data
 
 

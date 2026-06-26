@@ -830,6 +830,7 @@ export default function App() {
               expFilter={expFilter}   setExpFilter={(v) => { setExpFilter(v); saveFilterToggle(visaFilter, v); }}
               isAdmin={isAdmin}
               sidebarCollapsed={sidebarCollapsed}
+              earliestDate={userSettings?.earliest_scraped_date || ""}
             />
               {scraping && (
               <div className="scrape-banner">
@@ -1251,13 +1252,14 @@ function InlineMultiFilter({ label, options, selected, onChange, counts }: {
   );
 }
 
-function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setVisaFilter, expFilter, setExpFilter, isAdmin, sidebarCollapsed }: {
+function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setVisaFilter, expFilter, setExpFilter, isAdmin, sidebarCollapsed, earliestDate }: {
   filters: Filters; setFilters: React.Dispatch<React.SetStateAction<Filters>>;
   SOURCES?: string[]; yearsCounts?: Record<string, number>;
   visaFilter: boolean; setVisaFilter: (v: boolean) => void;
   expFilter: boolean; setExpFilter: (v: boolean) => void;
   isAdmin: boolean;
   sidebarCollapsed?: boolean;
+  earliestDate?: string;  // "YYYY-MM-DD" — oldest date with scraped jobs
 }) {
   const set = (k: keyof Filters, v: any) => setFilters(f => ({ ...f, [k]: v }));
   const [open, setOpen] = React.useState(false);
@@ -1301,7 +1303,7 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
 
   const committed = filters.source.length + (filters.score !== "any" ? 1 : 0);
   const draftCount = draft.source.length + (draft.score !== "any" ? 1 : 0);
-  // Date range helpers — 60-day retention, 10 quick chips + grouped older dropdown
+  // Date range helpers — capped at earliestDate (first scrape date) or 60 days
   const { dateDays, olderByMonth } = React.useMemo(() => {
     const todayUtc = new Date().toISOString().substring(0, 10);
     const allDays: { val: string; label: string; month: string }[] = [];
@@ -1309,6 +1311,8 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
       const d = new Date(todayUtc + "T00:00:00Z");
       d.setUTCDate(d.getUTCDate() - i);
       const val   = d.toISOString().substring(0, 10);
+      // Stop once we pass the earliest scraped date — no jobs before it
+      if (earliestDate && val < earliestDate) break;
       const [y, m, day] = val.split("-");
       const label = `${m}/${day}`;
       const month = `${d.toLocaleString("en-US", { month: "long", timeZone: "UTC" })} ${y}`;
@@ -1324,7 +1328,7 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
       grouped[d.month].push({ val: d.val, label: d.label });
     }
     return { dateDays: quick, olderByMonth: { grouped, monthOrder } };
-  }, []);
+  }, [earliestDate]);
 
   const [olderOpen, setOlderOpen]   = React.useState(false);
   const [olderPos, setOlderPos]     = React.useState({ top: 0, left: 0 });

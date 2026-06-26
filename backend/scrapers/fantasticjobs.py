@@ -91,10 +91,32 @@ _TERMS_JAVA = "(java & !javascript) | 'spring boot' | 'spring framework' | jakar
 # data-anchored, so non-data financial/sales titles can't match anyway.
 _GLOBAL_NOT = (
     " & !(nurse"
+    # Non-DE engineering disciplines — physical/infrastructure roles
+    " | 'data center'"             # Data Center Engineer (hardware)
+    " | structural | mechanical"   # civil/mech engineering
+    " | network"                   # Network Engineer (infra, not pipelines)
+    " | 'process engineer' | 'process analyst' | 'process manager'"
+    # Management / PM tracks
+    " | 'operations manager' | 'project manager' | 'program manager'"
+    # Seniority levels this candidate is skipping
+    " | principal | staff | lead"
+    # Executive / architect exclusions (existing)
     " | director | 'vice president' | vp | cto | chief"
     " | 'solutions architect' | 'enterprise architect' | 'cloud architect'"
     " | 'software architect' | 'technical architect' | 'application architect'"
     " | 'integration architect' | 'security architect')"
+)
+
+import re as _re
+# Description-level skip — checked on raw JD text before storing.
+# Matches clearance requirements and citizenship-only roles that can't
+# be filtered by title alone.
+_SKIP_DESC_RE = _re.compile(
+    r"(security clearance|secret clearance|top.?secret|ts/sci|active clearance"
+    r"|must be (a )?u\.?s\.? citizen|u\.?s\.? citizens? only"
+    r"|citizenship required|citizen of the united states"
+    r"|require.{0,30}citizenship|clearance required)",
+    _re.IGNORECASE,
 )
 
 TITLE_FILTER_USA   = f"({_TERMS_COMMON} | {_TERMS_JAVA})" + _GLOBAL_NOT
@@ -526,6 +548,16 @@ async def fetch(settings: dict) -> list[dict]:
                             continue
                         # Display source: actual ATS name (Greenhouse/iCIMS/ADP/...)
                         job_source = resolve_source(job.get("source") or "", url, board_src)
+
+                        # Description-level skip — clearance / citizenship-only roles.
+                        # Check raw API text before building full description to avoid
+                        # storing jobs the candidate can't legally apply to.
+                        raw_desc_text = (
+                            job.get("description_html") or job.get("description") or
+                            job.get("ai_requirements_summary") or ""
+                        )
+                        if _SKIP_DESC_RE.search(raw_desc_text):
+                            continue
 
                         seen.add(url)
                         kept += 1

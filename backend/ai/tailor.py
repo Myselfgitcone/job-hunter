@@ -863,6 +863,32 @@ Targets, stated explicitly:
   • The gap between visibility and production-claim is filled by tiers 3–4 (skills/project/prototype wording) — that gap is expected and correct, not a shortfall.
   • Do not force a skill into tier 1 or 2 just to hit a number. If a skill only honestly qualifies for tier 3 or 4, leave it there — full visibility through honest skills/project wording beats inflated production-claim coverage every time.
 
+═══ MANDATORY GAP COVERAGE — APPLY TIER TO EVERY MISSING JD SKILL ═══
+The tier rules above describe HOW to place a skill. This rule makes placement MANDATORY for all of them.
+
+For every JD hard skill not present in the base resume, execute this decision in order:
+
+  STEP 1 — Read the candidate's actual work history.
+    Does any bullet, technology, or tool show real production use of this skill or a direct equivalent?
+    YES → tier 1 (WORK-SUPPORTED). Strengthen the existing context. Add to Technologies Used + Skills.
+    NO  → STEP 2.
+
+  STEP 2 — Does any work bullet demonstrate the same underlying capability with a different tool or domain?
+    YES → tier 2 (ADJACENT-STRETCH). Write one real contextual bullet at the most relevant job.
+           Respect the 2-stretch-bullet resume cap.
+    NO  → STEP 3.
+
+  STEP 3 — Is this a self-learnable tool a competent professional in this role could implement independently?
+    YES → tier 3 (SELF-IMPLEMENTABLE). Add to Skills section. Optional project/prototype bullet.
+    NO  → tier 4 (HIGH-RISK). Add to Skills section only if JD treats it as genuinely required.
+           Never write an employer production bullet at tier 4.
+
+Enforcement:
+  ✗ NEVER skip a JD skill without making a tier decision for it.
+  ✗ NEVER list a skill in the plan GAPS line and then omit it from the resume — every GAPS entry is a commitment.
+  ✗ NEVER leave a skill coverage gap because it was "hard to place" — tier 3/4 always exists as a fallback.
+  ✓ EVERY missing JD skill ends up visible somewhere on the resume through honest tier placement.
+
 ═══ DOMAIN BRIDGE RULE ═══
 When the target company's domain differs from the candidate's past employers:
 
@@ -1981,7 +2007,8 @@ async def tailor_resume(base_resume: str, job_description: str,
         "  1. ROLE: [role type] | STAGE: [startup/enterprise] | TITLE: [exact JD title for header]\n"
         "  2. PRIMARY: [top 3 JD responsibilities and which job/bullet covers each]\n"
         "  3. TIMELINE_BLOCKS: [any JD tool not enterprise-ready by that job's end date → exclude from that job's bullets; 'none' if clear]\n"
-        "  4. GAPS: [each JD skill missing from resume → tier W/A/S/H and exact placement job]\n"
+        "  4. GAPS: [for each JD skill absent from base resume: 'Skill → tier W/A/S/H → placed at [Job/Skills] as [bullet/tech-line/skills-row]'."
+        " Every entry here is a COMMITMENT — it must appear in Step 2. Never list a gap and skip it.]\n"
         "  5. JOB_HEADERS: [copy every job header verbatim from original resume — Title @ Company | City, State   Month YYYY – Month YYYY]\n"
         "Close </plan>.\n\n"
         "STEP 2 — Write the complete tailored resume following all system prompt rules.\n\n"

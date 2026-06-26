@@ -1220,7 +1220,7 @@ function InlineMultiFilter({ label, options, selected, onChange, counts }: {
   const toggle = (o: string) => onChange(selected.includes(o) ? selected.filter(x => x !== o) : [...selected, o]);
 
   const panel = open ? ReactDOM.createPortal(
-    <div ref={panelRef} className="filter-panel" style={{ position: "fixed", top: pos.top, left: pos.left, minWidth: 170, padding: 10, zIndex: 9000 }}>
+    <div ref={panelRef} className="filter-panel" style={{ position: "fixed", top: pos.top, left: pos.left, width: "auto", minWidth: 170, padding: "8px 4px", zIndex: 9000 }}>
       {selected.length > 0 && (
         <button className="fp-reset" style={{ marginBottom: 6 }} onClick={() => onChange([])}>Clear</button>
       )}
@@ -1266,7 +1266,9 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
   const filterBtnRef = React.useRef<HTMLButtonElement>(null);
   const filterPanelRef = React.useRef<HTMLDivElement>(null);
   const [nowTs, setNowTs] = React.useState(() => Date.now());
-  const [infoTip, setInfoTip] = React.useState(false);
+  const [infoTip, setInfoTip]         = React.useState(false);
+  const [infoTipPos, setInfoTipPos]   = React.useState({ top: 0, right: 0 });
+  const infoIconRef                   = React.useRef<HTMLSpanElement>(null);
   React.useEffect(() => {
     const id = setInterval(() => setNowTs(Date.now()), 1000);
     return () => clearInterval(id);
@@ -1496,23 +1498,32 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
           );
         })}
         <span
-          style={{ flexShrink: 0, marginLeft: 2, cursor: "pointer", display: "inline-flex", alignItems: "center", position: "relative" }}
-          onMouseEnter={() => setInfoTip(true)}
+          ref={infoIconRef}
+          style={{ flexShrink: 0, marginLeft: 2, cursor: "pointer", display: "inline-flex", alignItems: "center" }}
+          onMouseEnter={() => {
+            if (infoIconRef.current) {
+              const r = infoIconRef.current.getBoundingClientRect();
+              setInfoTipPos({ top: r.bottom + 6, right: window.innerWidth - r.right });
+            }
+            setInfoTip(true);
+          }}
           onMouseLeave={() => setInfoTip(false)}
-          onClick={() => setInfoTip(v => !v)}
         >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--tx-3)" }}>
             <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
           </svg>
-          {infoTip && (
+          {infoTip && ReactDOM.createPortal(
             <div style={{
-              position: "absolute", top: "calc(100% + 6px)", right: 0,
-              background: "#1a1a1a", color: "#fff", fontSize: 11, lineHeight: 1.4,
-              padding: "6px 10px", borderRadius: 6, whiteSpace: "nowrap",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.35)", zIndex: 9999, pointerEvents: "none",
+              position: "fixed", top: infoTipPos.top, right: infoTipPos.right,
+              background: "var(--bg-elevated)", color: "var(--tx)", fontSize: 11.5, lineHeight: 1.5,
+              padding: "8px 12px", borderRadius: 8, whiteSpace: "nowrap",
+              border: "1px solid var(--line)", boxShadow: "0 4px 14px rgba(0,0,0,0.2)",
+              zIndex: 9999, pointerEvents: "none",
             }}>
-              Jobs stored for 60 days — use "Older" for dates beyond the last 10 days.
-            </div>
+              Jobs kept for <b>60 days</b>. Last 10 days shown as quick chips.<br/>
+              Use <b>Older ▾</b> to browse earlier dates grouped by month.
+            </div>,
+            document.body
           )}
         </span>
       </div>

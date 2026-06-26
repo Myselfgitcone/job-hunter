@@ -1705,6 +1705,25 @@ def _remove_concept_redundancy(resume: str) -> str:
         if removed:
             print(f"[CONCEPT DEDUP] Removed ({label}): {', '.join(removed)}")
 
+        # Intra-row sub-phrase dedup: remove item A when another item B in
+        # the same row contains all words of A (e.g. "Functions" + "Azure Functions"
+        # → keep only "Azure Functions").
+        deduped = []
+        filtered_lo = [it.lower() for it in filtered]
+        for idx, item in enumerate(filtered):
+            words = re.findall(r'\b\w+\b', item.lower())
+            is_sub = any(
+                jdx != idx
+                and all(re.search(r'\b' + re.escape(w) + r'\b', filtered_lo[jdx]) for w in words)
+                and len(filtered[jdx].split()) > len(words)
+                for jdx in range(len(filtered))
+            )
+            if is_sub:
+                print(f"[CONCEPT DEDUP] Removed sub-phrase ({label}): {item}")
+            else:
+                deduped.append(item)
+        filtered = deduped if deduped else filtered
+
         indent = len(lines[i]) - len(lines[i].lstrip())
         if filtered:
             new_lines[i] = ' ' * indent + label + ': ' + ', '.join(filtered)

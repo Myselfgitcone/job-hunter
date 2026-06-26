@@ -80,6 +80,7 @@ _TERMS_COMMON = (
     " | (data & analyst) | 'data analytics' | 'analytics engineer' | 'reporting analyst'"
     " | 'business analyst'"
     " | 'business intelligence' | 'bi developer' | 'bi analyst' | 'bi engineer' | 'power bi' | tableau"
+    " | 'project manager'"
 )
 # Java family — USA only (India team doesn't hunt Java roles)
 _TERMS_JAVA = "(java & !javascript) | 'spring boot' | 'spring framework' | jakarta | hibernate | 'jvm engineer'"
@@ -97,7 +98,7 @@ _GLOBAL_NOT = (
     " | network"                   # Network Engineer (infra, not pipelines)
     " | 'process engineer' | 'process analyst' | 'process manager'"
     # Management / PM tracks
-    " | 'operations manager' | 'project manager' | 'program manager'"
+    " | 'operations manager' | 'program manager'"
     # Seniority levels this candidate is skipping
     " | principal | staff | lead"
     # Executive / architect exclusions (existing)

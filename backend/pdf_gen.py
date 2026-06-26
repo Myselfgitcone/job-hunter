@@ -50,10 +50,19 @@ _LEFT_COL  = _USABLE_W - _DATE_COL   # 5.0"
 
 def generate_pdf(resume_text: str, job_title: str = "", company: str = "") -> bytes:
     buf = io.BytesIO()
+
+    # Extract candidate name from first line: "Jagadish Reddy Butukuri — Data Engineer"
+    first_line = resume_text.strip().split("\n")[0].strip()
+    candidate_name = first_line.split("—")[0].strip() if "—" in first_line else first_line
+
     doc = SimpleDocTemplate(
         buf, pagesize=letter,
         leftMargin=0.5*inch, rightMargin=0.5*inch,
         topMargin=0.5*inch,  bottomMargin=0.5*inch,
+        title=f"{candidate_name} — Resume" + (f" | {company}" if company else ""),
+        author=candidate_name,
+        subject=job_title or "Resume",
+        creator="Job Hunter",
     )
     doc.build(_build_story(resume_text))
     return buf.getvalue()

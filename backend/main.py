@@ -273,12 +273,17 @@ async def _run_scrape_internal() -> dict:
                     pass
         settings["_dynamic_roles"] = list(all_roles) if all_roles else ["data engineer"]
 
-    now = datetime.now(EST)
-    now_iso = now.isoformat()
+    # All scrape timestamps stored in UTC so date comparisons are consistent:
+    # - posted_at from FJ is UTC; scraped_at must also be UTC
+    # - date filter chips in frontend are UTC-based (toISOString().substring(0,10))
+    # - cutoff comparisons must be UTC to avoid EST-vs-UTC string mismatch
+    from datetime import timezone as _utc_tz
+    now     = datetime.now(_utc_tz.utc)
+    now_iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")  # always UTC, always Z-suffix
 
     from scrapers.base import CUTOFF_HOURS as _DEFAULT_CUTOFF_H
-    _CUTOFF_H = int(settings.get("scrape_cutoff_hours") or _DEFAULT_CUTOFF_H)
-    cutoff_old = (now - timedelta(hours=_CUTOFF_H)).isoformat()
+    _CUTOFF_H   = int(settings.get("scrape_cutoff_hours") or _DEFAULT_CUTOFF_H)
+    cutoff_old    = (now - timedelta(hours=_CUTOFF_H)).strftime("%Y-%m-%dT%H:%M:%SZ")
     cutoff_posted = cutoff_old
 
     async with SessionLocal() as db:

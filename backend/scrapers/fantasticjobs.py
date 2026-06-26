@@ -529,8 +529,11 @@ async def fetch(settings: dict) -> list[dict]:
                                 dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
                                 if dt.tzinfo is None:
                                     dt = dt.replace(tzinfo=timezone.utc)
-                                if 0 <= (now - dt).days <= 30:
-                                    posted_at = dt.isoformat()
+                                # Cap matches retention (CUTOFF_HOURS = 60 days = 1440h)
+                                if 0 <= (now - dt).days <= 60:
+                                    # Store as UTC Z-suffix so string comparison against
+                                    # cutoff_posted (also Z-suffix) is always valid
+                                    posted_at = dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                             except Exception:
                                 pass
 

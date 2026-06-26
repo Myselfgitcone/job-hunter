@@ -2545,8 +2545,24 @@ async def download_jd(job_id: str, user_id: str = Depends(get_current_user_id)):
     company_slug = re.sub(r"[^\w]+", "_", job.company or "Company").strip("_")
     title_slug   = re.sub(r"[^\w]+", "_", job.title   or "Role").strip("_")
     filename = f"JD_{company_slug}_{title_slug}.txt"
+
+    # Strip HTML → clean plain text before download
+    raw = job.description
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(raw, "html.parser")
+        # Replace block elements with newlines before stripping
+        for tag in soup.find_all(["p", "li", "br", "h1", "h2", "h3", "h4", "tr"]):
+            tag.insert_before("\n")
+        text = soup.get_text(separator=" ")
+        # Collapse excessive blank lines
+        text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    except Exception:
+        text = re.sub(r"<[^>]+>", " ", raw)
+        text = re.sub(r"\s{2,}", " ", text).strip()
+
     return StreamingResponse(
-        iter([job.description.encode("utf-8")]),
+        iter([text.encode("utf-8")]),
         media_type="text/plain; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

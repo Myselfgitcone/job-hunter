@@ -373,6 +373,9 @@ function DescriptionTab({ job, onUpdate, onToast }: { job: Job; onUpdate: (p: Pa
     </div>
   );
 
+  // Partial JD warning: plain text under 800 chars = likely AI summary fallback
+  const isPartial = !isHtml && desc.length < 800;
+
   // HTML description — render directly with scoped styles
   if (isHtml) {
     return (
@@ -405,6 +408,11 @@ function DescriptionTab({ job, onUpdate, onToast }: { job: Job; onUpdate: (p: Pa
   return (
     <div style={{ maxWidth: 720 }}>
       {actionsRow}
+      {isPartial && (
+        <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 8, background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.3)", fontSize: 12.5, color: "#92400e", display: "flex", alignItems: "center", gap: 8 }}>
+          ⚠️ Partial JD — this is an AI-extracted summary, not the full description. Click <b>Refresh JD</b> to fetch the full text, or <b>Paste JD</b> to add it manually.
+        </div>
+      )}
       <div className="jd-body">{rendered}</div>
     </div>
   );

@@ -78,8 +78,56 @@ def _pick_jd_node(soup):
     return soup.body or soup
 
 
-_GH_URL_RE = re.compile(
-    r"(?:job-)?boards\.greenhouse\.io/([^/]+)/jobs/(\d+)", re.I)
+_GH_URL_RE   = re.compile(r"(?:job-)?boards\.greenhouse\.io/([^/]+)/jobs/(\d+)", re.I)
+_LEVER_URL_RE = re.compile(r"jobs\.lever\.co/([^/]+)/([0-9a-f-]{36})", re.I)
+_ASHBY_URL_RE = re.compile(r"jobs\.ashbyhq\.com/([^/]+)/([0-9a-f-]{36})", re.I)
+
+
+async def _fetch_lever_api(company: str, job_id: str) -> dict | None:
+    """Lever public JSON API — returns full JD without JS rendering."""
+    url = f"https://api.lever.co/v0/postings/{company}/{job_id}"
+    try:
+        async with httpx.AsyncClient(follow_redirects=True) as c:
+            r = await c.get(url, timeout=15.0, headers={"User-Agent": "Mozilla/5.0"})
+            if r.status_code != 200:
+                return None
+            data = r.json()
+        # Lever response: {"text": title, "descriptionPlain": "...", "lists": [...]}
+        parts: list[str] = []
+        desc = data.get("descriptionPlain") or data.get("description") or ""
+        if desc:
+            parts.append(desc)
+        for lst in data.get("lists", []):
+            title = lst.get("text", "")
+            items = lst.get("content", "")
+            if title:
+                parts.append(f"\n{title}\n{items}")
+        text = "\n\n".join(parts).strip()
+        if len(text) < 200:
+            return None
+        return {"description": text[:25000]}
+    except Exception as e:
+        print(f"[jd_fetcher] Lever API error ({company}/{job_id}): {e}")
+        return None
+
+
+async def _fetch_ashby_api(company: str, job_id: str) -> dict | None:
+    """Ashby public API — returns structured job data."""
+    url = f"https://api.ashbyhq.com/posting-api/job-board/{company}/posting/{job_id}"
+    try:
+        async with httpx.AsyncClient(follow_redirects=True) as c:
+            r = await c.get(url, timeout=15.0, headers={"User-Agent": "Mozilla/5.0"})
+            if r.status_code != 200:
+                return None
+            data = r.json()
+        job = data.get("job", data)
+        desc = job.get("descriptionHtml") or job.get("descriptionPlain") or job.get("description") or ""
+        if not desc or len(desc.strip()) < 200:
+            return None
+        return {"description": desc[:25000]}
+    except Exception as e:
+        print(f"[jd_fetcher] Ashby API error ({company}/{job_id}): {e}")
+        return None
 
 
 async def _fetch_greenhouse_api(company: str, job_id: str) -> dict | None:
@@ -121,13 +169,27 @@ async def fetch_full_jd(url: str) -> dict | None:
     Others: HTML scrape with BeautifulSoup.
     Returns: {"description": str} or None.
     """
-    # Greenhouse — use JSON API directly, much more reliable than HTML scrape
+    # ATS-specific JSON APIs — much more reliable than HTML scraping
+    # Greenhouse
     m = _GH_URL_RE.search(url or "")
     if m:
         result = await _fetch_greenhouse_api(m.group(1), m.group(2))
         if result:
             return result
-        # If API 404s, fall through to HTML scrape as last resort
+
+    # Lever
+    m = _LEVER_URL_RE.search(url or "")
+    if m:
+        result = await _fetch_lever_api(m.group(1), m.group(2))
+        if result:
+            return result
+
+    # Ashby
+    m = _ASHBY_URL_RE.search(url or "")
+    if m:
+        result = await _fetch_ashby_api(m.group(1), m.group(2))
+        if result:
+            return result
 
     try:
         async with httpx.AsyncClient(follow_redirects=True) as client:

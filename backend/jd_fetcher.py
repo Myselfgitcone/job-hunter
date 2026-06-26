@@ -9,6 +9,10 @@ _JUNK_TAGS = ["script", "style", "nav", "header", "footer", "form", "button",
 
 # Selectors commonly wrapping the JD on ATS/career pages — first good match wins
 _JD_SELECTORS = [
+    # Greenhouse new format (job-boards.greenhouse.io)
+    ".job__description",
+    "[class*='job__description']",
+    # Generic selectors
     "[class*='job-description']",
     "[class*='jobDescription']",
     "[class*='job_description']",
@@ -38,8 +42,18 @@ def looks_like_junk(text: str) -> bool:
     plain = re.sub(r"<[^>]+>", " ", text or "")
     if _JUNK_RE.search(plain[:5000]):
         return True
-    # nav-only shells: lots of short link-ish lines, no real paragraphs
-    return len(plain.strip()) < 200
+    if len(plain.strip()) < 200:
+        return True
+    # Nav-only shell: most lines are short link-style text (< 50 chars),
+    # no substantial paragraph (no line > 120 chars).
+    lines = [l.strip() for l in plain.splitlines() if l.strip()]
+    if not lines:
+        return True
+    short = sum(1 for l in lines if len(l) < 50)
+    has_paragraph = any(len(l) > 120 for l in lines)
+    if short / len(lines) > 0.80 and not has_paragraph:
+        return True
+    return False
 
 
 def _strip_attrs(node) -> None:
@@ -65,31 +79,38 @@ def _pick_jd_node(soup):
 
 
 _GH_URL_RE = re.compile(
-    r"boards\.greenhouse\.io/([^/]+)/jobs/(\d+)", re.I)
+    r"(?:job-)?boards\.greenhouse\.io/([^/]+)/jobs/(\d+)", re.I)
 
 
 async def _fetch_greenhouse_api(company: str, job_id: str) -> dict | None:
-    """Use Greenhouse public JSON API — no JS rendering needed."""
-    api_url = f"https://boards-api.greenhouse.io/v1/boards/{company}/jobs/{job_id}"
-    try:
-        async with httpx.AsyncClient(follow_redirects=True) as c:
-            r = await c.get(api_url, timeout=15.0,
-                            headers={"User-Agent": "Mozilla/5.0"})
-            if r.status_code != 200:
-                return None
-            data = r.json()
-        content = data.get("content", "")
-        if not content or len(content) < 200:
-            return None
-        # Greenhouse returns HTML-entity-encoded HTML inside JSON — decode it
-        html = _html_mod.unescape(content)
-        plain = re.sub(r"<[^>]+>", " ", html)
-        if len(plain.strip()) < 200:
-            return None
-        return {"description": html[:25000]}
-    except Exception as e:
-        print(f"[jd_fetcher] Greenhouse API error ({company}/{job_id}): {e}")
-        return None
+    """Use Greenhouse public JSON API — no JS rendering needed.
+    Tries both API endpoints: boards-api (classic) and job-boards-api (new format)."""
+    endpoints = [
+        f"https://boards-api.greenhouse.io/v1/boards/{company}/jobs/{job_id}",
+        f"https://job-boards.greenhouse.io/{company}/jobs/{job_id}",  # new embed URL
+    ]
+    for api_url in endpoints:
+        try:
+            async with httpx.AsyncClient(follow_redirects=True) as c:
+                r = await c.get(api_url, timeout=15.0,
+                                headers={"User-Agent": "Mozilla/5.0",
+                                         "Accept": "application/json, text/html"})
+                if r.status_code != 200:
+                    continue
+                # JSON response (boards-api)
+                if "application/json" in r.headers.get("content-type", ""):
+                    data = r.json()
+                    content = data.get("content", "")
+                    if not content or len(content) < 200:
+                        continue
+                    html = _html_mod.unescape(content)
+                    plain = re.sub(r"<[^>]+>", " ", html)
+                    if len(plain.strip()) < 200:
+                        continue
+                    return {"description": html[:25000]}
+        except Exception as e:
+            print(f"[jd_fetcher] Greenhouse API error ({company}/{job_id}) at {api_url}: {e}")
+    return None
 
 
 async def fetch_full_jd(url: str) -> dict | None:

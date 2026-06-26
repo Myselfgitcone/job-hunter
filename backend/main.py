@@ -14,7 +14,7 @@ import re
 import uuid
 import uuid as _uuid
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone as _UTC
 from dotenv import load_dotenv
 
 # Load .env file
@@ -664,7 +664,7 @@ async def startup():
             if row and row.value:
                 last_dt = datetime.fromisoformat(row.value)
                 from datetime import timezone as _tz2
-                now_aware = datetime.now(last_dt.tzinfo) if last_dt.tzinfo else datetime.utcnow()
+                now_aware = datetime.now(last_dt.tzinfo) if last_dt.tzinfo else datetime.now(_UTC.utc)
                 stale_min = (now_aware - last_dt).total_seconds() / 60
                 if stale_min > 65:
                     print(f"[Startup] Last scrape {int(stale_min)}min ago — running catch-up scrape")
@@ -808,7 +808,7 @@ async def register(body: RegisterBody):
         if existing.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="Email already registered")
         user_id = str(_uuid.uuid4())
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         # Admin is auto-approved; everyone else waits for admin approval
         status = "approved" if body.email.lower().strip() == ADMIN_EMAIL.lower() else "pending"
         user = User(
@@ -847,7 +847,7 @@ async def login(body: LoginBody):
             if not user or not verify_password(body.password, user.password_hash):
                 raise HTTPException(status_code=401, detail="Invalid email or password")
             # Update last_seen
-            user.last_seen_at = datetime.utcnow().isoformat()
+            user.last_seen_at = datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             await db.commit()
         token = create_token(user.id)
         return {"token": token, "user": {"id": user.id, "email": user.email, "name": user.name, "status": user.status or "approved"}}
@@ -920,8 +920,8 @@ async def forgot_password(body: ForgotPasswordBody):
         # Generate fresh token (valid 1 hour)
         token = _secrets.token_urlsafe(40)
         from datetime import timezone, timedelta
-        expires_at = (datetime.now(EST) + timedelta(hours=1)).isoformat()
-        now_iso = datetime.now(EST).isoformat()
+        expires_at = (datetime.now(_UTC.utc) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        now_iso = datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         db.add(_PRT(
             id=str(uuid.uuid4()),
             user_id=user.id,
@@ -1005,7 +1005,7 @@ async def reset_password_with_token(body: ResetPasswordBody):
                 expires_at = expires_at.replace(tzinfo=timezone.utc)
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid token data.")
-        if datetime.now(EST) > expires_at:
+        if datetime.now(_UTC.utc) > expires_at:
             raise HTTPException(status_code=400, detail="Reset link has expired. Please request a new one.")
 
         result2 = await db.execute(select(User).where(User.id == token_record.user_id))
@@ -1086,7 +1086,7 @@ async def google_callback(request: Request, code: str = None, error: str = None,
             if not user:
                 if state != "register":
                     return RedirectResponse(f"{frontend}?error=Account+not+found.+Please+register+first.")
-                user = User(id=str(_uuid.uuid4()), email=email, name=name, password_hash="OAUTH_USER", created_at=datetime.utcnow().isoformat() + "Z",
+                user = User(id=str(_uuid.uuid4()), email=email, name=name, password_hash="OAUTH_USER", created_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                             status="approved" if email.lower() == ADMIN_EMAIL.lower() else "pending")
                 db.add(user)
                 # Roles stay empty until the admin assigns them on approval
@@ -1124,7 +1124,7 @@ async def google_token_login(body: GoogleTokenBody):
             user = User(
                 id=str(_uuid.uuid4()), email=email, name=name,
                 password_hash="OAUTH_USER",
-                created_at=datetime.utcnow().isoformat() + "Z",
+                created_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 status="approved" if email.lower() == ADMIN_EMAIL.lower() else "pending",
             )
             db.add(user)
@@ -1189,7 +1189,7 @@ async def github_callback(request: Request, code: str = None, error: str = None,
             if not user:
                 if state != "register":
                     return RedirectResponse(f"{frontend}?error=Account+not+found.+Please+register+first.")
-                user = User(id=str(_uuid.uuid4()), email=email, name=name, password_hash="OAUTH_USER", created_at=datetime.utcnow().isoformat() + "Z",
+                user = User(id=str(_uuid.uuid4()), email=email, name=name, password_hash="OAUTH_USER", created_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                             status="approved" if email.lower() == ADMIN_EMAIL.lower() else "pending")
                 db.add(user)
                 # Roles stay empty until the admin assigns them on approval
@@ -1507,7 +1507,7 @@ async def add_company(body: dict, user_id: str = Depends(get_current_user_id)):
             name=name or slug.replace("-", " ").title(),
             ats=ats, slug=slug, careers_url=careers_url,
             active=True,
-            added_at=datetime.utcnow().isoformat(),
+            added_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             source="manual",
         )
         db.add(company)
@@ -1810,11 +1810,11 @@ async def set_status(job_id: str, body: StatusUpdate, user_id: str = Depends(get
         )
         uj = uj_result.scalar_one_or_none()
         if not uj:
-            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.utcnow().isoformat())
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
             db.add(uj)
         uj.status = body.status
         if body.status == "applied" and not uj.applied_at:
-            uj.applied_at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            uj.applied_at = datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         elif body.status != "applied":
             uj.applied_at = None  # reset if un-applied
         await db.commit()
@@ -2270,7 +2270,7 @@ async def fetch_jd(job_id: str, user_id: str = Depends(get_current_user_id)):
                 now_utc = datetime.now(_tz.utc)
                 age_days = (now_utc - pub_dt).days
                 if 0 <= age_days <= 180:
-                    job.posted_at = pub_dt.isoformat()
+                    job.posted_at = pub_dt.astimezone(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             except Exception:
                 pass
         await db.commit()
@@ -2282,7 +2282,7 @@ DAILY_TAILOR_LIMIT = 45
 
 async def _get_daily_tailor_count(user_id: str, db) -> int:
     """Count job tailors + quick tailors this user has run today (UTC)."""
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = datetime.now(_UTC.utc).strftime("%Y-%m-%d")
     job_count = (await db.execute(
         select(func.count()).select_from(UserJob)
         .where(UserJob.user_id == user_id, UserJob.tailored_at.like(f"{today}%"))
@@ -2348,10 +2348,10 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
         )
         uj = uj_result.scalar_one_or_none()
         if not uj:
-            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.utcnow().isoformat())
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
             db.add(uj)
         uj.tailored_resume = tailored_text
-        uj.tailored_at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        uj.tailored_at = datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         uj.ats_score_before = ats_before["score"]
         uj.ats_score_after = ats_after["score"]
         uj.ats_keywords_matched = json.dumps(ats_after["matched"])
@@ -2406,7 +2406,7 @@ async def generate_cover_letter_endpoint(job_id: str, user_id: str = Depends(get
         )
         uj = uj_result.scalar_one_or_none()
         if not uj:
-            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.utcnow().isoformat())
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
             db.add(uj)
         uj.cover_letter = letter
         await db.commit()
@@ -2433,7 +2433,7 @@ async def update_tailored_resume(job_id: str, body: TailoredResumeUpdate, user_i
         )
         uj = uj_result.scalar_one_or_none()
         if not uj:
-            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.utcnow().isoformat())
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
             db.add(uj)
         uj.tailored_resume = body.tailored_resume
         await db.commit()
@@ -2453,7 +2453,7 @@ async def update_notes(job_id: str, body: NotesUpdate, user_id: str = Depends(ge
         )
         uj = uj_result.scalar_one_or_none()
         if not uj:
-            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.utcnow().isoformat())
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
             db.add(uj)
         uj.notes = body.notes
         await db.commit()
@@ -2586,7 +2586,7 @@ async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_curr
             company=body.company or "",
             jd=body.jd,
             tailored_resume=tailored,
-            created_at=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            created_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         )
         db.add(record)
         await db.commit()
@@ -3137,7 +3137,7 @@ async def update_job_meta(job_id: str, body: DeadlineUpdate, user_id: str = Depe
         )
         uj = uj_result.scalar_one_or_none()
         if not uj:
-            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.utcnow().isoformat())
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
             db.add(uj)
         if body.deadline is not None:
             uj.deadline = body.deadline
@@ -3631,7 +3631,7 @@ async def qualify_job_endpoint(job_id: str, user_id: str = Depends(get_current_u
         )
         uj = uj_result.scalar_one_or_none()
         if not uj:
-            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.utcnow().isoformat())
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
             db.add(uj)
         uj.qualify_result = json.dumps(result)
         # Auto-set priority based on score

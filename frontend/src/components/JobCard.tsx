@@ -133,11 +133,20 @@ export function JobCard({ job, selected, onClick, onSkip, mode = "compact", inde
         )}
       </div>
 
-      {/* Right: score badge + time */}
+      {/* Right: score badge + resume ATS + time */}
       <div className="jc-right">
         {score !== null ? (
           <span className={`score-badge ${scoreClass(score)}`}>{score}%</span>
         ) : null}
+        {job.ats_score_after != null && (
+          <span title={`ATS score after tailoring (before: ${job.ats_score_before ?? "?"}%)`} style={{
+            fontSize: 10, fontWeight: 700, padding: "2px 5px", borderRadius: 4,
+            background: job.ats_score_after >= 70 ? "rgba(34,197,94,0.12)" : job.ats_score_after >= 50 ? "rgba(234,179,8,0.12)" : "rgba(239,68,68,0.10)",
+            color: job.ats_score_after >= 70 ? "#16a34a" : job.ats_score_after >= 50 ? "#b45309" : "#dc2626",
+            border: `1px solid ${job.ats_score_after >= 70 ? "rgba(34,197,94,0.25)" : job.ats_score_after >= 50 ? "rgba(234,179,8,0.3)" : "rgba(239,68,68,0.2)"}`,
+            marginTop: 3, display: "block", textAlign: "center",
+          }}>📄 {job.ats_score_after}%</span>
+        )}
         {mode === "compact" && <span className="jc-time">{posted}</span>}
       </div>
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import ReactDOM from "react-dom";
 import type { Job, JobStatus, QualifyResult } from "./types";
 import { api } from "./api";
 
@@ -1186,45 +1187,66 @@ function DeptSelector({ selected, onChange }: { selected: string[]; onChange: (v
   );
 }
 
-// Compact inline multi-select dropdown for the filter bar
+// Compact inline multi-select dropdown for the filter bar.
+// Portals the panel to document.body with position:fixed so it escapes
+// the filterbar's overflow:hidden clipping context.
 function InlineMultiFilter({ label, options, selected, onChange, counts }: {
   label: string; options: string[]; selected: string[]; onChange: (v: string[]) => void;
   counts?: Record<string, number>;
 }) {
   const [open, setOpen] = React.useState(false);
-  const ref = React.useRef<HTMLDivElement>(null);
+  const [pos, setPos]   = React.useState({ top: 0, left: 0 });
+  const btnRef          = React.useRef<HTMLButtonElement>(null);
+  const panelRef        = React.useRef<HTMLDivElement>(null);
+
   React.useEffect(() => {
     if (!open) return;
-    const fn = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const fn = (e: MouseEvent) => {
+      if (!btnRef.current?.contains(e.target as Node) && !panelRef.current?.contains(e.target as Node))
+        setOpen(false);
+    };
     document.addEventListener("mousedown", fn);
     return () => document.removeEventListener("mousedown", fn);
   }, [open]);
+
+  const handleClick = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 6, left: r.left });
+    }
+    setOpen(v => !v);
+  };
+
   const toggle = (o: string) => onChange(selected.includes(o) ? selected.filter(x => x !== o) : [...selected, o]);
+
+  const panel = open ? ReactDOM.createPortal(
+    <div ref={panelRef} className="filter-panel" style={{ position: "fixed", top: pos.top, left: pos.left, minWidth: 170, padding: 10, zIndex: 9000 }}>
+      {selected.length > 0 && (
+        <button className="fp-reset" style={{ marginBottom: 6 }} onClick={() => onChange([])}>Clear</button>
+      )}
+      <div className="acc-opts">
+        {options.map(o => (
+          <label key={o} className={`fp-check${selected.includes(o) ? " on" : ""}`} onClick={() => toggle(o)}>
+            <span className="fp-box">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
+            </span>
+            {o}
+            {counts && <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--tx-3)", fontFamily: "var(--f-mono)" }}>{counts[o] || 0}</span>}
+          </label>
+        ))}
+      </div>
+    </div>,
+    document.body
+  ) : null;
+
   return (
-    <div ref={ref} style={{ position: "relative" }}>
-      <button className={`filters-btn${selected.length > 0 ? " has" : ""}`} onClick={() => setOpen(v => !v)}>
+    <div style={{ position: "relative" }}>
+      <button ref={btnRef} className={`filters-btn${selected.length > 0 ? " has" : ""}`} onClick={handleClick}>
         {label}
         {selected.length > 0 && <span className="fb-count">{selected.length}</span>}
         <svg className="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 9l6 6 6-6"/></svg>
       </button>
-      {open && (
-        <div className="filter-panel" style={{ minWidth: 170, padding: 10 }}>
-          {selected.length > 0 && (
-            <button className="fp-reset" style={{ marginBottom: 6 }} onClick={() => onChange([])}>Clear</button>
-          )}
-          <div className="acc-opts">
-            {options.map(o => (
-              <label key={o} className={`fp-check${selected.includes(o) ? " on" : ""}`} onClick={() => toggle(o)}>
-                <span className="fp-box">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
-                </span>
-                {o}
-                {counts && <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--tx-3)", fontFamily: "var(--f-mono)" }}>{counts[o] || 0}</span>}
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
+      {panel}
     </div>
   );
 }
@@ -1239,8 +1261,10 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
 }) {
   const set = (k: keyof Filters, v: any) => setFilters(f => ({ ...f, [k]: v }));
   const [open, setOpen] = React.useState(false);
+  const [filterPos, setFilterPos] = React.useState({ top: 0, left: 0 });
   const [draft, setDraft] = React.useState({ source: [] as string[], score: "any" as string });
-  const ref = React.useRef<HTMLDivElement>(null);
+  const filterBtnRef = React.useRef<HTMLButtonElement>(null);
+  const filterPanelRef = React.useRef<HTMLDivElement>(null);
   const [nowTs, setNowTs] = React.useState(() => Date.now());
   const [infoTip, setInfoTip] = React.useState(false);
   React.useEffect(() => {
@@ -1254,10 +1278,21 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
 
   React.useEffect(() => {
     if (!open) return;
-    const fn = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const fn = (e: MouseEvent) => {
+      if (!filterBtnRef.current?.contains(e.target as Node) && !filterPanelRef.current?.contains(e.target as Node))
+        setOpen(false);
+    };
     document.addEventListener("mousedown", fn);
     return () => document.removeEventListener("mousedown", fn);
   }, [open]);
+
+  const handleFilterBtnClick = () => {
+    if (!open && filterBtnRef.current) {
+      const r = filterBtnRef.current.getBoundingClientRect();
+      setFilterPos({ top: r.bottom + 6, left: r.left });
+    }
+    setOpen(o => !o);
+  };
 
   const resetAll = () => setDraft({ source: [], score: "any" });
   const apply = () => { setFilters(f => ({ ...f, ...draft, score: draft.score as Filters["score"] })); setOpen(false); };
@@ -1296,8 +1331,8 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
         selected={filters.visa} onChange={v => set("visa", v)} />
 
       {/* Filters panel — Source, Match Score, toggles */}
-      <div ref={ref}>
-        <button className={`filters-btn${committed > 0 ? " has" : ""}`} onClick={() => setOpen(o => !o)}>
+      <div>
+        <button ref={filterBtnRef} className={`filters-btn${committed > 0 ? " has" : ""}`} onClick={handleFilterBtnClick}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 4h18l-7 8v6l-4 2v-8z"/>
           </svg>
@@ -1305,8 +1340,8 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
           {committed > 0 && <span className="fb-count">{committed}</span>}
           <svg className="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 9l6 6 6-6"/></svg>
         </button>
-        {open && (
-          <div className="filter-panel">
+        {open && ReactDOM.createPortal(
+          <div ref={filterPanelRef} className="filter-panel" style={{ position: "fixed", top: filterPos.top, left: filterPos.left, zIndex: 9000 }}>
             <div className="fp-head">
               <span className="fp-title">Filters</span>
               <button className="fp-reset" onClick={resetAll}>Reset all</button>
@@ -1364,7 +1399,8 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
                 Apply filters
               </button>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
       </div>
 

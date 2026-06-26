@@ -496,26 +496,27 @@ function ResumeTab({ job, tailoring, onTailor, onCancel, onToast, onUpdate }: {
   onUpdate: (patch: Partial<Job>) => void;
 }) {
   // Hooks MUST be at top level — never inside conditionals
-  const TAILOR_START_KEY = `jh_tailor_start_${job.id}`;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState("");
   const [saving, setSaving]   = useState(false);
-  const [elapsed, setElapsed] = useState(() => {
-    const ts = sessionStorage.getItem(TAILOR_START_KEY);
-    return ts ? Math.floor((Date.now() - parseInt(ts, 10)) / 1000) : 0;
-  });
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef<number | null>(null);
+
   useEffect(() => {
     if (!tailoring) {
-      sessionStorage.removeItem(TAILOR_START_KEY);
+      startRef.current = null;
       setElapsed(0);
       return;
     }
-    if (!sessionStorage.getItem(TAILOR_START_KEY)) {
-      sessionStorage.setItem(TAILOR_START_KEY, String(Date.now()));
+    // Record start time once when tailoring begins
+    if (startRef.current === null) {
+      startRef.current = Date.now();
     }
-    const startTs = parseInt(sessionStorage.getItem(TAILOR_START_KEY)!, 10);
-    setElapsed(Math.floor((Date.now() - startTs) / 1000));
-    const t = setInterval(() => setElapsed(Math.floor((Date.now() - startTs) / 1000)), 1000);
+    const start = startRef.current;
+    setElapsed(Math.floor((Date.now() - start) / 1000));
+    const t = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
     return () => clearInterval(t);
   }, [tailoring]);
 

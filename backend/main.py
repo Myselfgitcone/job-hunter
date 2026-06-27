@@ -3906,58 +3906,85 @@ async def extension_batch_answer(body: dict = Body(...), user_id: str = Depends(
     if not resume:
         raise HTTPException(400, "No resume found. Upload in Profile first.")
 
+    # ── Build indexed question list — filter garbage labels ──────────────────
+    # Assign numeric IDs so Claude uses short keys (0,1,2) not full question
+    # text. Eliminates all key-mismatch "no answer for:" failures.
+    # Filter: skip labels < 10 chars, pure placeholders, or branding text.
+    def _is_real_question(label: str) -> bool:
+        l = label.strip()
+        if len(l) < 10: return False
+        if l.lower().startswith("powered by"): return False
+        if l.lower() in ("select...", "select", "choose...", "choose"): return False
+        return True
+
+    indexed: list[dict] = []
+    id_to_label: dict[str, str] = {}
+
+    for q in tier2_questions:
+        if not _is_real_question(q.get("question", "")): continue
+        idx = str(len(indexed))
+        id_to_label[idx] = q["question"]
+        indexed.append({"id": idx, "question": q["question"],
+                         "type": q["type"], "options": q.get("options", [])})
+
+    for q in tier3_questions:
+        if not _is_real_question(q.get("question", "")): continue
+        idx = str(len(indexed))
+        id_to_label[idx] = q["question"]
+        indexed.append({"id": idx, "question": q["question"], "type": q["type"]})
+
+    if not indexed:
+        return {"answers": {}, "resume_source": "base"}
+
+    print(f"[Extension] {len(indexed)} real questions (filtered from {len(tier2_questions)+len(tier3_questions)} total)")
+
+    # ── Single Claude Haiku call — indexed keys, no text-matching failures ────
+    system = (
+        f"You are filling a job application for this candidate:\n\n{resume}\n\n"
+        "Answer every question using ONLY information from the resume above.\n"
+        "Return ONLY valid JSON — no markdown, no extra text:\n"
+        "{\"answers\": {\"0\": \"answer\", \"1\": [\"opt1\",\"opt2\"], ...}}\n\n"
+        "Rules:\n"
+        "- Key = the numeric id of each question (\"0\", \"1\", etc.)\n"
+        "- checkbox (select all that apply): array of strings matching the given options\n"
+        "- select/dropdown/radio: one string matching an option exactly\n"
+        "- textarea/open text: 3-5 sentences, first-person, specific facts from resume\n"
+        "- Yes/No: answer \"Yes\" or \"No\"\n"
+        "- Salary/pay: answer with a range based on 6+ years senior DE market (e.g. '$130k - $150k')\n"
+        "- EEO questions (gender/race/veteran/disability): answer \"Prefer not to say\" or \"Decline to self-identify\"\n"
+        "- Referral/relative/former employee questions: answer \"No\"\n"
+        "- Consent/policy questions: answer \"Yes\"\n"
+        "If truly cannot answer from resume, answer \"N/A\".\n"
+        "NEVER leave a question unanswered. Answer all " + str(len(indexed)) + " questions."
+    )
+    user_msg = json.dumps(indexed, indent=2)
+
     answers: dict = {}
-
-    # ── Tier 2: Gemini Flash for checkbox/dropdown/radio ─────────────────────
-    if tier2_questions:
-        t2_system = (
-            f"You are helping fill a job application for this candidate:\n\n{resume[:3000]}\n\n"
-            "For each question, pick the best answer from the provided options based on the candidate's experience.\n"
-            "Return ONLY valid JSON: {\"answers\": {\"<exact question text>\": \"<answer>\"}}.\n"
-            "For checkbox questions, answer is an array of strings e.g. [\"Azure Data Factory\", \"Power BI\"].\n"
-            "For select/radio, answer is a single string matching one option exactly.\n"
-            "Never invent options — only pick from what's given."
+    try:
+        raw = await chat(
+            system=system, user=user_msg,
+            api_key=api_key, provider="openrouter",
+            model="anthropic/claude-haiku-4-5",
+            max_tokens=3000, pass_name="ext-batch",
         )
-        t2_user = "Questions:\n" + json.dumps(tier2_questions, indent=2)
-        try:
-            raw = await chat(
-                system=t2_system, user=t2_user,
-                api_key=api_key, provider="openrouter",
-                model="google/gemini-2.5-flash",
-                max_tokens=1500, pass_name="ext-tier2",
-            )
-            m = re.search(r'\{.*\}', raw, re.DOTALL)
-            if m:
-                parsed = json.loads(m.group())
-                answers.update(parsed.get("answers", {}))
-        except Exception as e:
-            print(f"[Extension/Tier2] error: {e}")
+        print(f"[Extension] raw response (first 500): {raw[:500]}")
+        m = re.search(r'\{.*\}', raw, re.DOTALL)
+        if m:
+            parsed = json.loads(m.group())
+            indexed_answers = parsed.get("answers", {})
+            # Map numeric index back to original question label
+            for idx, answer in indexed_answers.items():
+                label = id_to_label.get(str(idx))
+                if label:
+                    answers[label] = answer
+            print(f"[Extension] answered {len(answers)}/{len(indexed)} questions")
+        else:
+            print(f"[Extension] no JSON found in response")
+    except Exception as e:
+        print(f"[Extension/Batch] error: {e}")
 
-    # ── Tier 3: Claude Haiku for open-text / textarea ─────────────────────────
-    if tier3_questions:
-        t3_system = (
-            f"You are filling a job application for this candidate. Here is their tailored resume:\n\n{resume}\n\n"
-            "Write professional, specific, first-person answers for each question using ONLY information from the resume.\n"
-            "Answers should be 3-5 sentences, concrete, and reference real experience from the resume.\n"
-            "Return ONLY valid JSON: {\"answers\": {\"<exact question text>\": \"<answer string>\"}}.\n"
-            "Do not make up experience not in the resume."
-        )
-        t3_user = "Questions:\n" + json.dumps([q["question"] for q in tier3_questions], indent=2)
-        try:
-            raw = await chat(
-                system=t3_system, user=t3_user,
-                api_key=api_key, provider="openrouter",
-                model="anthropic/claude-haiku-4-5",
-                max_tokens=2000, pass_name="ext-tier3",
-            )
-            m = re.search(r'\{.*\}', raw, re.DOTALL)
-            if m:
-                parsed = json.loads(m.group())
-                answers.update(parsed.get("answers", {}))
-        except Exception as e:
-            print(f"[Extension/Tier3] error: {e}")
-
-    return {"answers": answers, "resume_source": "tailored" if await _find_tailored_resume_for_url(user_id, apply_url) else "base"}
+    is_tailored = bool(await _find_tailored_resume_for_url(user_id, apply_url))
+    return {"answers": answers, "resume_source": "tailored" if is_tailored else "base"}
 
 
 # ── Extension: single-question answer (legacy — old extension build) ──────────

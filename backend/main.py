@@ -3958,3 +3958,54 @@ async def extension_batch_answer(body: dict = Body(...), user_id: str = Depends(
             print(f"[Extension/Tier3] error: {e}")
 
     return {"answers": answers, "resume_source": "tailored" if await _find_tailored_resume_for_url(user_id, apply_url) else "base"}
+
+
+# ── Extension: single-question answer (legacy — old extension build) ──────────
+@app.post("/api/extension/generate-answer")
+async def extension_generate_answer(body: dict = Body(...), user_id: str = Depends(get_current_user_id)):
+    """
+    Single-question answer used by the current extension build.
+    Answers using the user's tailored resume (matched by job URL if available)
+    falling back to base resume. Uses Claude Haiku for cost efficiency.
+    """
+    question       = body.get("question", "").strip()
+    job_description = body.get("jobDescription", "").strip()
+    apply_url      = body.get("applyUrl", "").strip()
+
+    if not question:
+        raise HTTPException(400, "question is required")
+
+    cfg     = await _get_user_settings(user_id)
+    api_key = cfg.get("ai_api_key", "")
+    if not api_key:
+        raise HTTPException(400, "No AI API key in Settings")
+
+    # Find tailored resume for this job → fallback to base
+    resume = await _find_tailored_resume_for_url(user_id, apply_url or job_description[:100])
+    if not resume:
+        resume = cfg.get("resume", "")
+    if not resume:
+        raise HTTPException(400, "No resume found. Upload in Profile first.")
+
+    system = (
+        f"You are filling a job application for this candidate:\n\n{resume[:4000]}\n\n"
+        "Write a professional, specific, first-person answer using ONLY information from the resume above.\n"
+        "Answer length: 2-4 sentences. Be concrete — reference real experience, tools, and results.\n"
+        "Do not mention the company name unless the question specifically asks why you want to join.\n"
+        "Return ONLY the answer text, nothing else."
+    )
+
+    context = f"Question: {question}"
+    if job_description:
+        context += f"\n\nJob context: {job_description[:500]}"
+
+    try:
+        answer = await chat(
+            system=system, user=context,
+            api_key=api_key, provider="openrouter",
+            model="anthropic/claude-haiku-4-5",
+            max_tokens=400, pass_name="ext-single",
+        )
+        return {"answer": answer.strip()}
+    except Exception as e:
+        raise HTTPException(500, f"AI error: {e}")

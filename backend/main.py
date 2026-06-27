@@ -3961,7 +3961,8 @@ async def extension_batch_answer(body: dict = Body(...), user_id: str = Depends(
 
     answers: dict = {}
     try:
-        raw = await chat(
+        from ai.llm import chat as _chat
+        raw = await _chat(
             system=system, user=user_msg,
             api_key=api_key, provider="openrouter",
             model="anthropic/claude-haiku-4-5",
@@ -4027,7 +4028,8 @@ async def extension_generate_answer(body: dict = Body(...), user_id: str = Depen
         context += f"\n\nJob context: {job_description[:500]}"
 
     try:
-        answer = await chat(
+        from ai.llm import chat as _chat
+        answer = await _chat(
             system=system, user=context,
             api_key=api_key, provider="openrouter",
             model="anthropic/claude-haiku-4-5",

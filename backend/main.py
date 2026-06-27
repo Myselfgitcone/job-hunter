@@ -3816,3 +3816,117 @@ async def clean_html_descriptions(user_id: str = Depends(get_current_user_id)):
 
 
 
+
+
+# ── Extension: batch autofill ────────────────────────────────────────────────
+
+import re as _ext_re
+
+def _extract_job_key(url: str) -> str:
+    """Extract unique job ID from ATS URL for DB matching."""
+    # Greenhouse: /jobs/12345
+    m = _ext_re.search(r'/jobs/(\d+)', url)
+    if m: return m.group(1)
+    # Lever / Ashby: UUID
+    m = _ext_re.search(r'([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', url)
+    if m: return m.group(1)
+    # Generic: last path segment
+    return url.rstrip('/').split('/')[-1][:60]
+
+async def _find_tailored_resume_for_url(user_id: str, apply_url: str) -> str | None:
+    if not apply_url:
+        return None
+    job_key = _extract_job_key(apply_url)
+    if not job_key or len(job_key) < 4:
+        return None
+    async with SessionLocal() as db:
+        result = await db.execute(
+            select(UserJob.tailored_resume)
+            .join(Job, UserJob.job_id == Job.id)
+            .where(UserJob.user_id == user_id)
+            .where(UserJob.tailored_resume.isnot(None))
+            .where(Job.url.contains(job_key))
+            .order_by(UserJob.tailored_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+
+@app.post("/api/extension/batch-answer")
+async def extension_batch_answer(body: dict = Body(...), user_id: str = Depends(get_current_user_id)):
+    """
+    Batch answer all screening questions using the tailored resume.
+    Tier 2 (checkbox/dropdown) → Gemini 2.5 Flash
+    Tier 3 (textarea/open text) → Claude Haiku 4.5
+    """
+    apply_url      = body.get("apply_url", "")
+    tier2_questions = body.get("tier2_questions", [])  # [{question, type, options}]
+    tier3_questions = body.get("tier3_questions", [])  # [{question, type}]
+
+    if not tier2_questions and not tier3_questions:
+        return {"answers": {}}
+
+    cfg     = await _get_user_settings(user_id)
+    api_key = cfg.get("ai_api_key", "")
+    if not api_key:
+        raise HTTPException(400, "No AI API key in Settings")
+
+    # Find tailored resume for this job URL → fallback to base resume
+    resume = await _find_tailored_resume_for_url(user_id, apply_url)
+    if not resume:
+        resume = cfg.get("resume", "")
+    if not resume:
+        raise HTTPException(400, "No resume found. Upload in Profile first.")
+
+    answers: dict = {}
+
+    # ── Tier 2: Gemini Flash for checkbox/dropdown/radio ─────────────────────
+    if tier2_questions:
+        t2_system = (
+            f"You are helping fill a job application for this candidate:\n\n{resume[:3000]}\n\n"
+            "For each question, pick the best answer from the provided options based on the candidate's experience.\n"
+            "Return ONLY valid JSON: {\"answers\": {\"<exact question text>\": \"<answer>\"}}.\n"
+            "For checkbox questions, answer is an array of strings e.g. [\"Azure Data Factory\", \"Power BI\"].\n"
+            "For select/radio, answer is a single string matching one option exactly.\n"
+            "Never invent options — only pick from what's given."
+        )
+        t2_user = "Questions:\n" + json.dumps(tier2_questions, indent=2)
+        try:
+            raw = await chat(
+                system=t2_system, user=t2_user,
+                api_key=api_key, provider="openrouter",
+                model="google/gemini-2.5-flash",
+                max_tokens=1500, pass_name="ext-tier2",
+            )
+            m = re.search(r'\{.*\}', raw, re.DOTALL)
+            if m:
+                parsed = json.loads(m.group())
+                answers.update(parsed.get("answers", {}))
+        except Exception as e:
+            print(f"[Extension/Tier2] error: {e}")
+
+    # ── Tier 3: Claude Haiku for open-text / textarea ─────────────────────────
+    if tier3_questions:
+        t3_system = (
+            f"You are filling a job application for this candidate. Here is their tailored resume:\n\n{resume}\n\n"
+            "Write professional, specific, first-person answers for each question using ONLY information from the resume.\n"
+            "Answers should be 3-5 sentences, concrete, and reference real experience from the resume.\n"
+            "Return ONLY valid JSON: {\"answers\": {\"<exact question text>\": \"<answer string>\"}}.\n"
+            "Do not make up experience not in the resume."
+        )
+        t3_user = "Questions:\n" + json.dumps([q["question"] for q in tier3_questions], indent=2)
+        try:
+            raw = await chat(
+                system=t3_system, user=t3_user,
+                api_key=api_key, provider="openrouter",
+                model="anthropic/claude-haiku-4-5",
+                max_tokens=2000, pass_name="ext-tier3",
+            )
+            m = re.search(r'\{.*\}', raw, re.DOTALL)
+            if m:
+                parsed = json.loads(m.group())
+                answers.update(parsed.get("answers", {}))
+        except Exception as e:
+            print(f"[Extension/Tier3] error: {e}")
+
+    return {"answers": answers, "resume_source": "tailored" if await _find_tailored_resume_for_url(user_id, apply_url) else "base"}

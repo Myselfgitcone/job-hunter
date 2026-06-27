@@ -1369,6 +1369,31 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
         earliest = earliest_r.scalar()
         data["earliest_scraped_date"] = earliest[:10] if earliest else ""
 
+        # Override profile fields from the structured JSON profile (Profile tab).
+        # UserSettings columns (profile_name, profile_phone...) are legacy/Settings-only.
+        # The Profile page saves first_name, last_name, phone etc. into the JSON profile —
+        # the extension needs these correct values, not the stale UserSettings columns.
+        try:
+            _prof = await _load_profile(db, user_id)
+            if _prof:
+                _fn = (_prof.get("first_name") or "").strip()
+                _ln = (_prof.get("last_name") or "").strip()
+                if _fn or _ln:
+                    data["profile_name"] = f"{_fn} {_ln}".strip()
+                if _prof.get("phone"):
+                    data["profile_phone"] = _prof["phone"]
+                if _prof.get("linkedin"):
+                    data["profile_linkedin"] = _prof["linkedin"]
+                if _prof.get("github"):
+                    data["profile_github"] = _prof["github"]
+                if _prof.get("address"):
+                    data["profile_address"] = _prof["address"]
+                # Expose split name fields for the extension
+                data["profile_first_name"] = _fn
+                data["profile_last_name"]  = _ln
+        except Exception:
+            pass  # fall back to UserSettings column values already in data
+
         return data
 
 

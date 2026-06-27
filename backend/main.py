@@ -1391,6 +1391,9 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
                 # Expose split name fields for the extension
                 data["profile_first_name"] = _fn
                 data["profile_last_name"]  = _ln
+                # Profile email (on resume) may differ from login email
+                if _prof.get("email"):
+                    data["profile_email"] = _prof["email"]
         except Exception:
             pass  # fall back to UserSettings column values already in data
 

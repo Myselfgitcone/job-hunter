@@ -524,6 +524,7 @@ CLOSING LINE — end each job block with a role-appropriate line:
   CONSULTING / GENERAL → no closing line. Omit entirely.
 
 Note on certifications: CYBER and HEALTHCARE must list every cert and license from the original resume verbatim. Never drop one.
+If the candidate has NO certifications or licenses in their original resume, OMIT the CERTIFICATIONS / LICENSES & CERTIFICATIONS section entirely — do not write "None", "N/A", or any placeholder. An absent section is correct; a section with placeholder text is fabrication.
 
 ═══ AUTHENTICITY — NEVER FABRICATE ═══
 NEVER alter: name, phone, email, job titles, company names, employment dates, locations, degrees, certifications, licenses. These are externally verifiable — changing them is auto-reject.
@@ -1123,6 +1124,7 @@ DOMAIN BRIDGE (optional): If candidate's background ≠ target company's domain,
 ✗ NEVER mirror the JD's exact feature list as a skills line
 ✗ NEVER inject the JD's domain vocabulary into a different-domain employer's bullet
 ✗ NEVER drop a license, certification, or deal from the original resume
+✗ NEVER write a CERTIFICATIONS or LICENSES & CERTIFICATIONS section containing "None", "N/A", or any placeholder — omit the section entirely if the candidate has no certs
 ✗ NEVER exceed the bullet budget for this role type
 ✗ NEVER write an exposure bullet when the JD demands execution depth
 ✗ NEVER omit graduation year if present in the original resume

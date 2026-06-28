@@ -879,6 +879,7 @@ export default function App() {
                         selectedId={selectedId}
                         onSelect={handleSelect}
                         onSkip={id => handleStatusChange(id, "skipped")}
+                        onUpdate={(id, patch) => updateJob(id, patch)}
                         onQualifyUpdated={(id, r) => updateJob(id, { qualify_result: r })}
                         emptyState={allJobs.length === 0 ? "Click Scrape Now to fetch jobs" : "Try clearing filters"}
                         mode={listMode}

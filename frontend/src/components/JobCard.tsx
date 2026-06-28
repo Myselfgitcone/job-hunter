@@ -1,6 +1,15 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import type { Job } from "../types";
 import { CompanyLogo, AtsLogo } from "./primitives";
+import { api } from "../api";
+
+const EXP_TRAYS = ["0-2","2-4","4-5","5-6","6-7","7-8","8-10","10-13","13-15","15+"];
+
+const STATUS_LABEL: Record<string, { label: string; bg: string; color: string }> = {
+  applied:   { label: "Applied",   bg: "rgba(99,102,241,0.12)",  color: "#6366f1" },
+  interview: { label: "Interview", bg: "rgba(16,185,129,0.12)",  color: "#10b981" },
+  skipped:   { label: "Skipped",   bg: "rgba(107,114,128,0.12)", color: "#6b7280" },
+};
 
 // Status → CSS var for left border
 const STATUS_COLOR: Record<string, string> = {
@@ -61,11 +70,14 @@ interface Props {
   selected: boolean;
   onClick: () => void;
   onSkip?: (id: string) => void;
+  onUpdate?: (id: string, patch: Partial<Job>) => void;
   mode?: "compact" | "cards";
   index?: number;
 }
 
-export function JobCard({ job, selected, onClick, onSkip, mode = "compact", index = 0 }: Props) {
+export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "compact", index = 0 }: Props) {
+  const [editingExp, setEditingExp] = useState(false);
+  const expRef = useRef<HTMLSelectElement>(null);
   const qr      = job.qualify_result as any;
   const score   = qr?.score ?? null;
   const _postedRaw = fmtPosted(job.posted_at || job.scraped_at || "");
@@ -111,13 +123,33 @@ export function JobCard({ job, selected, onClick, onSkip, mode = "compact", inde
               {job.country === "USA" && job.visa_sponsorship === false && (
                 <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 5, background: "var(--bg-2)", color: "var(--tx-3)" }}>Visa not stated</span>
               )}
-              {job.experience_level && (
-                <span title={job.experience_level_inferred ? "AI-estimated (no explicit years in JD)" : "From job description"} style={{
-                  fontSize: 11, padding: "1px 6px", borderRadius: 5,
-                  background: job.experience_level_inferred ? "rgba(124,58,237,0.07)" : "var(--bg-2)",
-                  color: job.experience_level_inferred ? "var(--violet)" : "var(--tx-3)",
-                  border: job.experience_level_inferred ? "1px dashed rgba(124,58,237,0.3)" : "none",
-                }}>{job.experience_level_inferred ? "~" : ""}{job.experience_level}yr</span>
+              {job.experience_level && !editingExp && (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                  <span title={job.experience_level_inferred ? "AI-estimated — click ✏ to correct" : "From job description"} style={{
+                    fontSize: 11, padding: "1px 6px", borderRadius: 5,
+                    background: job.experience_level_inferred ? "rgba(124,58,237,0.07)" : "var(--bg-2)",
+                    color: job.experience_level_inferred ? "var(--violet)" : "var(--tx-3)",
+                    border: job.experience_level_inferred ? "1px dashed rgba(124,58,237,0.3)" : "none",
+                  }}>{job.experience_level_inferred ? "~" : ""}{job.experience_level}yr</span>
+                  <button title="Edit years of experience" onClick={e => { e.stopPropagation(); setEditingExp(true); setTimeout(() => expRef.current?.focus(), 50); }}
+                    style={{ background: "none", border: "none", cursor: "pointer", padding: "0 1px", color: "var(--tx-3)", fontSize: 10, lineHeight: 1 }}>✏</button>
+                </span>
+              )}
+              {editingExp && (
+                <select ref={expRef} defaultValue={job.experience_level ?? ""}
+                  onClick={e => e.stopPropagation()}
+                  onBlur={() => setEditingExp(false)}
+                  onChange={async e => {
+                    const val = e.target.value;
+                    setEditingExp(false);
+                    try {
+                      await api.setExpLevel(job.id, val);
+                      onUpdate?.(job.id, { experience_level: val, experience_level_inferred: false } as any);
+                    } catch {}
+                  }}
+                  style={{ fontSize: 11, padding: "1px 4px", borderRadius: 5, border: "1px solid var(--violet)", background: "var(--bg-2)", color: "var(--tx-2)" }}>
+                  {EXP_TRAYS.map(t => <option key={t} value={t}>{t}yr</option>)}
+                </select>
               )}
             </div>
             <div className="jc-tags" style={{ marginTop: 2 }}>
@@ -133,11 +165,19 @@ export function JobCard({ job, selected, onClick, onSkip, mode = "compact", inde
         )}
       </div>
 
-      {/* Right: score badge + resume ATS + time */}
+      {/* Right: score badge + status + resume ATS + time */}
       <div className="jc-right">
         {score !== null ? (
           <span className={`score-badge ${scoreClass(score)}`}>{score}%</span>
         ) : null}
+        {STATUS_LABEL[job.status] && (
+          <span style={{
+            fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
+            background: STATUS_LABEL[job.status].bg,
+            color: STATUS_LABEL[job.status].color,
+            marginTop: score !== null ? 3 : 0, display: "block", textAlign: "center",
+          }}>{STATUS_LABEL[job.status].label}</span>
+        )}
         {job.ats_score_after != null && (
           <span title={`ATS score after tailoring (before: ${job.ats_score_before ?? "?"}%)`} style={{
             fontSize: 10, fontWeight: 700, padding: "2px 5px", borderRadius: 4,

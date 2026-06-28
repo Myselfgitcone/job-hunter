@@ -125,6 +125,9 @@ export const api = {
   setStatus: (id: string, status: string) =>
     req(`/api/jobs/${id}/status`, { method: "PUT", body: JSON.stringify({ status }) }),
 
+  setExpLevel: (id: string, level: string) =>
+    req(`/api/jobs/${id}/experience-level`, { method: "PUT", body: JSON.stringify({ experience_level: level }) }),
+
   fetchJd: (id: string) => req<{ description: string; date?: string }>(`/api/jobs/${id}/fetch-jd`, { method: "POST" }),
 
   saveDescription: (id: string, description: string) =>

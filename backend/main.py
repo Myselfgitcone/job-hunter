@@ -1854,6 +1854,22 @@ async def set_status(job_id: str, body: StatusUpdate, user_id: str = Depends(get
     return {"ok": True}
 
 
+@app.put("/api/jobs/{job_id}/experience-level")
+async def update_experience_level(job_id: str, body: dict = Body(...), user_id: str = Depends(get_current_user_id)):
+    level = (body.get("experience_level") or "").strip()
+    if not level:
+        raise HTTPException(400, "experience_level required")
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        job.experience_level = level
+        job.experience_level_inferred = False
+        await db.commit()
+    return {"ok": True, "experience_level": level}
+
+
+
 # â"€â"€ Clear All Jobs â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @app.delete("/api/jobs/all")

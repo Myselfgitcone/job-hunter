@@ -9,12 +9,13 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onSkip?: (id: string) => void;
+  onUpdate?: (id: string, patch: Partial<Job>) => void;
   onQualifyUpdated?: (id: string, r: QualifyResult) => void;
   emptyState?: string;
   mode?: "compact" | "cards";
 }
 
-export function JobList({ jobs, selectedId, onSelect, onSkip, onQualifyUpdated, emptyState, mode = "compact" }: Props) {
+export function JobList({ jobs, selectedId, onSelect, onSkip, onUpdate, onQualifyUpdated, emptyState, mode = "compact" }: Props) {
   const [visible, setVisible] = useState(PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -69,6 +70,7 @@ export function JobList({ jobs, selectedId, onSelect, onSkip, onQualifyUpdated, 
           mode={mode}
           onClick={() => onSelect(job.id)}
           onSkip={onSkip}
+          onUpdate={onUpdate}
         />
       ))}
 

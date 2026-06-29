@@ -48,24 +48,58 @@ _DATE_COL  = 2.1 * inch
 _LEFT_COL  = _USABLE_W - _DATE_COL   # 5.0"
 
 
-def generate_pdf(resume_text: str, job_title: str = "", company: str = "") -> bytes:
-    buf = io.BytesIO()
+def _count_pdf_pages(pdf_bytes: bytes) -> int:
+    """Count pages in a PDF by counting /Type /Page entries."""
+    import re as _re
+    return len(_re.findall(rb'/Type\s*/Page\b', pdf_bytes))
 
-    # Extract candidate name from first line: "Jagadish Reddy Butukuri — Data Engineer"
+
+def generate_pdf(resume_text: str, job_title: str = "", company: str = "") -> bytes:
+    """
+    Generate a 2-page PDF. If content overflows to 3+ pages, automatically
+    rebuild with progressively tighter spacing until it fits in 2 pages.
+    Three spacing tiers: normal → compact → tight.
+    """
     first_line = resume_text.strip().split("\n")[0].strip()
     candidate_name = first_line.split("—")[0].strip() if "—" in first_line else first_line
-
-    doc = SimpleDocTemplate(
-        buf, pagesize=letter,
-        leftMargin=0.5*inch, rightMargin=0.5*inch,
-        topMargin=0.5*inch,  bottomMargin=0.5*inch,
+    meta = dict(
         title=f"{candidate_name} — Resume" + (f" | {company}" if company else ""),
         author=candidate_name,
         subject=job_title or "Resume",
         creator="Job Hunter",
     )
-    doc.build(_build_story(resume_text))
-    return buf.getvalue()
+
+    # Spacing tiers: (margin_inch, font_size, leading, bullet_space_after, sec_space_before)
+    TIERS = [
+        (0.50, 10.0, 14.0, 2.5, 9),   # Tier 1 — normal
+        (0.45,  9.5, 13.0, 2.0, 7),   # Tier 2 — compact
+        (0.40,  9.0, 12.5, 1.5, 5),   # Tier 3 — tight
+    ]
+
+    for tier_idx, (margin, font_sz, leading, sp_after, sec_before) in enumerate(TIERS):
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buf, pagesize=letter,
+            leftMargin=margin*inch, rightMargin=margin*inch,
+            topMargin=margin*inch,  bottomMargin=margin*inch,
+            **meta,
+        )
+        doc.build(_build_story(resume_text,
+                               font_size=font_sz,
+                               leading=leading,
+                               bullet_space_after=sp_after,
+                               section_space_before=sec_before))
+        pdf = buf.getvalue()
+        pages = _count_pdf_pages(pdf)
+
+        if pages <= 2:
+            if tier_idx > 0:
+                print(f"[PDF] Tier {tier_idx+1} spacing applied — {pages} page(s)")
+            return pdf
+
+    # Fallback: return tightest version even if still >2 pages
+    print("[PDF] Warning: content still >2 pages after tightest spacing")
+    return pdf
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -137,33 +171,37 @@ def _parse_job_header(s: str):
 
 # ── Story builder ─────────────────────────────────────────────────────────────
 
-def _build_story(resume_text: str) -> list:
+def _build_story(resume_text: str,
+                 font_size: float = 10.0,
+                 leading: float = 14.0,
+                 bullet_space_after: float = 2.5,
+                 section_space_before: float = 9) -> list:
     name_sty = ParagraphStyle("Name",
         fontName=FONT+"-Bold", fontSize=14, textColor=BLACK,
         alignment=TA_LEFT, leading=18, spaceAfter=1)
     contact_sty = ParagraphStyle("Contact",
-        fontName=FONT, fontSize=10, textColor=GRAY,
-        alignment=TA_LEFT, leading=13, spaceAfter=8)
+        fontName=FONT, fontSize=font_size, textColor=GRAY,
+        alignment=TA_LEFT, leading=leading - 1, spaceAfter=6)
     section_sty = ParagraphStyle("Section",
-        fontName=FONT+"-Bold", fontSize=11, textColor=BLACK,
-        alignment=TA_LEFT, spaceBefore=9, spaceAfter=2)
+        fontName=FONT+"-Bold", fontSize=font_size + 1, textColor=BLACK,
+        alignment=TA_LEFT, spaceBefore=section_space_before, spaceAfter=2)
     job_l_sty = ParagraphStyle("JobL",
-        fontName=FONT+"-Bold", fontSize=10.5, textColor=BLACK,
-        alignment=TA_LEFT, spaceBefore=4, spaceAfter=0, leading=14)
+        fontName=FONT+"-Bold", fontSize=font_size + 0.5, textColor=BLACK,
+        alignment=TA_LEFT, spaceBefore=3, spaceAfter=0, leading=leading)
     job_r_sty = ParagraphStyle("JobR",
-        fontName=FONT+"-Bold", fontSize=10.5, textColor=GRAY,
-        alignment=TA_RIGHT, spaceBefore=4, spaceAfter=0, leading=14)
+        fontName=FONT+"-Bold", fontSize=font_size + 0.5, textColor=GRAY,
+        alignment=TA_RIGHT, spaceBefore=3, spaceAfter=0, leading=leading)
     bullet_sty = ParagraphStyle("Bullet",
-        fontName=FONT, fontSize=10, textColor=BLACK,
-        alignment=TA_JUSTIFY, leading=14, spaceAfter=2.5,
+        fontName=FONT, fontSize=font_size, textColor=BLACK,
+        alignment=TA_JUSTIFY, leading=leading, spaceAfter=bullet_space_after,
         leftIndent=14, bulletIndent=2,
-        bulletFontName=FONT, bulletFontSize=10)
+        bulletFontName=FONT, bulletFontSize=font_size)
     tech_sty = ParagraphStyle("Tech",
-        fontName=FONT, fontSize=9.5, textColor=BLACK,
-        alignment=TA_LEFT, spaceAfter=3, spaceBefore=2, leftIndent=0)
+        fontName=FONT, fontSize=font_size - 0.5, textColor=BLACK,
+        alignment=TA_LEFT, spaceAfter=2, spaceBefore=2, leftIndent=0)
     body_sty = ParagraphStyle("Body",
-        fontName=FONT, fontSize=10, textColor=BLACK,
-        alignment=TA_JUSTIFY, leading=14, spaceAfter=3)
+        fontName=FONT, fontSize=font_size, textColor=BLACK,
+        alignment=TA_JUSTIFY, leading=leading, spaceAfter=3)
 
     _tbl_style = TableStyle([
         ("VALIGN",        (0, 0), (-1, -1), "BOTTOM"),

@@ -988,11 +988,7 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
                 <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.09em", color: "var(--tx-3)", marginBottom: 16 }}>Job Description</div>
                 <DescriptionTab job={job} onUpdate={onUpdate} onToast={onToast} />
               </div>
-              {/* Notes */}
-              <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 28, marginTop: 8 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.09em", color: "var(--tx-3)", marginBottom: 16 }}>Notes</div>
-                <NotesTab job={job} onUpdate={onUpdate} onToast={onToast} />
-              </div>
+
             </div>
           )}
           {tab === "qualify"  && <QualifyTab job={job} running={busy === "qualify" && busyJobId === job.id} onRun={() => runAction("qualify")} />}

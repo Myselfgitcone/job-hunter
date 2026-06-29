@@ -182,8 +182,80 @@ _ROLE_SIGNALS: dict[str, list[tuple[str, int]]] = {
 _GENERAL_THRESHOLD = 2   # minimum score to NOT fall back to GENERAL
 
 
+# ── Title-based role detection ─────────────────────────────────────────────────
+# Patterns matched ONLY against the job title (first 1-3 lines of JD).
+# More reliable than body-scan because financial words in a DA JD body
+# no longer override the title "Data Analyst".
+# Order matters: IB/CYBER/HEALTHCARE are checked before FINANCE/TECH
+# to catch "Investment Banking Analyst" before "Financial Analyst".
+_TITLE_SIGNALS: list[tuple[re.Pattern, str]] = [
+    # IB — very specific titles
+    (re.compile(r"\binvestment bank|\bm&a\b|leveraged finance|capital markets|ecm\b|dcm\b|deal execut", re.I), IB),
+    # CYBER
+    (re.compile(r"\bcyber|infosec|security (analyst|engineer|architect|operations)|soc analyst|penetration|threat intel|grc analyst", re.I), CYBER),
+    # HEALTHCARE
+    (re.compile(r"\bnurse\b|\bphysician\b|\bclinical\b|nurse practitioner|health informatics|medical officer|pharmacist|therapist\b", re.I), HEALTHCARE),
+    # CONSULTING
+    (re.compile(r"\bconsultant\b|strategy (consultant|analyst)|management consult|advisory (analyst|associate)", re.I), CONSULTING),
+    # FINANCE — only pure finance titles, NOT data analyst
+    (re.compile(r"\bfp&a\b|financial planning|financial (controller|reporting|accountant)|accounting (analyst|manager)|treasurer\b|tax analyst", re.I), FINANCE),
+    # TECH — data/software/analytics titles (broad but specific enough)
+    (re.compile(
+        r"\bdata (analyst|scientist|engineer|architect|steward|governance|quality|modeler)\b"
+        r"|\banalytics (analyst|engineer|manager)\b"
+        r"|\bbusiness (analyst|intelligence analyst|systems analyst)\b"
+        r"|\bsoftware (engineer|developer|architect)\b"
+        r"|\bml engineer|machine learning|devops|sre\b|platform engineer"
+        r"|\bcloud (engineer|architect)|full.?stack|backend|frontend|mobile developer"
+        r"|\bdata ops|mlops|bi (analyst|developer|engineer)\b",
+        re.I), TECH),
+    # FINANCE fallback — broader finance titles that didn't match above
+    (re.compile(r"\bfinancial analyst|\bfinance (analyst|associate|manager)\b|equity analyst|credit analyst|portfolio analyst", re.I), FINANCE),
+]
+
+
+def _extract_jd_title(jd: str) -> str:
+    """
+    Extract the job title from the JD.
+    Most ATS-sourced JDs have the title on line 1 or 2.
+    Returns the first non-empty line that is ≤12 words (titles are short).
+    Falls back to the first 120 chars if no short line found.
+    """
+    for line in jd.strip().splitlines()[:5]:
+        line = line.strip()
+        if not line:
+            continue
+        # Skip lines that look like company boilerplate ("About Us", "Who We Are", URLs)
+        if re.match(r"^(about|who we|our company|careers|apply|https?://)", line, re.I):
+            continue
+        # Titles are typically ≤12 words
+        if len(line.split()) <= 12:
+            return line
+    # Fallback: first 120 chars
+    return jd.strip()[:120]
+
+
 def detect_role_type(jd: str) -> str:
-    """Auto-detect role type from JD text. Returns one of the role type constants."""
+    """
+    Title-first role detection.
+
+    Step 1: Extract job title from first few lines of JD and match against
+            _TITLE_SIGNALS. Title match is authoritative — if we find one,
+            return immediately without scanning the body.
+
+    Step 2: If title is ambiguous (no match or title too generic), fall back
+            to full-body keyword scoring via _ROLE_SIGNALS.
+
+    This prevents financial words in a Data Analyst JD body from overriding
+    the obvious title signal.
+    """
+    # ── Step 1: Title-first ───────────────────────────────────────────────────
+    title = _extract_jd_title(jd)
+    for pattern, role_type in _TITLE_SIGNALS:
+        if pattern.search(title):
+            return role_type
+
+    # ── Step 2: Full-body keyword scoring (fallback) ──────────────────────────
     jd_low = jd.lower()
     scores: dict[str, int] = {rt: 0 for rt in _ROLE_SIGNALS}
 
@@ -195,12 +267,12 @@ def detect_role_type(jd: str) -> str:
     best_role = max(scores, key=lambda r: scores[r])
     best_score = scores[best_role]
 
+    if best_score < _GENERAL_THRESHOLD:
+        return GENERAL
+
     # IB beats FINANCE when both score high (IB is more specific)
     if scores[IB] > 0 and scores[FINANCE] > 0 and scores[IB] >= scores[FINANCE]:
         return IB
-
-    if best_score < _GENERAL_THRESHOLD:
-        return GENERAL
 
     return best_role
 

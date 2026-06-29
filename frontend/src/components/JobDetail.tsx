@@ -149,67 +149,73 @@ function JobInfoTab({ job }: { job: Job }) {
   const postedTs = job.posted_at || job.scraped_at || "";
   const postedLabel = relTimeDetail(postedTs);
   const hcOrig = (job as any).hc_original_date || "";
+// ── Job Info panel ────────────────────────────────────────────────────────────
+function JobInfoTab({ job }: { job: Job }) {
+  const postedTs = job.posted_at || job.scraped_at || "";
+  const postedLabel = relTimeDetail(postedTs);
+  const hcOrig = (job as any).hc_original_date || "";
   const hcOrigLabel = hcOrig ? relTimeDetail(hcOrig) : "";
   const showOriginal = hcOrig && hcOrigLabel && hcOrigLabel !== postedLabel;
 
-  // FJ semantics: false = JD doesn't mention sponsorship (NOT a refusal)
-  const visaVal = job.visa_sponsorship === true ? "✓ Sponsorship mentioned in JD"
-                : job.visa_sponsorship === false ? "Not mentioned in JD — ask recruiter" : "—";
-  const visaColor = job.visa_sponsorship === true ? "#16a34a" : "var(--tx-2)";
+  const visaOk    = job.visa_sponsorship === true;
+  const visaLabel = visaOk ? "Sponsorship mentioned" : job.visa_sponsorship === false ? "Not mentioned — ask recruiter" : "Unknown";
+  const visaBg    = visaOk ? "rgba(22,163,74,0.10)" : "var(--bg-2)";
+  const visaClr   = visaOk ? "#16a34a" : "var(--tx-3)";
 
-  const rows: [string, string, string?][] = [
-    ["Location",      job.location || "—"],
-    ["Country",       job.country  || "—"],
-    ["Work Type",     job.remote || (job.location||"").toLowerCase().includes("remote") ? "Remote" : job.employment_type ? "" : "Onsite"],
-    ["Employment",    job.employment_type || "—"],
-    ["Experience",    job.experience_level ? `${job.experience_level} yrs` : "—"],
-    ["Salary",        job.salary   || "—"],
-    ["Source",        job.source   || "—"],
-    ["Expires",       job.job_expiry ? new Date(job.job_expiry).toLocaleDateString("en-US", { timeZone: "America/New_York" }) : "—"],
-  ];
+  const fields: { label: string; value: string; hide?: boolean }[] = [
+    { label: "Location",   value: job.location || "" },
+    { label: "Country",    value: job.country  || "" },
+    { label: "Work Type",  value: job.remote || (job.location||"").toLowerCase().includes("remote") ? "Remote" : "Onsite" },
+    { label: "Employment", value: job.employment_type || "", hide: !job.employment_type },
+    { label: "Experience", value: job.experience_level ? `${job.experience_level} yrs` : "", hide: !job.experience_level },
+    { label: "Salary",     value: job.salary || "", hide: !job.salary },
+    { label: "Source",     value: job.source  || "" },
+    { label: "Expires",    value: job.job_expiry ? new Date(job.job_expiry).toLocaleDateString("en-US", { timeZone: "America/New_York" }) : "", hide: !job.job_expiry },
+  ].filter(f => !f.hide && f.value);
+
+  // Helper: one field row — label muted above, value below
+  const Field = ({ label, value }: { label: string; value: string }) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.07em", color: "var(--tx-3)" }}>{label}</span>
+      <span style={{ fontSize: 14, color: "var(--tx-1)", fontWeight: 500 }}>{value}</span>
+    </div>
+  );
 
   return (
-    <div style={{ padding: "10px 0 20px", display: "flex", flexDirection: "column", gap: 20 }}>
-      {/* Posted date */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        <span style={{ fontSize: 13, color: "var(--tx-3)", fontWeight: 500 }}>Posted</span>
-        <span style={{ fontSize: 22, fontWeight: 700, color: "var(--tx-1)" }}>
-          {postedLabel || "Unknown"}
-        </span>
-        {showOriginal && (
-          <span style={{ fontSize: 12, color: "var(--tx-3)" }}>
-            Originally posted: {hcOrigLabel} (HC estimate)
-          </span>
-        )}
+    <div style={{ display: "flex", flexDirection: "column", gap: 24, paddingTop: 6 }}>
+
+      {/* Posted */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.07em", color: "var(--tx-3)" }}>Posted</span>
+        <span style={{ fontSize: 26, fontWeight: 700, color: "var(--tx-1)", lineHeight: 1.1 }}>{postedLabel || "Unknown"}</span>
+        {showOriginal && <span style={{ fontSize: 11.5, color: "var(--tx-3)", marginTop: 2 }}>Originally {hcOrigLabel} (HC estimate)</span>}
       </div>
 
-      {/* Visa sponsorship — highlight */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10,
-        background: job.visa_sponsorship === true ? "rgba(22,163,74,0.08)" : "var(--bg-2)" }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: visaColor }}>{visaVal}</span>
-        <span style={{ fontSize: 12, color: "var(--tx-3)" }}>Visa Sponsorship</span>
+      {/* Visa badge */}
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "5px 12px", borderRadius: 20,
+        background: visaBg, alignSelf: "flex-start" }}>
+        <span style={{ width: 7, height: 7, borderRadius: "50%", background: visaClr, flexShrink: 0 }} />
+        <span style={{ fontSize: 12.5, fontWeight: 500, color: visaClr }}>{visaLabel}</span>
+        <span style={{ fontSize: 11, color: "var(--tx-3)", marginLeft: 2 }}>· Visa</span>
       </div>
 
-      {/* Metadata grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: "10px 16px" }}>
-        {rows.filter(([,v]) => v).map(([k, v]) => (
-          <>
-            <span key={k+"-k"} style={{ fontSize: 13, color: "var(--tx-3)", fontWeight: 500 }}>{k}</span>
-            <span key={k+"-v"} style={{ fontSize: 13, color: "var(--tx-1)" }}>{v}</span>
-          </>
-        ))}
+      {/* Fields in 2-column grid with stacked layout */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px 24px" }}>
+        {fields.map(f => <Field key={f.label} label={f.label} value={f.value} />)}
       </div>
 
-      {/* Apply link */}
+      {/* Apply link — clean button, not raw URL */}
       <a href={job.url} target="_blank" rel="noreferrer"
-        style={{ fontSize: 13, color: "var(--accent)", wordBreak: "break-all", textDecoration: "none" }}>
-        {job.url}
+        style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600,
+          color: "var(--accent)", textDecoration: "none", padding: "7px 0",
+          borderBottom: "1px solid var(--border-subtle)", width: "fit-content" }}>
+        <Ic d={I.link} size={13} /> Open Application
       </a>
     </div>
   );
 }
 
-// ── Company Info tab ───────────────────────────────────────────────────────────
+// ── Company Info panel ─────────────────────────────────────────────────────────
 function CompanyInfoTab({ job }: { job: Job }) {
   let careerDomain = "";
   try { careerDomain = new URL(job.url).hostname.replace("www.", ""); } catch {}
@@ -221,49 +227,54 @@ function CompanyInfoTab({ job }: { job: Job }) {
       : `$${(job.company_funding / 1_000_000).toFixed(0)}M`
     : "";
 
-  const companyRows: [string, string][] = [
-    ["Headquarters", job.company_hq      || "—"],
-    ["Industry",     job.company_industry || "—"],
-    ["Size",         job.company_size     || "—"],
-    ["Funding",      funding              || "—"],
-    ["ATS Platform", job.source],
-    ["Career Page",  careerDomain],
-  ];
+  const companyFields: { label: string; value: string; link?: boolean; hide?: boolean }[] = [
+    { label: "Headquarters", value: job.company_hq      || "", hide: !job.company_hq },
+    { label: "Industry",     value: job.company_industry || "", hide: !job.company_industry },
+    { label: "Company Size", value: job.company_size     || "", hide: !job.company_size },
+    { label: "Funding",      value: funding,                    hide: !funding },
+    { label: "ATS Platform", value: job.source },
+    { label: "Career Page",  value: careerDomain, link: true,   hide: !careerDomain },
+  ].filter(f => !f.hide && f.value);
+
+  const Field = ({ label, value, link }: { label: string; value: string; link?: boolean }) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.07em", color: "var(--tx-3)" }}>{label}</span>
+      {link
+        ? <a href={job.url} target="_blank" rel="noreferrer" style={{ fontSize: 14, color: "var(--accent)", textDecoration: "none", fontWeight: 500 }}>{value}</a>
+        : <span style={{ fontSize: 14, color: "var(--tx-1)", fontWeight: 500 }}>{value}</span>
+      }
+    </div>
+  );
 
   return (
-    <div style={{ padding: "10px 0 20px", display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 24, paddingTop: 6 }}>
+
       {/* Company hero */}
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
         {logoSrc
-          ? <img src={logoSrc} alt={job.company} style={{ width: 56, height: 56, borderRadius: 10, objectFit: "contain", background: "var(--bg-2)", padding: 4 }} />
-          : <CompanyLogo url={job.url} company={job.company} size={56} />
+          ? <img src={logoSrc} alt={job.company} style={{ width: 52, height: 52, borderRadius: 12, objectFit: "contain", background: "var(--bg-2)", padding: 6, flexShrink: 0 }} />
+          : <CompanyLogo url={job.url} company={job.company} size={52} />
         }
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 20, fontWeight: 700, color: "var(--tx-1)" }}>{job.company}</span>
+        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          <span style={{ fontSize: 18, fontWeight: 700, color: "var(--tx-1)", lineHeight: 1.2 }}>{job.company}</span>
           {job.company_industry && <span style={{ fontSize: 12, color: "var(--tx-3)" }}>{job.company_industry}</span>}
         </div>
       </div>
 
-      {/* Company details */}
-      <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: "10px 16px" }}>
-        {companyRows.map(([k, v]) => (
-          <>
-            <span key={k+"-k"} style={{ fontSize: 13, color: "var(--tx-3)", fontWeight: 500 }}>{k}</span>
-            {k === "Career Page"
-              ? <a key={k+"-v"} href={job.url} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: "var(--accent)", textDecoration: "none" }}>{v}</a>
-              : <span key={k+"-v"} style={{ fontSize: 13, color: "var(--tx-1)" }}>{v}</span>
-            }
-          </>
-        ))}
+      {/* Fields grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px 24px" }}>
+        {companyFields.map(f => <Field key={f.label} label={f.label} value={f.value} link={f.link} />)}
       </div>
 
       {/* Benefits */}
       {job.benefits && job.benefits.length > 0 && (
-        <div>
-          <span style={{ fontSize: 13, color: "var(--tx-3)", fontWeight: 500, display: "block", marginBottom: 8 }}>Benefits</span>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.07em", color: "var(--tx-3)" }}>Benefits</span>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {job.benefits.map((b, i) => (
-              <span key={i} style={{ fontSize: 12, padding: "3px 8px", borderRadius: 6, background: "var(--bg-2)", color: "var(--tx-2)" }}>{b}</span>
+              <span key={i} style={{ fontSize: 12.5, padding: "5px 12px", borderRadius: 20,
+                background: "rgba(124,58,237,0.07)", color: "var(--violet)", fontWeight: 500,
+                border: "1px solid rgba(124,58,237,0.15)" }}>{b}</span>
             ))}
           </div>
         </div>
@@ -271,6 +282,7 @@ function CompanyInfoTab({ job }: { job: Job }) {
     </div>
   );
 }
+
 
 // ── Description tab ────────────────────────────────────────────────────────────
 function DescriptionTab({ job, onUpdate, onToast }: { job: Job; onUpdate: (p: Partial<Job>) => void; onToast: (m: string, t?: "success"|"error") => void }) {
@@ -965,24 +977,25 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
           {tab === "jobdetails" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
               {/* Job Info + Company Info side by side */}
-              <div style={{ display: "flex", gap: 36, flexWrap: "wrap" }}>
-                <div style={{ flex: 1, minWidth: 280 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 4 }}>Job Info</div>
+              <div style={{ display: "flex", gap: 0, flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 280, paddingRight: 32 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.09em", color: "var(--tx-3)", marginBottom: 16 }}>Job Info</div>
                   <JobInfoTab job={job} />
                 </div>
-                <div style={{ flex: 1, minWidth: 280 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 4 }}>Company Info</div>
+                <div style={{ width: 1, background: "var(--border-subtle)", alignSelf: "stretch", flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 280, paddingLeft: 32 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.09em", color: "var(--tx-3)", marginBottom: 16 }}>Company Info</div>
                   <CompanyInfoTab job={job} />
                 </div>
               </div>
               {/* Job Description full width below */}
-              <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 20, marginTop: 4 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 12 }}>Job Description</div>
+              <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 28, marginTop: 28 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.09em", color: "var(--tx-3)", marginBottom: 16 }}>Job Description</div>
                 <DescriptionTab job={job} onUpdate={onUpdate} onToast={onToast} />
               </div>
               {/* Notes */}
-              <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 20, marginTop: 4 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 10 }}>Notes</div>
+              <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 28, marginTop: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.09em", color: "var(--tx-3)", marginBottom: 16 }}>Notes</div>
                 <NotesTab job={job} onUpdate={onUpdate} onToast={onToast} />
               </div>
             </div>

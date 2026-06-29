@@ -133,6 +133,212 @@ def _is_job_header_line(s: str) -> bool:
     return bool(re.search(r' @ .+? \|', s))
 
 
+# ── Section augmenter — surgical bullet injection ────────────────────────────
+def _parse_resume_sections(resume: str) -> list[dict]:
+    """
+    Parse resume into job blocks. Returns list of dicts:
+      {header, bullets, tech_line, start_idx, end_idx}
+    Ordered by appearance (job 0 = most recent).
+    """
+    lines  = resume.split('\n')
+    blocks = []
+    cur    = None
+
+    for i, raw in enumerate(lines):
+        s = raw.strip()
+        if _is_job_header_line(s):
+            if cur is not None:
+                cur['end_idx'] = i
+                blocks.append(cur)
+            cur = {'header': s, 'bullets': [], 'tech_line': None,
+                   'start_idx': i, 'end_idx': None}
+        elif cur is not None:
+            if s.startswith('•'):
+                cur['bullets'].append(s[1:].strip())
+            elif s.lower().startswith('technologies used:'):
+                cur['tech_line'] = s
+            elif s and s == s.upper() and len(s) > 3 and not s.startswith('•'):
+                # New section header → close current job block
+                cur['end_idx'] = i
+                blocks.append(cur)
+                cur = None
+
+    if cur is not None:
+        cur['end_idx'] = len(lines)
+        blocks.append(cur)
+
+    return blocks
+
+
+async def _augment_section(
+    block: dict,
+    deficit: int,
+    jd_excerpt: str,
+    api_key: str,
+    provider: str,
+    model: str,
+) -> list[str]:
+    """
+    Ask the model to write exactly `deficit` more bullets for a job section.
+    Uses NO system prompt — tiny call, ~600-900 tokens input.
+    Returns list of bullet text strings (no leading •).
+    """
+    from ai.llm import chat as _chat
+    existing = '\n'.join(f'• {b}' for b in block['bullets'])
+    tech = block.get('tech_line') or ''
+
+    prompt = (
+        f"You are adding exactly {deficit} bullet point(s) to this job section of a tailored resume.\n\n"
+        f"JOB: {block['header']}\n"
+        f"EXISTING BULLETS:\n{existing}\n"
+        + (f"TECH STACK: {tech}\n" if tech else "")
+        + f"\nJD CONTEXT (for keyword alignment): {jd_excerpt}\n\n"
+        f"Write exactly {deficit} new bullet(s) that:\n"
+        f"• Match the voice, format, and level of specificity of the existing bullets\n"
+        f"• Start with a strong past-tense action verb (different from existing openers)\n"
+        f"• Include specific tools/metrics matching the existing style\n"
+        f"• Are ≤25 words each\n"
+        f"• Do NOT duplicate or restate existing bullets\n\n"
+        f"Return ONLY the {deficit} bullet(s), each on its own line, starting with •"
+    )
+
+    raw = await _chat(
+        system="",
+        user=prompt,
+        api_key=api_key,
+        provider=provider,
+        model=model,
+        max_tokens=200 * deficit,
+        pass_name="augment",
+    )
+
+    bullets = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if line.startswith('•'):
+            bullets.append(line[1:].strip())
+        elif line and not line.startswith('#'):
+            bullets.append(line)
+    return bullets[:deficit]  # never return more than asked
+
+
+def _insert_bullets_into_section(resume: str, block: dict, new_bullets: list[str]) -> str:
+    """
+    Insert new_bullets into the resume at the correct job block position.
+    Inserts just BEFORE the Technologies Used line (or at end of block if none).
+    """
+    lines = resume.split('\n')
+    start = block['start_idx']
+    end   = block['end_idx'] if block['end_idx'] is not None else len(lines)
+
+    # Find insertion point: before Tech line or before next section header
+    insert_at = end  # default: end of block
+    for i in range(start, end):
+        s = lines[i].strip()
+        if s.lower().startswith('technologies used:'):
+            insert_at = i
+            break
+
+    bullet_lines = [f'• {b}' for b in new_bullets]
+    lines = lines[:insert_at] + bullet_lines + lines[insert_at:]
+
+    # Shift end_idx references — caller should re-parse if needed
+    return '\n'.join(lines)
+
+
+async def augment_bullet_counts(
+    resume: str,
+    issues: list[str],
+    jd: str,
+    api_key: str,
+    provider: str,
+    model: str,
+) -> str:
+    """
+    Surgically add missing bullets to sections that failed bullet-count lint.
+    Does NOT use SYSTEM_PROMPT — each call is ~600-900 tokens, ~$0.002.
+    Much cheaper than a full Sonnet retry (~$0.078).
+    """
+    blocks = _parse_resume_sections(resume)
+    jd_excerpt = jd[:600]
+
+    for issue in issues:
+        # Parse: "[TOO FEW BULLETS] job #2 has 7 bullets (need exactly 8). Add 1 more..."
+        job_m = re.search(r'job #(\d+)', issue, re.IGNORECASE)
+        need_m = re.search(r'need exactly (\d+)', issue)
+        has_m  = re.search(r'has (\d+) bullets', issue)
+
+        if not job_m:
+            # SUMMARY issue
+            if '[SUMMARY]' in issue:
+                sum_need = re.search(r'must be exactly (\d+)', issue)
+                sum_have = re.search(r'(\d+) bullets in summary', issue)
+                if sum_need and sum_have:
+                    deficit = int(sum_need.group(1)) - int(sum_have.group(1))
+                    if deficit > 0:
+                        # Add to summary section — find it and inject
+                        sm = re.search(r'^PROFESSIONAL SUMMARY:?\s*$', resume, re.IGNORECASE | re.MULTILINE)
+                        if sm:
+                            # Build a fake block for the summary
+                            sum_lines = []
+                            for line in resume[sm.end():].splitlines():
+                                s = line.strip()
+                                if not s:
+                                    continue
+                                if s == s.upper() and len(s) > 3:
+                                    break
+                                if s.startswith('•'):
+                                    sum_lines.append(s[1:].strip())
+                            sum_block = {
+                                'header': 'PROFESSIONAL SUMMARY',
+                                'bullets': sum_lines,
+                                'tech_line': None,
+                                'start_idx': 0, 'end_idx': None,
+                            }
+                            new_bullets = await _augment_section(sum_block, deficit, jd_excerpt, api_key, provider, model)
+                            if new_bullets:
+                                # Insert before first non-summary section
+                                # Find last summary bullet and insert after it
+                                last_sum_bullet = None
+                                for i, line in enumerate(resume.splitlines()):
+                                    s = line.strip()
+                                    if s.startswith('•') and 'SUMMARY' not in s:
+                                        last_sum_bullet = i
+                                    elif last_sum_bullet is not None and s and s == s.upper():
+                                        break
+                                if last_sum_bullet is not None:
+                                    rlines = resume.splitlines()
+                                    inserts = [f'• {b}' for b in new_bullets]
+                                    rlines = rlines[:last_sum_bullet + 1] + inserts + rlines[last_sum_bullet + 1:]
+                                    resume = '\n'.join(rlines)
+                                    print(f"[AUGMENT] Added {len(new_bullets)} summary bullet(s)")
+            continue
+
+        job_idx = int(job_m.group(1)) - 1  # 0-based
+        if job_idx >= len(blocks):
+            continue
+
+        if need_m and has_m:
+            deficit = int(need_m.group(1)) - int(has_m.group(1))
+        else:
+            deficit = 1
+
+        if deficit <= 0:
+            continue
+
+        block = blocks[job_idx]
+        print(f"[AUGMENT] job #{job_idx+1} needs {deficit} more bullet(s) — calling {model}")
+
+        new_bullets = await _augment_section(block, deficit, jd_excerpt, api_key, provider, model)
+        if new_bullets:
+            resume = _insert_bullets_into_section(resume, block, new_bullets)
+            # Re-parse so subsequent issues have correct positions
+            blocks = _parse_resume_sections(resume)
+            print(f"[AUGMENT] Inserted {len(new_bullets)} bullet(s) into job #{job_idx+1}")
+
+    return resume
+
+
 def _extract_job_companies(text: str) -> list[str]:
     """Return company names from job headers in document order."""
     companies = []
@@ -2074,67 +2280,53 @@ async def tailor_resume(base_resume: str, job_description: str,
         if not issues:
             break
 
-        # ── Classify issues: bullet-count violations need a full regeneration
-        # pass (adding 6+ bullets is not a surgical fix). All other issues
-        # are surgical (banned word, missing location, etc.).
-        count_issues = [i for i in issues if i.startswith(("[TOO FEW", "[SUMMARY]", "[BULLET OVERFLOW]"))]
-        other_issues = [i for i in issues if not i.startswith(("[TOO FEW", "[SUMMARY]", "[BULLET OVERFLOW]"))]
+        # ── Classify issues ───────────────────────────────────────────────────
+        _COUNT_PREFIXES = ("[TOO FEW", "[SUMMARY]", "[BULLET OVERFLOW]")
+        count_issues = [i for i in issues if i.startswith(_COUNT_PREFIXES)]
+        other_issues = [i for i in issues if not i.startswith(_COUNT_PREFIXES)]
 
-        if count_issues:
-            # Bullet-count violations: send a targeted recount request.
-            # Tell the AI exactly how many bullets each job must have.
-            count_details = "\n".join(
-                "  • {}\n    → {}".format(
-                    iss,
-                    _RETRY_RULES.get(
-                        "[" + iss.split("]")[0].lstrip("[") + "]",
-                        "Fix bullet count as required."
-                    )
+        # ── Route: bullet-count issues → augmenter (cheap, surgical) ─────────
+        # Augmenter inserts/removes individual bullets without regenerating the
+        # full resume. No SYSTEM_PROMPT → ~$0.002 per call vs ~$0.008 retry.
+        if count_issues and not other_issues:
+            # ONLY count issues — augmenter can fix all of them
+            raw = await augment_bullet_counts(
+                raw, count_issues, job_description,
+                api_key, provider, _sec,
+            )
+            continue  # re-lint immediately without a full retry
+
+        if count_issues and other_issues:
+            # Both: augment counts first, then do one targeted retry for the rest
+            raw = await augment_bullet_counts(
+                raw, count_issues, job_description,
+                api_key, provider, _sec,
+            )
+            # Fall through to targeted retry for other_issues below
+            issues = other_issues  # retry only non-count issues
+
+        # ── Targeted retry for non-count issues ──────────────────────────────
+        if not issues:
+            continue
+
+        issue_lines = "\n".join(
+            "  • {}\n    → {}".format(
+                iss,
+                _RETRY_RULES.get(
+                    "[" + iss.split("]")[0].lstrip("[") + "]",
+                    "Re-read the system prompt rules and fix this issue."
                 )
-                for iss in count_issues
             )
-            other_details = "\n".join(
-                "  • {}\n    → {}".format(
-                    iss,
-                    _RETRY_RULES.get(
-                        "[" + iss.split("]")[0].lstrip("[") + "]",
-                        "Re-read the system prompt rules and fix this issue."
-                    )
-                )
-                for iss in other_issues
-            ) if other_issues else ""
-            fix_msg = (
-                f"BULLET COUNT FIX — attempt {attempt + 2} of 3.\n"
-                f"The resume has wrong bullet counts. You MUST write EXACTLY the required number.\n"
-                f"Required: summary={SUMMARY_EXACT}, "
-                f"job1={minimums[0]}, job2={minimums[1]}, job3={minimums[2]}, job4+={minimums[3]}.\n"
-                f"VIOLATIONS:\n{count_details}\n"
-                + (f"OTHER ISSUES TO FIX SIMULTANEOUSLY:\n{other_details}\n" if other_details else "")
-                + "\nReturn the COMPLETE resume with ALL bullet counts corrected. "
-                "Do not truncate. Every job must have exactly the required number of bullets.\n\n"
-                "=== RESUME TO FIX ===\n" + raw
-            )
-            retry_tokens = 4000
-        else:
-            issue_lines = "\n".join(
-                "  • {}\n    → {}".format(
-                    iss,
-                    _RETRY_RULES.get(
-                        "[" + iss.split("]")[0].lstrip("[") + "]",
-                        "Re-read the system prompt rules and fix this issue."
-                    )
-                )
-                for iss in issues
-            )
-            fix_msg = (
-                f"TARGETED FIX — attempt {attempt + 2} of 3.\n"
-                "Fix ONLY the specific issues listed below. "
-                "Do NOT alter any other bullet, section, or line — surgical edits only.\n"
-                "Return the COMPLETE resume as plain text with only these fixes applied.\n\n"
-                f"ISSUES TO FIX:\n{issue_lines}\n\n"
-                "=== RESUME TO FIX ===\n" + raw
-            )
-            retry_tokens = 3500
+            for iss in issues
+        )
+        fix_msg = (
+            f"TARGETED FIX — attempt {attempt + 2} of 3.\n"
+            "Fix ONLY the specific issues listed below. "
+            "Do NOT alter any other bullet, section, or line — surgical edits only.\n"
+            "Return the COMPLETE resume as plain text with only these fixes applied.\n\n"
+            f"ISSUES TO FIX:\n{issue_lines}\n\n"
+            "=== RESUME TO FIX ===\n" + raw
+        )
 
         raw = await chat(
             system=SYSTEM_PROMPT,
@@ -2142,7 +2334,7 @@ async def tailor_resume(base_resume: str, job_description: str,
             api_key=api_key,
             provider=provider,
             model=_sec,
-            max_tokens=retry_tokens,
+            max_tokens=3500,
             pass_name=f"retry-{attempt+1}",
         )
         raw = re.sub(r'<plan>.*?</plan>', '', raw, flags=re.DOTALL).strip()

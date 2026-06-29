@@ -13,7 +13,7 @@ except ImportError:  # Backward compatibility if older resume_lint.py is used.
 # ── Hard limits enforced in Python (AI cannot count) ─────────────────────────
 # Bullet limits are now role-type-aware. Loaded dynamically from resume_lint.
 # BULLET_BUDGETS[role_type] = (most_recent, second, third, fourth_plus, summary, hard_total)
-SUMMARY_LIMIT  = 5
+SUMMARY_LIMIT  = 6
 SKILLS_LINE_LIMIT = 9
 
 # Closing line prefixes per role type — what _enforce_limits passes through unchanged
@@ -425,16 +425,17 @@ Read the JD and classify the role into ONE of these types. Every rule below that
 Store this classification mentally. It controls: bullet limits, skills section label, closing line behavior, verb lists, and depth-check vocabulary.
 
 ═══ HARD GATES — BULLET BUDGET ═══
-SUMMARY: exactly 5 bullets across ALL role types.
+SUMMARY: exactly 6 bullets across ALL role types. Not 5, not 7 — exactly 6.
 
 EXPERIENCE BULLETS PER ROLE — determined by ROLE TYPE:
 
   TECH:
-    Most recent job:  11 bullets max
-    Second job:        7 bullets max
-    Third job:         5 bullets max
-    Fourth+ job:       2 bullets max
-    Hard total (summary + experience): 30
+    Most recent job:  exactly 11 bullets
+    Second job:       exactly 8 bullets
+    Third job:        exactly 7 bullets
+    Fourth+ job:      exactly 5 bullets each
+    Hard total (summary + experience): exactly 37
+    These are FIXED targets, not maximums. Lint will FAIL if any job has fewer than the required count.
 
   IB / FINANCE:
     Most recent job:   5 bullets max
@@ -1954,7 +1955,8 @@ _RETRY_RULES = {
     "[TOO LONG]":              "Shorten to ≤25 words. One idea per bullet only. Split compound bullets.",
     "[MULTI-IDEA]":            "One accomplishment per bullet. Split into two or cut the weaker half.",
     "[SAME VERB]":             "No two consecutive experience bullets may open with the same verb — vary them.",
-    "[SUMMARY]":               "PROFESSIONAL SUMMARY must have exactly 5 bullet lines — not 4, not 6.",
+    "[SUMMARY]":               "PROFESSIONAL SUMMARY must have exactly 6 bullet lines — not 5, not 7. Count your bullets and add or remove to hit exactly 6.",
+    "[TOO FEW BULLETS]":       "A job block has fewer bullets than required. Add more specific, metric-backed bullets until the exact count is met. Do NOT cut other sections — add only to the flagged job.",
     "[BULLET OVERFLOW]":       "Total bullets exceed the limit for this role type. Cut lowest-relevance bullets first.",
     "[MISSING SECTION]":       "A required section is missing — check for output truncation and regenerate the full resume.",
     "[LOW METRICS]":           "Add quantified outcomes to more experience bullets to meet the role-appropriate target.",
@@ -2049,7 +2051,7 @@ async def tailor_resume(base_resume: str, job_description: str,
         api_key=api_key,
         provider=provider,
         model=model,
-        max_tokens=3000,
+        max_tokens=4000,
         pass_name="main-tailor",
         allow_fallback=False,
         retry_on_ratelimit=2,
@@ -2072,34 +2074,79 @@ async def tailor_resume(base_resume: str, job_description: str,
         if not issues:
             break
 
-        issue_lines = "\n".join(
-            "  • {}\n    → {}".format(
-                iss,
-                _RETRY_RULES.get(
-                    "[" + iss.split("]")[0].lstrip("[") + "]",
-                    "Re-read the system prompt rules and fix this issue."
+        # ── Classify issues: bullet-count violations need a full regeneration
+        # pass (adding 6+ bullets is not a surgical fix). All other issues
+        # are surgical (banned word, missing location, etc.).
+        count_issues = [i for i in issues if i.startswith(("[TOO FEW", "[SUMMARY]", "[BULLET OVERFLOW]"))]
+        other_issues = [i for i in issues if not i.startswith(("[TOO FEW", "[SUMMARY]", "[BULLET OVERFLOW]"))]
+
+        if count_issues:
+            # Bullet-count violations: send a targeted recount request.
+            # Tell the AI exactly how many bullets each job must have.
+            count_details = "\n".join(
+                "  • {}\n    → {}".format(
+                    iss,
+                    _RETRY_RULES.get(
+                        "[" + iss.split("]")[0].lstrip("[") + "]",
+                        "Fix bullet count as required."
+                    )
                 )
+                for iss in count_issues
             )
-            for iss in issues
-        )
-        fix_msg = (
-            f"TARGETED FIX — attempt {attempt + 2} of 3.\n"
-            "Fix ONLY the specific issues listed below. "
-            "Do NOT alter any other bullet, section, or line — surgical edits only.\n"
-            "Return the COMPLETE resume as plain text with only these fixes applied.\n\n"
-            f"ISSUES TO FIX:\n{issue_lines}\n\n"
-            "=== RESUME TO FIX ===\n" + raw
-        )
+            other_details = "\n".join(
+                "  • {}\n    → {}".format(
+                    iss,
+                    _RETRY_RULES.get(
+                        "[" + iss.split("]")[0].lstrip("[") + "]",
+                        "Re-read the system prompt rules and fix this issue."
+                    )
+                )
+                for iss in other_issues
+            ) if other_issues else ""
+            fix_msg = (
+                f"BULLET COUNT FIX — attempt {attempt + 2} of 3.\n"
+                f"The resume has wrong bullet counts. You MUST write EXACTLY the required number.\n"
+                f"Required: summary={SUMMARY_EXACT}, "
+                f"job1={minimums[0]}, job2={minimums[1]}, job3={minimums[2]}, job4+={minimums[3]}.\n"
+                f"VIOLATIONS:\n{count_details}\n"
+                + (f"OTHER ISSUES TO FIX SIMULTANEOUSLY:\n{other_details}\n" if other_details else "")
+                + "\nReturn the COMPLETE resume with ALL bullet counts corrected. "
+                "Do not truncate. Every job must have exactly the required number of bullets.\n\n"
+                "=== RESUME TO FIX ===\n" + raw
+            )
+            retry_tokens = 4000
+        else:
+            issue_lines = "\n".join(
+                "  • {}\n    → {}".format(
+                    iss,
+                    _RETRY_RULES.get(
+                        "[" + iss.split("]")[0].lstrip("[") + "]",
+                        "Re-read the system prompt rules and fix this issue."
+                    )
+                )
+                for iss in issues
+            )
+            fix_msg = (
+                f"TARGETED FIX — attempt {attempt + 2} of 3.\n"
+                "Fix ONLY the specific issues listed below. "
+                "Do NOT alter any other bullet, section, or line — surgical edits only.\n"
+                "Return the COMPLETE resume as plain text with only these fixes applied.\n\n"
+                f"ISSUES TO FIX:\n{issue_lines}\n\n"
+                "=== RESUME TO FIX ===\n" + raw
+            )
+            retry_tokens = 3500
+
         raw = await chat(
             system=SYSTEM_PROMPT,
             user=fix_msg,
             api_key=api_key,
             provider=provider,
             model=_sec,
-            max_tokens=2500,
+            max_tokens=retry_tokens,
             pass_name=f"retry-{attempt+1}",
         )
         raw = re.sub(r'<plan>.*?</plan>', '', raw, flags=re.DOTALL).strip()
+
 
     # Best-of-N final check
     final_issues = lint_resume(raw, job_description, base_resume=base_resume)

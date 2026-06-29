@@ -152,8 +152,8 @@ async def chat(
                     out_tokens = (data.get("usage") or {}).get("completion_tokens", 0)
                     if out_tokens:
                         print(f"{label} output tokens: {out_tokens}")
-                        if out_tokens > 2500:
-                            print(f"[WARN OVERSIZED OUTPUT] {label} produced {out_tokens} tokens — expected ≤2500. Plan block may not be stripped.")
+                        if out_tokens > 4500:
+                            print(f"[WARN OVERSIZED OUTPUT] {label} produced {out_tokens} tokens — expected ≤4500. Plan block may not be stripped.")
                     return content
 
                 except ValueError:

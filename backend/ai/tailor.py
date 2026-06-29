@@ -1,6 +1,6 @@
 import re
 from ai.llm import chat
-from resume_lint import lint_resume, detect_role_type, BULLET_BUDGETS
+from resume_lint import lint_resume, detect_role_type, BULLET_BUDGETS, BULLET_MINIMUMS, SUMMARY_EXACT
 from resume_lint import TECH, IB, FINANCE, CYBER, HEALTHCARE, CONSULTING, GENERAL
 
 try:
@@ -1979,8 +1979,9 @@ async def tailor_resume(base_resume: str, job_description: str,
     # Detect role type up front so _enforce_limits uses the right budget
     role_type = detect_role_type(job_description)
     budget    = BULLET_BUDGETS[role_type]
+    minimums  = BULLET_MINIMUMS.get(role_type, (0, 0, 0, 0))
     hard_total = budget[5]
-    exp_total  = hard_total - 5  # subtract summary
+    exp_total  = hard_total - SUMMARY_EXACT
 
     jd_hard_skills = []
     if extract_jd_hard_skills is not None:
@@ -2017,10 +2018,15 @@ async def tailor_resume(base_resume: str, job_description: str,
             + " This list is a reference pool — not a mandate to include everything.\n"
         )
 
+    # Build per-job bullet requirement string
+    _job_counts = f"job1={minimums[0]}, job2={minimums[1]}, job3={minimums[2]}, job4+={minimums[3]}"
+
     user_msg = (
         f"Tailor this resume to the JD. "
         f"Role type detected: {role_type}. "
-        f"Hard bullet limit: {hard_total} total (5 summary + {exp_total} experience). "
+        f"REQUIRED bullet counts (EXACT — not max, not fewer): "
+        f"summary={SUMMARY_EXACT}, {_job_counts}. "
+        f"Total: {hard_total}. Lint will FAIL if any job has fewer than the required count. "
         f"Output: plain text resume only.\n"
         f"{declared_section}"
         f"{jd_skills_section}\n"

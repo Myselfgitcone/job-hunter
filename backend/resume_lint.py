@@ -35,7 +35,7 @@ GENERAL     = "GENERAL"
 # ── Per-role bullet budgets ────────────────────────────────────────────────────
 # (most_recent, second, third, fourth_plus, summary, hard_total)
 BULLET_BUDGETS = {
-    TECH:       (11, 7, 6, 2, 5, 31),
+    TECH:       (11, 8, 7, 5, 6, 37),
     IB:         ( 5, 4, 3, 2, 5, 19),
     FINANCE:    ( 5, 4, 3, 2, 5, 19),
     CYBER:      ( 7, 5, 4, 2, 5, 23),
@@ -44,7 +44,18 @@ BULLET_BUDGETS = {
     GENERAL:    ( 7, 5, 4, 2, 5, 23),
 }
 
-SUMMARY_EXACT = 5
+# Minimum bullets per job (same order as BULLET_BUDGETS: job1, job2, job3, job4+)
+BULLET_MINIMUMS = {
+    TECH:       (11, 8, 7, 5),
+    IB:         ( 4, 3, 2, 1),
+    FINANCE:    ( 4, 3, 2, 1),
+    CYBER:      ( 6, 4, 3, 1),
+    HEALTHCARE: ( 5, 3, 2, 1),
+    CONSULTING: ( 5, 4, 2, 1),
+    GENERAL:    ( 6, 4, 3, 1),
+}
+
+SUMMARY_EXACT = 6
 WORD_LIMIT    = 25
 WORD_TARGET   = 20
 
@@ -1023,7 +1034,8 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "") -> 
     # ── Role type detection ──────────────────────────────────────────────────
     role_type = detect_role_type(job_description) if job_description else GENERAL
     budget = BULLET_BUDGETS[role_type]
-    job_limits = [budget[0], budget[1], budget[2], budget[3]]  # per-job limits
+    minimums = BULLET_MINIMUMS.get(role_type, (0, 0, 0, 0))
+    job_limits = [budget[0], budget[1], budget[2], budget[3]]  # per-job max
     echo_stoplist = _ROLE_ECHO_STOPLIST[role_type]
     closing_required, _, _ = _CLOSING_LINE_RULES[role_type]
 
@@ -1047,6 +1059,8 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "") -> 
     jobs_missing_closing: list[str] = []
     prev_verb:            Optional[str] = None
     found_headers:        set[str] = set()
+    per_job_bullets:      list[int] = []   # bullet count per job block
+    current_job_bullets:  int = 0
 
     for raw in lines:
         line    = raw.strip()
@@ -1079,6 +1093,10 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "") -> 
         if _is_job_header(line, section):
             if current_job_header and closing_required and not job_has_closing_line:
                 jobs_missing_closing.append(current_job_header)
+            # Save bullet count for the job we're leaving
+            if job_index >= 0:
+                per_job_bullets.append(current_job_bullets)
+            current_job_bullets  = 0
             current_job_header   = line
             job_has_closing_line = False
             prev_verb            = None
@@ -1131,6 +1149,7 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "") -> 
             # Experience bullet
             has_metric = bool(re.search(r"\d", body))
             exp_bullets.append((body, has_metric))
+            current_job_bullets += 1
 
             # Consecutive same-verb check
             vm = _VERB1_RE.match(body)
@@ -1164,6 +1183,9 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "") -> 
     # Close last job
     if current_job_header and closing_required and not job_has_closing_line:
         jobs_missing_closing.append(current_job_header)
+    # Save the last job's bullet count
+    if job_index >= 0:
+        per_job_bullets.append(current_job_bullets)
 
     # ── Aggregate checks ──────────────────────────────────────────────────────
 
@@ -1183,6 +1205,22 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "") -> 
         issues.append(
             f"[SUMMARY] {summary_count} bullets in summary (must be exactly {SUMMARY_EXACT}). {direction}"
         )
+
+    # Per-job minimum bullet check — enforce fixed counts, not just maximums
+    for ji, actual in enumerate(per_job_bullets):
+        min_req = minimums[min(ji, len(minimums) - 1)]
+        max_req = job_limits[min(ji, len(job_limits) - 1)]
+        job_label = f"job #{ji+1}"
+        if actual < min_req:
+            issues.append(
+                f"[TOO FEW BULLETS] {job_label} has {actual} bullets (need exactly {min_req}). "
+                f"Add {min_req - actual} more specific, metric-backed bullets."
+            )
+        elif actual > max_req:
+            issues.append(
+                f"[BULLET OVERFLOW] {job_label} has {actual} bullets (max {max_req}). "
+                f"Cut {actual - max_req} lowest-relevance bullets."
+            )
 
     # Unsupported experience claims in summary
     # Checks whether high-risk claim phrases in summary bullets are backed by
@@ -1346,6 +1384,7 @@ RETRY_RULES: dict[str, str] = {
     "[MULTI-IDEA]":            "One accomplishment per bullet. Split into two or cut the weaker half.",
     "[SAME VERB]":             "No two consecutive experience bullets may open with the same verb — vary them.",
     "[SUMMARY]":               "PROFESSIONAL SUMMARY must have exactly 5 bullet lines — not 4, not 6.",
+    "[TOO FEW BULLETS]":       "A job block has fewer bullets than required. Add more specific, metric-backed bullets to reach the exact required count.",
     "[BULLET OVERFLOW]":       "Total bullets exceed the limit for this role type. Cut lowest-relevance bullets first.",
     "[MISSING SECTION]":       "A required section is missing. Check for output truncation and regenerate.",
     "[LOW METRICS]":           "Add quantified outcomes to more experience bullets (role-appropriate target).",

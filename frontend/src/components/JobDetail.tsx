@@ -960,6 +960,8 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
           ))}
         </div>
 
+        {/* Tab content */}
+        <div className="tab-body">
           {tab === "jobdetails" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
               {/* Job Info + Company Info side by side */}
@@ -997,6 +999,7 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
           )}
           {tab === "cover"    && <CoverTab job={job} generating={busy === "cover" && busyJobId === job.id} onGenerate={() => runAction("cover")} onChange={v => onUpdate({ cover_letter: v })} onToast={onToast} />}
         </div>
+
       </div>
     </div>
   );

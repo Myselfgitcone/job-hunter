@@ -241,6 +241,8 @@ export default function App() {
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [activeFamily, setActiveFamily] = useState<string>(""); // user role chip filter
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("jh_sidebar") === "1");
+  const [listPaneWidth, setListPaneWidth]       = useState<number>(() => parseInt(localStorage.getItem("jh_list_w") || "0") || window.innerWidth * 0.38);
+  useEffect(() => { localStorage.setItem("jh_list_w", String(Math.round(listPaneWidth))); }, [listPaneWidth]);
   const [busy, setBusy]             = useState<string | null>(null);
   const [busyJobId, setBusyJobId]   = useState<string | null>(null);
   const abortRef                    = useRef<AbortController | null>(null);
@@ -845,8 +847,8 @@ export default function App() {
           {viewMode === "kanban" ? (
               <Kanban jobs={filteredJobs} onStatusChange={(id, s) => handleStatusChange(id, s as JobStatus)} onSelect={id => { setViewMode("list"); handleSelect(id); }} />
             ) : (
-              <div className="jobs-body">
-                <div className="list-pane">
+              <div className="jobs-body" style={{ position: "relative" }}>
+                <div className="list-pane" style={{ width: listPaneWidth, minWidth: 240, maxWidth: "70%" }}>
                   <div className="list-head">
                     <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--tx-3)", whiteSpace: "nowrap", flexShrink: 0 }}>
                       Sort:
@@ -887,6 +889,28 @@ export default function App() {
                     )}
                   </div>
                 </div>
+                {/* Drag handle */}
+                <div
+                  onMouseDown={e => {
+                    e.preventDefault();
+                    const startX = e.clientX;
+                    const startW = listPaneWidth;
+                    const onMove = (ev: MouseEvent) => {
+                      const newW = Math.max(240, Math.min(window.innerWidth * 0.7, startW + ev.clientX - startX));
+                      setListPaneWidth(newW);
+                    };
+                    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+                    window.addEventListener('mousemove', onMove);
+                    window.addEventListener('mouseup', onUp);
+                  }}
+                  style={{
+                    width: 4, flexShrink: 0, cursor: 'col-resize', background: 'transparent',
+                    borderRight: '1px solid var(--line)', transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--violet)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  title="Drag to resize"
+                />
                 <JobDetail job={selectedJob} tab={tab} setTab={setTab} onUpdate={(patch: Partial<Job>) => selectedJob && updateJob(selectedJob.id, patch)} onToast={toast} busy={busy} busyJobId={busyJobId} runAction={runAction} onCancel={cancelAction} />
               </div>
             )}

@@ -127,7 +127,7 @@ _ROLE_SIGNALS: dict[str, list[tuple[str, int]]] = {
         (r"\bmanagement presentation\b", 1), (r"\bbulge bracket\b", 2),
     ],
     FINANCE: [
-        (r"\bfp&a\b", 3), (r"\bfinancial planning\b", 2), (r"\bfinancial analyst\b", 2),
+        (r"\bfp&a\b", 3), (r"\bfinancial planning\b", 2), (r"\bfinancial analyst\b(?!.*data)", 2),
         (r"\baccounting\b", 2), (r"\bgeneral ledger\b", 2), (r"\bclose process\b", 2),
         (r"\bvariance analysis\b", 2), (r"\bbudget(ing)?\b", 2), (r"\bforecast(ing)?\b", 2),
         (r"\btreasury\b", 2), (r"\bgaap\b", 2), (r"\bifrs\b", 2), (r"\bsox compliance\b", 2),
@@ -159,12 +159,19 @@ _ROLE_SIGNALS: dict[str, list[tuple[str, int]]] = {
         (r"\bcase team\b", 2), (r"\bmckinsey|bain|bcg|deloitte|accenture|kpmg|pwc|ey\b", 2),
     ],
     TECH: [
-        (r"\bdata engineer", 2), (r"\bsoftware engineer", 2), (r"\bdevops\b", 2),
+        # Role title signals — high weight, very specific
+        (r"\bdata engineer", 3), (r"\bdata analyst\b", 3), (r"\bbusiness analyst\b", 2),
+        (r"\bsoftware engineer", 2), (r"\bdevops\b", 2),
         (r"\bsre\b", 2), (r"\bplatform engineer", 2), (r"\bml engineer", 2),
-        (r"\bdata (pipeline|platform|infrastructure|architecture)", 2),
+        # Analytics & BI — data analyst JDs always mention these
+        (r"\bdata (pipeline|platform|infrastructure|architecture|analytics|analysis)", 2),
+        (r"\bbusiness intelligence\b", 3), (r"\banalytics engineer\b", 3),
+        (r"\bpower bi\b|\btableau\b|\blooker\b|\bqlik\b", 2),
+        # Data stack tools — score 2 (specific tech tools)
         (r"\bkafka\b|\bspark\b|\bdatabricks\b|\bairflow\b|\bdbt\b", 2),
         (r"\bkubernetes\b|\bdocker\b|\bterraform\b", 2),
         (r"\bsnowflake\b|\bbigquery\b|\bredshift\b", 2),
+        # Generic languages — score 1 (can appear in many roles)
         (r"\bpython\b|\bsql\b|\bjava\b|\bscala\b", 1),
         (r"\bcloud (infrastructure|platform|architecture)", 2),
         (r"\bci/cd\b|\bgithub actions\b|\bjenkins\b", 2),

@@ -414,7 +414,7 @@ SYSTEM_PROMPT = """You are an expert resume writer. The candidate's real title a
 ═══ STEP 0 — ROLE TYPE DETECTION (DO THIS FIRST, BEFORE ANYTHING ELSE) ═══
 Read the JD and classify the role into ONE of these types. Every rule below that references ROLE TYPE uses this classification.
 
-  TECH        — Software engineering, data engineering, data science, ML, DevOps, cloud, platform, SRE, QA
+  TECH        — Software engineering, data engineering, data science, ML, DevOps, cloud, platform, SRE, QA, **data analyst, business analyst, analytics engineer, BI analyst**
   FINANCE     — FP&A, corporate finance, accounting, financial analyst, treasury, PE/VC associate
   IB          — Investment banking, M&A, capital markets, deal execution, leveraged finance, ECM/DCM
   CYBER       — Cybersecurity, information security, SOC analyst, threat intelligence, GRC, penetration testing

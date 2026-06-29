@@ -106,10 +106,10 @@ export function CompanyAutocomplete({ value, onChange, className }: Props) {
       {open && suggestions.length > 0 && (
         <ul style={{
           position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 9999,
-          background: "var(--bg-elevated, #1e293b)",
-          border: "1px solid var(--border, rgba(255,255,255,0.1))",
+          background: "#ffffff",
+          border: "1px solid #e2e8f0",
           borderRadius: 8, overflow: "hidden",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
           margin: 0, padding: 0, listStyle: "none",
         }}>
           {suggestions.map(company => (
@@ -123,7 +123,7 @@ export function CompanyAutocomplete({ value, onChange, className }: Props) {
                   background: "transparent", border: "none", cursor: "pointer",
                   transition: "background 0.12s", textAlign: "left",
                 }}
-                onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")}
+                onMouseEnter={e => (e.currentTarget.style.background = "#f8fafc")}
                 onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
               >
                 <img
@@ -132,8 +132,8 @@ export function CompanyAutocomplete({ value, onChange, className }: Props) {
                   style={{ width: 20, height: 20, borderRadius: 4, objectFit: "contain", flexShrink: 0 }}
                   onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
                 />
-                <span style={{ fontSize: 12.5, color: "var(--text-1, #cbd5e1)", flex: 1 }}>{company.name}</span>
-                <span style={{ fontSize: 10, color: "var(--text-3, #64748b)" }}>{company.domain}</span>
+                <span style={{ fontSize: 12.5, color: "#0f172a", flex: 1, fontWeight: 500 }}>{company.name}</span>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>{company.domain}</span>
               </button>
             </li>
           ))}

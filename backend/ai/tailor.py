@@ -2320,12 +2320,6 @@ async def tailor_resume(base_resume: str, job_description: str,
     # Strip <plan> block
     raw = re.sub(r'<plan>.*?</plan>', '', raw, flags=re.DOTALL).strip()
 
-    # ── Deterministic bullet trimmer (free, zero AI) ──────────────────────────
-    # Trims bullets over WORD_LIMIT words at a natural break point.
-    # Eliminates [TOO LONG] + most [MULTI-IDEA] lint failures before
-    # they hit the retry loop — saves ~$0.009 per run.
-    raw = _trim_long_bullets(raw, WORD_LIMIT)
-
     # ── Quality gate: lint → up to 3 retries, best-of-N ────────────────────
     _best_raw         = raw
     _best_issue_count = len(lint_resume(raw, job_description, base_resume=base_resume))

@@ -68,7 +68,7 @@ export function QuickTailor({ open = true, onClose, onToast, pageMode = false }:
   };
 
   const handleDownload = async (format: "pdf" | "docx") => {
-    if (!jd.trim()) return;
+    if (!jd.trim() || !tailored) return;
     setDownloading(format);
     try {
       const url   = format === "pdf" ? api.quickTailorPdfUrl() : api.quickTailorDocxUrl();
@@ -79,13 +79,17 @@ export function QuickTailor({ open = true, onClose, onToast, pageMode = false }:
           "Content-Type": "application/json",
           ...(token ? { "Authorization": `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ jd, company: company || "Company" }),
+        // Pass the already-computed resume so backend skips AI and uses same content as UI
+        body: JSON.stringify({ jd, company: company || "Company", tailored_resume: tailored }),
       });
       if (!resp.ok) throw new Error(await resp.text());
       const blob = await resp.blob();
+      // Read filename from Content-Disposition header (matches job tailor behavior)
+      const cd = resp.headers.get("Content-Disposition");
+      const filename = cd?.match(/filename="([^"]+)"/)?.[1] || `Resume_${company || "Company"}.${format}`;
       const a    = document.createElement("a");
       a.href     = URL.createObjectURL(blob);
-      a.download = `Jagadish_Reddy_Butukuri_Senior_Data_Engineer.${format}`;
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(a.href);
     } catch (e: any) {

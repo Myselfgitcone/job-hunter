@@ -2615,6 +2615,7 @@ async def download_jd(job_id: str, user_id: str = Depends(get_current_user_id)):
 class QuickTailorRequest(BaseModel):
     jd: str
     company: str = "Company"
+    tailored_resume: str = ""  # if provided, skip AI — use this directly
 
 async def _load_profile_skills(user_id: str) -> list[str]:
     async with SessionLocal() as db:
@@ -2662,22 +2663,27 @@ async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_curr
 @app.post("/api/quick-tailor/pdf")
 async def quick_tailor_pdf(body: QuickTailorRequest, user_id: str = Depends(get_current_user_id)):
     user_cfg = await _get_user_settings(user_id)
-    api_key = user_cfg.get("ai_api_key", "")
-    provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model    = user_cfg.get("ai_model_tailor", "anthropic/claude-opus-4-8")
-
-    if not api_key:
-        raise HTTPException(400, "No AI API key set.")
-
-    base_resume = user_cfg.get("resume", "")
-    if not base_resume:
-        raise HTTPException(400, "No base resume found.")
-
-    profile_skills = await _load_profile_skills(user_id)
-    tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model, profile_skills=profile_skills, secondary_model=user_cfg.get("ai_model_secondary", "google/gemini-2.5-flash"))
-    pdf_bytes = generate_pdf(tailored, "", body.company)
     cand = _candidate_slug(user_cfg.get("profile_name", ""))
     company_slug = re.sub(r"[^\w]+", "_", body.company or "Company").strip("_")
+
+    # Use pre-computed resume if passed (avoids re-running AI, ensures same content as UI)
+    if body.tailored_resume and body.tailored_resume.strip():
+        tailored = body.tailored_resume
+    else:
+        api_key = user_cfg.get("ai_api_key", "")
+        provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
+        model    = user_cfg.get("ai_model_tailor", "anthropic/claude-opus-4-8")
+        if not api_key:
+            raise HTTPException(400, "No AI API key set.")
+        base_resume = user_cfg.get("resume", "")
+        if not base_resume:
+            raise HTTPException(400, "No base resume found.")
+        profile_skills = await _load_profile_skills(user_id)
+        tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model,
+                                       profile_skills=profile_skills,
+                                       secondary_model=user_cfg.get("ai_model_secondary", "google/gemini-2.5-flash"))
+
+    pdf_bytes = generate_pdf(tailored, "", body.company)
     return StreamingResponse(
         iter([pdf_bytes]), media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{cand}_{company_slug}.pdf"'},
@@ -2687,22 +2693,26 @@ async def quick_tailor_pdf(body: QuickTailorRequest, user_id: str = Depends(get_
 @app.post("/api/quick-tailor/docx")
 async def quick_tailor_docx(body: QuickTailorRequest, user_id: str = Depends(get_current_user_id)):
     user_cfg = await _get_user_settings(user_id)
-    api_key = user_cfg.get("ai_api_key", "")
-    provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model    = user_cfg.get("ai_model_tailor", "anthropic/claude-opus-4-8")
-
-    if not api_key:
-        raise HTTPException(400, "No AI API key set.")
-
-    base_resume = user_cfg.get("resume", "")
-    if not base_resume:
-        raise HTTPException(400, "No base resume found.")
-
-    profile_skills = await _load_profile_skills(user_id)
-    tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model, profile_skills=profile_skills, secondary_model=user_cfg.get("ai_model_secondary", "google/gemini-2.5-flash"))
-    docx_bytes = generate_docx(tailored, "", body.company)
     cand = _candidate_slug(user_cfg.get("profile_name", ""))
     company_slug = re.sub(r"[^\w]+", "_", body.company or "Company").strip("_")
+
+    if body.tailored_resume and body.tailored_resume.strip():
+        tailored = body.tailored_resume
+    else:
+        api_key = user_cfg.get("ai_api_key", "")
+        provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
+        model    = user_cfg.get("ai_model_tailor", "anthropic/claude-opus-4-8")
+        if not api_key:
+            raise HTTPException(400, "No AI API key set.")
+        base_resume = user_cfg.get("resume", "")
+        if not base_resume:
+            raise HTTPException(400, "No base resume found.")
+        profile_skills = await _load_profile_skills(user_id)
+        tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model,
+                                       profile_skills=profile_skills,
+                                       secondary_model=user_cfg.get("ai_model_secondary", "google/gemini-2.5-flash"))
+
+    docx_bytes = generate_docx(tailored, "", body.company)
     return StreamingResponse(
         iter([docx_bytes]),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",

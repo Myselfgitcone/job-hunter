@@ -2280,6 +2280,10 @@ async def tailor_resume(base_resume: str, job_description: str,
         if not issues:
             break
 
+        # Log what lint found so Railway logs reveal the actual failure pattern
+        print(f"[lint-{attempt+1}] {len(issues)} issue(s): " +
+              " | ".join(i[:60] for i in issues))
+
         # ── Classify issues ───────────────────────────────────────────────────
         _COUNT_PREFIXES = ("[TOO FEW", "[SUMMARY]", "[BULLET OVERFLOW]")
         count_issues = [i for i in issues if i.startswith(_COUNT_PREFIXES)]

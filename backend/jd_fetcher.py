@@ -78,9 +78,15 @@ def _pick_jd_node(soup):
     return soup.body or soup
 
 
-_GH_URL_RE   = re.compile(r"(?:job-)?boards\.greenhouse\.io/([^/]+)/jobs/(\d+)", re.I)
-_LEVER_URL_RE = re.compile(r"jobs\.lever\.co/([^/]+)/([0-9a-f-]{36})", re.I)
-_ASHBY_URL_RE = re.compile(r"jobs\.ashbyhq\.com/([^/]+)/([0-9a-f-]{36})", re.I)
+_GH_URL_RE    = re.compile(r"(?:job-)?boards\.greenhouse\.io/([^/]+)/jobs/(\d+)", re.I)
+_LEVER_URL_RE  = re.compile(r"jobs\.lever\.co/([^/]+)/([0-9a-f-]{36})", re.I)
+_ASHBY_URL_RE  = re.compile(r"jobs\.ashbyhq\.com/([^/]+)/([0-9a-f-]{36})", re.I)
+# Workday: *.wd1.myworkdayjobs.com  or  *.wd5.myworkdayjobs.com etc.
+_WORKDAY_URL_RE = re.compile(
+    r"([\w-]+)\.wd\d+\.myworkdayjobs\.com/[^/]+/job/[^/]+/([^/?#]+)", re.I
+)
+# HiringCafe / Oracle Cloud ATS (fa.*.oraclecloud.com)
+_ORACLE_URL_RE = re.compile(r"([\w-]+)\.fa\.\w+\.oraclecloud\.com.*CX_\d+/job/(\d+)", re.I)
 
 
 async def _fetch_lever_api(company: str, job_id: str) -> dict | None:
@@ -161,6 +167,63 @@ async def _fetch_greenhouse_api(company: str, job_id: str) -> dict | None:
     return None
 
 
+async def _fetch_workday_api(company: str, job_slug: str) -> dict | None:
+    """
+    Workday public REST API — no JS rendering needed.
+    Workday exposes job data at a predictable JSON endpoint.
+    """
+    # Workday API: POST to the job-postings endpoint with the job ID
+    # The job_slug from URL is the external job ID (e.g. R-12345)
+    api_url = (
+        f"https://{company}.wd1.myworkdayjobs.com/wday/cxs/{company}/"
+        f"External/job/{job_slug}"
+    )
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json",
+        "X-Workday-Client-Request-Id": "job-hunter-fetch",
+    }
+    try:
+        async with httpx.AsyncClient(follow_redirects=True) as c:
+            r = await c.get(api_url, timeout=15.0, headers=headers)
+            if r.status_code == 200:
+                data = r.json()
+                desc = (data.get("jobPostingInfo", {}) or {}).get("jobDescription", "")
+                if not desc:
+                    # Try alternative key paths
+                    desc = data.get("jobDescription") or data.get("description") or ""
+                if desc and len(desc.strip()) >= 200:
+                    return {"description": desc[:25000]}
+    except Exception as e:
+        print(f"[jd_fetcher] Workday API error ({company}/{job_slug}): {e}")
+
+    # Fallback: try scraping the page HTML directly (Workday SSR pages have
+    # some content in a <script type="application/ld+json"> block)
+    page_url = (
+        f"https://{company}.wd1.myworkdayjobs.com/External/job/{job_slug}"
+    )
+    try:
+        async with httpx.AsyncClient(follow_redirects=True) as c:
+            r = await c.get(page_url, timeout=15.0,
+                            headers={"User-Agent": "Mozilla/5.0"})
+        if r.status_code == 200:
+            # Try JSON-LD structured data
+            import json as _json
+            soup = BeautifulSoup(r.text, "lxml")
+            for script in soup.find_all("script", {"type": "application/ld+json"}):
+                try:
+                    data = _json.loads(script.string or "")
+                    desc = data.get("description") or data.get("jobDescription") or ""
+                    if desc and len(desc.strip()) >= 200:
+                        # May be HTML
+                        return {"description": desc[:25000]}
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f"[jd_fetcher] Workday page fetch error ({company}/{job_slug}): {e}")
+    return None
+
+
 async def fetch_full_jd(url: str) -> dict | None:
     """
     Fetch the job page and return the JD as clean HTML (preserves headings,
@@ -191,12 +254,37 @@ async def fetch_full_jd(url: str) -> dict | None:
         if result:
             return result
 
+    # Workday (*.wd1.myworkdayjobs.com etc.)
+    m = _WORKDAY_URL_RE.search(url or "")
+    if m:
+        result = await _fetch_workday_api(m.group(1), m.group(2))
+        if result:
+            return result
+
     try:
         async with httpx.AsyncClient(follow_redirects=True) as client:
             resp = await client.get(url, timeout=15.0, headers={"User-Agent": "Mozilla/5.0"})
             resp.raise_for_status()
 
+        import json as _json
         soup = BeautifulSoup(resp.text, "lxml")
+
+        # ── Universal fallback: JSON-LD structured data ──────────────────────
+        # Many JS-rendered ATS pages (Oracle, SAP, iCIMS, Workday) embed the
+        # full JD in <script type="application/ld+json"> even when rendered
+        # HTML requires JS. Try this FIRST before DOM scraping.
+        for script in soup.find_all("script", {"type": "application/ld+json"}):
+            try:
+                data = _json.loads(script.string or "")
+                # Handle both single object and list
+                items = data if isinstance(data, list) else [data]
+                for item in items:
+                    desc = (item.get("description") or item.get("jobDescription") or "")
+                    if desc and len(desc.strip()) >= 200:
+                        return {"description": desc[:25000]}
+            except Exception:
+                pass
+
         for tag in soup(_JUNK_TAGS):
             tag.decompose()
 

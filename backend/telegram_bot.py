@@ -46,32 +46,35 @@ async def send_message(text: str, parse_mode: str = "HTML"):
         logger.warning(f"[Telegram] Failed to send message: {e}")
 
 
-# Role families (mirrors scraper TITLE_FILTER) — first match wins
+# Role families (mirrors scraper TITLE_FILTER) — first match wins.
+# DevOps/SRE and Security intentionally omitted — scraper never fetches them,
+# so any stray classification should fall to "Other" rather than showing a
+# misleading category in the digest.
 _ROLE_FAMILIES: list[tuple[str, list[str]]] = [
-    ("Data Analyst",  ["data analyst", "data analytics", "analytics engineer", "reporting analyst", "business analyst"]),
-    ("BI",            ["business intelligence", "bi developer", "bi analyst", "bi engineer", "power bi", "tableau"]),
-    ("Data Engineer", ["data engineer", "etl", "data platform", "data warehouse", "data architect",
-                       "database engineer", "database developer", "sql developer", "big data"]),
-    ("DevOps/SRE",    ["devops", "sre", "site reliability", "platform engineer", "cloud engineer"]),
-    ("Security",      ["security", "cybersecurity", "infosec", "soc analyst"]),
-    ("Java",          ["spring boot", "spring framework", "spring developer", "jakarta", "jakarta ee", "hibernate", "jvm engineer"]),  # plus \bjava\b regex below
+    ("Data Analyst",    ["data analyst", "data analytics", "analytics engineer", "reporting analyst",
+                         "business analyst", "quantitative analyst"]),
+    ("BI",              ["business intelligence", "bi developer", "bi analyst", "bi engineer", "power bi", "tableau"]),
+    ("Data Engineer",   ["data engineer", "etl", "data platform", "data warehouse", "data architect",
+                         "database engineer", "database developer", "sql developer", "big data",
+                         "data infrastructure", "data operations engineer"]),
+    ("Project Manager", ["project manager"]),
+    ("Java",            ["spring boot", "spring framework", "spring developer", "jakarta", "jakarta ee",
+                         "hibernate", "jvm engineer"]),  # plus \bjava\b regex below
 ]
 _JAVA_RE = re.compile(r"\bjava\b", re.I)
 _DATA_RE = re.compile(r"\bdata\b", re.I)
+_ANALYST_RE = re.compile(r"\banalyst\b", re.I)
+_ENGINEER_RE = re.compile(r"\bengineer\b", re.I)
 
 def _role_family(title: str) -> str:
     t = (title or "").lower()
     for fam, kws in _ROLE_FAMILIES:
         if any(kw in t for kw in kws):
-            # Wide data-nets outrank the dormant DevOps/Security labels:
-            # "Cloud Engineer, Data Platform" is a DE job, not DevOps
-            if fam in ("DevOps/SRE", "Security") and _DATA_RE.search(t):
-                break
             return fam
     # Wide nets: both words anywhere in the title
-    if _DATA_RE.search(t) and "analyst" in t:
+    if _DATA_RE.search(t) and _ANALYST_RE.search(t):
         return "Data Analyst"
-    if _DATA_RE.search(t) and ("engineer" in t or "software engineer" in t):
+    if _DATA_RE.search(t) and _ENGINEER_RE.search(t):
         return "Data Engineer"
     if _JAVA_RE.search(t):
         return "Java"

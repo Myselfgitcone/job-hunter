@@ -738,7 +738,7 @@ textarea { resize: none; }
 .tab .tcount { width: 5px; height: 5px; border-radius: 50%; background: var(--violet); flex-shrink: 0; opacity: 0.75; }
 .tab.on .tcount { background: var(--cyan); opacity: 1; }
 
-.tab-body { padding: 22px 26px 40px; max-width: 760px; }
+.tab-body { padding: 22px 26px 40px; }
 
 /* description markdown */
 .md h3, .jd-body h3 { font-family: var(--f-display); font-size: 14px; font-weight: 600; margin: 22px 0 8px; color: var(--tx); letter-spacing: -.01em; }

@@ -194,8 +194,8 @@ function JobInfoTab({ job }: { job: Job }) {
         <span style={{ fontSize: 11, color: "var(--tx-3)", marginLeft: 2 }}>· Visa</span>
       </div>
 
-      {/* Fields in 2-column grid with stacked layout */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px 24px" }}>
+      {/* Fields — single column stacked list */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
         {fields.map(f => <Field key={f.label} label={f.label} value={f.value} />)}
       </div>
 
@@ -257,7 +257,7 @@ function CompanyInfoTab({ job }: { job: Job }) {
       </div>
 
       {/* Fields grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px 24px" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
         {companyFields.map(f => <Field key={f.label} label={f.label} value={f.value} link={f.link} />)}
       </div>
 
@@ -972,13 +972,12 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
           {tab === "jobdetails" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
               {/* Job Info + Company Info side by side */}
-              <div style={{ display: "flex", gap: 0, flexWrap: "wrap" }}>
-                <div style={{ flex: 1, minWidth: 280, paddingRight: 32 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
+                <div style={{ paddingRight: 32, borderRight: "1px solid var(--border-subtle)" }}>
                   <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.09em", color: "var(--tx-3)", marginBottom: 16 }}>Job Info</div>
                   <JobInfoTab job={job} />
                 </div>
-                <div style={{ width: 1, background: "var(--border-subtle)", alignSelf: "stretch", flexShrink: 0 }} />
-                <div style={{ flex: 1, minWidth: 280, paddingLeft: 32 }}>
+                <div style={{ paddingLeft: 32 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.09em", color: "var(--tx-3)", marginBottom: 16 }}>Company Info</div>
                   <CompanyInfoTab job={job} />
                 </div>

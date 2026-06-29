@@ -424,75 +424,13 @@ function timeAgo(iso: string) {
 }
 
 // ── Main Dashboard ────────────────────────────────────────────────────────────
-// ── Per-user section (admin only) ────────────────────────────────────────────
-function UserSection({ u }: { u: any }) {
-  const [open, setOpen] = React.useState(false);
-  const name = u.user?.name || u.user?.email || "User";
-  const email = u.user?.email || "";
-  const initials = name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
-
-  const tailored = (u.tailored || []).map((j: any) => ({
-    id: j.id, company: j.company, title: j.title, location: j.location,
-    exp: j.experience_level,
-    when: timeAgo(j.tailored_at), whenFull: _fmtFullDate(j.tailored_at),
-    source: j.source as "job" | "quick",
-  }));
-  const applied = (u.applied || []).map((j: any) => ({
-    company: j.company, title: j.title, location: j.location, exp: j.experience_level,
-    when: timeAgo(j.applied_at), whenFull: _fmtFullDate(j.applied_at),
-  }));
-
-  return (
-    <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden", marginBottom: 10 }}>
-      <button onClick={() => setOpen(o => !o)} style={{
-        width: "100%", padding: "14px 18px", display: "flex", alignItems: "center", gap: 14,
-        background: open ? "var(--bg-elevated)" : "var(--bg-surface)",
-        border: "none", cursor: "pointer", textAlign: "left", transition: "background 0.15s",
-      }}>
-        <div style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg,#7c3aed,#6366f1)",
-          display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
-          {initials}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--tx)" }}>{name}</div>
-          <div style={{ fontSize: 11.5, color: "var(--tx-3)", marginTop: 1 }}>{email}</div>
-        </div>
-        <div style={{ display: "flex", gap: 16, alignItems: "center", flexShrink: 0 }}>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 17, fontWeight: 800, color: "#7c3aed" }}>{tailored.length}</div>
-            <div style={{ fontSize: 10, color: "var(--tx-3)" }}>Tailored</div>
-          </div>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 17, fontWeight: 800, color: "#10b981" }}>{applied.length}</div>
-            <div style={{ fontSize: 10, color: "var(--tx-3)" }}>Applied</div>
-          </div>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 17, fontWeight: 800, color: "var(--tx-2)" }}>{u.job_count}</div>
-            <div style={{ fontSize: 10, color: "var(--tx-3)" }}>Jobs</div>
-          </div>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
-            style={{ color: "var(--tx-3)", transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
-            <path d="M6 9l6 6 6-6"/>
-          </svg>
-        </div>
-      </button>
-      {open && (
-        <div style={{ padding: "0 18px 18px", borderTop: "1px solid var(--line)", background: "var(--bg-surface)" }}>
-          <div className="rh-cols" style={{ marginTop: 14 }}>
-            <ResumeList title="Applied Resumes"  accent="#10b981" items={applied}  icon="applied"  badge="Applied"  />
-            <ResumeList title="Tailored Resumes" accent="#7c3aed" items={tailored} icon="sparkles" badge="Tailored" showDownloads />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
-  const [data, setData]           = useState<any>(null);
-  const [reminders, setReminders] = useState<any[]>([]);
-  const [usersData, setUsersData] = useState<any[]>([]);
-  const [loading, setLoading]     = useState(true);
+  const [data, setData]               = useState<any>(null);
+  const [reminders, setReminders]     = useState<any[]>([]);
+  const [usersData, setUsersData]     = useState<any[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [loading, setLoading]         = useState(true);
 
   useEffect(() => {
     setLoading(true);
@@ -594,6 +532,25 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
   }));
   const tailoredJobs = [...jobTailored, ...quickTailored]
     .sort((a, b) => (b.tailored_at > a.tailored_at ? 1 : -1));
+
+  // When admin selects a specific user, switch to their data
+  const selectedUser = selectedUserId ? usersData.find((u: any) => u.user?.id === selectedUserId) : null;
+
+  const visibleTailored = selectedUser
+    ? (selectedUser.tailored || []).map((j: any) => ({
+        id: j.id, company: j.company, title: j.title, location: j.location,
+        exp: j.experience_level,
+        when: timeAgo(j.tailored_at), whenFull: _fmtFullDate(j.tailored_at),
+        source: j.source as "job" | "quick",
+      }))
+    : tailoredJobs;
+
+  const visibleApplied = selectedUser
+    ? (selectedUser.applied || []).map((j: any) => ({
+        company: j.company, title: j.title, location: j.location, exp: j.experience_level,
+        when: timeAgo(j.applied_at), whenFull: _fmtFullDate(j.applied_at),
+      }))
+    : appliedJobs;
 
   // Reminders mapped
   const remList = (reminders || []).map((r: any) => ({
@@ -727,27 +684,35 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
           </div>
         )}
 
-        {/* Resume history — always show */}
+        {/* Resume history — with user dropdown for admin */}
         <div className="resume-history">
-          <div className="rh-section-head">Resume History</div>
+          <div className="rh-section-head" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span>Resume History</span>
+            {isAdmin && usersData.length > 0 && (
+              <select
+                value={selectedUserId || ""}
+                onChange={e => setSelectedUserId(e.target.value || null)}
+                style={{
+                  fontSize: 13, fontWeight: 600, padding: "5px 12px", borderRadius: 8,
+                  border: "1px solid var(--line)", background: "var(--bg-elevated)",
+                  color: "var(--tx)", cursor: "pointer", outline: "none",
+                  fontFamily: "inherit",
+                }}
+              >
+                <option value="">All Users</option>
+                {usersData.map((u: any) => (
+                  <option key={u.user?.id} value={u.user?.id}>
+                    {u.user?.name || u.user?.email}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
           <div className="rh-cols">
-            <ResumeList title="Applied Resumes"  accent="#10b981" items={appliedJobs}  icon="applied"  badge="Applied"  />
-            <ResumeList title="Tailored Resumes" accent="#7c3aed" items={tailoredJobs} icon="sparkles" badge="Tailored" showDownloads />
+            <ResumeList title="Applied Resumes"  accent="#10b981" items={visibleApplied}  icon="applied"  badge="Applied"  />
+            <ResumeList title="Tailored Resumes" accent="#7c3aed" items={visibleTailored} icon="sparkles" badge="Tailored" showDownloads />
           </div>
         </div>
-
-        {/* Per-user breakdown — admin only */}
-        {isAdmin && usersData.length > 0 && (
-          <div style={{ marginTop: 28 }}>
-            <div className="rh-section-head" style={{ marginBottom: 14 }}>
-              All Users — Tailored &amp; Applied
-              <span style={{ marginLeft: 10, fontSize: 12, fontWeight: 500, color: "var(--tx-3)" }}>
-                {usersData.length} user{usersData.length !== 1 ? "s" : ""} · click to expand
-              </span>
-            </div>
-            {usersData.map((u: any) => <UserSection key={u.user?.id} u={u} />)}
-          </div>
-        )}
 
       </div>
     </div>

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import ReactDOM from "react-dom";
 import { api, downloadFile } from "../api";
 
 // ── StatCard with count-up animation ─────────────────────────────────────────
@@ -425,6 +426,141 @@ function timeAgo(iso: string) {
 
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 
+// ── Searchable user picker ────────────────────────────────────────────────────
+function UserPicker({ users, selectedId, onSelect }: {
+  users: any[]; selectedId: string | null; onSelect: (id: string | null) => void;
+}) {
+  const [query, setQuery] = React.useState("");
+  const [open, setOpen]   = React.useState(false);
+  const ref               = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const fn = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+  }, []);
+
+  const selected = selectedId ? users.find(u => u.user?.id === selectedId) : null;
+  const displayName = selected ? (selected.user?.name || selected.user?.email) : "All Users";
+
+  const filtered = users.filter(u => {
+    const q = query.toLowerCase();
+    return (u.user?.name || "").toLowerCase().includes(q) || (u.user?.email || "").toLowerCase().includes(q);
+  });
+
+  const initials = (name: string) => name.split(" ").map((w: string) => w[0] || "").join("").slice(0, 2).toUpperCase();
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        onClick={() => { setOpen(o => !o); setQuery(""); }}
+        style={{
+          display: "flex", alignItems: "center", gap: 8, padding: "6px 12px",
+          borderRadius: 8, border: "1px solid var(--line)", background: "var(--bg-elevated)",
+          color: "var(--tx)", cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 600,
+          minWidth: 160,
+        }}
+      >
+        {selected && (
+          <div style={{ width: 22, height: 22, borderRadius: "50%", background: "linear-gradient(135deg,#7c3aed,#6366f1)",
+            display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 9, fontWeight: 700, flexShrink: 0 }}>
+            {initials(selected.user?.name || selected.user?.email || "")}
+          </div>
+        )}
+        <span style={{ flex: 1, textAlign: "left" }}>{displayName}</span>
+        {selectedId && (
+          <span onMouseDown={e => { e.stopPropagation(); onSelect(null); setQuery(""); }}
+            style={{ fontSize: 14, color: "var(--tx-3)", lineHeight: 1, padding: "0 2px" }}>×</span>
+        )}
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+          style={{ color: "var(--tx-3)", transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }}>
+          <path d="M6 9l6 6 6-6"/>
+        </svg>
+      </button>
+
+      {open && ReactDOM.createPortal(
+        <div style={{
+          position: "fixed",
+          top: (() => { const r = ref.current?.getBoundingClientRect(); return (r?.bottom ?? 0) + 6; })(),
+          left: (() => { const r = ref.current?.getBoundingClientRect(); return r?.left ?? 0; })(),
+          width: Math.max(ref.current?.offsetWidth ?? 0, 240),
+          background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.12)", zIndex: 9999, overflow: "hidden",
+        }}>
+          {/* Search input */}
+          <div style={{ padding: "10px 12px 8px", borderBottom: "1px solid #f1f5f9" }}>
+            <input
+              autoFocus
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search by name…"
+              style={{
+                width: "100%", padding: "6px 10px", borderRadius: 7, border: "1px solid #e2e8f0",
+                fontSize: 12.5, outline: "none", fontFamily: "inherit", boxSizing: "border-box" as const,
+                color: "#0f172a",
+              }}
+            />
+          </div>
+          {/* Options */}
+          <div style={{ maxHeight: 280, overflowY: "auto" }}>
+            {/* All Users option */}
+            <button onMouseDown={() => { onSelect(null); setOpen(false); setQuery(""); }}
+              style={{
+                width: "100%", padding: "9px 14px", display: "flex", alignItems: "center", gap: 10,
+                background: !selectedId ? "#f5f3ff" : "transparent",
+                border: "none", cursor: "pointer", textAlign: "left",
+              }}
+              onMouseEnter={e => { if (selectedId) e.currentTarget.style.background = "#f8fafc"; }}
+              onMouseLeave={e => { if (selectedId) e.currentTarget.style.background = "transparent"; }}
+            >
+              <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#6366f1",
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "#fff", flexShrink: 0 }}>
+                All
+              </div>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>All Users</span>
+            </button>
+            {filtered.map(u => {
+              const name = u.user?.name || u.user?.email || "";
+              const isSelected = u.user?.id === selectedId;
+              return (
+                <button key={u.user?.id}
+                  onMouseDown={() => { onSelect(u.user?.id); setOpen(false); setQuery(""); }}
+                  style={{
+                    width: "100%", padding: "9px 14px", display: "flex", alignItems: "center", gap: 10,
+                    background: isSelected ? "#f5f3ff" : "transparent",
+                    border: "none", cursor: "pointer", textAlign: "left",
+                  }}
+                  onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "#f8fafc"; }}
+                  onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
+                >
+                  <div style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+                    background: "linear-gradient(135deg,#7c3aed,#6366f1)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    color: "#fff", fontSize: 11, fontWeight: 700 }}>
+                    {initials(name)}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{name}</div>
+                    <div style={{ fontSize: 10.5, color: "#94a3b8" }}>{u.user?.email}</div>
+                  </div>
+                  <div style={{ marginLeft: "auto", display: "flex", gap: 8, fontSize: 10.5, color: "#94a3b8", flexShrink: 0 }}>
+                    <span>{u.tailored?.length ?? 0} tailored</span>
+                    <span>{u.applied?.length ?? 0} applied</span>
+                  </div>
+                </button>
+              );
+            })}
+            {filtered.length === 0 && (
+              <div style={{ padding: "16px", fontSize: 12.5, color: "#94a3b8", textAlign: "center" }}>No users found</div>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
 export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
   const [data, setData]               = useState<any>(null);
   const [reminders, setReminders]     = useState<any[]>([]);
@@ -689,23 +825,11 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
           <div className="rh-section-head" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span>Resume History</span>
             {isAdmin && usersData.length > 0 && (
-              <select
-                value={selectedUserId || ""}
-                onChange={e => setSelectedUserId(e.target.value || null)}
-                style={{
-                  fontSize: 13, fontWeight: 600, padding: "5px 12px", borderRadius: 8,
-                  border: "1px solid var(--line)", background: "var(--bg-elevated)",
-                  color: "var(--tx)", cursor: "pointer", outline: "none",
-                  fontFamily: "inherit",
-                }}
-              >
-                <option value="">All Users</option>
-                {usersData.map((u: any) => (
-                  <option key={u.user?.id} value={u.user?.id}>
-                    {u.user?.name || u.user?.email}
-                  </option>
-                ))}
-              </select>
+              <UserPicker
+                users={usersData}
+                selectedId={selectedUserId}
+                onSelect={setSelectedUserId}
+              />
             )}
           </div>
           <div className="rh-cols">

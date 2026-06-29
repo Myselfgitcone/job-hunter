@@ -196,6 +196,7 @@ export const api = {
     req<{ alive: boolean | null; status_code: number | null; error?: string }>(`/api/jobs/${id}/verify`),
 
   getAnalytics: (personal?: boolean) => req<any>(`/api/analytics${personal ? "?personal=1" : ""}`),
+  adminUsersAnalytics: () => req<any[]>("/api/admin/users-analytics"),
   getDailyUsage: () => req<{ used: number; limit: number; remaining: number }>("/api/usage/today"),
 
   getSettings: () => req<Settings>("/api/settings"),

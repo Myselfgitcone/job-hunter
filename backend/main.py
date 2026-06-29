@@ -4066,3 +4066,86 @@ async def extension_generate_answer(body: dict = Body(...), user_id: str = Depen
         return {"answer": answer.strip()}
     except Exception as e:
         raise HTTPException(500, f"AI error: {e}")
+
+
+# ── Admin: per-user analytics ─────────────────────────────────────────────────
+@app.get("/api/admin/users-analytics")
+async def admin_users_analytics(user_id: str = Depends(get_current_user_id)):
+    """Per-user breakdown: tailored resumes + applied jobs + job counts for admin."""
+    await _verify_admin(user_id)
+
+    async with SessionLocal() as db:
+        users_r = await db.execute(
+            select(User).where(User.status == "approved").order_by(User.name)
+        )
+        users = users_r.scalars().all()
+
+        result = []
+        for u in users:
+            # Total user_jobs rows (jobs they've interacted with)
+            cnt_r = await db.execute(
+                select(func.count()).select_from(UserJob).where(UserJob.user_id == u.id)
+            )
+            job_count = cnt_r.scalar() or 0
+
+            # Tailored resumes (job tailor)
+            tail_r = await db.execute(
+                select(Job, UserJob)
+                .join(UserJob, Job.id == UserJob.job_id)
+                .where(UserJob.user_id == u.id, UserJob.tailored_resume.isnot(None))
+                .order_by(UserJob.tailored_at.desc())
+                .limit(100)
+            )
+            tailored = [
+                {
+                    "id": row.Job.id, "company": row.Job.company or "",
+                    "title": row.Job.title or "", "location": row.Job.location or "",
+                    "experience_level": row.Job.experience_level or "",
+                    "tailored_at": row.UserJob.tailored_at or "",
+                    "source": "job",
+                }
+                for row in tail_r.all()
+            ]
+
+            # Quick tailor history
+            qt_r = await db.execute(
+                select(QuickTailorHistory)
+                .where(QuickTailorHistory.user_id == u.id)
+                .order_by(QuickTailorHistory.created_at.desc())
+                .limit(50)
+            )
+            quick_tailored = [
+                {
+                    "id": q.id, "company": q.company or "", "title": "",
+                    "location": "", "experience_level": "",
+                    "tailored_at": q.created_at or "", "source": "quick",
+                }
+                for q in qt_r.scalars().all()
+            ]
+
+            # Applied jobs
+            app_r = await db.execute(
+                select(Job, UserJob)
+                .join(UserJob, Job.id == UserJob.job_id)
+                .where(UserJob.user_id == u.id, UserJob.status == "applied")
+                .order_by(UserJob.applied_at.desc())
+                .limit(100)
+            )
+            applied = [
+                {
+                    "company": row.Job.company or "", "title": row.Job.title or "",
+                    "location": row.Job.location or "",
+                    "experience_level": row.Job.experience_level or "",
+                    "applied_at": row.UserJob.applied_at or "",
+                }
+                for row in app_r.all()
+            ]
+
+            result.append({
+                "user": {"id": u.id, "name": u.name or u.email, "email": u.email},
+                "job_count": job_count,
+                "tailored": tailored + quick_tailored,
+                "applied": applied,
+            })
+
+    return result

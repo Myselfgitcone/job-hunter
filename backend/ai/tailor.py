@@ -2176,6 +2176,60 @@ _RETRY_RULES = {
 }
 
 
+def _trim_long_bullets(resume: str, word_limit: int) -> str:
+    """
+    Trim experience bullets that exceed word_limit words.
+    Cuts at the last natural break point (—, ;, ,) at or before word_limit.
+    Falls back to hard truncation at word_limit.
+    Eliminates [TOO LONG] + most [MULTI-IDEA] lint issues before the retry loop.
+    Free, deterministic, zero AI calls.
+    """
+    # Natural break characters, in preference order
+    _BREAKS = ('—', '–', ';', ',')
+
+    def trim_bullet(text: str) -> str:
+        words = text.split()
+        if len(words) <= word_limit:
+            return text
+
+        # Find the rightmost natural break within [word_limit-5, word_limit]
+        # Reconstruct progressively to find break positions
+        best_trim = None
+        for target in range(word_limit, max(word_limit - 6, 5), -1):
+            prefix = ' '.join(words[:target])
+            for brk in _BREAKS:
+                last = prefix.rfind(brk)
+                if last > 0:
+                    # Found a break — trim there
+                    trimmed = prefix[:last].rstrip()
+                    if len(trimmed.split()) >= 8:  # don't make it too short
+                        best_trim = trimmed
+                        break
+            if best_trim:
+                break
+
+        if best_trim:
+            return best_trim
+        # Hard truncation at word_limit
+        return ' '.join(words[:word_limit])
+
+    lines = resume.split('\n')
+    out = []
+    for line in lines:
+        s = line.strip()
+        if s.startswith('•'):
+            body = s[1:].strip()
+            trimmed = trim_bullet(body)
+            if trimmed != body:
+                print(f"[TRIM] {len(body.split())}->{len(trimmed.split())} words: '{body[:50]}...'")
+            # Preserve original indentation
+            indent = len(line) - len(line.lstrip())
+            out.append(' ' * indent + '• ' + trimmed)
+        else:
+            out.append(line)
+    return '\n'.join(out)
+
+
 async def tailor_resume(base_resume: str, job_description: str,
                         api_key: str, provider: str, model: str,
                         profile_skills: list[str] | None = None,
@@ -2265,6 +2319,12 @@ async def tailor_resume(base_resume: str, job_description: str,
 
     # Strip <plan> block
     raw = re.sub(r'<plan>.*?</plan>', '', raw, flags=re.DOTALL).strip()
+
+    # ── Deterministic bullet trimmer (free, zero AI) ──────────────────────────
+    # Trims bullets over WORD_LIMIT words at a natural break point.
+    # Eliminates [TOO LONG] + most [MULTI-IDEA] lint failures before
+    # they hit the retry loop — saves ~$0.009 per run.
+    raw = _trim_long_bullets(raw, WORD_LIMIT)
 
     # ── Quality gate: lint → up to 3 retries, best-of-N ────────────────────
     _best_raw         = raw

@@ -99,11 +99,6 @@ const TABS = [
   { id: "cover",      label: "Cover Letter" },
 ];
 
-const DETAIL_SUBTABS = [
-  { id: "jobinfo",     label: "Job Info" },
-  { id: "companyinfo", label: "Company Info" },
-  { id: "description", label: "Job Description" },
-];
 
 const STATUS_COLORS: Record<string, string> = {
   new: "var(--st-new)", applied: "var(--st-applied)", interview: "var(--st-interview)", skipped: "#5b6377",
@@ -874,8 +869,6 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
     );
   }
 
-  const [subTab, setSubTab] = useState("jobinfo");
-
   const tabHasContent: Record<string, boolean> = {
     resume: !!(job.tailored_resume || job.fit_analysis),
     cover: !!job.cover_letter,
@@ -967,31 +960,31 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
           ))}
         </div>
 
-        {/* Sub-tabs — pill style, distinct from top tabs */}
-        {tab === "jobdetails" && (
-          <div style={{ display: "flex", gap: 6, padding: "8px 16px", background: "var(--bg-2)", borderBottom: "1px solid var(--line)" }}>
-            {DETAIL_SUBTABS.map(s => {
-              const active = subTab === s.id;
-              return (
-                <button key={s.id} onClick={() => setSubTab(s.id)} style={{
-                  fontSize: 11, fontWeight: active ? 600 : 400, height: 26,
-                  padding: "0 12px", borderRadius: 20, border: "none", cursor: "pointer",
-                  background: active ? "var(--violet)" : "var(--bg-elevated)",
-                  color: active ? "#fff" : "var(--tx-2)",
-                  transition: "all .15s",
-                }}>
-                  {s.label}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Tab content */}
-        <div className="tab-body">
-          {tab === "jobdetails" && subTab === "jobinfo"     && <JobInfoTab job={job} />}
-          {tab === "jobdetails" && subTab === "companyinfo" && <CompanyInfoTab job={job} />}
-          {tab === "jobdetails" && subTab === "description" && <DescriptionTab job={job} onUpdate={onUpdate} onToast={onToast} />}
+          {tab === "jobdetails" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              {/* Job Info + Company Info side by side */}
+              <div style={{ display: "flex", gap: 36, flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 280 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 4 }}>Job Info</div>
+                  <JobInfoTab job={job} />
+                </div>
+                <div style={{ flex: 1, minWidth: 280 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 4 }}>Company Info</div>
+                  <CompanyInfoTab job={job} />
+                </div>
+              </div>
+              {/* Job Description full width below */}
+              <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 20, marginTop: 4 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 12 }}>Job Description</div>
+                <DescriptionTab job={job} onUpdate={onUpdate} onToast={onToast} />
+              </div>
+              {/* Notes */}
+              <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 20, marginTop: 4 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 10 }}>Notes</div>
+                <NotesTab job={job} onUpdate={onUpdate} onToast={onToast} />
+              </div>
+            </div>
+          )}
           {tab === "qualify"  && <QualifyTab job={job} running={busy === "qualify" && busyJobId === job.id} onRun={() => runAction("qualify")} />}
           {tab === "resume"   && (
             <div style={{ display: "flex", flexDirection: "column" }}>

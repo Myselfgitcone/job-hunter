@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { api } from "../api";
-import type { Company } from "../types";
 import { Sparkles, Loader2, Download, X, FileText, FolderDown } from "lucide-react";
+import { CompanyAutocomplete } from "./CompanyAutocomplete";
 
 interface Props { open?: boolean; onClose: () => void; tailorModel?: string; pageMode?: boolean; }
 
@@ -16,22 +16,6 @@ export function QuickTailor({ open = true, onClose, onToast, pageMode = false }:
   const [saveMsg, setSaveMsg]         = useState("");
   const [elapsed, setElapsed]         = useState(0);
   const timerRef                       = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [companies, setCompanies]     = useState<Company[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const companyRef                     = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    api.companies.list().then(setCompanies).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (companyRef.current && !companyRef.current.contains(e.target as Node))
-        setShowSuggestions(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
 
   useEffect(() => {
     if (loading) {
@@ -119,32 +103,12 @@ export function QuickTailor({ open = true, onClose, onToast, pageMode = false }:
         <div className="flex flex-1 gap-0 overflow-hidden">
           {/* Left — input */}
           <div className="flex flex-col flex-1 p-4 border-r border-slate-700 overflow-hidden">
-            <div ref={companyRef} className="relative mb-3">
-              <input
-                type="text"
-                placeholder="Company name (e.g. Catalight Foundation)"
+            <div className="mb-3">
+              <CompanyAutocomplete
                 value={company}
-                onChange={e => { setCompany(e.target.value); setShowSuggestions(true); }}
-                onFocus={() => setShowSuggestions(true)}
+                onChange={setCompany}
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-purple-500"
               />
-              {showSuggestions && company.trim().length > 0 && (() => {
-                const q = company.toLowerCase();
-                const matches = companies.filter(c => c.name.toLowerCase().includes(q)).slice(0, 8);
-                return matches.length > 0 ? (
-                  <ul className="absolute z-50 left-0 right-0 top-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-xl overflow-hidden">
-                    {matches.map(c => (
-                      <li
-                        key={c.id}
-                        onMouseDown={() => { setCompany(c.name); setShowSuggestions(false); }}
-                        className="px-3 py-2 text-xs text-slate-300 hover:bg-slate-700 cursor-pointer"
-                      >
-                        {c.name}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null;
-              })()}
             </div>
             <label className="text-[11px] text-slate-500 mb-1.5">Paste full job description:</label>
             <textarea

@@ -144,11 +144,6 @@ function StatusDropdown({ status, onChange }: { status: string; onChange: (s: st
   );
 }
 
-// ── Job Info tab ───────────────────────────────────────────────────────────────
-function JobInfoTab({ job }: { job: Job }) {
-  const postedTs = job.posted_at || job.scraped_at || "";
-  const postedLabel = relTimeDetail(postedTs);
-  const hcOrig = (job as any).hc_original_date || "";
 // ── Job Info panel ────────────────────────────────────────────────────────────
 function JobInfoTab({ job }: { job: Job }) {
   const postedTs = job.posted_at || job.scraped_at || "";

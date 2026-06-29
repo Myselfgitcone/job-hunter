@@ -274,6 +274,13 @@ def detect_role_type(jd: str) -> str:
     if scores[IB] > 0 and scores[FINANCE] > 0 and scores[IB] >= scores[FINANCE]:
         return IB
 
+    # TECH beats FINANCE on ties — dict iteration order otherwise favors
+    # FINANCE in max(), and finance-sounding words (budget, forecast,
+    # reporting) are common in data/BI JD bodies for roles that are still
+    # data/analytics roles, not corporate finance.
+    if scores[TECH] > 0 and scores[FINANCE] > 0 and scores[TECH] >= scores[FINANCE]:
+        return TECH
+
     return best_role
 
 

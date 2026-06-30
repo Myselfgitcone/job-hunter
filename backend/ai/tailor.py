@@ -2,6 +2,7 @@ import re
 from ai.llm import chat
 from resume_lint import lint_resume, detect_role_type, BULLET_BUDGETS, BULLET_MINIMUMS, SUMMARY_EXACT
 from resume_lint import TECH, IB, FINANCE, CYBER, HEALTHCARE, CONSULTING, GENERAL
+from resume_lint import user_roles_to_role_type
 
 try:
     from resume_lint import skill_coverage_report, extract_jd_hard_skills
@@ -2233,13 +2234,19 @@ def _trim_long_bullets(resume: str, word_limit: int) -> str:
 async def tailor_resume(base_resume: str, job_description: str,
                         api_key: str, provider: str, model: str,
                         profile_skills: list[str] | None = None,
-                        secondary_model: str = "") -> str:
+                        secondary_model: str = "",
+                        user_job_roles: list[str] | None = None) -> str:
     # secondary_model: cheaper model for reviewer, tier audit, correction, retries.
     # Falls back to main model if not set.
     _sec = secondary_model or model
 
-    # Detect role type up front so _enforce_limits uses the right budget
-    role_type = detect_role_type(job_description)
+    # Detect role type — user's selected job roles take priority over JD body scan.
+    # This prevents a Data Analyst user from getting FINANCE bullets when the JD
+    # contains financial-domain language (budget, forecast, reporting).
+    role_type = (
+        user_roles_to_role_type(user_job_roles or [])
+        or detect_role_type(job_description)
+    )
     budget    = BULLET_BUDGETS[role_type]
     minimums  = BULLET_MINIMUMS.get(role_type, (0, 0, 0, 0))
     hard_total = budget[5]

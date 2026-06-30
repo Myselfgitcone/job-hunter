@@ -31,6 +31,48 @@ HEALTHCARE  = "HEALTHCARE"
 CONSULTING  = "CONSULTING"
 GENERAL     = "GENERAL"
 
+# Map user-selected job role labels → resume role type.
+# All data/tech/analytics roles map to TECH.
+_USER_ROLE_MAP: dict[str, str] = {
+    "data engineer":        TECH,
+    "data analyst":         TECH,
+    "business analyst":     TECH,
+    "bi":                   TECH,
+    "bi analyst":           TECH,
+    "bi developer":         TECH,
+    "analytics engineer":   TECH,
+    "data scientist":       TECH,
+    "data architect":       TECH,
+    "ml engineer":          TECH,
+    "software engineer":    TECH,
+    "project manager":      TECH,
+    "java":                 TECH,
+    "investment banking":   IB,
+    "ib":                   IB,
+    "finance":              FINANCE,
+    "fp&a":                 FINANCE,
+    "cybersecurity":        CYBER,
+    "cyber":                CYBER,
+    "security":             CYBER,
+    "healthcare":           HEALTHCARE,
+    "consulting":           CONSULTING,
+}
+
+
+def user_roles_to_role_type(job_roles: list[str]) -> str | None:
+    """
+    Convert user-selected job role labels to a resume role type.
+    Returns the mapped type if all roles agree on one type, else None
+    (caller should fall back to JD-based detection).
+    """
+    if not job_roles:
+        return None
+    mapped = {_USER_ROLE_MAP.get(r.lower().strip()) for r in job_roles}
+    mapped.discard(None)
+    if len(mapped) == 1:
+        return mapped.pop()
+    return None
+
 
 # ── Per-role bullet budgets ────────────────────────────────────────────────────
 # (most_recent, second, third, fourth_plus, summary, hard_total)
@@ -214,24 +256,38 @@ _TITLE_SIGNALS: list[tuple[re.Pattern, str]] = [
 ]
 
 
+_TITLE_ROLE_RE = re.compile(
+    r"\b(analyst|engineer|developer|architect|manager|specialist|coordinator|"
+    r"associate|consultant|scientist|administrator|director|lead|officer|"
+    r"designer|strategist|advisor)\b",
+    re.I,
+)
+
 def _extract_jd_title(jd: str) -> str:
     """
-    Extract the job title from the JD.
-    Most ATS-sourced JDs have the title on line 1 or 2.
-    Returns the first non-empty line that is ≤12 words (titles are short).
-    Falls back to the first 120 chars if no short line found.
+    Extract the job title from the first 10 lines of the JD.
+
+    Strategy (priority order):
+    1. First short line (≤12 words) that contains a role-indicator word — catches
+       JDs that open with a company name line before the actual job title.
+    2. First short line regardless of content — fallback for unconventional formats.
+    3. First 120 chars of the JD.
     """
-    for line in jd.strip().splitlines()[:5]:
-        line = line.strip()
-        if not line:
-            continue
-        # Skip lines that look like company boilerplate ("About Us", "Who We Are", URLs)
-        if re.match(r"^(about|who we|our company|careers|apply|https?://)", line, re.I):
-            continue
-        # Titles are typically ≤12 words
+    lines = [l.strip() for l in jd.strip().splitlines()[:10] if l.strip()]
+    # Skip obvious boilerplate
+    lines = [
+        l for l in lines
+        if not re.match(r"^(about|who we|our company|careers|apply|https?://)", l, re.I)
+    ]
+    # Pass 1: prefer a short line that looks like a job title (has role word)
+    for line in lines:
+        if len(line.split()) <= 12 and _TITLE_ROLE_RE.search(line):
+            return line
+    # Pass 2: any short line
+    for line in lines:
         if len(line.split()) <= 12:
             return line
-    # Fallback: first 120 chars
+    # Pass 3: raw fallback
     return jd.strip()[:120]
 
 

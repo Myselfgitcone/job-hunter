@@ -698,10 +698,8 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
           {openAI && <><label className="field">
             <span className="field-label">Provider</span>
             <div className="seg-tabs">
-              {Object.keys(AI_PROVIDERS).map(p => (
-                <button key={p} className={provider === p ? "on" : ""}
-                  onClick={() => setProvider(p)}>{p}</button>
-              ))}
+              <button className={provider === "OpenRouter" ? "on" : ""}
+                onClick={() => setProvider("OpenRouter")}>OpenRouter</button>
             </div>
           </label>
           <div className="field-grid">
@@ -719,7 +717,7 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
           <div style={{ margin: '14px 0 6px', fontSize: 12, fontWeight: 600, color: 'var(--tx-2)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
             Direct API Keys <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--tx-3)' }}>— no 5.5% service fee · auto-used when set</span>
           </div>
-          <div className="field-grid">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
             <label className="field">
               <span className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 Anthropic Key
@@ -729,7 +727,7 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
                 <input type={showAnthropicKey ? "text" : "password"} value={anthropicKey} onChange={e => setAnthropicKey(e.target.value)} placeholder="sk-ant-…" />
                 <button onClick={() => setShowAnthropicKey(s => !s)}>{showAnthropicKey ? "Hide" : "Show"}</button>
               </div>
-              <a className="field-link" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">Get Anthropic key → (for claude-* models)</a>
+              <a className="field-link" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">Get key → (claude-*)</a>
             </label>
             <label className="field">
               <span className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -740,7 +738,7 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
                 <input type={showGoogleKey ? "text" : "password"} value={googleKey} onChange={e => setGoogleKey(e.target.value)} placeholder="AIza…" />
                 <button onClick={() => setShowGoogleKey(s => !s)}>{showGoogleKey ? "Hide" : "Show"}</button>
               </div>
-              <a className="field-link" href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Get Google AI key → (for gemini-* models)</a>
+              <a className="field-link" href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Get key → (gemini-*)</a>
             </label>
             <label className="field">
               <span className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -751,7 +749,7 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
                 <input type={showOpenaiKey ? "text" : "password"} value={openaiKey} onChange={e => setOpenaiKey(e.target.value)} placeholder="sk-…" />
                 <button onClick={() => setShowOpenaiKey(s => !s)}>{showOpenaiKey ? "Hide" : "Show"}</button>
               </div>
-              <a className="field-link" href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">Get OpenAI key → (for gpt-* models)</a>
+              <a className="field-link" href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">Get key → (gpt-*)</a>
             </label>
           </div>
           <div className="field-grid" style={{ marginTop: 12 }}>

@@ -3206,6 +3206,8 @@ async def get_analytics(user_id: str = Depends(get_current_user_id),
         "monthly":    monthly,
         "applied_jobs":       sorted(applied_jobs,  key=lambda j: j.get("tailored_at") or j.get("applied_at") or "", reverse=True)[:50],
         "tailored_jobs":      sorted(tailored_jobs, key=lambda j: j.get("tailored_at") or "", reverse=True)[:50],
+        "applied_total":      len(applied_jobs),
+        "tailored_total":     len(tailored_jobs),
         "quick_tailored_jobs": quick_tailored_jobs,
     }
 
@@ -4153,6 +4155,25 @@ async def admin_users_analytics(user_id: str = Depends(get_current_user_id)):
             )
             job_count = cnt_r.scalar() or 0
 
+            # True totals — unaffected by the display-list limits below
+            tail_cnt_r = await db.execute(
+                select(func.count()).select_from(UserJob)
+                .where(UserJob.user_id == u.id, UserJob.tailored_resume.isnot(None))
+            )
+            tailored_total = tail_cnt_r.scalar() or 0
+
+            qt_cnt_r = await db.execute(
+                select(func.count()).select_from(QuickTailorHistory)
+                .where(QuickTailorHistory.user_id == u.id)
+            )
+            quick_tailored_total = qt_cnt_r.scalar() or 0
+
+            applied_cnt_r = await db.execute(
+                select(func.count()).select_from(UserJob)
+                .where(UserJob.user_id == u.id, UserJob.status == "applied")
+            )
+            applied_total = applied_cnt_r.scalar() or 0
+
             # Tailored resumes (job tailor)
             tail_r = await db.execute(
                 select(Job, UserJob)
@@ -4211,6 +4232,8 @@ async def admin_users_analytics(user_id: str = Depends(get_current_user_id)):
                 "job_count": job_count,
                 "tailored": tailored + quick_tailored,
                 "applied": applied,
+                "tailored_total": tailored_total + quick_tailored_total,
+                "applied_total": applied_total,
             })
 
     return result

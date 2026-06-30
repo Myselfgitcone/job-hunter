@@ -591,11 +591,15 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
   // Map API data to design shape
   const st      = data.by_status || {};
   const total   = data.total || 0;
-  const applied = st["applied"]   || 0;
+  const allUsersTailoredTotal = usersData.reduce((sum: number, u: any) => sum + (u.tailored_total ?? (u.tailored || []).length), 0);
+  const allUsersAppliedTotal  = usersData.reduce((sum: number, u: any) => sum + (u.applied_total  ?? (u.applied  || []).length), 0);
+  const applied = isAdmin ? allUsersAppliedTotal : (st["applied"] || 0);
   const interview = st["interview"] || 0;
   const skipped = st["skipped"]   || 0;
   const newJobs = st["new"]       || 0;
-  const tailored = (data.tailored_jobs || []).length;
+  const tailored = isAdmin
+    ? allUsersTailoredTotal
+    : (data.tailored_total ?? (data.tailored_jobs || []).length);
 
   const today = new Date().toISOString().slice(0, 10);
   const todayEntry = (data.timeline || []).find((d: any) => d.date === today);

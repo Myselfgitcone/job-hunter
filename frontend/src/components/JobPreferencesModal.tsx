@@ -298,10 +298,12 @@ export default function JobPreferencesModal({
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       try {
-        const s = settingsRef.current || {};
+        const s = { ...(settingsRef.current || {}) };
+        delete (s as any).job_roles;       // never re-send the admin grant from a non-admin save
+        delete (s as any).active_job_roles;
         const patch = isAdmin ? { job_roles: roles } : { active_job_roles: roles };
         await api.saveSettings({ ...s, ...patch } as any);
-        onSaved({ ...s, ...patch });
+        onSaved({ ...settingsRef.current, ...patch });
         setSaveState("saved");
       } catch {
         setSaveState("idle");

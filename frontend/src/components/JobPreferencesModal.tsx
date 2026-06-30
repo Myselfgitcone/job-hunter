@@ -41,6 +41,7 @@ export const ROLE_GROUPS: { group: string; items: string[] }[] = [
   // "Data Analyst" chip = wide net: any title with both data + analyst
   { group: "Data Analyst",          items: ["Data Analyst", "Data Analytics", "Analytics Engineer", "Reporting Analyst", "Business Analyst"] },
   { group: "Business Intelligence", items: ["Business Intelligence", "BI Developer", "BI Analyst", "BI Engineer", "Power BI", "Tableau"] },
+  { group: "Project Manager",       items: ["Project Manager"] },
   // DevOps/SRE + Security scraping disabled — uncomment here AND in
   // backend/scrapers/fantasticjobs.py TITLE_FILTER to re-enable
   // { group: "DevOps / SRE",          items: ["DevOps", "SRE", "Site Reliability", "Platform Engineer", "Cloud Engineer"] },

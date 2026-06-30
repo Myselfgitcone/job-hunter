@@ -1414,6 +1414,7 @@ _ROLE_FAMILY_ITEMS: dict[str, set[str]] = {
                       "reporting analyst", "business analyst"},
     "Business Intelligence": {"business intelligence", "bi developer", "bi analyst",
                                "bi engineer", "power bi", "tableau"},
+    "Project Manager": {"project manager"},
 }
 
 

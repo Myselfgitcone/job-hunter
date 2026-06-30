@@ -847,6 +847,49 @@ def extract_jd_keywords_dynamic(jd_text: str) -> list[str]:
     return _dyn_remove_components(filtered)
 
 
+# Business-domain jargon that belongs to a specific role type — not transferable
+# tools/technologies. When the candidate's role type is locked (from their job
+# preference) and doesn't match the JD's natural domain, these get dropped from
+# the "must cover" skill list so the AI isn't forced to inject finance/clinical
+# KPI language into an unrelated resume (e.g. a Data Analyst applying to a
+# healthcare-titled JD shouldn't get "Medicaid"/"FP&A" as required skills).
+_DOMAIN_LOCKED_TERMS: dict[str, set[str]] = {
+    FINANCE:    {"fp&a", "p&l", "accounting", "financial modeling", "budget variance",
+                 "month-end close", "board-ready", "treasury", "variance analysis",
+                 "reconciliation", "general ledger", "gaap"},
+    HEALTHCARE: {"medicaid", "medicare", "cms", "claims adjudication", "care coordination",
+                 "clinical operations", "patient panel", "ehr", "emr", "icd-10", "cpt"},
+    IB:         {"m&a", "leveraged finance", "ecm", "dcm", "capital markets", "deal execution"},
+}
+
+
+_DOMAIN_LEAK_PHRASES: dict[str, list[str]] = {
+    FINANCE:    ["fp&a", "p&l", "board-ready", "month-end close", "budget variance",
+                 "variance analysis", "general ledger", "gaap", "treasury"],
+    HEALTHCARE: ["medicaid", "medicare", "\\bcms\\b", "claims adjudication",
+                 "care coordination", "patient panel", "\\behr\\b", "\\bemr\\b", "icd-10"],
+    IB:         ["leveraged finance", "capital markets", "deal execution", "\\bm&a\\b"],
+}
+
+
+def detect_domain_leak(text: str, role_type: str) -> list[str]:
+    """
+    Flags finance/healthcare/IB business-domain jargon that doesn't belong in a
+    resume locked to a different role type — even when the JD's employer is in
+    that domain. Catches phrasing the model echoes straight from JD body text
+    (not just extracted "hard skills").
+    """
+    issues: list[str] = []
+    for domain, phrases in _DOMAIN_LEAK_PHRASES.items():
+        if domain == role_type:
+            continue
+        for phrase in phrases:
+            if re.search(phrase, text, re.IGNORECASE):
+                shown = phrase.replace("\\b", "")
+                issues.append(f"[DOMAIN LEAK] '{shown}' is {domain}-specific jargon — not allowed when role type is {role_type}.")
+    return issues
+
+
 def extract_jd_hard_skills(job_description: str, role_type: Optional[str] = None) -> list[str]:
     """
     Hybrid: dynamic extraction (primary) with catalog fallback for thin JDs.
@@ -854,7 +897,14 @@ def extract_jd_hard_skills(job_description: str, role_type: Optional[str] = None
     """
     if not job_description:
         return []
-    return extract_jd_keywords_dynamic(job_description)
+    skills = extract_jd_keywords_dynamic(job_description)
+    if role_type:
+        blocked: set[str] = set()
+        for rt, terms in _DOMAIN_LOCKED_TERMS.items():
+            if rt != role_type:
+                blocked |= terms
+        skills = [s for s in skills if s.lower() not in blocked]
+    return skills
 
 
 def _dynamic_coverage_pattern(skill: str) -> str:

@@ -1,6 +1,6 @@
 import re
 from ai.llm import chat
-from resume_lint import lint_resume, detect_role_type, BULLET_BUDGETS, BULLET_MINIMUMS, SUMMARY_EXACT
+from resume_lint import lint_resume, detect_role_type, detect_domain_leak, BULLET_BUDGETS, BULLET_MINIMUMS, SUMMARY_EXACT
 from resume_lint import TECH, IB, FINANCE, CYBER, HEALTHCARE, CONSULTING, GENERAL
 from resume_lint import user_roles_to_role_type
 
@@ -1332,6 +1332,7 @@ DOMAIN BRIDGE (optional): If candidate's background ≠ target company's domain,
 ✗ NEVER write a gap bullet if all 5 anchors can't be satisfied
 ✗ NEVER mirror the JD's exact feature list as a skills line
 ✗ NEVER inject the JD's domain vocabulary into a different-domain employer's bullet
+✗ NEVER use finance-specific KPIs (FP&A, P&L, budget variance, month-end close, board-ready reporting, reconciliation) or clinical/regulatory program names (Medicaid, Medicare, CMS, claims adjudication, care coordination, patient panel) in any bullet or skills line when ROLE TYPE is not FINANCE/HEALTHCARE — even if the JD's employer is a bank or healthcare company. Describe the underlying data/technical work only (e.g. "ingested claims and eligibility data" not "validated Medicaid/Medicare compliance reporting")
 ✗ NEVER drop a license, certification, or deal from the original resume
 ✗ NEVER write a CERTIFICATIONS or LICENSES & CERTIFICATIONS section containing "None", "N/A", or any placeholder — omit the section entirely if the candidate has no certs
 ✗ NEVER exceed the bullet budget for this role type
@@ -2173,6 +2174,7 @@ _RETRY_RULES = {
     "[LOW JD SKILL VISIBILITY]": "Add 1–3 missing skills via the correct tier: WORK-SUPPORTED bullet, ADJACENT-STRETCH bullet (max 1/job, 2 total), or SELF-IMPLEMENTABLE/HIGH-RISK skills-project wording. Visibility-only placement is acceptable — never force a production claim.",
     "[PROFILE SKILL DROPPED]":   "These skills exist in the candidate's original resume and are WORK-SUPPORTED. Add each back: write a real bullet in the most relevant job, add to that job's Technologies Used, add to Technical Skills. Do not omit because JD listed them as 'or' alternatives.",
     "[YEARS MISMATCH]":          "Use the exact years-of-experience number from the ORIGINAL RESUME — do not inflate or deflate it.",
+    "[DOMAIN LEAK]":             "Remove this phrase entirely and rewrite the bullet using neutral technical/data language only — do not reference the JD employer's specific business domain (finance KPIs, clinical/regulatory program names) when it doesn't match the locked role type.",
     "[YEARS FABRICATED]":        "The original resume has no years-of-experience claim in the summary. Remove the years number entirely — do not invent one.",
     "[UNSUPPORTED EXPERIENCE CLAIM]": "Remove or rewrite the summary claim to only reflect experience types supported by the work bullets below it.",
 }
@@ -2326,10 +2328,11 @@ async def tailor_resume(base_resume: str, job_description: str,
 
     # ── Quality gate: lint → up to 3 retries, best-of-N ────────────────────
     _best_raw         = raw
-    _best_issue_count = len(lint_resume(raw, job_description, base_resume=base_resume))
+    _best_issue_count = len(lint_resume(raw, job_description, base_resume=base_resume)) + len(detect_domain_leak(raw, role_type))
 
     for attempt in range(3):
         issues = lint_resume(raw, job_description, base_resume=base_resume)
+        issues += detect_domain_leak(raw, role_type)
 
         if len(issues) <= _best_issue_count:
             _best_issue_count = len(issues)
@@ -2403,7 +2406,7 @@ async def tailor_resume(base_resume: str, job_description: str,
 
 
     # Best-of-N final check
-    final_issues = lint_resume(raw, job_description, base_resume=base_resume)
+    final_issues = lint_resume(raw, job_description, base_resume=base_resume) + detect_domain_leak(raw, role_type)
     if len(final_issues) < _best_issue_count:
         _best_raw = raw
         _best_issue_count = len(final_issues)

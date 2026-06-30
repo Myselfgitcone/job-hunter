@@ -4,14 +4,31 @@ backend/__pycache__/
 backend/**/__pycache__/
 backend/*.pyc
 backend/.env
+backend/.env_run
 
-# Database (fresh on server)
+# Database files (fresh on server)
 backend/jobs.db
+backend/job_hunter.db
+jobs.db
+dump.json
 
 # Frontend
 frontend/node_modules/
 frontend/dist/
 
+# Local scratch/test scripts (contain secrets)
+scratch_*.py
+backend/run_*.py
+backend/test_*.py
+backend/set_*.py
+backend/measure_*.py
+backend/find_*.py
+backend/*_out.txt
+backend/proof_*.txt
+backend/pipeline_out.txt
+backend/preview_output.pdf
+
 # Misc
 .DS_Store
 *.log
+preview-ui.html

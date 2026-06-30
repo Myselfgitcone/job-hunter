@@ -126,7 +126,8 @@ class UserSettings(Base):
     __tablename__ = "user_settings"
     user_id              = Column(String, primary_key=True)  # references users.id
     resume               = Column(Text, default="")
-    job_roles            = Column(Text, default='["Data Engineer"]')   # JSON array
+    job_roles            = Column(Text, default='["Data Engineer"]')   # JSON array — admin-granted set
+    active_job_roles     = Column(Text, default="")   # JSON array — non-admin's current single-family pick, subset of job_roles
     countries            = Column(Text, default='["USA", "Remote"]')   # JSON array
     visa_filter          = Column(Boolean, default=False)   # True = hide no-sponsorship
     level_filter         = Column(Boolean, default=False)   # True = hide overqualified

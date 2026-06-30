@@ -590,6 +590,7 @@ async def startup():
         ("user_settings", "telegram_chat_id",   "VARCHAR"),
         ("user_settings", "role_request",        "TEXT"),
         ("user_settings", "ai_model_secondary",  "VARCHAR"),
+        ("user_settings", "active_job_roles",    "TEXT"),
     ]
     try:
         for table, col, typedef in new_columns:
@@ -1283,6 +1284,8 @@ async def _get_user_settings(user_id: str) -> dict:
 
         profile_name_val = (s.profile_name or "") if s else ""
         job_roles_val = json.loads(s.job_roles or "[]") if s else []
+        active_roles_val = (json.loads(s.active_job_roles or "[]") if s and s.active_job_roles else [])
+        effective_roles_val = active_roles_val or job_roles_val
 
         # Build candidate full name from the JSON profile (first_name + last_name),
         # NOT from UserSettings.profile_name (which is the account display name, e.g. "Admin").
@@ -1306,7 +1309,7 @@ async def _get_user_settings(user_id: str) -> dict:
             "ai_model_qualify": ai_source.ai_model_qualify if ai_source else "",
             "ai_model_cover_letter": ai_source.ai_model_cover_letter if ai_source else "",
             "profile_name": profile_name_val,
-            "job_roles": job_roles_val,
+            "job_roles": effective_roles_val,
         }
 
 
@@ -1334,6 +1337,7 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
         data = {
             "resume": resume_val,
             "job_roles": json.loads(s.job_roles or '["Data Engineer"]'),
+            "active_job_roles": (json.loads(s.active_job_roles) if s.active_job_roles else []),
             "countries": json.loads(s.countries or '["USA","Remote"]'),
             "visa_filter": bool(s.visa_filter),
             "level_filter": bool(s.level_filter),
@@ -1400,6 +1404,35 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
         return data
 
 
+# Mirrors ROLE_GROUPS in frontend/src/components/JobPreferencesModal.tsx —
+# used to enforce "one family active at a time" for non-admin users.
+_ROLE_FAMILY_ITEMS: dict[str, set[str]] = {
+    "Data Engineer": {"data engineer", "etl developer", "data platform", "data warehouse",
+                       "data architect", "database engineer", "database developer",
+                       "sql developer", "software engineer (data)"},
+    "Data Analyst": {"data analyst", "data analytics", "analytics engineer",
+                      "reporting analyst", "business analyst"},
+    "Business Intelligence": {"business intelligence", "bi developer", "bi analyst",
+                               "bi engineer", "power bi", "tableau"},
+}
+
+
+def _roles_families(roles: list[str]) -> set[str]:
+    """Returns every distinct family touched by these role labels.
+    Unmapped/custom labels are ignored (they don't trigger a conflict)."""
+    families: set[str] = set()
+    for r in roles:
+        rl = r.lower().strip()
+        if "java" in rl:
+            families.add("Java")
+            continue
+        for fam, items in _ROLE_FAMILY_ITEMS.items():
+            if rl in items:
+                families.add(fam)
+                break
+    return families
+
+
 @app.put("/api/settings")
 async def update_settings(body: dict = Body(...), user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
@@ -1408,6 +1441,23 @@ async def update_settings(body: dict = Body(...), user_id: str = Depends(get_cur
         if not s:
             s = UserSettings(user_id=user_id)
             db.add(s)
+
+        if "job_roles" in body or "active_job_roles" in body:
+            user_res = await db.execute(select(User).where(User.id == user_id))
+            u = user_res.scalar_one_or_none()
+            is_admin = bool(u and u.email.lower() == ADMIN_EMAIL.lower())
+
+            if "job_roles" in body and not is_admin:
+                raise HTTPException(403, "Only an admin can change granted job roles.")
+
+            if "active_job_roles" in body:
+                new_roles = body["active_job_roles"] if isinstance(body["active_job_roles"], list) else [body["active_job_roles"]]
+                if len(_roles_families(new_roles)) > 1:
+                    raise HTTPException(400, "Only one job preference can be active at a time. Choose one family (e.g. Data Engineer OR Data Analyst), not multiple.")
+                granted = set(r.lower().strip() for r in json.loads(s.job_roles or "[]"))
+                if granted and not set(r.lower().strip() for r in new_roles).issubset(granted):
+                    raise HTTPException(400, "You can only select roles your admin has granted you access to.")
+                s.active_job_roles = json.dumps(new_roles)
         for field in ["resume", "ai_provider", "ai_model_parse", "ai_model_tailor", "ai_model_secondary", "ai_model_qualify", "ai_model_cover_letter",
                        "profile_name", "profile_visa",
                        "profile_phone", "profile_address", "profile_linkedin",
@@ -1423,7 +1473,14 @@ async def update_settings(body: dict = Body(...), user_id: str = Depends(get_cur
                 setattr(s, field, val)
 
         if "job_roles" in body:
-            s.job_roles = json.dumps(body["job_roles"] if isinstance(body["job_roles"], list) else [body["job_roles"]])
+            new_grant = body["job_roles"] if isinstance(body["job_roles"], list) else [body["job_roles"]]
+            s.job_roles = json.dumps(new_grant)
+            # Drop a stale active pick that's no longer covered by the new grant
+            if s.active_job_roles:
+                grant_set = set(r.lower().strip() for r in new_grant)
+                active = json.loads(s.active_job_roles)
+                if not set(r.lower().strip() for r in active).issubset(grant_set):
+                    s.active_job_roles = ""
         if "countries" in body:
             s.countries = json.dumps(body["countries"] if isinstance(body["countries"], list) else [body["countries"]])
         if "visa_filter" in body:
@@ -1986,6 +2043,11 @@ async def admin_update_user(target_id: str, body: dict = Body(...),
             s = s_res.scalar_one_or_none()
             if s:
                 s.job_roles = json.dumps(body["job_roles"])
+                if s.active_job_roles:
+                    grant_set = set(r.lower().strip() for r in body["job_roles"])
+                    active = json.loads(s.active_job_roles)
+                    if not set(r.lower().strip() for r in active).issubset(grant_set):
+                        s.active_job_roles = ""
             else:
                 db.add(UserSettings(user_id=target_id, job_roles=json.dumps(body["job_roles"])))
         if body.get("grant_role_request"):

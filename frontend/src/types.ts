@@ -101,6 +101,7 @@ export interface Settings {
 export interface UserSettings {
   resume: string;
   job_roles: string[];
+  active_job_roles?: string[];
   countries: string[];
   visa_filter: boolean;
   level_filter: boolean;

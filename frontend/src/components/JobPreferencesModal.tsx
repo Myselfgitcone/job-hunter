@@ -63,15 +63,24 @@ export const ROLE_GROUPS: { group: string; items: string[] }[] = [
   ] },
 ];
 
-// Hierarchical selector: group header click = select/deselect entire family
-function RoleGroupSelector({ selected, onChange, allowedGroups, readOnly = false }: { selected: string[]; onChange: (v: string[]) => void; allowedGroups?: string[]; readOnly?: boolean }) {
+// Hierarchical selector: group header click = select/deselect entire family.
+// singleSelect (non-admin): clicking a family replaces the entire selection
+// with that family's items — only one family active at a time. Cannot
+// deselect down to zero; pick a different family instead.
+function RoleGroupSelector({ selected, onChange, allowedGroups, readOnly = false, singleSelect = false }: { selected: string[]; onChange: (v: string[]) => void; allowedGroups?: string[]; readOnly?: boolean; singleSelect?: boolean }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const toggleItem = (it: string) => {
-    if (readOnly) return;
+    if (readOnly || singleSelect) return;
     onChange(selected.includes(it) ? selected.filter(x => x !== it) : [...selected, it]);
   };
   const toggleGroup = (g: { group: string; items: string[] }) => {
     if (readOnly) return;
+    if (singleSelect) {
+      const allOn = g.items.every(i => selected.includes(i));
+      if (allOn) return; // already the sole active family — must pick a different one to switch
+      onChange([...g.items]);
+      return;
+    }
     const allOn = g.items.every(i => selected.includes(i));
     if (allOn) onChange(selected.filter(x => !g.items.includes(x)));
     else onChange([...selected, ...g.items.filter(i => !selected.includes(i))]);
@@ -104,6 +113,9 @@ function RoleGroupSelector({ selected, onChange, allowedGroups, readOnly = false
                 {readOnly && (
                   <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--tx-3)", fontWeight: 500 }}>assigned by admin</span>
                 )}
+                {singleSelect && allOn && (
+                  <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--violet)", fontWeight: 700 }}>active</span>
+                )}
               </button>
               <button onClick={() => setOpen(o => ({ ...o, [g.group]: !isOpen }))}
                 style={{ background: "none", border: "none", cursor: "pointer", padding: "9px 12px", color: "var(--tx-3)", display: "flex" }}>
@@ -116,8 +128,8 @@ function RoleGroupSelector({ selected, onChange, allowedGroups, readOnly = false
                 {g.items.map(it => {
                   const on = selected.includes(it);
                   return (
-                    <button key={it} onClick={() => toggleItem(it)}
-                      style={{ fontSize: 12, fontWeight: 500, padding: "4px 11px", borderRadius: 999, cursor: readOnly ? "default" : "pointer",
+                    <button key={it} onClick={() => toggleItem(it)} disabled={singleSelect}
+                      style={{ fontSize: 12, fontWeight: 500, padding: "4px 11px", borderRadius: 999, cursor: (readOnly || singleSelect) ? "default" : "pointer",
                         border: on ? "1px solid rgba(124,58,237,0.4)" : "1px dashed var(--line-hi)",
                         background: on ? "var(--grad-soft)" : "transparent",
                         color: on ? "var(--violet)" : "var(--tx-3)" }}>
@@ -238,8 +250,9 @@ export default function JobPreferencesModal({
         if (!s) return;
         settingsRef.current = s;
         const r = Array.isArray(s.job_roles) ? s.job_roles : JSON.parse(s.job_roles || "[]");
-        setRoles(r);
-        // Lock non-admins to families present in their assigned roles
+        const active = Array.isArray(s.active_job_roles) ? s.active_job_roles : [];
+        setRoles(isAdmin ? r : (active.length ? active : r));
+        // Lock non-admins to families present in their admin-granted roles (full grant, unaffected by their active pick)
         allowedFamiliesRef.current = ROLE_GROUPS
           .filter(g => g.items.some(i => r.includes(i)))
           .map(g => g.group);
@@ -263,16 +276,18 @@ export default function JobPreferencesModal({
     }
   }, [open]);
 
-  // Auto-save: debounce 600ms after any role change (admin only — non-admin roles are read-only)
+  // Auto-save: debounce 600ms after any role change.
+  // Non-admins can now switch between admin-granted families (one at a time).
   useEffect(() => {
-    if (!open || loading || !loadedRef.current || !isAdmin) return;
+    if (!open || loading || !loadedRef.current) return;
     setSaveState("saving");
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       try {
         const s = settingsRef.current || {};
-        await api.saveSettings({ ...s, job_roles: roles } as any);
-        onSaved({ ...s, job_roles: roles });
+        const patch = isAdmin ? { job_roles: roles } : { active_job_roles: roles };
+        await api.saveSettings({ ...s, ...patch } as any);
+        onSaved({ ...s, ...patch });
         setSaveState("saved");
       } catch {
         setSaveState("idle");
@@ -344,8 +359,13 @@ export default function JobPreferencesModal({
                 selected={roles}
                 onChange={setRoles}
                 allowedGroups={isAdmin ? undefined : allowedFamiliesRef.current}
-                readOnly={!isAdmin}
+                singleSelect={!isAdmin}
               />
+              {!isAdmin && allowedFamiliesRef.current.length > 1 && (
+                <div style={{ fontSize: 12, color: "var(--tx-3)", padding: "2px 0" }}>
+                  Pick one — only one job preference can be active at a time.
+                </div>
+              )}
             </div>
           )}
         </div>

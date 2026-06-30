@@ -365,9 +365,26 @@ export default function App() {
     };
     const list = jobs.filter(j => {
       // 1. Base Pool (Job Preferences)
-      const rawRoles = userSettings?.job_roles;
+      // Admins see jobs across their whole grant; non-admins are restricted to
+      // their single active family pick (active_job_roles), not the full grant.
+      const _baseIsAdmin = currentUser?.email?.toLowerCase() === "jaggubhai8766@gmail.com";
+      const grantRoles = userSettings?.job_roles
+        ? (Array.isArray(userSettings.job_roles) ? userSettings.job_roles : JSON.parse(userSettings.job_roles || "[]"))
+        : [];
+      let rawRoles: string[] = grantRoles;
+      if (!_baseIsAdmin) {
+        const activeRoles = userSettings?.active_job_roles && userSettings.active_job_roles.length
+          ? userSettings.active_job_roles
+          : null;
+        if (activeRoles) {
+          rawRoles = activeRoles;
+        } else {
+          const firstGroup = ROLE_GROUPS.find(g => g.items.some((i: string) => grantRoles.includes(i)));
+          rawRoles = firstGroup ? firstGroup.items : grantRoles;
+        }
+      }
       if (rawRoles) {
-        const roles: string[] = Array.isArray(rawRoles) ? rawRoles : JSON.parse(rawRoles || "[]");
+        const roles: string[] = rawRoles;
         if (roles.length > 0) {
           const title = j.title.toLowerCase();
           const desc = (j.description || "").toLowerCase();

@@ -695,63 +695,76 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
           <div className="section-label" style={{ cursor: "pointer" }} onClick={() => setOpenAI(o => !o)}>
             <Ic d={I.sparkles} size={16} /> AI Configuration<Chevron open={openAI} />
           </div>
-          {openAI && <><label className="field">
-            <span className="field-label">Provider</span>
-            <div className="seg-tabs">
-              <button className={provider === "OpenRouter" ? "on" : ""}
-                onClick={() => setProvider("OpenRouter")}>OpenRouter</button>
-            </div>
-          </label>
-          <div className="field-grid">
+          {openAI && <>
+          {/* ── API Keys ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+            {/* OpenRouter — fallback */}
             <label className="field">
-              <span className="field-label">OpenRouter Key <span style={{fontSize:10,color:"#94a3b8",fontWeight:400}}>(fallback)</span></span>
+              <span className="field-label">
+                OpenRouter Key
+                <span style={{ marginLeft: 6, fontSize: 10, color: '#94a3b8', fontWeight: 400 }}>(fallback — used when direct keys not set)</span>
+              </span>
               <div className="input-reveal">
                 <input type={showKey ? "text" : "password"} value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-or-…" />
                 <button onClick={() => setShowKey(s => !s)}>{showKey ? "Hide" : "Show"}</button>
               </div>
-              <a className="field-link" href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">Get OpenRouter key →</a>
+              <a className="field-link" href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">Get key → openrouter.ai</a>
             </label>
-          </div>
 
-          {/* Direct provider keys — no service fees */}
-          <div style={{ margin: '14px 0 6px', fontSize: 12, fontWeight: 600, color: 'var(--tx-2)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-            Direct API Keys <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--tx-3)' }}>— no 5.5% service fee · auto-used when set</span>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+            {/* Divider */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0' }}>
+              <div style={{ flex: 1, height: 1, background: 'var(--border, #e2e8f0)' }} />
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--tx-2)', letterSpacing: '0.07em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                Direct API Keys — no 5.5% service fee, auto-used when set
+              </span>
+              <div style={{ flex: 1, height: 1, background: 'var(--border, #e2e8f0)' }} />
+            </div>
+
+            {/* Anthropic */}
             <label className="field">
               <span className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 Anthropic Key
-                {anthropicKey && <span style={{ fontSize: 10, background: '#10b981', color: '#fff', borderRadius: 4, padding: '1px 5px' }}>ACTIVE</span>}
+                <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 400 }}>→ claude-* models</span>
+                {anthropicKey && <span style={{ fontSize: 10, background: '#10b981', color: '#fff', borderRadius: 4, padding: '1px 6px', marginLeft: 4 }}>ACTIVE</span>}
               </span>
               <div className="input-reveal">
                 <input type={showAnthropicKey ? "text" : "password"} value={anthropicKey} onChange={e => setAnthropicKey(e.target.value)} placeholder="sk-ant-…" />
                 <button onClick={() => setShowAnthropicKey(s => !s)}>{showAnthropicKey ? "Hide" : "Show"}</button>
               </div>
-              <a className="field-link" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">Get key → (claude-*)</a>
+              <a className="field-link" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">Get key → console.anthropic.com</a>
             </label>
+
+            {/* Google */}
             <label className="field">
               <span className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 Google AI Key
-                {googleKey && <span style={{ fontSize: 10, background: '#10b981', color: '#fff', borderRadius: 4, padding: '1px 5px' }}>ACTIVE</span>}
+                <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 400 }}>→ gemini-* models</span>
+                {googleKey && <span style={{ fontSize: 10, background: '#10b981', color: '#fff', borderRadius: 4, padding: '1px 6px', marginLeft: 4 }}>ACTIVE</span>}
               </span>
               <div className="input-reveal">
                 <input type={showGoogleKey ? "text" : "password"} value={googleKey} onChange={e => setGoogleKey(e.target.value)} placeholder="AIza…" />
                 <button onClick={() => setShowGoogleKey(s => !s)}>{showGoogleKey ? "Hide" : "Show"}</button>
               </div>
-              <a className="field-link" href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Get key → (gemini-*)</a>
+              <a className="field-link" href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Get key → aistudio.google.com</a>
             </label>
+
+            {/* OpenAI */}
             <label className="field">
               <span className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 OpenAI Key
-                {openaiKey && <span style={{ fontSize: 10, background: '#10b981', color: '#fff', borderRadius: 4, padding: '1px 5px' }}>ACTIVE</span>}
+                <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 400 }}>→ gpt-* / o1 / o3 models</span>
+                {openaiKey && <span style={{ fontSize: 10, background: '#10b981', color: '#fff', borderRadius: 4, padding: '1px 6px', marginLeft: 4 }}>ACTIVE</span>}
               </span>
               <div className="input-reveal">
                 <input type={showOpenaiKey ? "text" : "password"} value={openaiKey} onChange={e => setOpenaiKey(e.target.value)} placeholder="sk-…" />
                 <button onClick={() => setShowOpenaiKey(s => !s)}>{showOpenaiKey ? "Hide" : "Show"}</button>
               </div>
-              <a className="field-link" href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">Get key → (gpt-*)</a>
+              <a className="field-link" href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">Get key → platform.openai.com</a>
             </label>
+
           </div>
+
           <div className="field-grid" style={{ marginTop: 12 }}>
             <label className="field">
               <span className="field-label">Resume Parsing Model</span>

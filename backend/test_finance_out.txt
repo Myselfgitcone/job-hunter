@@ -1,0 +1,41 @@
+Here is the pattern analysis for each bullet:
+
+---
+
+**BULLET_NUM | PATTERN | REFRAME | REASON**
+
+---
+
+**1 | NONE | No change needed |** Model supports CFO decision-making but no signal that it set a standard others follow, blocked output, or created cross-team dependency. Valuable, but influence is upward advisory only.
+
+---
+
+**2 | PATTERN 1 – STANDARD-SETTING | Reframe: "Designed monthly variance analysis template adopted as standard workflow across 3 regional finance teams, reducing close prep time by 4 hours per region" |** The word "adopted by 3 regional finance teams" directly signals that this candidate's output became the method others are required to use. Classic standard-setting.
+
+---
+
+**3 | PATTERN 2 – GATEKEEPING | Reframe: "Served as pre-consolidation control point for $48M in intercompany payables across 6 business units, flagging and resolving discrepancies before figures advanced to consolidation" |** Reconciliation occurs *before consolidation proceeds* — candidate's sign-off is structurally required for the process to move forward. That is gatekeeping.
+
+---
+
+**4 | PATTERN 3 – DEPENDENCY/SLA | Reframe: "Owned weekly P&L reporting SLA for 8 department heads, delivering variance commentary on which budget owners based operational decisions" |** Eight department heads *structurally receive and rely on* this candidate's weekly output. The regularity and multi-stakeholder consumption signal a dependency relationship.
+
+---
+
+**5 | PATTERN 2 – GATEKEEPING | Reframe: "Reviewed and approved journal entries submitted by 4 junior accountants as mandatory quality gate before month-end close, preventing $2.1M misposting in Q3" |** Entries cannot proceed to close without this candidate's review and correction. The $2.1M catch validates the gate was load-bearing, not ceremonial.
+
+---
+
+**6 | PATTERN 3 – DEPENDENCY/SLA | Reframe: "Built and maintained weekly cash flow forecast consumed by treasury team as primary input for daily liquidity decisions" |** Treasury's *daily operational decisions* structurally depend on this candidate's weekly refresh. The consuming team cannot function without this output — textbook dependency.
+
+---
+
+**7 | PATTERN 1 – STANDARD-SETTING | Reframe: "Established standard board-preparation reporting package used by all 6 VPs for quarterly review cycle" |** "Used by all 6 VPs" signals org-wide adoption of this candidate's format as the required artifact. The word "standard" is already present and accurate.
+
+---
+
+**8 | PATTERN 4 – CROSS-STAKEHOLDER COORDINATION | Reframe: "Coordinated and consolidated annual operating plan inputs across procurement, HR, sales, and operations — aligning four distinct functional owners into a single FP&A output" |** Four separate functional domains with different owners required alignment through this candidate to produce one unified plan. Explicit multi-owner coordination is the definition of Pattern 4.
+
+---
+
+**SUMMARY:** Six of eight bullets contain influence signals — two instances of Standard-Setting (2, 7), two of Gatekeeping (3, 5), two of Dependency/SLA (4, 6), and one of Cross-Stakeholder Coordination (8) — collectively building a strong case that this individual contributor has been functioning at a Senior Manager influence level despite the title.

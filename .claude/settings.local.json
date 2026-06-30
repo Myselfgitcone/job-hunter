@@ -65,7 +65,25 @@
       "mcp__Claude_in_Chrome__read_page",
       "Bash(git checkout *)",
       "WebFetch(domain:job-hunter-production-927d.up.railway.app)",
-      "Bash(curl -s -X OPTIONS \"https://job-hunter-production-927d.up.railway.app/api/profile/parse-resume\" -H \"Origin: https://job-hunter-sigma.vercel.app\" -H \"Access-Control-Request-Method: POST\" -H \"Access-Control-Request-Headers: authorization,content-type\" -v)"
+      "Bash(curl -s -X OPTIONS \"https://job-hunter-production-927d.up.railway.app/api/profile/parse-resume\" -H \"Origin: https://job-hunter-sigma.vercel.app\" -H \"Access-Control-Request-Method: POST\" -H \"Access-Control-Request-Headers: authorization,content-type\" -v)",
+      "Bash(python -m py_compile database.py)",
+      "Bash(python -m py_compile main.py)",
+      "Bash(python -m py_compile ai/llm.py)",
+      "Bash(python -m py_compile resume_lint.py)",
+      "Bash(python -c ' *)",
+      "Bash(python -m py_compile ai/tailor.py)",
+      "Bash(python run_quantifind.py)",
+      "Bash(python run_exl.py)",
+      "mcp__visualize__read_me",
+      "mcp__visualize__show_widget",
+      "Bash(python run_optum.py)",
+      "Bash(awk -F: '{print $1\": \"$0}')",
+      "Bash(ls \"C:\\\\Users\\\\jagad\\\\Downloads\\\\job-hunter\" 2>/dev/null; ls \"C:\\\\Users\\\\jagad\\\\Downloads\\\\\" 2>/dev/null | grep -i \"ext\\\\|autofill\\\\|chrome\\\\|fill\")",
+      "WebFetch(domain:www.talvora.ai)",
+      "mcp__Claude_in_Chrome__browser_batch",
+      "Bash(git remote *)",
+      "Bash(grep -n \"RoleGroupSelector$\\\\|<RoleGroupSelector\\\\|singleSelect=\" frontend/src/components/JobPreferencesModal.tsx)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('backend/main.py'\\).read\\(\\)\\)\")"
     ]
   }
 }

@@ -1,0 +1,65 @@
+Jagadish Reddy Butukuri — AI Data Engineer
+(347)-695-1020 | jagadishbutukuri00@gmail.com
+
+PROFESSIONAL SUMMARY:
+• AI Data Engineer with 6+ years building scalable ETL/ELT pipelines, data architecture, and cloud platforms.
+• Deep expertise in Python, PySpark, and Spark for high-performance data pipelines processing 2TB+ daily.
+• Hands-on with AWS (S3, EMR, Glue, RDS, Lambda, Lake Formation) and database management in production.
+• Experienced with AI coding tools, knowledge-graph frameworks, and entity resolution at multi-million record scale.
+• Startup-oriented engineer with end-to-end ownership of data acquisition, enrichment, quality assurance, and delivery.
+
+WORK EXPERIENCE:
+
+Senior Data Engineer @ Cargill | Minneapolis, MN          Sep 2023 – Present
+• Designed cloud-native ETL/ELT pipelines on AWS and Databricks ingesting, enriching, and delivering structured and unstructured supply-chain data at 2TB+ daily scale.
+• Built entity resolution logic in Python to deduplicate 4M+ supplier records — improving join accuracy by 28%.
+• Developed PySpark ETL frameworks for 2TB+ of semi-structured supply-chain data daily, cutting runtimes by 35%.
+• Created data quality frameworks using Great Expectations and Spark SQL validating inventory, shipment, and supplier-compliance data, flagging 12K+ anomalies monthly against SLAs.
+• Implemented AWS Glue jobs and RDS-backed staging tables converting JSON, CSV, and Avro into Parquet on S3, reducing storage footprint by 22%.
+• Provisioned and managed AWS infrastructure (S3, EMR, IAM, Glue, Lambda, RDS) using Terraform, standardizing environment configuration across dev, staging, and production.
+• Automated GitHub Actions CI/CD with schema contract checks, blocking schema-breaking changes before production and enforcing GDPR-compliant governance across 6 environments.
+• Applied GPT/Codex and Cursor for agentic code generation and multi-agent pipeline validation, reducing manual testing cycles on new ETL modules.
+• Migrated Airflow DAGs to Dagster asset-based orchestration for commodity and logistics feeds, adding lineage tracking and cutting failed-run triage time by 40%.
+Technologies Used: Python, PySpark, Spark, AWS S3, EMR, Glue, RDS, Lambda, Terraform, Databricks, Delta Lake, Apache Iceberg, Dagster, Airflow, Great Expectations, Neo4j, PostgreSQL, GitHub Actions, Docker, GPT/Codex, Cursor, Parquet, Avro, DuckDB
+
+Data Engineer @ Molina Healthcare | Long Beach, CA          Jan 2021 – Jul 2022
+• Built enterprise ETL pipelines on Azure Data Factory and Synapse Analytics, integrating member/provider/claims data.
+• Developed PySpark transformation frameworks cleansing and standardizing 8M+ patient and claims records per cycle, improving data consistency by 30%.
+• Designed dimensional models for managed-care operational reporting, defining data architecture standards adopted across the project team.
+• Stored normalized provider and member records in PostgreSQL with a Redis caching layer, serving downstream analytics teams with defined SLAs.
+• Built data quality validation using Soda checks ensuring accuracy, completeness, and consistency across managed-care datasets, catching 95%+ of schema violations before load.
+• Enforced HIPAA-compliant security via Azure Key Vault, Purview governance policies, RBAC, and PHI de-identification across all patient datasets.
+• Implemented CDC-based incremental loading using Debezium patterns, improving data freshness and reducing reporting latency by 3 hours daily.
+Technologies Used: Python, PySpark, Azure Data Factory, Synapse Analytics, ADLS Gen2, PostgreSQL, Redis, Soda, Debezium, Azure Purview, ERwin, Power BI
+
+Data Engineer @ JPMorgan Chase | New York, NY          Dec 2018 – Dec 2020
+• Built scalable data pipelines using Spark, Scala, and Databricks on AWS to process 500M+ daily retail-banking transaction records for financial analytics.
+• Developed Python and Informatica PowerCenter ETL workflows extracting from Oracle into S3 and Redshift.
+• Stored high-frequency fraud-signal and session data in Cassandra and Redis for low-latency risk scoring lookups — supporting AML-adjacent risk data use cases.
+• Migrated legacy SQL Server data to Snowflake for regulatory reporting, cutting storage costs by 18% and query latency by 45%.
+• Optimized query performance in Redshift and Snowflake using partitioning, clustering, and Trino-based federated queries, reducing cost per query by 15%.
+Technologies Used: Python, Scala, Spark, PySpark, Databricks, AWS S3, Redshift, Kafka, Cassandra, Redis, Snowflake, Hadoop, Hive, Trino, Informatica PowerCenter, Jenkins, Kubernetes, PostgreSQL, SQL Server, Oracle
+
+TECHNICAL SKILLS:
+Programming & Querying: Python, PySpark, Scala, SQL, PL/SQL, Shell Scripting
+Distributed Processing: Apache Spark, Databricks, Hadoop, Hive
+Distributed Processing (cont.): Trino, Presto, DuckDB
+ETL & Data Integration: AWS Glue, Informatica PowerCenter, Fivetran, Debezium, SSIS
+Data Modeling: Delta Lake, Apache Iceberg
+Relational Databases: PostgreSQL, RDS, MySQL, Oracle, SQL Server
+Cloud Data Warehousing: Snowflake, Redshift
+NoSQL & Caching: Cassandra, Redis
+Knowledge Graphs: Neo4j, entity resolution
+AWS Ecosystem: S3, EMR, Glue, RDS
+AWS Ecosystem (cont.): Lambda, IAM, Lake Formation
+Azure Ecosystem: Synapse Analytics, Key Vault
+Data Quality & Governance: Great Expectations, Soda, HIPAA, GDPR
+Orchestration & Workflow: Apache Airflow, Dagster, Databricks Workflows, AWS Step Functions
+AI/ML & Agentic Tools: GPT/Codex, Claude Code, Cursor, LangChain
+
+Infrastructure & DevOps: Terraform, GitHub Actions
+
+Compliance & Domain: OSINT
+Additional Skills: Palo Alto
+EDUCATION:
+Master of Science in Information Systems @ Saint Louis University | 2024

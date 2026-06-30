@@ -1,17 +1,31 @@
 """
-Single LLM call function. Works with any OpenAI-compatible endpoint:
-  - OpenRouter  (openrouter.ai)
-  - Groq        (api.groq.com)
-  - Nvidia NIM  (integrate.api.nvidia.com)
-  - Anthropic direct (via anthropic SDK)
+Single LLM call function. Supports direct provider APIs (no service fees)
+and OpenRouter as fallback.
+
+Direct API routing (preferred — avoids OpenRouter 5.5% service fee):
+  claude-*  → Anthropic API  (console.anthropic.com)
+  gemini-*  → Google AI      (aistudio.google.com)
+  gpt-*/o*  → OpenAI API     (platform.openai.com)
+
+Fallback (OpenRouter):
+  Any model without a matching direct key → OpenRouter
+
+Usage:
+    from ai.llm import chat, ModelKeys
+    keys = ModelKeys(anthropic="sk-ant-...", google="AI...", openai="sk-...")
+    result = await chat(system=..., user=..., model="claude-sonnet-4-5", keys=keys)
 """
 import asyncio
 import httpx
+from dataclasses import dataclass, field
 
+
+# ── Direct provider URLs ──────────────────────────────────────────────────────
 PROVIDER_URLS = {
     "openrouter": "https://openrouter.ai/api/v1/chat/completions",
     "groq":       "https://api.groq.com/openai/v1/chat/completions",
     "nvidia":     "https://integrate.api.nvidia.com/v1/chat/completions",
+    "openai":     "https://api.openai.com/v1/chat/completions",
 }
 
 RECOMMENDED_MODELS = {
@@ -35,11 +49,67 @@ RECOMMENDED_MODELS = {
         "meta/llama-3.1-70b-instruct",
         "mistralai/mistral-large",
     ],
+    "anthropic": [
+        "claude-sonnet-4-5",
+        "claude-opus-4-5",
+        "claude-haiku-4-5",
+    ],
+    "google": [
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-pro",
+    ],
+    "openai": [
+        "gpt-4o",
+        "gpt-4o-mini",
+        "o3-mini",
+    ],
 }
 
 
-# Optional hook: set this to an async fn(message: str) to receive fallback alerts
-# Set from main.py after telegram bot is initialized
+# ── Multi-provider key container ──────────────────────────────────────────────
+@dataclass
+class ModelKeys:
+    """
+    Holds direct API keys for each provider.
+    When set, the system uses direct APIs and avoids OpenRouter's 5.5% fee.
+    Leave a field empty ("") to fall back to OpenRouter for that model family.
+    """
+    anthropic: str = ""    # console.anthropic.com — for claude-* models
+    google: str    = ""    # aistudio.google.com   — for gemini-* models
+    openai: str    = ""    # platform.openai.com   — for gpt-*/o* models
+    openrouter: str = ""   # openrouter.ai/keys    — fallback for all models
+
+
+def _resolve_provider(model: str, keys: ModelKeys) -> tuple[str, str]:
+    """
+    Given a model name and a ModelKeys object, return (api_key, provider).
+    Prefers direct APIs when a key is set — avoids the OpenRouter service fee.
+    Falls back to OpenRouter if no matching direct key exists.
+    """
+    # Normalize: strip provider prefix ("anthropic/claude-x" → "claude-x")
+    m = model.lower()
+    if "/" in m:
+        m = m.split("/", 1)[1]
+
+    if m.startswith("claude") and keys.anthropic:
+        return keys.anthropic, "anthropic"
+    if m.startswith("gemini") and keys.google:
+        return keys.google, "google"
+    if (m.startswith("gpt-") or m.startswith("o1") or
+            m.startswith("o3") or m.startswith("o4")) and keys.openai:
+        return keys.openai, "openai"
+
+    # Fall back to OpenRouter
+    return keys.openrouter, "openrouter"
+
+
+def _strip_provider_prefix(model: str) -> str:
+    """Strip 'anthropic/', 'google/', 'openai/' prefix for direct API calls."""
+    return model.split("/", 1)[-1] if "/" in model else model
+
+
+# ── Optional hook: Telegram fallback alerts ───────────────────────────────────
 _fallback_notify = None
 
 def set_fallback_notifier(fn):
@@ -47,31 +117,51 @@ def set_fallback_notifier(fn):
     _fallback_notify = fn
 
 
+# ── Main chat function ────────────────────────────────────────────────────────
 async def chat(
     system: str,
     user: str,
-    api_key: str,
+    api_key: str = "",
     provider: str = "openrouter",
     model: str = "anthropic/claude-sonnet-4-5",
     max_tokens: int = 4096,
     pass_name: str = "",
     allow_fallback: bool = True,
     retry_on_ratelimit: int = 0,
+    keys: ModelKeys | None = None,
 ) -> str:
-    # retry_on_ratelimit: how many times to retry the SAME model on 429.
-    # Used for main-tailor so a transient rate limit doesn't kill the job.
-    # Retries with exponential delay: 5s, 10s, 15s...
-    provider = (provider or "openrouter").lower().strip()
-    if provider == "anthropic":
-        return await _call_anthropic(system, user, api_key, model, max_tokens)
+    """
+    Call an LLM and return the response text.
 
+    If `keys` is provided (ModelKeys object), the provider is auto-selected
+    based on the model name prefix — using direct APIs to avoid OpenRouter fees.
+    Otherwise, uses the legacy api_key + provider arguments.
+    """
+    # ── Resolve provider from ModelKeys (direct API routing) ─────────────────
+    if keys is not None:
+        api_key, provider = _resolve_provider(model, keys)
+
+    provider = (provider or "openrouter").lower().strip()
+
+    # ── Direct Anthropic (SDK) ────────────────────────────────────────────────
+    if provider == "anthropic":
+        clean_model = _strip_provider_prefix(model)
+        return await _call_anthropic(system, user, api_key, clean_model, max_tokens)
+
+    # ── Direct Google AI Studio (REST) ───────────────────────────────────────
+    if provider == "google":
+        return await _call_google(system, user, api_key, model, max_tokens)
+
+    # ── Direct OpenAI (REST) ─────────────────────────────────────────────────
+    if provider == "openai":
+        return await _call_openai_direct(system, user, api_key, model, max_tokens)
+
+    # ── OpenRouter / Groq / Nvidia (existing logic) ───────────────────────────
     url = PROVIDER_URLS.get(provider)
     if not url:
-        raise ValueError(f"Unknown provider: {provider}. Use openrouter / groq / nvidia / anthropic")
+        raise ValueError(f"Unknown provider: {provider}. "
+                         "Use openrouter / groq / nvidia / anthropic / google / openai")
 
-    # allow_fallback=False: try primary only — fail immediately if it fails.
-    # Used for main-tailor so a Sonnet failure doesn't silently produce
-    # a low-quality Gemini-generated resume.
     models_to_try = [model]
     if allow_fallback and provider == "openrouter":
         fallback_models = [
@@ -92,12 +182,13 @@ async def chat(
             if is_fallback:
                 msg = f"[FALLBACK] {label} primary={model} failed — using fallback: {current_model}"
                 print(msg)
-                # Suppress Telegram alerts for background/bulk sweeps — too noisy
                 _silent_passes = {"exp-sweep", "qualify"}
                 if _fallback_notify and pass_name not in _silent_passes:
                     try:
                         asyncio.create_task(_fallback_notify(
-                            f"⚠️ Model fallback fired\nPass: {pass_name or 'unknown'}\nPrimary: {model}\nFallback: {current_model}\nError: {str(last_error)[:200]}"
+                            f"⚠️ Model fallback fired\nPass: {pass_name or 'unknown'}\n"
+                            f"Primary: {model}\nFallback: {current_model}\n"
+                            f"Error: {str(last_error)[:200]}"
                         ))
                     except Exception:
                         pass
@@ -140,7 +231,6 @@ async def chat(
                                     pass
                             await asyncio.sleep(wait)
                             continue
-                        # Exhausted retries on this model
                         raise ValueError(f"HTTP 429 rate limit on {current_model} after {retry_on_ratelimit} retries")
 
                     if not resp.is_success:
@@ -153,7 +243,8 @@ async def chat(
                     if out_tokens:
                         print(f"{label} output tokens: {out_tokens}")
                         if out_tokens > 4500:
-                            print(f"[WARN OVERSIZED OUTPUT] {label} produced {out_tokens} tokens — expected ≤4500. Plan block may not be stripped.")
+                            print(f"[WARN OVERSIZED OUTPUT] {label} produced {out_tokens} tokens — "
+                                  "expected ≤4500. Plan block may not be stripped.")
                     return content
 
                 except ValueError:
@@ -168,14 +259,87 @@ async def chat(
         raise last_error
 
 
+# ── Direct provider callers ───────────────────────────────────────────────────
 
-async def _call_anthropic(system: str, user: str, api_key: str, model: str, max_tokens: int) -> str:
+async def _call_anthropic(system: str, user: str, api_key: str,
+                           model: str, max_tokens: int) -> str:
+    """Anthropic SDK — direct API, no service fees."""
     import anthropic
     client = anthropic.AsyncAnthropic(api_key=api_key)
     msg = await client.messages.create(
-        model=model or "claude-sonnet-4-6",
+        model=model or "claude-sonnet-4-5",
         max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": user}],
     )
     return msg.content[0].text
+
+
+async def _call_google(system: str, user: str, api_key: str,
+                        model: str, max_tokens: int) -> str:
+    """
+    Google AI Studio REST API — direct, no service fees.
+    Get key at: aistudio.google.com/apikey
+    Docs: https://ai.google.dev/api/generate-content
+    """
+    clean_model = _strip_provider_prefix(model)
+    url = (f"https://generativelanguage.googleapis.com/v1beta/"
+           f"models/{clean_model}:generateContent")
+
+    payload: dict = {
+        "contents": [{"role": "user", "parts": [{"text": user}]}],
+        "generationConfig": {"maxOutputTokens": max_tokens},
+    }
+    if system:
+        payload["systemInstruction"] = {"parts": [{"text": system}]}
+
+    async with httpx.AsyncClient(timeout=90) as client:
+        resp = await client.post(
+            url, json=payload,
+            params={"key": api_key},
+            headers={"Content-Type": "application/json"},
+        )
+
+    if not resp.is_success:
+        raise ValueError(f"Google AI HTTP {resp.status_code}: {resp.text[:400]}")
+
+    data = resp.json()
+    try:
+        return data["candidates"][0]["content"]["parts"][0]["text"]
+    except (KeyError, IndexError) as e:
+        raise ValueError(f"Unexpected Google AI response structure: {data}") from e
+
+
+async def _call_openai_direct(system: str, user: str, api_key: str,
+                               model: str, max_tokens: int) -> str:
+    """
+    OpenAI direct REST API — no service fees.
+    Get key at: platform.openai.com/api-keys
+    """
+    clean_model = _strip_provider_prefix(model)
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": user})
+
+    payload = {
+        "model": clean_model,
+        "max_tokens": max_tokens,
+        "messages": messages,
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=90) as client:
+        resp = await client.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers, json=payload,
+        )
+
+    if not resp.is_success:
+        raise ValueError(f"OpenAI HTTP {resp.status_code}: {resp.text[:400]}")
+
+    data = resp.json()
+    return data["choices"][0]["message"]["content"]

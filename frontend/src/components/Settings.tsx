@@ -569,9 +569,15 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
   const [modelSecondary, setModelSecondary] = useState("google/gemini-2.5-flash");
   const [modelQualify, setModelQualify] = useState("anthropic/claude-sonnet-4.6");
   const [modelCoverLetter, setModelCoverLetter] = useState("anthropic/claude-sonnet-4.6");
-  const [apiKey, setApiKey]     = useState("");
+  const [apiKey, setApiKey]         = useState("");
+  const [anthropicKey, setAnthropicKey] = useState("");
+  const [googleKey, setGoogleKey]   = useState("");
+  const [openaiKey, setOpenaiKey]   = useState("");
   const [joboApiKey, setJoboApiKey] = useState("");
-  const [showKey, setShowKey]   = useState(false);
+  const [showKey, setShowKey]       = useState(false);
+  const [showAnthropicKey, setShowAnthropicKey] = useState(false);
+  const [showGoogleKey, setShowGoogleKey]       = useState(false);
+  const [showOpenaiKey, setShowOpenaiKey]       = useState(false);
 
   const [botToken, setBotToken]   = useState("");
   const [chatId, setChatId]       = useState("");
@@ -595,6 +601,9 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
       setModelQualify(s.ai_model_qualify || "anthropic/claude-sonnet-4.6");
       setModelCoverLetter(s.ai_model_cover_letter || "anthropic/claude-sonnet-4.6");
       setApiKey(s.ai_api_key || "");
+      setAnthropicKey(s.anthropic_api_key || "");
+      setGoogleKey(s.google_api_key || "");
+      setOpenaiKey(s.openai_api_key || "");
       setJoboApiKey(s.jobo_api_key || "");
       setBotToken(s.telegram_bot_token || "");
       setChatId(s.telegram_chat_id || "");
@@ -608,13 +617,15 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
       await api.saveSettings({
         visa_filter: visaFilter, level_filter: expFilter,
         ai_provider: provider, ai_api_key: apiKey,
+        anthropic_api_key: anthropicKey,
+        google_api_key: googleKey,
+        openai_api_key: openaiKey,
         jobo_api_key: joboApiKey,
         ai_model_parse: modelParse, ai_model_tailor: modelTailor,
         ai_model_secondary: modelSecondary,
         ai_model_qualify: modelQualify, ai_model_cover_letter: modelCoverLetter,
         telegram_bot_token: botToken, telegram_chat_id: chatId,
         auto_scrape_cron: cron,
-
       } as any);
       toast("Settings saved", "success");
     } catch { toast("Save failed", "error"); }
@@ -695,14 +706,52 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
           </label>
           <div className="field-grid">
             <label className="field">
-              <span className="field-label">API Key</span>
+              <span className="field-label">OpenRouter Key <span style={{fontSize:10,color:"#94a3b8",fontWeight:400}}>(fallback)</span></span>
               <div className="input-reveal">
-                <input type={showKey ? "text" : "password"} value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-…" />
+                <input type={showKey ? "text" : "password"} value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-or-…" />
                 <button onClick={() => setShowKey(s => !s)}>{showKey ? "Hide" : "Show"}</button>
               </div>
-              <a className="field-link" href={`https://${AI_PROVIDERS[provider]?.keyUrl}`} target="_blank" rel="noreferrer">
-                Get your API key →
-              </a>
+              <a className="field-link" href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">Get OpenRouter key →</a>
+            </label>
+          </div>
+
+          {/* Direct provider keys — no service fees */}
+          <div style={{ margin: '14px 0 6px', fontSize: 12, fontWeight: 600, color: 'var(--tx-2)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+            Direct API Keys <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--tx-3)' }}>— no 5.5% service fee · auto-used when set</span>
+          </div>
+          <div className="field-grid">
+            <label className="field">
+              <span className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                Anthropic Key
+                {anthropicKey && <span style={{ fontSize: 10, background: '#10b981', color: '#fff', borderRadius: 4, padding: '1px 5px' }}>ACTIVE</span>}
+              </span>
+              <div className="input-reveal">
+                <input type={showAnthropicKey ? "text" : "password"} value={anthropicKey} onChange={e => setAnthropicKey(e.target.value)} placeholder="sk-ant-…" />
+                <button onClick={() => setShowAnthropicKey(s => !s)}>{showAnthropicKey ? "Hide" : "Show"}</button>
+              </div>
+              <a className="field-link" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">Get Anthropic key → (for claude-* models)</a>
+            </label>
+            <label className="field">
+              <span className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                Google AI Key
+                {googleKey && <span style={{ fontSize: 10, background: '#10b981', color: '#fff', borderRadius: 4, padding: '1px 5px' }}>ACTIVE</span>}
+              </span>
+              <div className="input-reveal">
+                <input type={showGoogleKey ? "text" : "password"} value={googleKey} onChange={e => setGoogleKey(e.target.value)} placeholder="AIza…" />
+                <button onClick={() => setShowGoogleKey(s => !s)}>{showGoogleKey ? "Hide" : "Show"}</button>
+              </div>
+              <a className="field-link" href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Get Google AI key → (for gemini-* models)</a>
+            </label>
+            <label className="field">
+              <span className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                OpenAI Key
+                {openaiKey && <span style={{ fontSize: 10, background: '#10b981', color: '#fff', borderRadius: 4, padding: '1px 5px' }}>ACTIVE</span>}
+              </span>
+              <div className="input-reveal">
+                <input type={showOpenaiKey ? "text" : "password"} value={openaiKey} onChange={e => setOpenaiKey(e.target.value)} placeholder="sk-…" />
+                <button onClick={() => setShowOpenaiKey(s => !s)}>{showOpenaiKey ? "Hide" : "Show"}</button>
+              </div>
+              <a className="field-link" href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">Get OpenAI key → (for gpt-* models)</a>
             </label>
           </div>
           <div className="field-grid" style={{ marginTop: 12 }}>

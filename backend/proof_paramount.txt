@@ -1,0 +1,83 @@
+=== PIPELINE LOG ===
+[REVIEW] Reviewer made changes
+[VISIBILITY] JD hard skills visible on resume: 6/6 (100%) — presence check only, not a verification of production-claim tier.
+[TIER AUDIT] Clean — 1 gap-filled skill(s) audited, no violations.
+[EDUCATION MISMATCH] AI altered education section — reverting to original.
+  Original : Master of Science in Information Systems @ Saint Louis University | 2024
+  AI had   : Master of Science in Information Systems @ Saint Louis University | 2024
+Bachelor of Technology in Computer Science @ JN
+
+=== FULL RESUME ===
+Jagadish Reddy Butukuri — Data Engineer
+
+(347)-695-1020 | jagadishbutukuri00@gmail.com
+
+PROFESSIONAL SUMMARY:
+
+• Senior Data Engineer with 6+ years building scalable ETL/ELT pipelines, cloud-native data platforms, and analytics-ready data models across agribusiness, healthcare, and financial services.
+• Deep expertise in Apache Spark, PySpark, Databricks, and dbt for large-scale pipeline development, with production Delta Lake, Apache Iceberg, and Lakehouse architecture experience at 2TB+ daily volumes.
+• Implements real-time and event-driven pipelines using Kafka, Debezium CDC, and streaming frameworks; integrates ML platforms including Databricks ML and MLflow for end-to-end feature-to-model workflows.
+• Builds automated data quality, anomaly detection, and lineage frameworks using Great Expectations, Soda, and dbt contracts across complex multi-source environments requiring HIPAA and GDPR compliance.
+• Brings enterprise-grade governance maturity with cross-functional delivery across engineering, ML, data science, and business stakeholders — standardizing pipeline standards across multi-team environments at scale.
+
+WORK EXPERIENCE:
+
+Senior Data Engineer @ Cargill | Minneapolis, MN          Sep 2023 – Present
+
+• Designed cloud-native ELT pipelines on AWS ingesting, normalizing, and delivering supply-chain and procurement data at 2TB+ daily scale.
+• Developed Delta Lake and Apache Iceberg Lakehouse architectures enforcing idempotent writes, schema contracts, and lineage tracking across global procurement datasets.
+• Authored dbt transformation models and data contracts for commodity and procurement data, with freshness SLAs and quality checks covering all gold-layer outputs.
+• Migrated Airflow DAGs to Dagster asset-based orchestration for commodity and logistics feeds, adding pipeline lineage and cutting failed-run triage time by 40%.
+• Built PySpark ETL frameworks processing 2TB+ of structured supply-chain data daily across multiple ingestion patterns.
+• Deployed Great Expectations and Spark SQL assertion frameworks against inventory, shipment, and supplier data — flagging 12K+ anomalies monthly before downstream delivery.
+• Configured GitHub Actions CI/CD pipelines with schema contract checks, blocking schema-breaking changes before production deployment.
+• Tracked MLflow experiments for demand-forecasting runs on the Spark-based ML platform, cutting production deployment preparation time by 30%.
+• Engineered embeddings pipeline using Pinecone and Weaviate vector stores to support ML feature similarity search on commodity and supplier datasets.
+• Implemented AWS Glue jobs and Lake Formation policies converting JSON, CSV, and Avro into Parquet on S3, reducing storage footprint by 22%.
+• Provisioned AWS infrastructure (S3, EMR, IAM, Glue, Lambda) with Terraform — establishing environment configuration standards adopted across dev, staging, and production.
+
+Technologies Used: AWS (S3, EMR, Glue, Lambda, IAM, Lake Formation), Databricks, Apache Spark, PySpark, Delta Lake, Apache Iceberg, dbt, Dagster, Great Expectations, MLflow, Pinecone, Weaviate, Terraform, GitHub Actions, Parquet
+
+Data Engineer @ Molina Healthcare | Long Beach, CA          Jan 2021 – Jul 2022
+
+• Implemented CDC-based incremental loading using Debezium patterns, improving member and claims data freshness and reducing reporting latency by 3 hours daily.
+• Built enterprise ETL pipelines on Azure Data Factory ingesting XML, CSV, and JSON across 12 source systems with field-level schema enforcement.
+• Designed Synapse Analytics data models for claims and member eligibility reporting, reducing analyst query time by 35%.
+• Developed PySpark transformation jobs on Azure HDInsight processing daily claims batches of 500K+ records with HIPAA-compliant field masking.
+• Configured Azure DevOps CI/CD pipelines deploying pipeline code across dev, QA, and production environments with automated quality gates.
+• Built Power BI semantic layers on Synapse outputs, delivering claims utilization dashboards consumed by 6 operational teams.
+• Authored data quality checks using SQL assertions and Azure Monitor alerts — catching member eligibility mismatches before monthly close reporting.
+
+Technologies Used: Azure Data Factory, Azure Synapse Analytics, Azure HDInsight, Azure DevOps, PySpark, Debezium, SQL, Power BI, HIPAA
+
+Data Engineer @ AgCountry Farm Credit Services | Fargo, ND          Jun 2019 – Dec 2020
+
+• Developed PySpark batch pipelines on Hadoop processing loan and portfolio data for 50K+ member accounts across agricultural credit products.
+• Built dimensional models in Hive and Impala for loan origination and credit risk reporting, reducing monthly report generation time by 2 days.
+• Designed and scheduled Airflow DAGs for daily loan data ingestion from 8 source systems, achieving 99.4% on-time SLA across reporting cycles.
+• Implemented SCD Type 2 logic for borrower and loan account history tables, preserving full audit trails for regulatory reporting.
+• Scripted data profiling routines using Python and Pandas to surface missing value and distribution anomalies before warehouse loads.
+
+Technologies Used: Apache Spark, PySpark, Hadoop, Hive, Impala, Airflow, Python, Pandas, SQL
+
+Data Analyst @ Exl Service Holdings | Hyderabad, India          Mar 2017 – May 2019
+
+• Wrote SQL and PL/SQL procedures aggregating insurance claims and policy data across 5 source systems for weekly executive reporting.
+• Built Python scripts with openpyxl to eliminate manual Excel report production, cutting turnaround time by 4 hours weekly.
+
+Technologies Used: SQL, PL/SQL, Python, Excel, openpyxl
+
+TECHNICAL SKILLS:
+
+Cloud Platforms: AWS (S3, EMR, Glue, Lambda, Lake Formation, Redshift), Azure (Data Factory, Synapse, HDInsight, DevOps), GCP (BigQuery, Dataflow, Cloud Storage — working knowledge)
+Distributed Processing: Apache Spark, PySpark, Hadoop, Hive, Impala, Kafka, Debezium CDC, Flink
+Lakehouse & Storage: Delta Lake, Apache Iceberg, Parquet, Avro, ORC
+Orchestration: Dagster, Apache Airflow, Azure Data Factory, AWS Glue
+Data Modeling & Transformation: dbt (Core & Cloud), SQL, PL/SQL, Dimensional Modeling, SCD Type 2
+Data Quality & Observability: Great Expectations, Soda, dbt Contracts, Spark SQL assertions
+ML & Vector: MLflow, Databricks ML, Pinecone, Weaviate, LangChain
+Infrastructure & CI/CD: Terraform, GitHub Actions, Azure DevOps, Docker
+Governance & Compliance: HIPAA, GDPR, AWS Lake Formation, Unity Catalog, Data Lineage
+
+EDUCATION:
+Master of Science in Information Systems @ Saint Louis University | 2024

@@ -1,0 +1,66 @@
+=== LOG ===
+[REVIEW] Reviewer made changes
+[VISIBILITY] JD hard skills visible on resume: 4/4 (100%) — presence check only, not a verification of production-claim tier.
+[TIER AUDIT] Clean — 1 gap-filled skill(s) audited, no violations.
+
+=== RESUME ===
+Jagadish Reddy Butukuri — Data Engineer — Data Pipeline ETL
+(347)-695-1020 | jagadishbutukuri00@gmail.com
+
+PROFESSIONAL SUMMARY:
+• Senior Data Engineer with 6+ years building scalable ETL/ELT pipelines and cloud-native data platforms for analytics, ML, and real-time streaming workloads.
+• Deep expertise in Apache Spark, PySpark, and dbt for large-scale pipeline processing with Lakehouse architectures (Delta Lake, Iceberg) at 2TB+ daily volumes.
+• Implements CDC, incremental loading, and event-driven streaming patterns using Kafka and Debezium; integrates pipelines with ML platforms including Databricks ML and MLflow.
+• Designs dimensional and hybrid data models, cloud data warehouses, and multi-source ELT frameworks supporting analytics, BI, and machine learning across regulated industries.
+• Delivers enterprise-scale data architecture across cross-functional stakeholder teams — translating requirements into governed, SLA-enforced pipelines spanning cloud platforms including AWS, Azure, and GCP.
+
+WORK EXPERIENCE:
+
+Senior Data Engineer @ Cargill | Minneapolis, MN          Sep 2023 – Present
+• Designed cloud-native ELT pipelines on AWS and Databricks ingesting, normalizing, and delivering supply-chain and procurement data at 2TB+ daily scale.
+• Built PySpark ETL frameworks processing structured and semi-structured supply-chain data across sourcing, logistics, and inventory domains.
+• Developed Delta Lake and Apache Iceberg Lakehouse architectures enforcing idempotent writes, schema contracts, and lineage tracking across global procurement datasets.
+• Implemented Kafka-based event-driven pipelines on AWS MSK to stream commodity pricing and inventory events to downstream analytics consumers in near real-time.
+• Built dbt models and data contracts for commodity and procurement data with freshness SLAs and automated tests covering all gold-layer models.
+• Migrated Airflow DAGs to Dagster asset-based orchestration, adding pipeline lineage and cutting failed-run triage time by 40%.
+• Tracked MLflow experiments on Databricks for demand-forecasting runs, reducing deployment preparation time by 30%.
+• Created data quality frameworks using Great Expectations and Spark SQL validating inventory and supplier data, flagging 12K+ anomalies monthly against defined SLAs.
+• Established Terraform infrastructure standards across dev, staging, and production — eliminating environment drift for all engineers building on the platform.
+• Automated GitHub Actions CI/CD pipelines with schema contract checks, blocking schema-breaking changes before they reached production.
+• Optimized Spark jobs via partitioning, caching, and adaptive query execution, cutting execution times by 35%.
+Technologies Used: AWS (S3, EMR, MSK, Glue, Lambda, Lake Formation), Databricks, Apache Spark, PySpark, Delta Lake, Apache Iceberg, dbt, Kafka, Dagster, Airflow, MLflow, Great Expectations, Terraform, GitHub Actions, Python, SQL
+
+Data Engineer @ Molina Healthcare | Long Beach, CA         Jan 2021 – Jul 2022
+• Built healthcare data integration pipelines on Azure Data Factory and Synapse Analytics across 12 source systems covering member, provider, and claims datasets.
+• Designed ETL pipelines ingesting XML, CSV, and JSON into ADLS Gen2 with schema contracts and field-level validation across 15+ vendor feeds.
+• Built PySpark transformation frameworks in Synapse to cleanse and standardize 8M+ patient and claims records per cycle, improving data consistency by 30%.
+• Implemented CDC-based incremental loading using Debezium patterns, improving data freshness and reducing reporting latency by 3 hours daily.
+• Designed dimensional data models and Data Vault 2.0 structures in ERwin supporting managed-care operational reporting across 5 clinical domains.
+• Enforced HIPAA-compliant governance via Azure Key Vault, Azure Purview, and RBAC with PHI de-identification across all patient datasets.
+• Built Soda data quality checks ensuring accuracy, completeness, and consistency across managed-care datasets, catching 95%+ of schema violations before load.
+Technologies Used: Azure Data Factory, Synapse Analytics, ADLS Gen2, PySpark, Debezium, Azure Key Vault, Azure Purview, PostgreSQL, Soda, ERwin, Python, SQL
+
+Data Engineer @ JPMorgan Chase | New York, NY              Dec 2018 – Dec 2020
+• Streamed retail-banking transaction events via Kafka topics to downstream analytics consumers, reducing reporting lag by 20%.
+• Built scalable Spark pipelines on AWS to process 500M+ daily retail-banking transaction records for financial analytics.
+• Developed ETL workflows in Informatica PowerCenter and Python extracting from Oracle into S3 and Redshift, supporting 10 downstream analytics teams.
+• Migrated legacy SQL Server data to Snowflake, cutting storage costs by 18% and query latency by 45%.
+• Wrote advanced SQL and PL/SQL transformations with query tuning across large financial datasets, reducing runtime by 25%.
+Technologies Used: Apache Kafka, Apache Spark, Databricks, AWS (S3, Redshift, EMR), Snowflake, Informatica PowerCenter, Python, SQL, PL/SQL, Oracle
+
+TECHNICAL SKILLS:
+Languages & Processing:     Python, PySpark, SQL, PL/SQL, Scala, Shell Scripting, Apache Spark, Databricks
+ETL / ELT & Orchestration:  dbt Core, dbt Cloud, Airflow, Dagster, Prefect, Databricks Workflows, AWS Step Functions, Informatica PowerCenter, Fivetran
+Lakehouse & Storage:        Delta Lake, Apache Iceberg, Apache Hudi, Medallion Architecture, Databricks Lakehouse, DuckDB, Trino, Presto
+Data Modeling:              Dimensional Modeling, Data Vault 2.0, Star Schema, Data Warehousing, MDM, ERwin
+Streaming & CDC:            Apache Kafka, Apache Flink, Debezium, AWS Kinesis, Azure Event Hubs, Confluent Platform, Pub/Sub, Apache Pulsar
+Cloud — AWS:                S3, EMR, Glue, Lambda, Athena, Redshift, IAM, CloudWatch, Lake Formation, MSK, SageMaker, DMS
+Cloud — Azure:              Data Factory (ADF), ADLS Gen2, Synapse Analytics, Azure SQL, Key Vault, Azure Purview, Azure DevOps, Event Hubs
+Cloud — GCP:                BigQuery, Dataflow, Pub/Sub, GCS, Vertex AI, Looker
+Databases:                  Snowflake, PostgreSQL, MySQL, Oracle, SQL Server, DynamoDB, MongoDB, Cassandra, Redis, Elasticsearch
+Data Quality & Governance:  Great Expectations, Soda, Monte Carlo, dbt tests, Unity Catalog, AWS Lake Formation, Collibra, HIPAA, GDPR, RBAC, lineage tracking
+ML & AI Platforms:          MLflow, Databricks ML, Vertex AI, Snowpark, Feast (feature store), Spark MLlib, LangChain, Pinecone, Weaviate
+Infrastructure & CI/CD:     Terraform, Docker, Kubernetes, Helm, Jenkins, GitHub Actions, ArgoCD, Git
+
+EDUCATION:
+Master of Science in Information Systems @ Saint Louis University | 2024

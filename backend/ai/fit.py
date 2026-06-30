@@ -24,7 +24,7 @@ FALLBACK_TIPS = [
 
 
 async def analyze_fit(resume: str, job_description: str, job_title: str, company: str,
-                      api_key: str, provider: str, model: str) -> dict:
+                      api_key: str, provider: str, model: str, keys=None) -> dict:
     text = await chat(
         system=SYSTEM_PROMPT,
         user=f"""Job: {job_title} at {company}
@@ -40,6 +40,7 @@ Provide the fit analysis and 5 interview tips as JSON.""",
         provider=provider,
         model=model,
         max_tokens=1024,
+        keys=keys,
     )
 
     match = re.search(r"\{[\s\S]*\}", text.strip())

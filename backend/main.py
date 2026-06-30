@@ -580,7 +580,7 @@ async def startup():
     new_columns = [
         ("users",         "status",            "VARCHAR"),
         ("jobs",          "experience_level_inferred", "BOOLEAN DEFAULT FALSE"),
-        ("user_settings", "profile_phone",     "VARCHAR"),
+        ("user_settings", "profile_phone",      "VARCHAR"),
         ("user_settings", "profile_address",    "VARCHAR"),
         ("user_settings", "profile_linkedin",   "VARCHAR"),
         ("user_settings", "profile_github",     "VARCHAR"),
@@ -591,6 +591,10 @@ async def startup():
         ("user_settings", "role_request",        "TEXT"),
         ("user_settings", "ai_model_secondary",  "VARCHAR"),
         ("user_settings", "active_job_roles",    "TEXT"),
+        # Direct provider API keys (no OpenRouter service fee)
+        ("user_settings", "anthropic_api_key",  "VARCHAR"),
+        ("user_settings", "google_api_key",      "VARCHAR"),
+        ("user_settings", "openai_api_key",      "VARCHAR"),
     ]
     try:
         for table, col, typedef in new_columns:
@@ -1304,8 +1308,12 @@ async def _get_user_settings(user_id: str) -> dict:
             "resume": resume_text,
             "ai_provider": ai_source.ai_provider if ai_source else "openrouter",
             "ai_api_key": ai_source.ai_api_key if ai_source else "",
+            "anthropic_api_key": ai_source.anthropic_api_key if ai_source else "",
+            "google_api_key": ai_source.google_api_key if ai_source else "",
+            "openai_api_key": ai_source.openai_api_key if ai_source else "",
             "ai_model_parse": ai_source.ai_model_parse if ai_source else "",
             "ai_model_tailor": ai_source.ai_model_tailor if ai_source else "",
+            "ai_model_secondary": getattr(ai_source, "ai_model_secondary", "") if ai_source else "",
             "ai_model_qualify": ai_source.ai_model_qualify if ai_source else "",
             "ai_model_cover_letter": ai_source.ai_model_cover_letter if ai_source else "",
             "profile_name": profile_name_val,
@@ -1343,10 +1351,14 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
             "level_filter": bool(s.level_filter),
             "ai_provider": s.ai_provider or "openrouter",
             "ai_api_key": s.ai_api_key or "",
+            # Direct provider keys — masked for display, never sent plaintext
+            "anthropic_api_key": "•" * len(s.anthropic_api_key) if s.anthropic_api_key else "",
+            "google_api_key":    "•" * len(s.google_api_key)    if s.google_api_key    else "",
+            "openai_api_key":    "•" * len(s.openai_api_key)    if s.openai_api_key    else "",
             "ai_model_parse": s.ai_model_parse or "google/gemini-2.5-flash-lite",
-            "ai_model_tailor": s.ai_model_tailor or "anthropic/claude-opus-4-8",
+            "ai_model_tailor": s.ai_model_tailor or "anthropic/claude-sonnet-4.6",
             "ai_model_secondary": s.ai_model_secondary or "google/gemini-2.5-flash",
-            "ai_model_qualify": s.ai_model_qualify or "anthropic/claude-opus-4-8",
+            "ai_model_qualify": s.ai_model_qualify or "anthropic/claude-sonnet-4.6",
             "ai_model_cover_letter": s.ai_model_cover_letter or "anthropic/claude-sonnet-4.6",
             "profile_name": s.profile_name or "",
             "profile_visa": s.profile_visa or "",
@@ -1463,12 +1475,15 @@ async def update_settings(body: dict = Body(...), user_id: str = Depends(get_cur
                        "profile_name", "profile_visa",
                        "profile_phone", "profile_address", "profile_linkedin",
                        "profile_github", "profile_website", "profile_summary",
-                       "telegram_chat_id", "ai_api_key", "telegram_bot_token"]:
+                       "telegram_chat_id", "ai_api_key", "telegram_bot_token",
+                       "anthropic_api_key", "google_api_key", "openai_api_key"]:
             if field in body:
                 val = body[field]
                 # Secrets are returned masked by GET /api/settings; the UI echoes
                 # them back on save. Never overwrite a stored secret with the mask.
-                if field in ("telegram_bot_token", "ai_api_key") and isinstance(val, str) \
+                _SECRET_FIELDS = ("telegram_bot_token", "ai_api_key",
+                                  "anthropic_api_key", "google_api_key", "openai_api_key")
+                if field in _SECRET_FIELDS and isinstance(val, str) \
                         and ("•" in val or "â€¢" in val):
                     continue
                 setattr(s, field, val)
@@ -2433,9 +2448,18 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model = user_cfg.get("ai_model_tailor", "anthropic/claude-opus-4-8")
+    model = user_cfg.get("ai_model_tailor", "anthropic/claude-sonnet-4.6")
 
-    if not api_key:
+    # Build direct-provider key bundle — prefers direct APIs over OpenRouter
+    from ai.llm import ModelKeys as _ModelKeys
+    _mk = _ModelKeys(
+        anthropic=user_cfg.get("anthropic_api_key", "") or "",
+        google=user_cfg.get("google_api_key", "") or "",
+        openai=user_cfg.get("openai_api_key", "") or "",
+        openrouter=api_key,
+    )
+    _any_key_set = any([_mk.anthropic, _mk.google, _mk.openai, _mk.openrouter])
+    if not _any_key_set:
         raise HTTPException(400, "No AI API key set. Add one in Settings.")
 
     base_resume = user_cfg.get("resume", "")
@@ -2448,10 +2472,16 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
 
     ats_before = score_ats(base_resume, jd)
 
-    tailored_text = await tailor_resume(base_resume, jd, api_key, provider, model, profile_skills=profile_skills, secondary_model=user_cfg.get("ai_model_secondary", "google/gemini-2.5-flash"), user_job_roles=user_cfg.get("job_roles") or [])
+    tailored_text = await tailor_resume(
+        base_resume, jd, api_key, provider, model,
+        profile_skills=profile_skills,
+        secondary_model=user_cfg.get("ai_model_secondary", "google/gemini-2.5-flash"),
+        user_job_roles=user_cfg.get("job_roles") or [],
+        keys=_mk,
+    )
     ats_after = score_ats(tailored_text, jd)
 
-    fit = await analyze_fit(base_resume, jd, job.title, job.company, api_key, provider, model)
+    fit = await analyze_fit(base_resume, jd, job.title, job.company, api_key, provider, model, keys=_mk)
 
     # Write tailored resume to user_jobs table
     async with SessionLocal() as db:

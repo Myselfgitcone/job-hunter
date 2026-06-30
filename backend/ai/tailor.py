@@ -178,6 +178,7 @@ async def _augment_section(
     api_key: str,
     provider: str,
     model: str,
+    keys=None,
 ) -> list[str]:
     """
     Ask the model to write exactly `deficit` more bullets for a job section.
@@ -211,6 +212,7 @@ async def _augment_section(
         model=model,
         max_tokens=200 * deficit,
         pass_name="augment",
+        keys=keys,
     )
 
     bullets = []
@@ -254,6 +256,7 @@ async def augment_bullet_counts(
     api_key: str,
     provider: str,
     model: str,
+    keys=None,
 ) -> str:
     """
     Surgically add missing bullets to sections that failed bullet-count lint.
@@ -330,7 +333,7 @@ async def augment_bullet_counts(
         block = blocks[job_idx]
         print(f"[AUGMENT] job #{job_idx+1} needs {deficit} more bullet(s) — calling {model}")
 
-        new_bullets = await _augment_section(block, deficit, jd_excerpt, api_key, provider, model)
+        new_bullets = await _augment_section(block, deficit, jd_excerpt, api_key, provider, model, keys=keys)
         if new_bullets:
             resume = _insert_bullets_into_section(resume, block, new_bullets)
             # Re-parse so subsequent issues have correct positions
@@ -2089,6 +2092,7 @@ async def audit_tier_compliance(
     final_resume: str,
     missing_skills: list[str],
     api_key: str, provider: str, model: str,
+    keys=None,
 ) -> tuple[list[str], str]:
     """
     Truth-audit pass: verifies skills added to close JD coverage gaps were placed
@@ -2114,6 +2118,7 @@ async def audit_tier_compliance(
         model=model,  # caller passes _sec here
         max_tokens=2500,
         pass_name="tier-audit",
+        keys=keys,
     )
     report = report.strip()
     violations = _parse_tier_audit(report)
@@ -2122,7 +2127,8 @@ async def audit_tier_compliance(
 
 async def review_resume(tailored: str, job_description: str,
                         api_key: str, provider: str, model: str,
-                        profile_skills: list[str] | None = None) -> str:
+                        profile_skills: list[str] | None = None,
+                        keys=None) -> str:
     """One-shot semantic review pass. Fires exactly once after _enforce_limits."""
     skills_ctx = ""
     if profile_skills:
@@ -2146,6 +2152,7 @@ async def review_resume(tailored: str, job_description: str,
         model=model,
         max_tokens=2500,
         pass_name="reviewer",
+        keys=keys,
     )
     stripped = re.sub(r'<plan>.*?</plan>', '', reviewed, flags=re.DOTALL).strip()
     if stripped != reviewed:
@@ -2238,7 +2245,8 @@ async def tailor_resume(base_resume: str, job_description: str,
                         api_key: str, provider: str, model: str,
                         profile_skills: list[str] | None = None,
                         secondary_model: str = "",
-                        user_job_roles: list[str] | None = None) -> str:
+                        user_job_roles: list[str] | None = None,
+                        keys=None) -> str:
     # secondary_model: cheaper model for reviewer, tier audit, correction, retries.
     # Falls back to main model if not set.
     _sec = secondary_model or model
@@ -2321,6 +2329,7 @@ async def tailor_resume(base_resume: str, job_description: str,
         pass_name="main-tailor",
         allow_fallback=False,
         retry_on_ratelimit=2,
+        keys=keys,
     )
 
     # Strip <plan> block
@@ -2357,7 +2366,7 @@ async def tailor_resume(base_resume: str, job_description: str,
             # ONLY count issues — augmenter can fix all of them
             raw = await augment_bullet_counts(
                 raw, count_issues, job_description,
-                api_key, provider, _sec,
+                api_key, provider, _sec, keys=keys,
             )
             continue  # re-lint immediately without a full retry
 
@@ -2365,7 +2374,7 @@ async def tailor_resume(base_resume: str, job_description: str,
             # Both: augment counts first, then do one targeted retry for the rest
             raw = await augment_bullet_counts(
                 raw, count_issues, job_description,
-                api_key, provider, _sec,
+                api_key, provider, _sec, keys=keys,
             )
             # Fall through to targeted retry for other_issues below
             issues = other_issues  # retry only non-count issues
@@ -2401,6 +2410,7 @@ async def tailor_resume(base_resume: str, job_description: str,
             model=_sec,
             max_tokens=3500,
             pass_name=f"retry-{attempt+1}",
+            keys=keys,
         )
         raw = re.sub(r'<plan>.*?</plan>', '', raw, flags=re.DOTALL).strip()
 
@@ -2433,6 +2443,7 @@ async def tailor_resume(base_resume: str, job_description: str,
     result = await review_resume(
         result, job_description, api_key, provider, _sec,
         profile_skills=profile_skills,
+        keys=keys,
     )
     if result != pre_review:
         print("[REVIEW] Reviewer made changes")
@@ -2466,7 +2477,7 @@ async def tailor_resume(base_resume: str, job_description: str,
         try:
             violations, raw_report = await audit_tier_compliance(
                 base_resume, result, skills_missing_from_original,
-                api_key, provider, _sec,
+                api_key, provider, _sec, keys=keys,
             )
             if violations:
                 print(f"[TIER AUDIT] {len(violations)} violation(s) found:")
@@ -2497,6 +2508,7 @@ async def tailor_resume(base_resume: str, job_description: str,
                     model=_sec,
                     max_tokens=2500,
                     pass_name="tier-correction",
+                    keys=keys,
                 )
                 corrected = re.sub(r'<plan>.*?</plan>', '', corrected, flags=re.DOTALL).strip()
                 if corrected and len(corrected) > len(result) // 2:

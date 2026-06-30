@@ -132,7 +132,10 @@ class UserSettings(Base):
     visa_filter          = Column(Boolean, default=False)   # True = hide no-sponsorship
     level_filter         = Column(Boolean, default=False)   # True = hide overqualified
     ai_provider          = Column(String, default="openrouter")
-    ai_api_key           = Column(String, default="")
+    ai_api_key           = Column(String, default="")   # OpenRouter key (legacy fallback)
+    anthropic_api_key    = Column(String, default="")   # direct — console.anthropic.com
+    google_api_key       = Column(String, default="")   # direct — aistudio.google.com
+    openai_api_key       = Column(String, default="")   # direct — platform.openai.com
     ai_model_parse       = Column(String, default="")
     ai_model_tailor      = Column(String, default="")
     ai_model_secondary   = Column(String, default="")
@@ -152,6 +155,7 @@ class UserSettings(Base):
     telegram_chat_id     = Column(String, default="")
     # Role request: user-submitted request for additional roles (JSON array, cleared on grant)
     role_request         = Column(Text, default="")
+
 
 
 class UserJob(Base):

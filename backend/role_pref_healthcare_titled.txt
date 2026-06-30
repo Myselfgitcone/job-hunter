@@ -1,0 +1,62 @@
+Jagadish Reddy Butukuri — Senior Business Analyst, Regulatory Requirements
+(347)-695-1020 | jagadishbutukuri00@gmail.com
+
+PROFESSIONAL SUMMARY:
+• Senior data and business analyst with 6+ years translating regulatory and operational requirements into scalable data pipelines and governed reporting solutions.
+• Deep experience analyzing data requirements across healthcare, agribusiness, and financial services — delivering SQL-driven reporting layers and dimensional models supporting compliance and audit workflows.
+• Proven ability to partner with clinical operations, compliance, and IT teams to validate data accuracy, enforce data quality frameworks, and remediate pipeline failures before they reach regulatory submissions.
+• Builds Tableau and Power BI dashboards visualizing claims, eligibility, and operational KPIs for business stakeholders across complex multi-source environments.
+• Skilled in HIPAA-compliant data governance — including PHI de-identification, RBAC enforcement, and data lineage documentation — supporting state and federal regulatory reporting pipelines.
+• Enterprise background spanning cross-functional engagement across compliance, IT, and clinical operations teams at a regulated managed-care organization.
+
+WORK EXPERIENCE:
+
+Senior Data Engineer @ Cargill | Minneapolis, MN          Sep 2023 – Present
+• Designed cloud-native ELT pipelines on AWS and Databricks ingesting, normalizing, and delivering supply-chain and procurement data at 2TB+ daily scale.
+• Delivered Tableau dashboards visualizing supply-chain KPIs — on-time delivery and inventory turnover — across 6 business units for operational stakeholders.
+• Created data quality frameworks using Great Expectations and Spark SQL validating inventory, shipment, and supplier-compliance data against SLAs, flagging 12K+ anomalies monthly.
+• Built entity resolution logic in Python and SQL to deduplicate 4M+ supplier records across 12 source systems, improving downstream join accuracy by 28%.
+• Implemented dbt models and data contracts for commodity and procurement data, with freshness SLAs and automated tests covering gold-layer models.
+• Developed Delta Lake and Apache Iceberg architectures enforcing idempotent writes, schema contracts, and lineage recording across global procurement datasets.
+• Documented pipeline logic, data lineage, and model schemas supporting audit-readiness and cross-team data flow transparency.
+• Automated GitHub Actions CI/CD pipelines with schema contract checks and linting, blocking schema-breaking changes before production deployment.
+• Coordinated data delivery SLAs and onboarding for three external commodity data vendors, eliminating pipeline staleness gaps in downstream reporting.
+• Migrated Airflow DAGs to Dagster asset-based orchestration, adding pipeline lineage and cutting failed-run triage time by 40%.
+• Provisioned AWS infrastructure (S3, compute, IAM, Glue, Lambda) using Terraform, standardizing environment configuration across dev, staging, and production.
+Technologies Used: AWS, Databricks, Tableau, Great Expectations, Spark SQL, dbt, Delta Lake, Apache Iceberg, Python, SQL, Dagster, Airflow, Terraform, GitHub Actions, Docker, Jenkins, CloudWatch
+
+Data Engineer @ Molina Healthcare | Long Beach, CA          Jan 2021 – Jul 2022
+• Built enterprise healthcare data integration pipelines on Azure Data Factory and Synapse Analytics for member, provider, and claims datasets across 12 source systems.
+• Enforced HIPAA-compliant security via Azure Key Vault, Azure Purview governance policies, RBAC, and PHI de-identification on all patient datasets supporting regulatory submissions.
+• Developed Power BI reporting datasets and optimized analytical queries for clinical operations and compliance teams monitoring managed-care performance metrics.
+• Built data quality validation using Soda checks ensuring accuracy, completeness, and consistency across managed-care datasets, catching 95%+ of schema violations before load.
+• Designed dimensional data models and Data Vault 2.0 structures in ERwin supporting managed-care operational reporting across 5 clinical domains.
+• Documented data flows and business processes for 8 active pipelines in Azure DevOps, supporting audit readiness and state reporting requirements.
+• Standardized member and provider master records in Synapse Analytics using MDM patterns, reducing duplicate member IDs by 18%.
+• Implemented CDC-based incremental loading using Debezium patterns to improve data freshness and reduce reporting latency by 3 hours daily.
+Technologies Used: Azure Data Factory, Synapse Analytics, ADLS Gen2, Power BI, Soda, Azure Purview, Azure Key Vault, PostgreSQL, Redis, Debezium, ERwin, Azure DevOps, PySpark, SQL
+
+Data Engineer @ JPMorgan Chase | New York, NY          Dec 2018 – Dec 2020
+• Wrote advanced SQL and PL/SQL transformations, validations, and query tuning across large financial datasets, reducing query runtime by 25%.
+• Implemented Power BI dashboards for executive financial performance and retail-banking portfolio analytics, serving 12 business stakeholders.
+• Migrated legacy SQL Server data to Snowflake for modernized analytics and regulatory reporting, cutting storage costs by 18% and query latency by 45%.
+• Built scalable data pipelines using Spark and Databricks on AWS to process retail-banking transaction data, handling 500M+ daily records.
+• Developed ETL workflows in Informatica PowerCenter and Python to extract, transform, and load data from Oracle into S3 and Redshift, supporting 10 downstream teams.
+• Applied encryption and IAM policies to secure customer PII and financial transaction records across 3 production environments.
+• Optimized query performance in Redshift and Snowflake using partitioning, clustering, and Trino-based federated queries, reducing cost per query by 15%.
+Technologies Used: SQL, PL/SQL, Power BI, Snowflake, Spark, Databricks, AWS, Redshift, Informatica PowerCenter, Python, Kafka, Cassandra, Redis, Kubernetes, Jenkins, Trino
+
+TECHNICAL SKILLS:
+Languages: Python, SQL, PL/SQL, Scala, Shell Scripting
+Data Governance: Great Expectations, Soda, Monte Carlo, HIPAA, RBAC, PHI De-identification
+Visualization: Tableau, Power BI
+Data Modeling: Data Vault 2.0, ERwin, MDM
+
+Data Processing & Warehousing: Snowflake, Databricks, Delta Lake, Apache Iceberg, PySpark, Spark
+Orchestration & Integration: Dagster, Debezium, Informatica PowerCenter
+DevOps & Infrastructure: Terraform, GitHub Actions
+Databases: PostgreSQL, MySQL, Oracle, SQL Server
+Collaboration: Azure DevOps
+
+EDUCATION:
+Master of Science in Information Systems @ Saint Louis University | 2024

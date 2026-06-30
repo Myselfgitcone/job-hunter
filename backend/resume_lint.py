@@ -62,16 +62,27 @@ _USER_ROLE_MAP: dict[str, str] = {
 def user_roles_to_role_type(job_roles: list[str]) -> str | None:
     """
     Convert user-selected job role labels to a resume role type.
-    Returns the mapped type if all roles agree on one type, else None
-    (caller should fall back to JD-based detection).
+    - If all roles map to the same type → return that type.
+    - If roles are set but map to multiple types → return the majority type,
+      or TECH on tie (data users who also have one finance role still get TECH).
+    - If no roles set → return None (caller falls back to JD detection).
     """
     if not job_roles:
         return None
-    mapped = {_USER_ROLE_MAP.get(r.lower().strip()) for r in job_roles}
-    mapped.discard(None)
-    if len(mapped) == 1:
-        return mapped.pop()
-    return None
+    from collections import Counter
+    counts: Counter = Counter()
+    for r in job_roles:
+        rt = _USER_ROLE_MAP.get(r.lower().strip())
+        if rt:
+            counts[rt] += 1
+    if not counts:
+        # Roles set but none in map — assume TECH (safe default for data roles)
+        return TECH
+    best = counts.most_common(1)[0][0]
+    # TECH wins ties
+    if counts[TECH] >= counts[best]:
+        return TECH
+    return best
 
 
 # ── Per-role bullet budgets ────────────────────────────────────────────────────

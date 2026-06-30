@@ -97,13 +97,19 @@ function RoleGroupSelector({ selected, onChange, allowedGroups, readOnly = false
             <div style={{ display: "flex", alignItems: "center" }}>
               <button onClick={() => toggleGroup(g)}
                 style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: "none", border: "none", cursor: readOnly ? "default" : "pointer", textAlign: "left" }}>
-                <span style={{ width: 16, height: 16, borderRadius: 4, flexShrink: 0, display: "grid", placeItems: "center",
-                  border: allOn ? "none" : "1.5px solid var(--line-hi)",
-                  background: allOn ? "var(--violet)" : selCount > 0 ? "rgba(124,58,237,0.25)" : "transparent" }}>
-                  {(allOn || selCount > 0) && (
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round"><path d={allOn ? "M20 6 9 17l-5-5" : "M5 12h14"} /></svg>
-                  )}
-                </span>
+                {singleSelect ? (
+                  <span style={{ width: 16, height: 16, borderRadius: "50%", flexShrink: 0, display: "grid", placeItems: "center",
+                    border: allOn ? "5px solid var(--violet)" : "1.5px solid var(--line-hi)",
+                    background: "transparent" }} />
+                ) : (
+                  <span style={{ width: 16, height: 16, borderRadius: 4, flexShrink: 0, display: "grid", placeItems: "center",
+                    border: allOn ? "none" : "1.5px solid var(--line-hi)",
+                    background: allOn ? "var(--violet)" : selCount > 0 ? "rgba(124,58,237,0.25)" : "transparent" }}>
+                    {(allOn || selCount > 0) && (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round"><path d={allOn ? "M20 6 9 17l-5-5" : "M5 12h14"} /></svg>
+                    )}
+                  </span>
+                )}
                 <span style={{ fontSize: 13, fontWeight: 600, color: "var(--tx)" }}>{g.group}</span>
                 {selCount > 0 && (
                   <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--violet)", background: "rgba(124,58,237,0.1)", padding: "1px 7px", borderRadius: 999 }}>
@@ -251,11 +257,19 @@ export default function JobPreferencesModal({
         settingsRef.current = s;
         const r = Array.isArray(s.job_roles) ? s.job_roles : JSON.parse(s.job_roles || "[]");
         const active = Array.isArray(s.active_job_roles) ? s.active_job_roles : [];
-        setRoles(isAdmin ? r : (active.length ? active : r));
         // Lock non-admins to families present in their admin-granted roles (full grant, unaffected by their active pick)
         allowedFamiliesRef.current = ROLE_GROUPS
           .filter(g => g.items.some(i => r.includes(i)))
           .map(g => g.group);
+        if (isAdmin) {
+          setRoles(r);
+        } else if (active.length) {
+          setRoles(active);
+        } else {
+          // No pick made yet — default to exactly ONE family, not the whole grant
+          const firstGroup = ROLE_GROUPS.find(g => g.group === allowedFamiliesRef.current[0]);
+          setRoles(firstGroup ? [...firstGroup.items] : r);
+        }
       }).finally(() => { setLoading(false); loadedRef.current = true; });
 
       // Fetch massive job dictionary if not cached

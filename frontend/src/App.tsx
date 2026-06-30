@@ -810,7 +810,15 @@ export default function App() {
               viewMode={viewMode} setViewMode={setViewMode} IC={IC}
               isAdmin={isAdmin}
               onOpenPreferences={() => setPreferencesOpen(true)}
-              userRoles={userSettings?.job_roles ? (Array.isArray(userSettings.job_roles) ? userSettings.job_roles : JSON.parse(userSettings.job_roles)) : []}
+              userRoles={(() => {
+                const grant = userSettings?.job_roles ? (Array.isArray(userSettings.job_roles) ? userSettings.job_roles : JSON.parse(userSettings.job_roles)) : [];
+                if (isAdmin) return grant;
+                const active = userSettings?.active_job_roles && userSettings.active_job_roles.length ? userSettings.active_job_roles : [];
+                if (active.length) return active;
+                // No pick saved yet — show just the first granted family, not the whole grant
+                const firstGroup = ROLE_GROUPS.find(g => g.items.some((i: string) => grant.includes(i)));
+                return firstGroup ? firstGroup.items : grant;
+              })()}
               activeFamily={isAdmin ? "" : activeFamily}
               setActiveFamily={isAdmin ? undefined : setActiveFamily}
               sidebarCollapsed={sidebarCollapsed}

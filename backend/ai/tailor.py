@@ -2240,12 +2240,9 @@ async def tailor_resume(base_resume: str, job_description: str,
     # Falls back to main model if not set.
     _sec = secondary_model or model
 
-    # Role type — user's job preference is authoritative.
-    # If user has job_roles set (e.g. "Data Analyst"), always use that type.
-    # Only fall back to JD body scan when job_roles is completely empty
-    # (unregistered / admin hasn't assigned roles yet).
-    _user_rt = user_roles_to_role_type(user_job_roles or [])
-    role_type = _user_rt if _user_rt is not None else detect_role_type(job_description)
+    # Role type comes from user's job preference only. No JD body scan.
+    # Job preference is required to use the app — if empty, default TECH.
+    role_type = user_roles_to_role_type(user_job_roles or []) or TECH
     budget    = BULLET_BUDGETS[role_type]
     minimums  = BULLET_MINIMUMS.get(role_type, (0, 0, 0, 0))
     hard_total = budget[5]

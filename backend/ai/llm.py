@@ -269,9 +269,11 @@ async def _call_anthropic(system: str, user: str, api_key: str,
                            model: str, max_tokens: int) -> str:
     """Anthropic SDK — direct API, no service fees."""
     import anthropic
+    # Anthropic API requires dashes not dots: claude-sonnet-4-6, not claude-sonnet-4.6
+    model = model.replace(".", "-")
     client = anthropic.AsyncAnthropic(api_key=api_key)
     msg = await client.messages.create(
-        model=model or "claude-sonnet-4-5",
+        model=model or "claude-sonnet-4-6",
         max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": user}],

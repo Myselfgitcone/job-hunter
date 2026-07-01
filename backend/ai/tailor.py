@@ -2418,6 +2418,10 @@ async def tailor_resume(base_resume: str, job_description: str,
             keys=keys,
         )
         raw = re.sub(r'<plan>.*?</plan>', '', raw, flags=re.DOTALL).strip()
+        # Truncation guard: if retry dropped required sections, revert to best known good
+        if any(s not in raw for s in ("WORK EXPERIENCE:", "TECHNICAL SKILLS:", "EDUCATION:")):
+            print(f"[RETRY] retry-{attempt+1} truncated — reverting to best-of-N")
+            raw = _best_raw
 
 
     # Best-of-N final check
@@ -2444,16 +2448,24 @@ async def tailor_resume(base_resume: str, job_description: str,
         print(f"[JOB RESTORED] Re-inserted {len(reinserted_jobs)} real job(s) verbatim: {', '.join(reinserted_jobs)}")
 
     # ── Semantic review — 1 pass, no retry ──────────────────────────────────
+    _REQUIRED_SECTIONS = ["WORK EXPERIENCE:", "TECHNICAL SKILLS:", "EDUCATION:"]
     pre_review = result
-    result = await review_resume(
+    reviewed = await review_resume(
         result, job_description, api_key, provider, _sec,
         profile_skills=profile_skills,
         keys=keys,
     )
-    if result != pre_review:
+    # Truncation guard: if reviewer dropped any required section, discard its output
+    _review_truncated = any(s not in reviewed for s in _REQUIRED_SECTIONS)
+    if _review_truncated:
+        print("[REVIEW] Truncation detected — discarding reviewer output, keeping pre-review")
+        result = pre_review
+    elif reviewed != pre_review:
         print("[REVIEW] Reviewer made changes")
+        result = reviewed
     else:
         print("[REVIEW] No semantic violations found — resume passed all 3 checks")
+        result = reviewed
 
     # ── Post-review lint — log WARN only, no retry ───────────────────────────
     post_issues = lint_resume(result, job_description, base_resume=base_resume)

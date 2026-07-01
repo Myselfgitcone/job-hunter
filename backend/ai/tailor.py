@@ -2138,6 +2138,8 @@ async def review_resume(tailored: str, job_description: str,
         )
     msg = (
         "Review and fix the 3 semantic issues per your instructions.\n"
+        "CRITICAL: Output the COMPLETE resume from first line to last — every section, "
+        "every job, every bullet, TECHNICAL SKILLS, EDUCATION. Do NOT truncate or stop early.\n"
         "Return the complete corrected resume as plain text only — no commentary, no plan block.\n"
         f"{skills_ctx}\n"
         f"=== JOB DESCRIPTION ===\n{job_description[:8000]}\n\n"
@@ -2150,7 +2152,7 @@ async def review_resume(tailored: str, job_description: str,
         api_key=api_key,
         provider=provider,
         model=model,
-        max_tokens=2500,
+        max_tokens=5000,
         pass_name="reviewer",
         keys=keys,
     )
@@ -2395,9 +2397,12 @@ async def tailor_resume(base_resume: str, job_description: str,
         )
         fix_msg = (
             f"TARGETED FIX — attempt {attempt + 2} of 3.\n"
-            "Fix ONLY the specific issues listed below. "
-            "Do NOT alter any other bullet, section, or line — surgical edits only.\n"
-            "Return the COMPLETE resume as plain text with only these fixes applied.\n\n"
+            "Fix ONLY the specific issues listed below.\n"
+            "CRITICAL: Output the COMPLETE resume from the very first line to the very last line. "
+            "Do NOT truncate, summarize, or omit any section — even sections you did not change. "
+            "Every section (PROFESSIONAL SUMMARY, WORK EXPERIENCE with all jobs and bullets, "
+            "TECHNICAL SKILLS, EDUCATION, CERTIFICATIONS) must appear in the output. "
+            "Do not stop early. If the resume is long, output all of it.\n\n"
             f"ISSUES TO FIX:\n{issue_lines}\n\n"
             "=== RESUME TO FIX ===\n" + raw
         )
@@ -2408,7 +2413,7 @@ async def tailor_resume(base_resume: str, job_description: str,
             api_key=api_key,
             provider=provider,
             model=_sec,
-            max_tokens=3500,
+            max_tokens=6000,
             pass_name=f"retry-{attempt+1}",
             keys=keys,
         )

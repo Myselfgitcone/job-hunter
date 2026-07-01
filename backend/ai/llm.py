@@ -81,31 +81,35 @@ class ModelKeys:
     openrouter: str = ""   # openrouter.ai/keys    — fallback for all models
 
 
+_HAIKU_FALLBACK = "claude-haiku-4-5"
+
 def _resolve_provider(model: str, keys: ModelKeys) -> tuple[str, str]:
     """
     Given a model name and a ModelKeys object, return (api_key, provider).
-    Prefers direct APIs when a key is set — avoids the OpenRouter service fee.
-    Falls back to OpenRouter if no matching direct key exists.
+    Routes to direct APIs only — no OpenRouter.
+    If no matching direct key, falls back to Claude Haiku via Anthropic.
     """
-    # Normalize: strip provider prefix ("anthropic/claude-x" → "claude-x")
     m = model.lower()
     if "/" in m:
         m = m.split("/", 1)[1]
 
     if m.startswith("claude") and keys.anthropic:
-        print(f"[LLM ROUTE] {model} → ANTHROPIC direct (no service fee)")
+        print(f"[LLM ROUTE] {model} → ANTHROPIC direct")
         return keys.anthropic, "anthropic"
     if m.startswith("gemini") and keys.google:
-        print(f"[LLM ROUTE] {model} → GOOGLE AI direct (no service fee)")
+        print(f"[LLM ROUTE] {model} → GOOGLE AI direct")
         return keys.google, "google"
     if (m.startswith("gpt-") or m.startswith("o1") or
             m.startswith("o3") or m.startswith("o4")) and keys.openai:
-        print(f"[LLM ROUTE] {model} → OPENAI direct (no service fee)")
+        print(f"[LLM ROUTE] {model} → OPENAI direct")
         return keys.openai, "openai"
 
-    # Fall back to OpenRouter
-    print(f"[LLM ROUTE] {model} → OPENROUTER (fallback)")
-    return keys.openrouter, "openrouter"
+    # No matching direct key — fall back to Haiku via Anthropic
+    if keys.anthropic:
+        print(f"[LLM ROUTE] {model} → no direct key, using Haiku fallback via Anthropic")
+        return keys.anthropic, "anthropic"
+
+    raise ValueError(f"No API key available for model '{model}'. Set anthropic_api_key, google_api_key, or openai_api_key in Settings.")
 
 
 def _strip_provider_prefix(model: str) -> str:
@@ -157,11 +161,10 @@ async def chat(
         try:
             return await _call_google(system, user, api_key, model, max_tokens)
         except ValueError as e:
-            or_key = keys.openrouter if keys else ""
-            if or_key:
-                print(f"[Google AI] direct failed ({e}) — falling back to OpenRouter")
-                return await chat(system, user, api_key=or_key, provider="openrouter",
-                                  model=model, max_tokens=max_tokens, pass_name=pass_name)
+            ant_key = keys.anthropic if keys else ""
+            if ant_key:
+                print(f"[Google AI] direct failed ({e}) — falling back to Haiku via Anthropic")
+                return await _call_anthropic(system, user, ant_key, _HAIKU_FALLBACK, max_tokens)
             raise
 
     # ── Direct OpenAI (REST) ─────────────────────────────────────────────────

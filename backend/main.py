@@ -4099,9 +4099,8 @@ async def extension_batch_answer(body: dict = Body(...), user_id: str = Depends(
     if not tier2_questions and not tier3_questions:
         return {"answers": {}}
 
-    cfg     = await _get_user_settings(user_id)
-    api_key = cfg.get("ai_api_key", "")
-    if not api_key:
+    cfg = await _get_user_settings(user_id)
+    if not (cfg.get("anthropic_api_key") or cfg.get("google_api_key") or cfg.get("openai_api_key")):
         raise HTTPException(400, "No AI API key in Settings")
 
     # Find tailored resume for this job URL → fallback to base resume
@@ -4168,12 +4167,17 @@ async def extension_batch_answer(body: dict = Body(...), user_id: str = Depends(
 
     answers: dict = {}
     try:
-        from ai.llm import chat as _chat
+        from ai.llm import chat as _chat, ModelKeys
+        _ext_mk = ModelKeys(
+            anthropic=cfg.get("anthropic_api_key", ""),
+            google=cfg.get("google_api_key", ""),
+            openai=cfg.get("openai_api_key", ""),
+        )
         raw = await _chat(
             system=system, user=user_msg,
-            api_key=api_key, provider="openrouter",
             model="anthropic/claude-haiku-4-5",
             max_tokens=3000, pass_name="ext-batch",
+            keys=_ext_mk,
         )
         print(f"[Extension] raw response (first 500): {raw[:500]}")
         m = re.search(r'\{.*\}', raw, re.DOTALL)
@@ -4210,9 +4214,8 @@ async def extension_generate_answer(body: dict = Body(...), user_id: str = Depen
     if not question:
         raise HTTPException(400, "question is required")
 
-    cfg     = await _get_user_settings(user_id)
-    api_key = cfg.get("ai_api_key", "")
-    if not api_key:
+    cfg = await _get_user_settings(user_id)
+    if not (cfg.get("anthropic_api_key") or cfg.get("google_api_key") or cfg.get("openai_api_key")):
         raise HTTPException(400, "No AI API key in Settings")
 
     # Find tailored resume for this job → fallback to base
@@ -4235,12 +4238,17 @@ async def extension_generate_answer(body: dict = Body(...), user_id: str = Depen
         context += f"\n\nJob context: {job_description[:500]}"
 
     try:
-        from ai.llm import chat as _chat
+        from ai.llm import chat as _chat, ModelKeys
+        _ext_mk = ModelKeys(
+            anthropic=cfg.get("anthropic_api_key", ""),
+            google=cfg.get("google_api_key", ""),
+            openai=cfg.get("openai_api_key", ""),
+        )
         answer = await _chat(
             system=system, user=context,
-            api_key=api_key, provider="openrouter",
             model="anthropic/claude-haiku-4-5",
             max_tokens=400, pass_name="ext-single",
+            keys=_ext_mk,
         )
         return {"answer": answer.strip()}
     except Exception as e:

@@ -1321,6 +1321,53 @@ async def _get_user_settings(user_id: str) -> dict:
         }
 
 
+@app.get("/api/settings/ai-status")
+async def get_ai_status(user_id: str = Depends(get_current_user_id)):
+    """Returns which provider each model family will actually route to.
+    Used by Settings UI to show live routing status without exposing key values."""
+    from ai.llm import ModelKeys as _ModelKeys, _resolve_provider
+    cfg = await _get_user_settings(user_id)
+    mk = _ModelKeys(
+        anthropic=cfg.get("anthropic_api_key", "") or "",
+        google=cfg.get("google_api_key", "") or "",
+        openai=cfg.get("openai_api_key", "") or "",
+        openrouter=cfg.get("ai_api_key", "") or "",
+    )
+
+    def route(model: str) -> dict:
+        _, prov = _resolve_provider(model, mk)
+        label = {
+            "anthropic": "Anthropic Direct ✓",
+            "google":    "Google AI Direct ✓",
+            "openai":    "OpenAI Direct ✓",
+            "openrouter": "OpenRouter (fallback)",
+        }.get(prov, prov)
+        direct = prov != "openrouter"
+        return {"provider": prov, "label": label, "direct": direct}
+
+    tailor_model  = cfg.get("ai_model_tailor",       "anthropic/claude-sonnet-4.6")
+    sec_model     = cfg.get("ai_model_secondary",     "google/gemini-2.5-flash")
+    parse_model   = cfg.get("ai_model_parse",         "google/gemini-2.5-flash-lite")
+    qualify_model = cfg.get("ai_model_qualify",       "anthropic/claude-sonnet-4.6")
+    cover_model   = cfg.get("ai_model_cover_letter",  "anthropic/claude-sonnet-4.6")
+
+    return {
+        "keys_set": {
+            "anthropic":  bool(mk.anthropic),
+            "google":     bool(mk.google),
+            "openai":     bool(mk.openai),
+            "openrouter": bool(mk.openrouter),
+        },
+        "routing": {
+            "tailor":       {**route(tailor_model),  "model": tailor_model},
+            "utility":      {**route(sec_model),     "model": sec_model},
+            "parse":        {**route(parse_model),   "model": parse_model},
+            "qualify":      {**route(qualify_model), "model": qualify_model},
+            "cover_letter": {**route(cover_model),   "model": cover_model},
+        },
+    }
+
+
 @app.get("/api/settings")
 async def get_settings(user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:

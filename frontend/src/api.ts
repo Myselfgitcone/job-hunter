@@ -200,6 +200,7 @@ export const api = {
   getDailyUsage: () => req<{ used: number; limit: number; remaining: number }>("/api/usage/today"),
 
   getSettings: () => req<Settings>("/api/settings"),
+  getAiStatus: () => req<any>("/api/settings/ai-status"),
 
   saveSettings: (data: Partial<Settings>) =>
     req("/api/settings", { method: "PUT", body: JSON.stringify(data) }),

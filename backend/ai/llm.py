@@ -93,14 +93,18 @@ def _resolve_provider(model: str, keys: ModelKeys) -> tuple[str, str]:
         m = m.split("/", 1)[1]
 
     if m.startswith("claude") and keys.anthropic:
+        print(f"[LLM ROUTE] {model} → ANTHROPIC direct (no service fee)")
         return keys.anthropic, "anthropic"
     if m.startswith("gemini") and keys.google:
+        print(f"[LLM ROUTE] {model} → GOOGLE AI direct (no service fee)")
         return keys.google, "google"
     if (m.startswith("gpt-") or m.startswith("o1") or
             m.startswith("o3") or m.startswith("o4")) and keys.openai:
+        print(f"[LLM ROUTE] {model} → OPENAI direct (no service fee)")
         return keys.openai, "openai"
 
     # Fall back to OpenRouter
+    print(f"[LLM ROUTE] {model} → OPENROUTER (fallback)")
     return keys.openrouter, "openrouter"
 
 

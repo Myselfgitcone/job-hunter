@@ -588,6 +588,7 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
   const [scraping, setScraping] = useState(false);
   const [jdFix, setJdFix] = useState<{ running: boolean; total: number; done: number; fixed: number; failed: number } | null>(null);
   const [qualHealth, setQualHealth] = useState<{ admin_settings_found: boolean; api_key_set: boolean; profile_set: boolean; qualify_model: string | null; scored_jobs: number; pending_jobs: number; running: boolean } | null>(null);
+  const [aiStatus, setAiStatus] = useState<any>(null);
 
   useEffect(() => {
     api.getSettings().then((s: any) => {
@@ -610,6 +611,7 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
       setCron(s.auto_scrape_cron || "0 * * * *");
     }).catch(() => {});
     api.qualifyHealth().then(setQualHealth).catch(() => {});
+    api.getAiStatus().then(setAiStatus).catch(() => {});
   }, []);
 
   const saveSettings = async () => {
@@ -742,6 +744,41 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
             </label>
 
           </div>
+
+          {/* ── Live Routing Status ── */}
+          {aiStatus && (
+            <div style={{ marginTop: 14, border: '1px solid var(--border, #e2e8f0)', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ background: 'var(--surface-2, #f8fafc)', padding: '8px 14px', fontSize: 11, fontWeight: 700, color: 'var(--tx-2)', letterSpacing: '0.06em', textTransform: 'uppercase', borderBottom: '1px solid var(--border, #e2e8f0)' }}>
+                Live Routing — what gets called when you run AI
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: 'var(--surface-2, #f8fafc)' }}>
+                    <th style={{ padding: '6px 14px', textAlign: 'left', fontWeight: 600, color: 'var(--tx-2)', borderBottom: '1px solid var(--border, #e2e8f0)' }}>Feature</th>
+                    <th style={{ padding: '6px 14px', textAlign: 'left', fontWeight: 600, color: 'var(--tx-2)', borderBottom: '1px solid var(--border, #e2e8f0)' }}>Model</th>
+                    <th style={{ padding: '6px 14px', textAlign: 'left', fontWeight: 600, color: 'var(--tx-2)', borderBottom: '1px solid var(--border, #e2e8f0)' }}>Routes via</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(aiStatus.routing || {}).map(([key, val]: [string, any], i) => (
+                    <tr key={key} style={{ borderBottom: '1px solid var(--border, #e2e8f0)', background: i % 2 ? 'var(--surface-2, #f8fafc)' : 'transparent' }}>
+                      <td style={{ padding: '7px 14px', color: 'var(--tx-1)', fontWeight: 500, textTransform: 'capitalize' }}>{key.replace('_', ' ')}</td>
+                      <td style={{ padding: '7px 14px', color: 'var(--tx-3)', fontFamily: 'monospace', fontSize: 11 }}>{val.model}</td>
+                      <td style={{ padding: '7px 14px' }}>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, borderRadius: 5, padding: '2px 8px',
+                          background: val.direct ? '#dcfce7' : '#fef3c7',
+                          color:      val.direct ? '#166534' : '#92400e',
+                        }}>
+                          {val.label}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
 
           <div className="field-grid" style={{ marginTop: 12 }}>

@@ -2525,7 +2525,14 @@ async def generate_cover_letter_endpoint(job_id: str, user_id: str = Depends(get
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
     model = user_cfg.get("ai_model_cover_letter", "anthropic/claude-sonnet-4.6")
 
-    if not api_key:
+    from ai.llm import ModelKeys as _ModelKeys
+    _mk = _ModelKeys(
+        anthropic=user_cfg.get("anthropic_api_key", "") or "",
+        google=user_cfg.get("google_api_key", "") or "",
+        openai=user_cfg.get("openai_api_key", "") or "",
+        openrouter=api_key,
+    )
+    if not any([_mk.anthropic, _mk.google, _mk.openai, _mk.openrouter]):
         raise HTTPException(400, "No AI API key set. Add one in Settings.")
 
     # Use tailored resume if one exists for this job — it's already JD-aligned.
@@ -2539,7 +2546,7 @@ async def generate_cover_letter_endpoint(job_id: str, user_id: str = Depends(get
     resume = tailored if tailored.strip() else user_cfg.get("resume", "")
     jd = job.description or ""
 
-    letter = await generate_cover_letter(resume, jd, job.title, job.company, api_key, provider, model)
+    letter = await generate_cover_letter(resume, jd, job.title, job.company, api_key, provider, model, keys=_mk)
 
     # Write cover letter to user_jobs table
     async with SessionLocal() as db:
@@ -2728,7 +2735,14 @@ async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_curr
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
     model    = user_cfg.get("ai_model_tailor", "anthropic/claude-opus-4-8")
 
-    if not api_key:
+    from ai.llm import ModelKeys as _ModelKeys
+    _mk = _ModelKeys(
+        anthropic=user_cfg.get("anthropic_api_key", "") or "",
+        google=user_cfg.get("google_api_key", "") or "",
+        openai=user_cfg.get("openai_api_key", "") or "",
+        openrouter=api_key,
+    )
+    if not any([_mk.anthropic, _mk.google, _mk.openai, _mk.openrouter]):
         raise HTTPException(400, "No AI API key set. Add one in Settings.")
 
     base_resume = user_cfg.get("resume", "")
@@ -2736,7 +2750,11 @@ async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_curr
         raise HTTPException(400, "No base resume found. Add it in Settings.")
 
     profile_skills = await _load_profile_skills(user_id)
-    tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model, profile_skills=profile_skills, secondary_model=user_cfg.get("ai_model_secondary", "google/gemini-2.5-flash"), user_job_roles=user_cfg.get("job_roles") or [])
+    tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model,
+                                   profile_skills=profile_skills,
+                                   secondary_model=user_cfg.get("ai_model_secondary", "google/gemini-2.5-flash"),
+                                   user_job_roles=user_cfg.get("job_roles") or [],
+                                   keys=_mk)
 
     async with SessionLocal() as db:
         record = QuickTailorHistory(
@@ -2766,16 +2784,21 @@ async def quick_tailor_pdf(body: QuickTailorRequest, user_id: str = Depends(get_
         api_key = user_cfg.get("ai_api_key", "")
         provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
         model    = user_cfg.get("ai_model_tailor", "anthropic/claude-opus-4-8")
-        if not api_key:
+        from ai.llm import ModelKeys as _ModelKeys
+        _mk = _ModelKeys(
+            anthropic=user_cfg.get("anthropic_api_key", "") or "",
+            google=user_cfg.get("google_api_key", "") or "",
+            openai=user_cfg.get("openai_api_key", "") or "",
+            openrouter=api_key,
+        )
+        if not any([_mk.anthropic, _mk.google, _mk.openai, _mk.openrouter]):
             raise HTTPException(400, "No AI API key set.")
-        base_resume = user_cfg.get("resume", "")
-        if not base_resume:
-            raise HTTPException(400, "No base resume found.")
         profile_skills = await _load_profile_skills(user_id)
         tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model,
                                        profile_skills=profile_skills,
                                        secondary_model=user_cfg.get("ai_model_secondary", "google/gemini-2.5-flash"),
-                                       user_job_roles=user_cfg.get("job_roles") or [])
+                                       user_job_roles=user_cfg.get("job_roles") or [],
+                                       keys=_mk)
 
     pdf_bytes = generate_pdf(tailored, "", body.company)
     return StreamingResponse(
@@ -2796,16 +2819,21 @@ async def quick_tailor_docx(body: QuickTailorRequest, user_id: str = Depends(get
         api_key = user_cfg.get("ai_api_key", "")
         provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
         model    = user_cfg.get("ai_model_tailor", "anthropic/claude-opus-4-8")
-        if not api_key:
+        from ai.llm import ModelKeys as _ModelKeys
+        _mk = _ModelKeys(
+            anthropic=user_cfg.get("anthropic_api_key", "") or "",
+            google=user_cfg.get("google_api_key", "") or "",
+            openai=user_cfg.get("openai_api_key", "") or "",
+            openrouter=api_key,
+        )
+        if not any([_mk.anthropic, _mk.google, _mk.openai, _mk.openrouter]):
             raise HTTPException(400, "No AI API key set.")
-        base_resume = user_cfg.get("resume", "")
-        if not base_resume:
-            raise HTTPException(400, "No base resume found.")
         profile_skills = await _load_profile_skills(user_id)
         tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model,
                                        profile_skills=profile_skills,
                                        secondary_model=user_cfg.get("ai_model_secondary", "google/gemini-2.5-flash"),
-                                       user_job_roles=user_cfg.get("job_roles") or [])
+                                       user_job_roles=user_cfg.get("job_roles") or [],
+                                       keys=_mk)
 
     docx_bytes = generate_docx(tailored, "", body.company)
     return StreamingResponse(
@@ -3653,8 +3681,14 @@ async def parse_resume_file(file: UploadFile = File(...), user_id: str = Depends
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
     model = user_cfg.get("ai_model_parse", "google/gemini-2.5-flash-lite")
 
-
-    if not api_key:
+    from ai.llm import ModelKeys as _ModelKeys
+    _mk = _ModelKeys(
+        anthropic=user_cfg.get("anthropic_api_key", "") or "",
+        google=user_cfg.get("google_api_key", "") or "",
+        openai=user_cfg.get("openai_api_key", "") or "",
+        openrouter=api_key,
+    )
+    if not any([_mk.anthropic, _mk.google, _mk.openai, _mk.openrouter]):
         raise HTTPException(400, "No AI API key set. Add one in Settings first.")
 
     content = await file.read()
@@ -3744,6 +3778,7 @@ Rules:
             provider=provider,
             model=model,
             max_tokens=4000,
+            keys=_mk,
         )
     except Exception as e:
         raise HTTPException(502, f"AI call failed on all fallback models. Last error: {str(e)[:300]}")

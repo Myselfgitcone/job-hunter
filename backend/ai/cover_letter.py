@@ -19,7 +19,7 @@ STRICT RULES:
 
 
 async def generate_cover_letter(resume: str, jd: str, job_title: str, company: str,
-                                 api_key: str, provider: str, model: str) -> str:
+                                 api_key: str, provider: str, model: str, keys=None) -> str:
     return await chat(
         system=SYSTEM_PROMPT,
         user=f"""Write a cover letter for this candidate applying to: {job_title} at {company}
@@ -35,4 +35,5 @@ Write the cover letter body only (starting from "Dear Hiring Manager," or simila
         provider=provider,
         model=model,
         max_tokens=1024,
+        keys=keys,
     )

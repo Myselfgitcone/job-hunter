@@ -154,7 +154,15 @@ async def chat(
 
     # ── Direct Google AI Studio (REST) ───────────────────────────────────────
     if provider == "google":
-        return await _call_google(system, user, api_key, model, max_tokens)
+        try:
+            return await _call_google(system, user, api_key, model, max_tokens)
+        except ValueError as e:
+            or_key = keys.openrouter if keys else ""
+            if or_key:
+                print(f"[Google AI] direct failed ({e}) — falling back to OpenRouter")
+                return await chat(system, user, api_key=or_key, provider="openrouter",
+                                  model=model, max_tokens=max_tokens, pass_name=pass_name)
+            raise
 
     # ── Direct OpenAI (REST) ─────────────────────────────────────────────────
     if provider == "openai":
@@ -299,12 +307,20 @@ async def _call_google(system: str, user: str, api_key: str,
     if system:
         payload["systemInstruction"] = {"parts": [{"text": system}]}
 
+    _TRANSIENT = {429, 500, 502, 503, 504}
+    resp = None
     async with httpx.AsyncClient(timeout=90) as client:
-        resp = await client.post(
-            url, json=payload,
-            params={"key": api_key},
-            headers={"Content-Type": "application/json"},
-        )
+        for attempt in range(3):
+            resp = await client.post(
+                url, json=payload,
+                params={"key": api_key},
+                headers={"Content-Type": "application/json"},
+            )
+            if resp.is_success or resp.status_code not in _TRANSIENT:
+                break
+            wait = 2 ** attempt  # 1s, 2s, 4s
+            print(f"[Google AI] {resp.status_code} transient — retry {attempt+1}/3 in {wait}s")
+            await asyncio.sleep(wait)
 
     if not resp.is_success:
         raise ValueError(f"Google AI HTTP {resp.status_code}: {resp.text[:400]}")

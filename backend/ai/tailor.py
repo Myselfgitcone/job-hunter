@@ -267,6 +267,11 @@ async def augment_bullet_counts(
     jd_excerpt = jd[:600]
 
     for issue in issues:
+        # Only deficit-type issues belong here. Anything else (e.g. BULLET
+        # OVERFLOW) would fall into the deficit=1 default and wrongly ADD a
+        # bullet to a section that needs cutting.
+        if not issue.startswith(("[TOO FEW", "[SUMMARY]")):
+            continue
         # Parse: "[TOO FEW BULLETS] job #2 has 7 bullets (need exactly 8). Add 1 more..."
         job_m = re.search(r'job #(\d+)', issue, re.IGNORECASE)
         need_m = re.search(r'need exactly (\d+)', issue)
@@ -2357,7 +2362,9 @@ async def tailor_resume(base_resume: str, job_description: str,
               " | ".join(i[:60] for i in issues))
 
         # ── Classify issues ───────────────────────────────────────────────────
-        _COUNT_PREFIXES = ("[TOO FEW", "[SUMMARY]", "[BULLET OVERFLOW]")
+        # NOTE: [BULLET OVERFLOW] must NOT go to the augmenter — it ADDS bullets,
+        # overflow needs cutting. Overflow routes to the targeted retry instead.
+        _COUNT_PREFIXES = ("[TOO FEW", "[SUMMARY]")
         count_issues = [i for i in issues if i.startswith(_COUNT_PREFIXES)]
         other_issues = [i for i in issues if not i.startswith(_COUNT_PREFIXES)]
 

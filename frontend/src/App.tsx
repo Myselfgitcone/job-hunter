@@ -245,6 +245,7 @@ export default function App() {
   useEffect(() => { localStorage.setItem("jh_list_w", String(Math.round(listPaneWidth))); }, [listPaneWidth]);
   const [busy, setBusy]             = useState<string | null>(null);
   const [busyJobId, setBusyJobId]   = useState<string | null>(null);
+  const [busyStartedAt, setBusyStartedAt] = useState<number | null>(null);
   const abortRef                    = useRef<AbortController | null>(null);
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem("jh_welcomed"));
   const { toasts, toast }           = useToasts();
@@ -563,7 +564,7 @@ export default function App() {
       if (flags.length > 0 && !window.confirm(`⚠️ This job requires ${flags.join(" and ")}.\n\nYou may not be eligible. Tailor anyway?`))
         return;
     }
-    setBusy(action); setBusyJobId(selectedJob.id);
+    setBusy(action); setBusyJobId(selectedJob.id); setBusyStartedAt(Date.now());
     try {
       if (action === "qualify") {
         const r = await api.qualifyJob(selectedJob.id);
@@ -591,7 +592,7 @@ export default function App() {
       }
       await refreshJob(selectedJob.id);
     } catch (e: any) { if (e?.name !== "AbortError") toast(e.message || "Failed", "error"); }
-    finally { setBusy(null); setBusyJobId(null); abortRef.current = null; }
+    finally { setBusy(null); setBusyJobId(null); setBusyStartedAt(null); abortRef.current = null; }
   };
 
   const cancelAction = () => { abortRef.current?.abort(); };
@@ -936,7 +937,7 @@ export default function App() {
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                   title="Drag to resize"
                 />
-                <JobDetail job={selectedJob} tab={tab} setTab={setTab} onUpdate={(patch: Partial<Job>) => selectedJob && updateJob(selectedJob.id, patch)} onToast={toast} busy={busy} busyJobId={busyJobId} runAction={runAction} onCancel={cancelAction} />
+                <JobDetail job={selectedJob} tab={tab} setTab={setTab} onUpdate={(patch: Partial<Job>) => selectedJob && updateJob(selectedJob.id, patch)} onToast={toast} busy={busy} busyJobId={busyJobId} busyStartedAt={busyStartedAt} runAction={runAction} onCancel={cancelAction} />
               </div>
             )}
           </>

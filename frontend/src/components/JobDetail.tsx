@@ -492,8 +492,8 @@ function QualifyTab({ job, running, onRun }: { job: Job; running: boolean; onRun
 }
 
 // ── Resume tab ─────────────────────────────────────────────────────────────────
-function ResumeTab({ job, tailoring, onTailor, onCancel, onToast, onUpdate }: {
-  job: Job; tailoring: boolean; onTailor: () => void; onCancel: () => void;
+function ResumeTab({ job, tailoring, startedAt, onTailor, onCancel, onToast, onUpdate }: {
+  job: Job; tailoring: boolean; startedAt?: number | null; onTailor: () => void; onCancel: () => void;
   onToast: (m: string, t?: "success" | "error") => void;
   onUpdate: (patch: Partial<Job>) => void;
 }) {
@@ -502,25 +502,21 @@ function ResumeTab({ job, tailoring, onTailor, onCancel, onToast, onUpdate }: {
   const [draft, setDraft]     = useState("");
   const [saving, setSaving]   = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const startRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!tailoring) {
-      startRef.current = null;
       setElapsed(0);
       return;
     }
-    // Record start time once when tailoring begins
-    if (startRef.current === null) {
-      startRef.current = Date.now();
-    }
-    const start = startRef.current;
+    // Anchor to the real tailor start time from App state — a local ref
+    // resets to 0 whenever this tab unmounts/remounts (tab switching)
+    const start = startedAt ?? Date.now();
     setElapsed(Math.floor((Date.now() - start) / 1000));
     const t = setInterval(() => {
       setElapsed(Math.floor((Date.now() - start) / 1000));
     }, 1000);
     return () => clearInterval(t);
-  }, [tailoring]);
+  }, [tailoring, startedAt]);
 
   if (!job.tailored_resume && !tailoring) {
     return (
@@ -854,11 +850,11 @@ function InfoTab({ job, onUpdate, onToast }: {
 }
 
 // ── Main JobDetail ─────────────────────────────────────────────────────────────
-export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId, runAction, onCancel }: {
+export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId, busyStartedAt, runAction, onCancel }: {
   job: Job | null; tab: string; setTab: (t: string) => void;
   onUpdate: (patch: Partial<Job>) => void;
   onToast: (m: string, t?: "success" | "error") => void;
-  busy: string | null; busyJobId: string | null; runAction: (a: string) => void; onCancel: () => void;
+  busy: string | null; busyJobId: string | null; busyStartedAt?: number | null; runAction: (a: string) => void; onCancel: () => void;
 }) {
   if (!job) {
     return (
@@ -993,7 +989,7 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
           {tab === "qualify"  && <QualifyTab job={job} running={busy === "qualify" && busyJobId === job.id} onRun={() => runAction("qualify")} />}
           {tab === "resume"   && (
             <div style={{ display: "flex", flexDirection: "column" }}>
-              <ResumeTab job={job} tailoring={busy === "resume" && busyJobId === job.id} onTailor={() => runAction("resume")} onCancel={onCancel} onToast={onToast} onUpdate={onUpdate} />
+              <ResumeTab job={job} tailoring={busy === "resume" && busyJobId === job.id} startedAt={busyStartedAt} onTailor={() => runAction("resume")} onCancel={onCancel} onToast={onToast} onUpdate={onUpdate} />
               <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 20, marginTop: 24 }}>
                 <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 12 }}>Fit & Tips</div>
                 <FitTab job={job} running={busy === "fit" && busyJobId === job.id} onRun={() => runAction("fit")} />

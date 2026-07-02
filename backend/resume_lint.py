@@ -1498,20 +1498,25 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "") -> 
         metric_count = sum(1 for _, hm in exp_bullets if hm)
         ratio = metric_count / len(exp_bullets)
 
-        # Target ratio varies by role type
-        low_threshold  = 0.40 if role_type in (HEALTHCARE, CONSULTING) else 0.55
-        high_threshold = 0.85
+        # Target ratio varies by role type. Flags sit outside the target band
+        # so near-misses don't trigger a full retry.
+        if role_type == HEALTHCARE:
+            target_label, low_threshold = "30–50%", 0.25
+        elif role_type == CONSULTING:
+            target_label, low_threshold = "40–45%", 0.30
+        else:
+            target_label, low_threshold = "40–50%", 0.35
+        high_threshold = 0.60
 
         if ratio < low_threshold:
             issues.append(
                 f"[LOW METRICS] {ratio:.0%} of experience bullets have numbers "
-                f"(target {'40–60%' if role_type in (HEALTHCARE, CONSULTING) else '60–70%'}). "
-                f"Add quantified outcomes."
+                f"(target {target_label}). Add quantified outcomes."
             )
         elif ratio > high_threshold:
             issues.append(
                 f"[HIGH METRICS] {ratio:.0%} of experience bullets have numbers "
-                f"(target {'40–60%' if role_type in (HEALTHCARE, CONSULTING) else '60–70%'}). "
+                f"(target {target_label}). "
                 f"Remove forced metrics from process/collaboration bullets."
             )
 

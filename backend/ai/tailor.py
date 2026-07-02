@@ -1287,11 +1287,13 @@ DERIVE DOMAIN FROM RESUME — not from the JD:
   • Any other — infer from the resume. Never invent. Never relabel.
 
 ═══ METRICS — NATURAL DENSITY ═══
-Add numbers only where work naturally produces them.
-  TECH / CYBER / FINANCE / IB: 60–70% of bullets carry a metric
-  HEALTHCARE: 40–60% — clinical outcomes have metrics; care process bullets often don't
-  CONSULTING: 50–65% — engagement impact where quantifiable; methodology bullets often don't
-  GENERAL: 50–65%
+Add numbers only where work naturally produces them. Roughly half the bullets
+should carry NO number — honest process, design, and collaboration bullets
+make the metrics that remain stand out.
+  TECH / CYBER / FINANCE / IB: 40–50% of bullets carry a metric
+  HEALTHCARE: 30–50% — clinical outcomes have metrics; care process bullets often don't
+  CONSULTING: 40–45% — engagement impact where quantifiable; methodology bullets often don't
+  GENERAL: 40–50%
 Never force metrics onto process, documentation, or collaboration bullets.
 Never 100% (fake). Never 0% (weak). Keep magnitudes plausible.
 

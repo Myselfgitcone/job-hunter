@@ -1417,6 +1417,10 @@ Move tools to the correct category row if they are miscategorized.
     move them to a row labeled "Data Processing" or "Compute & Processing".
   Airflow, Dagster, Prefect, Luigi = ORCHESTRATION tools (schedulers, DAG runners).
   dbt, Fivetran, Airbyte = TRANSFORMATION/INTEGRATION tools.
+  NetSuite, QuickBooks, Salesforce, SAP, Workday = BUSINESS/ERP APPLICATIONS,
+    never databases. If they appear under a "Databases" row, move them to a
+    "Business Systems" or "ERP & Business Applications" row (create if needed,
+    min 2 items) or remove them from the skills section.
   Do not mix processing engines with orchestrators in the same row.
   Rule: for each item I, check if I appears as or within any row label L.
   If yes → I is redundant → remove I from its row.
@@ -1831,6 +1835,123 @@ def _fix_metric_grammar(resume: str) -> str:
             line = _BARE_PCT.sub(_insert_by, line)
         out.append(line)
     return '\n'.join(out)
+
+
+def _enforce_metric_density(resume: str, role_type: str) -> str:
+    """
+    Deterministically reduce metric density to the role ceiling.
+    Prompt rules alone have not worked — models output 85-100% bullets-with-
+    numbers regardless. This strips trailing outcome clauses (' — reducing
+    X by 40%') from the lowest-relevance bullets (bottom of each job, last
+    job first) until at most half the experience bullets carry a digit.
+    Only touches bullets whose pre-clause text is digit-free, so stripping
+    actually makes the bullet metric-free and never mangles mid-sentence.
+    """
+    ceiling = 0.45 if role_type == CONSULTING else 0.50
+
+    lines = resume.splitlines()
+    # Bound the experience section
+    try:
+        start = next(i for i, l in enumerate(lines) if l.strip().upper().startswith("WORK EXPERIENCE"))
+    except StopIteration:
+        return resume
+    end = next((i for i in range(start + 1, len(lines))
+                if lines[i].strip().upper().startswith("TECHNICAL SKILLS")), len(lines))
+
+    bullet_idx = [i for i in range(start, end) if lines[i].strip().startswith('•')]
+    if not bullet_idx:
+        return resume
+
+    def _ratio() -> float:
+        withm = sum(1 for i in bullet_idx if re.search(r'\d', lines[i]))
+        return withm / len(bullet_idx)
+
+    # Trailing outcome clause: ' — <verb phrase containing a digit>' at end of line
+    _CLAUSE = re.compile(r'\s+[—–]\s+[a-z][^—–•\n]*\d[^•\n]*$', re.IGNORECASE)
+
+    stripped = 0
+    if _ratio() > ceiling:
+        # Bottom-up = lowest-relevance bullets lose their metrics first
+        for i in reversed(bullet_idx):
+            if _ratio() <= ceiling:
+                break
+            line = lines[i]
+            m = _CLAUSE.search(line)
+            if not m:
+                continue
+            head = line[:m.start()]
+            # Only strip if the remainder is digit-free (bullet becomes metric-free)
+            if re.search(r'\d', head):
+                continue
+            head = head.rstrip().rstrip(',;')
+            if not head.endswith('.'):
+                head += '.'
+            lines[i] = head
+            stripped += 1
+
+    if stripped:
+        print(f"[METRIC DENSITY] Stripped outcome clauses from {stripped} bullet(s) "
+              f"-> {_ratio():.0%} of bullets carry metrics (ceiling {ceiling:.0%})")
+    return '\n'.join(lines)
+
+
+def _drop_singleton_skill_rows(resume: str) -> str:
+    """
+    Deterministically remove single-item rows from TECHNICAL SKILLS
+    ('Data Quality & Governance: RBAC'). The prompt's min-2-items rule is
+    routinely ignored. If the orphan item matches another row's label it is
+    moved there; otherwise the row and item are dropped (the item usually
+    still appears in a Technologies Used line).
+    """
+    m = re.search(r'^TECHNICAL SKILLS:?\s*$', resume, re.MULTILINE | re.IGNORECASE)
+    if not m:
+        return resume
+    sec_start = m.end()
+    nxt = re.search(r'^[A-Z][A-Z &/]{3,}:?\s*$', resume[sec_start:], re.MULTILINE)
+    sec_end = sec_start + (nxt.start() if nxt else len(resume) - sec_start)
+
+    lines: list = resume[sec_start:sec_end].splitlines()
+    row_re = re.compile(r'^\s*([^:]{2,40}):\s*(.+)$')
+    rows = [(i, mm.group(1).strip(), [x.strip() for x in mm.group(2).split(',') if x.strip()])
+            for i, l in enumerate(lines) if (mm := row_re.match(l))]
+    outside = resume[:sec_start] + resume[sec_end:]
+
+    for i, label, items in rows:
+        if len(items) != 1:
+            continue
+        orphan = items[0]
+        # Relocate only on whole-word label overlap ('data' must not match 'databases')
+        moved = False
+        ow = {w for w in re.split(r'[\s/&\-]+', orphan.lower()) if len(w) > 2}
+        for j, lbl2, items2 in rows:
+            if j == i or len(items2) >= 6 or len(items2) < 2:
+                continue
+            lblw = {w for w in re.split(r'[\s/&\-]+', lbl2.lower())}
+            if ow & lblw:
+                lines[j] = lines[j].rstrip().rstrip(',') + f", {orphan}"
+                moved = True
+                break
+        if moved:
+            lines[i] = None
+            print(f"[SKILLS ROW] Dropped singleton row '{label}' — moved '{orphan}' to matching row")
+        elif re.search(re.escape(orphan), outside, re.IGNORECASE):
+            # Item still visible elsewhere (bullet / Technologies Used) — safe to drop
+            lines[i] = None
+            print(f"[SKILLS ROW] Dropped singleton row '{label}: {orphan}' — item visible elsewhere")
+        # else: keep the row — dropping would erase the skill from the resume entirely
+
+    kept = [l for l in lines if l is not None]
+    # Drop trailing empties, then restore the section's original tail so the
+    # next section header keeps its blank-line separation exactly once
+    while kept and not kept[-1].strip():
+        kept.pop()
+    new_sec = '\n'.join(kept)
+    sec_text = resume[sec_start:sec_end]
+    if sec_text.endswith('\n\n'):
+        new_sec += '\n\n'
+    elif sec_text.endswith('\n'):
+        new_sec += '\n'
+    return resume[:sec_start] + new_sec + resume[sec_end:]
 
 
 def _remove_concept_redundancy(resume: str) -> str:
@@ -2562,10 +2683,12 @@ async def tailor_resume(base_resume: str, job_description: str,
                     f"{violation_summary}\n\n"
                     f"For each violating bullet:\n"
                     f"  1. REMOVE the bullet entirely from the work experience section.\n"
-                    f"  2. If the skill still needs visibility, keep it ONLY in the "
-                    f"     Technical Skills section — never as a work experience bullet.\n"
-                    f"  3. Do NOT replace with another invented bullet.\n"
-                    f"  4. Do NOT change any other bullets.\n"
+                    f"  2. REMOVE the fabricated skill from that job's 'Technologies Used' "
+                    f"     line too — listing it there still claims use at that job.\n"
+                    f"  3. If the skill still needs visibility, keep it ONLY in the "
+                    f"     TECHNICAL SKILLS section — never in a bullet or Technologies Used line.\n"
+                    f"  4. Do NOT replace with another invented bullet.\n"
+                    f"  5. Do NOT change any other bullets.\n"
                     f"Return the complete corrected resume as plain text only.\n\n"
                     f"=== ORIGINAL RESUME (ground truth) ===\n{base_resume}\n\n"
                     f"=== TAILORED RESUME TO CORRECT ===\n{result}"
@@ -2635,6 +2758,21 @@ async def tailor_resume(base_resume: str, job_description: str,
         result = _fix_metric_grammar(result)
     except Exception as e:
         print(f"[GRAMMAR] Metric 'by' fix failed: {e}")
+
+    # ── Metric density ceiling — deterministic, no AI ─────────────────────
+    # Models ignore the 40-50% prompt target (85-100% observed). Strip
+    # trailing outcome clauses from lowest-relevance bullets until at most
+    # half the experience bullets carry a number.
+    try:
+        result = _enforce_metric_density(result, role_type)
+    except Exception as e:
+        print(f"[METRIC DENSITY] Enforcement failed: {e}")
+
+    # ── Singleton skills rows — deterministic min-2-items enforcement ─────
+    try:
+        result = _drop_singleton_skill_rows(result)
+    except Exception as e:
+        print(f"[SKILLS ROW] Singleton cleanup failed: {e}")
 
     # ── Skills line-length enforcement — max 6 items per line ─────────────
     try:

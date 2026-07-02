@@ -607,6 +607,19 @@ async def startup():
     except Exception as e:
         print(f"[Startup] DB migration error: {e}")
 
+    # One-time: utility model Gemini → Haiku (Google 503 storms disrupted
+    # user-facing tailor passes; Haiku via Anthropic is reliable, Gemini
+    # stays for background bulk passes like qualify/exp-sweep)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text(
+                "UPDATE user_settings SET ai_model_secondary = 'anthropic/claude-haiku-4-5' "
+                "WHERE ai_model_secondary = 'google/gemini-2.5-flash'"
+            ))
+        print("[Startup] Utility model migrated to Haiku where set to Gemini Flash")
+    except Exception as e:
+        print(f"[Startup] Utility model migration skipped: {e}")
+
     # â"€â"€ Init Telegram + Seed companies in background (non-blocking) â"€â"€â"€â"€â"€â"€
     async def _background_init():
         try:
@@ -1346,7 +1359,7 @@ async def get_ai_status(user_id: str = Depends(get_current_user_id)):
         return {"provider": prov, "label": label, "direct": direct}
 
     tailor_model  = cfg.get("ai_model_tailor",       "anthropic/claude-sonnet-4.6")
-    sec_model     = cfg.get("ai_model_secondary",     "google/gemini-2.5-flash")
+    sec_model     = cfg.get("ai_model_secondary") or "anthropic/claude-haiku-4-5"
     parse_model   = cfg.get("ai_model_parse",         "google/gemini-2.5-flash-lite")
     qualify_model = cfg.get("ai_model_qualify",       "anthropic/claude-sonnet-4.6")
     cover_model   = cfg.get("ai_model_cover_letter",  "anthropic/claude-sonnet-4.6")
@@ -1404,7 +1417,7 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
             "openai_api_key":    "•" * len(s.openai_api_key)    if s.openai_api_key    else "",
             "ai_model_parse": s.ai_model_parse or "google/gemini-2.5-flash-lite",
             "ai_model_tailor": s.ai_model_tailor or "anthropic/claude-sonnet-4.6",
-            "ai_model_secondary": s.ai_model_secondary or "google/gemini-2.5-flash",
+            "ai_model_secondary": s.ai_model_secondary or "anthropic/claude-haiku-4-5",
             "ai_model_qualify": s.ai_model_qualify or "anthropic/claude-sonnet-4.6",
             "ai_model_cover_letter": s.ai_model_cover_letter or "anthropic/claude-sonnet-4.6",
             "profile_name": s.profile_name or "",
@@ -2522,7 +2535,7 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
     tailored_text = await tailor_resume(
         base_resume, jd, api_key, provider, model,
         profile_skills=profile_skills,
-        secondary_model=user_cfg.get("ai_model_secondary", "google/gemini-2.5-flash"),
+        secondary_model=user_cfg.get("ai_model_secondary") or "anthropic/claude-haiku-4-5",
         user_job_roles=user_cfg.get("job_roles") or [],
         keys=_mk,
     )
@@ -2799,7 +2812,7 @@ async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_curr
     profile_skills = await _load_profile_skills(user_id)
     tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model,
                                    profile_skills=profile_skills,
-                                   secondary_model=user_cfg.get("ai_model_secondary", "google/gemini-2.5-flash"),
+                                   secondary_model=user_cfg.get("ai_model_secondary") or "anthropic/claude-haiku-4-5",
                                    user_job_roles=user_cfg.get("job_roles") or [],
                                    keys=_mk)
 
@@ -2843,7 +2856,7 @@ async def quick_tailor_pdf(body: QuickTailorRequest, user_id: str = Depends(get_
         profile_skills = await _load_profile_skills(user_id)
         tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model,
                                        profile_skills=profile_skills,
-                                       secondary_model=user_cfg.get("ai_model_secondary", "google/gemini-2.5-flash"),
+                                       secondary_model=user_cfg.get("ai_model_secondary") or "anthropic/claude-haiku-4-5",
                                        user_job_roles=user_cfg.get("job_roles") or [],
                                        keys=_mk)
 
@@ -2878,7 +2891,7 @@ async def quick_tailor_docx(body: QuickTailorRequest, user_id: str = Depends(get
         profile_skills = await _load_profile_skills(user_id)
         tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model,
                                        profile_skills=profile_skills,
-                                       secondary_model=user_cfg.get("ai_model_secondary", "google/gemini-2.5-flash"),
+                                       secondary_model=user_cfg.get("ai_model_secondary") or "anthropic/claude-haiku-4-5",
                                        user_job_roles=user_cfg.get("job_roles") or [],
                                        keys=_mk)
 

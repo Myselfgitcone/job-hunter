@@ -598,7 +598,7 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
       setProvider(s.ai_provider || "OpenRouter");
       setModelParse(s.ai_model_parse || "google/gemini-2.5-flash-lite");
       setModelTailor(s.ai_model_tailor || "anthropic/claude-sonnet-4.6");
-      setModelSecondary(s.ai_model_secondary || "google/gemini-2.5-flash");
+      setModelSecondary(s.ai_model_secondary || "anthropic/claude-haiku-4-5");
       setModelQualify(s.ai_model_qualify || "anthropic/claude-sonnet-4.6");
       setModelCoverLetter(s.ai_model_cover_letter || "anthropic/claude-sonnet-4.6");
       setApiKey(s.ai_api_key || "");
@@ -805,9 +805,9 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
               <select value={modelSecondary} onChange={e => setModelSecondary(e.target.value)}>
                 {provider === "OpenRouter" ? (
                   <>
-                    <option value="google/gemini-2.5-flash">Gemini 2.5 Flash (Recommended)</option>
+                    <option value="anthropic/claude-haiku-4-5">Claude Haiku 4.5 (Recommended — reliable)</option>
+                    <option value="google/gemini-2.5-flash">Gemini 2.5 Flash (cheaper, occasional 503s)</option>
                     <option value="google/gemini-2.5-flash-lite">Gemini 2.5 Lite (Cheapest)</option>
-                    <option value="anthropic/claude-haiku-4.5-20251001">Claude Haiku 4.5</option>
                     <option value="anthropic/claude-sonnet-4.6">Claude Sonnet 4.6</option>
                   </>
                 ) : (

@@ -695,6 +695,38 @@ _PHYSICAL_SIGNALS = re.compile(
     re.IGNORECASE,
 )
 
+def clean_jd_html(text: str) -> str:
+    """
+    Decode HTML-entity-encoded JDs and strip tags. Some ATS feeds deliver
+    double-encoded HTML (&amp;lt;h3&amp;gt;Requirements:&amp;lt;/h3&amp;gt;) — section
+    headers buried in tags break zone-based extraction (0 skills → ATS 0/0)
+    and feed tag soup to the tailor model.
+    """
+    if not text:
+        return text
+    if "<" not in text and "&lt;" not in text and "&amp;" not in text and "&#" not in text:
+        return text
+    import html as _html
+    # Unescape repeatedly — feeds are often double-encoded (&amp;lt; → &lt; → <)
+    for _ in range(3):
+        unescaped = _html.unescape(text)
+        if unescaped == text:
+            break
+        text = unescaped
+    # Drop script/style wholesale
+    text = re.sub(r'<(script|style)[^>]*>.*?</\1>', ' ', text, flags=re.DOTALL | re.IGNORECASE)
+    # Structural tags → line breaks so section headers land on their own lines
+    text = re.sub(r'<li[^>]*>', '\n• ', text, flags=re.IGNORECASE)
+    text = re.sub(r'</?(p|br|div|h[1-6]|ul|ol|tr|table)[^>]*/?>', '\n', text, flags=re.IGNORECASE)
+    # Remaining tags → space
+    text = re.sub(r'<[^>]+>', ' ', text)
+    # Collapse whitespace but keep line structure
+    text = re.sub(r'[ \t]+', ' ', text)
+    text = re.sub(r' *\n *', '\n', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
 def _strip_jd_noise(jd_text: str) -> str:
     """
     Remove benefits/culture/legal/physical sections from JD text before extraction.
@@ -737,6 +769,9 @@ def extract_jd_keywords_dynamic(jd_text: str) -> list[str]:
          cleaned text — they are targeted enough to not need zone restriction.
     """
     found: set[str] = set()
+
+    # Pass 0: decode HTML-encoded feeds (tags hide section headers from zones)
+    jd_text = clean_jd_html(jd_text)
 
     # Pass 1: strip boilerplate (benefits, EEO, physical requirements, etc.)
     jd_clean = _strip_jd_noise(jd_text)

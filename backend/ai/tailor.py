@@ -2260,6 +2260,11 @@ async def tailor_resume(base_resume: str, job_description: str,
     # Falls back to main model if not set.
     _sec = secondary_model or model
 
+    # Some ATS feeds deliver the JD as (double-)encoded HTML. Decode/strip it
+    # once here so the model prompt, lint, and coverage all see clean text.
+    from resume_lint import clean_jd_html
+    job_description = clean_jd_html(job_description)
+
     # Role type comes from user's job preference only. No JD body scan.
     # Job preference is required to use the app — if empty, default TECH.
     role_type = user_roles_to_role_type(user_job_roles or []) or TECH

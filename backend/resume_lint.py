@@ -1564,6 +1564,25 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "") -> 
                 f"Remove forced metrics from process/collaboration bullets."
             )
 
+    # Metric narration — bullets must assert outcomes, not present evidence.
+    # "reduced runtime 35%" is a resume line; "reduced runtime 35%, measured by
+    # comparing job durations before and after tuning" is audit-speak that
+    # bloats bullets to 40+ words and reads as AI-generated.
+    _NARRATION_PHRASES = (
+        "measured by", "tracked via", "calculated by", "confirmed by",
+        "as reported by", "was measured", "was calculated", "was confirmed",
+        "based on stakeholder", "per billing dashboard", "logged in",
+        "before and after",
+    )
+    for body, _ in exp_bullets:
+        low = body.lower()
+        hit = next((p for p in _NARRATION_PHRASES if p in low), None)
+        if hit:
+            issues.append(
+                f'[METRIC NARRATION] "{hit}" — bullets state outcomes, never the '
+                f'measurement method. Delete the justification clause: "{body[:60]}..."'
+            )
+
     # JD echo check — on experience bullet text only
     if job_description:
         bullet_text = " ".join(body for body, _ in exp_bullets)

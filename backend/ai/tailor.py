@@ -1356,6 +1356,12 @@ DOMAIN BRIDGE (optional): If candidate's background ≠ target company's domain,
 ✓ ALWAYS calibrate summary fifth bullet to company stage
 ✓ ALWAYS ask: "Would this bullet survive a live interview challenge?" before keeping a gap fill
 ✓ ALWAYS preserve every license, certification, and deal from the original resume
+✗ NEVER explain how a metric was measured inside a bullet. No "measured by",
+  "tracked via", "calculated by", "confirmed by", "as reported by", "based on
+  stakeholder-reported", "per billing dashboards". State the outcome and stop.
+  A resume asserts results; it does not present evidence. "reduced runtime 35%"
+  — correct. "reduced runtime 35%, measured by comparing job durations in
+  Databricks before and after tuning" — wrong, delete the justification clause.
 ✗ NEVER put a number in every bullet. HARD RULE: roughly HALF of experience
   bullets must contain NO digits at all — no percentages, no counts, no
   dollar amounts. Write honest process, design, and collaboration bullets
@@ -1783,27 +1789,46 @@ def _fix_metric_grammar(resume: str) -> str:
     """
     Deterministically insert 'by' before bare percentage metrics in bullet points.
     'cutting execution times 35%' → 'cutting execution times by 35%'
-    Skips rate/coverage percentages: '95%+ of', '95% of schema violations'.
-    Skips percentages already preceded by 'by'.
+
+    Only fires when the percentage directly follows a change-verb + noun phrase
+    ('reduced X 35%'), so subject-position percentages ('the 45% drop',
+    '99.8% uptime') and rate/coverage forms ('95% of') are never touched.
+    The old proximity heuristic mis-fired on '~' ('by ~60%' → 'by ~by 60%')
+    and on percentages used as subjects ('the by 45% drop').
+    Also repairs any double-'by' artifacts from earlier passes.
     Only runs on bullet lines (starting with •).
     """
-    def _add_by(m: re.Match) -> str:
-        start = m.start()
-        before = m.string[max(0, start - 4):start]
-        # Already has 'by' before it
-        if before.rstrip().endswith('by'):
-            return m.group(0)
-        after = m.string[m.end():m.end() + 4]
-        # Rate/coverage form: "95%+ of" or "95% of"
-        if after.startswith('+') or after.lstrip().startswith('of ') or after.lstrip().startswith('of\n'):
-            return m.group(0)
-        return 'by ' + m.group(0)
+    _CHANGE_VERBS = (
+        r'(?:reduc\w+|cut|cutting|improv\w+|increas\w+|decreas\w+|lower\w+|'
+        r'boost\w+|acceler\w+|shorten\w+|grew|grow\w+|dropp\w+|slash\w+|'
+        r'rais\w+|optimiz\w+)'
+    )
+    # verb + 1-4 non-numeric words + bare percentage (no 'by' already there)
+    _BARE_PCT = re.compile(
+        rf'\b({_CHANGE_VERBS}(?:\s+[a-z][\w/-]*){{1,4}})\s+(~?\d+(?:\.\d+)?%)(?!\+|\s*of\b)',
+        re.IGNORECASE,
+    )
 
     lines = resume.splitlines()
     out = []
     for line in lines:
-        if line.strip().startswith('•') or line.strip().startswith('*'):
-            line = re.sub(r'\b\d+(?:\.\d+)?%', _add_by, line)
+        s = line.strip()
+        if s.startswith('•') or s.startswith('*'):
+            # Repair artifacts first: 'by ~by 60%' / 'by by 60%' → 'by ~60%'
+            line = re.sub(r'\bby\s+(~?)\s*by\s+(\d)', r'by \1\2', line, flags=re.IGNORECASE)
+            # 'the by 45% drop' — percentage as subject, 'by' is wrong
+            line = re.sub(r'\b(the|a|an)\s+by\s+(\d+(?:\.\d+)?%)', r'\1 \2', line, flags=re.IGNORECASE)
+            # 'maintaining by 99.7% data quality SLA' / 'by 99.8% pipeline uptime was' —
+            # strip stray 'by' before subject-position % (up to 2 words before keyword)
+            line = re.sub(r'\bby\s+(\d+(?:\.\d+)?%(?:\s+[a-z][\w-]*){0,2}\s+'
+                          r'(?:uptime|SLA|accuracy|availability|coverage|quality))',
+                          r'\1', line, flags=re.IGNORECASE)
+            def _insert_by(m: re.Match) -> str:
+                phrase = m.group(1)
+                if re.search(r'\bby\s*$', phrase, re.IGNORECASE):
+                    return m.group(0)
+                return f"{phrase} by {m.group(2)}"
+            line = _BARE_PCT.sub(_insert_by, line)
         out.append(line)
     return '\n'.join(out)
 
@@ -2190,7 +2215,8 @@ _RETRY_RULES = {
     "[BANNED CLOSING LABEL]":  "Use the exact closing line label required for this role type — no substitutes.",
     "[BANNED WORD]":           "Replace 'utilized' and 'leveraged' with active verbs: 'used', 'built', 'ran'.",
     "[META LEAK]":             "Remove all instruction text, placeholders, or commentary from the resume body.",
-    "[TOO LONG]":              "Shorten to ≤25 words. One idea per bullet only. Split compound bullets.",
+    "[TOO LONG]":              "Shorten to ≤25 words by TRIMMING words — never split one bullet into two (that overflows the bullet budget). Cut justification clauses, filler, and secondary details.",
+    "[METRIC NARRATION]":      "Delete the measurement-methodology clause ('measured by...', 'tracked via...', 'confirmed by...'). Keep only the action and outcome. Resumes assert results; they never present evidence.",
     "[MULTI-IDEA]":            "One accomplishment per bullet. Split into two or cut the weaker half.",
     "[SAME VERB]":             "No two consecutive experience bullets may open with the same verb — vary them.",
     "[SUMMARY]":               "PROFESSIONAL SUMMARY must have exactly 6 bullet lines — not 5, not 7. Count your bullets and add or remove to hit exactly 6.",
@@ -2550,16 +2576,22 @@ async def tailor_resume(base_resume: str, job_description: str,
                     api_key=api_key,
                     provider=provider,
                     model=_sec,
-                    max_tokens=2500,
+                    max_tokens=16384,
                     pass_name="tier-correction",
                     keys=keys,
                 )
                 corrected = re.sub(r'<plan>.*?</plan>', '', corrected, flags=re.DOTALL).strip()
-                if corrected and len(corrected) > len(result) // 2:
+                # Truncation guard: correction must contain every required section —
+                # a half-resume passing the old len//2 check once shipped to a user
+                # cut off mid-word with no TECHNICAL SKILLS or EDUCATION.
+                _corr_complete = all(
+                    s in corrected for s in ("WORK EXPERIENCE:", "TECHNICAL SKILLS:", "EDUCATION:")
+                )
+                if corrected and _corr_complete and len(corrected) > len(result) // 2:
                     result = corrected
                     print(f"[TIER AUDIT] Correction applied — fabricated bullet(s) removed.")
                 else:
-                    print(f"[TIER AUDIT] Correction pass returned unexpected output — keeping original.")
+                    print(f"[TIER AUDIT] Correction truncated/unexpected — keeping pre-correction resume.")
             else:
                 print(f"[TIER AUDIT] Clean — {len(skills_missing_from_original)} gap-filled skill(s) audited, no violations.")
         except Exception as e:

@@ -713,8 +713,17 @@ def clean_jd_html(text: str) -> str:
         if unescaped == text:
             break
         text = unescaped
-    # Drop script/style wholesale
-    text = re.sub(r'<(script|style)[^>]*>.*?</\1>', ' ', text, flags=re.DOTALL | re.IGNORECASE)
+    # Drop script/style and embedded media (videos, players) wholesale —
+    # keep only the JD text around them
+    text = re.sub(r'<(script|style|video|audio|iframe|embed|object|svg)[^>]*>.*?</\1>',
+                  ' ', text, flags=re.DOTALL | re.IGNORECASE)
+    # Self-closing / unclosed media tags
+    text = re.sub(r'<(video|audio|iframe|embed|source|track|img)[^>]*/?>', ' ',
+                  text, flags=re.IGNORECASE)
+    # Bare video-platform links left in plain text
+    text = re.sub(r'https?://\S*(youtube\.com|youtu\.be|vimeo\.com|loom\.com|'
+                  r'wistia\.com|vidyard\.com|brightcove\.com)\S*', ' ',
+                  text, flags=re.IGNORECASE)
     # Structural tags → line breaks so section headers land on their own lines
     text = re.sub(r'<li[^>]*>', '\n• ', text, flags=re.IGNORECASE)
     text = re.sub(r'</?(p|br|div|h[1-6]|ul|ol|tr|table)[^>]*/?>', '\n', text, flags=re.IGNORECASE)

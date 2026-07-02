@@ -44,6 +44,28 @@ _HDR_PHONE_RE = re.compile(r'\(?\d{3}\)?[\s\-.]?\d{3}[\s\-.]?\d{4}')
 _HDR_EMAIL_RE = re.compile(r'[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}')
 
 
+def _clean_header_title(result: str) -> str:
+    """
+    Deterministic: strip posting-title suffixes from the header title line.
+    'Name — Data Migration Engineer – SQL Server to Snowflake & Matillion'
+    → 'Name — Data Migration Engineer'
+    The name—title separator is an em-dash (—); posting suffixes follow an
+    en-dash (–), ' - ', pipe, colon, or opening parenthesis.
+    """
+    lines = result.splitlines()
+    if not lines:
+        return result
+    first = lines[0]
+    if '—' not in first:
+        return result
+    name, _, title = first.partition('—')
+    cleaned = re.split(r'\s+–\s+|\s+-\s+|\s*\|\s*|\s*:\s+|\s*\(', title, maxsplit=1)[0].strip()
+    if cleaned and cleaned != title.strip():
+        lines[0] = f"{name.strip()} — {cleaned}"
+        print(f"[HEADER TITLE] Cleaned posting suffix: '{title.strip()}' -> '{cleaned}'")
+    return '\n'.join(lines)
+
+
 def _ensure_header(result: str, base_resume: str) -> str:
     """
     Deterministic safety net: if AI dropped the name/contact header, restore it.
@@ -697,7 +719,13 @@ If count is trimmed by post-processing, the last bullet is cut — put your weak
 ALL ROLE TYPES — shared:
   Single column. "•" bullets only. Plain text — NO tables, columns, graphics, markdown, or HTML.
   HEADER line 1: Full Name — [JD Target Role Title]
-    Extract the exact role title from the JD. Use it here as the candidate's brand.
+    Extract the CLEAN role title from the JD — the role name only.
+    Strip any suffix after a dash, pipe, colon, or parenthesis: tech stacks,
+    project names, locations, req IDs, contract terms.
+      JD posting: "Data Migration Engineer – SQL Server to Snowflake & Matillion"
+      → header title: "Data Migration Engineer"
+      JD posting: "Senior Data Engineer (Remote, W2 Only) | Fintech"
+      → header title: "Senior Data Engineer"
     Job-level titles inside each role block are FACTUAL and NEVER change.
     One line, em-dash (—) separator. NEVER split across two lines.
   CONTACT line 2: phone | email
@@ -2481,7 +2509,7 @@ async def tailor_resume(base_resume: str, job_description: str,
         f"{declared_section}"
         f"{jd_skills_section}\n"
         "STEP 1 — Open a <plan> block with exactly 5 lines:\n"
-        "  1. ROLE: [role type] | STAGE: [startup/enterprise] | TITLE: [exact JD title for header]\n"
+        "  1. ROLE: [role type] | STAGE: [startup/enterprise] | TITLE: [clean JD role title — strip tech-stack/location/req-ID suffixes after dash, pipe, colon, or parenthesis]\n"
         "  2. PRIMARY: [top 3 JD responsibilities and which job/bullet covers each]\n"
         "  3. TIMELINE_BLOCKS: [any JD tool not enterprise-ready by that job's end date → exclude from that job's bullets; 'none' if clear]\n"
         "  4. GAPS: [for each JD skill absent from base resume: 'Skill → tier W/A/S/H → placed at [Job/Skills] as [bullet/tech-line/skills-row]'."
@@ -2805,5 +2833,11 @@ async def tailor_resume(base_resume: str, job_description: str,
         result = _ensure_header(result, base_resume)
     except Exception as e:
         print(f"[HEADER] Safety net failed: {e}")
+
+    # ── Header title cleanup — strip posting suffixes (tech stacks, req IDs) ─
+    try:
+        result = _clean_header_title(result)
+    except Exception as e:
+        print(f"[HEADER TITLE] Cleanup failed: {e}")
 
     return result

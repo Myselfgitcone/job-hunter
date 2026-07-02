@@ -305,7 +305,14 @@ async def _call_google(system: str, user: str, api_key: str,
 
     payload: dict = {
         "contents": [{"role": "user", "parts": [{"text": user}]}],
-        "generationConfig": {"maxOutputTokens": max_tokens},
+        # thinkingBudget 0 disables Gemini 2.5 internal reasoning tokens.
+        # Thinking tokens count against maxOutputTokens — with thinking on,
+        # long prompts made Gemini spend the budget on thinking and truncate
+        # the visible output mid-resume (retry/reviewer passes).
+        "generationConfig": {
+            "maxOutputTokens": max_tokens,
+            "thinkingConfig": {"thinkingBudget": 0},
+        },
     }
     if system:
         payload["systemInstruction"] = {"parts": [{"text": system}]}

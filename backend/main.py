@@ -569,11 +569,18 @@ async def _run_exp_ai_sweep(limit: int = 400):
 
 @app.on_event("startup")
 async def startup():
+    from database import DATABASE_URL as _db_url
+    _db_host = re.sub(r'//[^@]*@', '//***@', _db_url).split('?')[0]
+    print(f"[Startup] Connecting to DB: {_db_host}", flush=True)
     try:
-        await init_db()
-        print("[Startup] DB initialized")
+        # Watchdog: a silent hang here blocked serving /health for 5+ min and
+        # failed deploys with zero log output. Cap it and keep booting.
+        await asyncio.wait_for(init_db(), timeout=30)
+        print("[Startup] DB initialized", flush=True)
+    except asyncio.TimeoutError:
+        print("[Startup] DB init TIMED OUT after 30s — starting anyway, will retry on requests", flush=True)
     except Exception as e:
-        print(f"[Startup] DB init error (will retry on requests): {e}")
+        print(f"[Startup] DB init error (will retry on requests): {e}", flush=True)
 
 
     # — Auto-migrate: add any missing columns safely ————————————————————————————————

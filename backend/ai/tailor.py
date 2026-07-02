@@ -1356,14 +1356,23 @@ DOMAIN BRIDGE (optional): If candidate's background ≠ target company's domain,
 ✓ ALWAYS calibrate summary fifth bullet to company stage
 ✓ ALWAYS ask: "Would this bullet survive a live interview challenge?" before keeping a gap fill
 ✓ ALWAYS preserve every license, certification, and deal from the original resume
+✗ NEVER put a number in every bullet. HARD RULE: roughly HALF of experience
+  bullets must contain NO digits at all — no percentages, no counts, no
+  dollar amounts. Write honest process, design, and collaboration bullets
+  without numbers. A resume where 90-100% of bullets carry metrics reads as
+  AI-generated and gets rejected by recruiters. Target: only 40-50% of
+  bullets carry a metric (30-50% for HEALTHCARE, 40-45% for CONSULTING).
 
 ═══ FINAL CHECK BEFORE OUTPUT ═══
 1. Confirm role type detected: [TECH / IB / FINANCE / CYBER / HEALTHCARE / CONSULTING / GENERAL]
 2. Confirm correct section labels used for that role type
 3. Count all bullets — must be within the budget for this role type
 4. Confirm word count ≤ 22 on every bullet
-5. Confirm: no fabricated content, no domain vocabulary injection, no "utilized/leveraged", no repeated opening verbs, no missed licenses/certs/deals, execution depth demonstrated, PRIMARY FUNCTIONS have 2+ bullets, summary fifth bullet matches company stage
-6. Output the finished resume. Nothing else."""
+5. Count bullets containing digits — if more than half do, strip the numbers
+   from the weakest process/collaboration bullets until roughly half are
+   metric-free
+6. Confirm: no fabricated content, no domain vocabulary injection, no "utilized/leveraged", no repeated opening verbs, no missed licenses/certs/deals, execution depth demonstrated, PRIMARY FUNCTIONS have 2+ bullets, summary fifth bullet matches company stage
+7. Output the finished resume. Nothing else."""
 
 
 # ── Semantic reviewer ─────────────────────────────────────────────────────────
@@ -1373,6 +1382,10 @@ REVIEWER_PROMPT = """You are a resume quality reviewer — NOT a resume writer.
 Fix exactly 3 semantic issues in the resume given to you. Change NOTHING outside
 these 3 checks. Do NOT: add bullets, remove bullets, change bullet content,
 change company names, dates, locations, titles, or bullet count.
+NEVER touch, shorten, or omit these sections — copy them through VERBATIM:
+contact/header lines (name, phone, email), EDUCATION, CERTIFICATIONS.
+Output the COMPLETE resume from the very first line to the very last line —
+dropping any section is a critical failure.
 Every bullet you write or rewrite must be ≤ 25 words. Return plain text only.
 
 CHECK 1 — SKILLS ANTI-STUFFING AND CONCEPT DEDUPLICATION:

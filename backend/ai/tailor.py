@@ -2812,6 +2812,9 @@ async def review_resume(tailored: str, job_description: str,
         "Review and fix the semantic issues per your instructions.\n"
         "CRITICAL: Output the COMPLETE resume from first line to last — every section, "
         "every job, every bullet, TECHNICAL SKILLS, EDUCATION. Do NOT truncate or stop early.\n"
+        "NEVER lengthen bullets or append measurement-methodology clauses "
+        "('measured by...', 'confirmed via...', parenthetical evidence). "
+        "Bullets assert outcomes; they never present evidence.\n"
         + ("After the resume, output the ===TIER AUDIT=== report per CHECK 5.\n" if do_audit else "")
         + "Return plain text only — no commentary, no plan block.\n"
         f"{skills_ctx}{audit_ctx}\n"
@@ -2867,6 +2870,46 @@ _RETRY_RULES = {
     "[YEARS FABRICATED]":        "The original resume has no years-of-experience claim in the summary. Remove the years number entirely — do not invent one.",
     "[UNSUPPORTED EXPERIENCE CLAIM]": "Remove or rewrite the summary claim to only reflect experience types supported by the work bullets below it.",
 }
+
+
+def _strip_metric_narration(resume: str) -> str:
+    """
+    Kill measurement-methodology clauses the reviewer appends post-loop
+    ('measured by comparing...', 'confirmed via...', '(Redshift query history
+    before/after)'). Resumes assert outcomes; they never present evidence.
+    Deterministic, runs after all AI passes.
+    """
+    _NARR = re.compile(
+        r"[;,]?\s*(?:as\s+)?(?:measured|confirmed|calculated|tracked|validated|"
+        r"verified|logged|quantified|benchmarked)\s+"
+        r"(?:by|via|in|through|against|using|across|over)\b[^•\n]*",
+        re.IGNORECASE)
+    _PAREN_EVIDENCE = re.compile(
+        r"\s*\((?:[^()]*(?:before/after|dashboards?|history|pre/post|"
+        r"per\s+billing)[^()]*)\)", re.IGNORECASE)
+
+    def _paren_sub(m: re.Match) -> str:
+        # Evidence paren may wrap a real money metric — keep the figure.
+        money = re.search(r"[$€£]\s?[\d,.]+[KMB]?(?:/year|/yr|/month)?",
+                          m.group(0), re.IGNORECASE)
+        return f" ({money.group(0).strip()})" if money else ""
+
+    out, stripped = [], 0
+    for line in resume.split('\n'):
+        if line.strip().startswith('•'):
+            new = _NARR.sub('', line)
+            new = _PAREN_EVIDENCE.sub(_paren_sub, new)
+            if new != line:
+                new = new.rstrip().rstrip(',;')
+                if not new.endswith('.'):
+                    new += '.'
+                stripped += 1
+            out.append(new)
+        else:
+            out.append(line)
+    if stripped:
+        print(f"[NARRATION] Stripped evidence clauses from {stripped} bullet(s)")
+    return '\n'.join(out)
 
 
 def _trim_long_bullets(resume: str, word_limit: int) -> str:
@@ -3354,6 +3397,16 @@ async def tailor_resume(base_resume: str, job_description: str,
         result = _fix_metric_grammar(result)
     except Exception as e:
         print(f"[GRAMMAR] Metric 'by' fix failed: {e}")
+
+    # ── Narration strip + re-trim — reviewer runs LAST of the AI passes and
+    # re-lengthens bullets / appends evidence clauses. Live output shipped
+    # 30-45-word bullets with 'measured by comparing...' tails. Enforce here.
+    try:
+        result = _strip_metric_narration(result)
+        from resume_lint import WORD_LIMIT as _WL2
+        result = _trim_long_bullets(result, _WL2)
+    except Exception as e:
+        print(f"[NARRATION] Strip/re-trim failed: {e}")
 
     # ── Metric density ceiling — deterministic, no AI ─────────────────────
     # Models ignore the 40-50% prompt target (85-100% observed). Strip

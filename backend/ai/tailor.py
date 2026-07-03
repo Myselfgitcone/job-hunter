@@ -1741,6 +1741,10 @@ _INJECTION_SKIP = {
     "opportunity", "position", "opening", "role", "join",
     # Education / qualification terms
     "bs/ms", "ms/phd", "bs/phd", "phd", "msc", "bsc", "mba",
+    # Degree FIELDS — extraction grabs "Bachelor's in Computer Science" as a
+    # hard skill; it's a credential subject, never an injectable skill.
+    "computer science", "information systems", "information technology",
+    "business analytics", "related field",
     # AI/company jargon — not a skill a candidate claims
     "agi", "asi",
     # Company/product names that slip through
@@ -2531,6 +2535,55 @@ OUTPUT LAW (violations fail lint again):
 - When a bullet is too long, TRIM words; never split into two bullets."""
 
 
+# ── Closing-line restore — deterministic, no AI ───────────────────────────────
+# Live run showed the merged reviewer dropping every "Technologies Used:" line
+# (3× MISSING CLOSING LINE post-review). Reviewer prompt says "reproduce every
+# other line exactly" — Haiku ignores it sometimes. Restore from pre-review.
+def _restore_closing_lines(result: str, pre_review: str, role_type: str) -> str:
+    prefix = _CLOSING_PREFIXES.get(role_type)
+    if not prefix:
+        return result
+    prefix_lo = prefix.lower()
+
+    def _job_closings(text: str) -> dict[str, str]:
+        """Map job-header line -> its closing line (if any)."""
+        out, cur = {}, None
+        for line in text.split('\n'):
+            s = line.strip()
+            if _is_job_header_line(s):
+                cur = s
+            elif cur and s.lower().startswith(prefix_lo):
+                out[cur] = s
+        return out
+
+    wanted = _job_closings(pre_review)
+    have   = _job_closings(result)
+    missing = {h: c for h, c in wanted.items() if h not in have}
+    if not missing:
+        return result
+
+    lines = result.split('\n')
+    restored = 0
+    for header, closing in missing.items():
+        try:
+            hi = next(i for i, l in enumerate(lines) if l.strip() == header)
+        except StopIteration:
+            continue  # reviewer also changed the header — job integrity net handles that
+        # Insert after the block's last bullet (or right after header if none)
+        insert_at = hi + 1
+        for j in range(hi + 1, len(lines)):
+            s = lines[j].strip()
+            if _is_job_header_line(s) or (s and s == s.upper() and len(s) > 3):
+                break
+            if s.startswith('•'):
+                insert_at = j + 1
+        lines.insert(insert_at, closing)
+        restored += 1
+    if restored:
+        print(f"[CLOSING RESTORE] Re-inserted {restored} closing line(s) dropped by reviewer")
+    return '\n'.join(lines)
+
+
 async def audit_tier_compliance(
     base_resume: str,
     final_resume: str,
@@ -2844,14 +2897,32 @@ async def tailor_resume(base_resume: str, job_description: str,
     # Strip <plan> block
     raw = re.sub(r'<plan>.*?</plan>', '', raw, flags=re.DOTALL).strip()
 
+    # ── Deterministic bullet trim — BEFORE the lint loop ─────────────────────
+    # The base resume's own bullets run 26-40 words; the model copies that
+    # style. One run showed 19 [TOO LONG] + 8 [MULTI-IDEA] on lint-1, all
+    # burnable for free here. Zero AI calls.
+    from resume_lint import WORD_LIMIT as _WL
+    raw = _trim_long_bullets(raw, _WL)
+
+    # Metric-density issues are handled deterministically by
+    # _enforce_metric_density after the loop. Retrying them causes
+    # ping-pong (HIGH 68% -> model overcorrects -> LOW 19% observed live).
+    _NO_RETRY_PREFIXES = ("[HIGH METRICS]", "[LOW METRICS]")
+
+    def _retryable(iss_list):
+        return [i for i in iss_list if not i.startswith(_NO_RETRY_PREFIXES)]
+
     # ── Quality gate: lint → up to 3 retries, best-of-N ────────────────────
     _best_raw         = raw
-    _best_issue_count = len(lint_resume(raw, job_description, base_resume=base_resume, role_type=role_type)) + len(detect_domain_leak(raw, role_type))
+    _best_issue_count = len(_retryable(
+        lint_resume(raw, job_description, base_resume=base_resume, role_type=role_type)
+        + detect_domain_leak(raw, role_type, base_resume)))
     _lint_clean_first = False   # attempt 0 passed lint with zero issues
 
     for attempt in range(3):
         issues = lint_resume(raw, job_description, base_resume=base_resume, role_type=role_type)
-        issues += detect_domain_leak(raw, role_type)
+        issues += detect_domain_leak(raw, role_type, base_resume)
+        issues = _retryable(issues)
 
         if len(issues) <= _best_issue_count:
             _best_issue_count = len(issues)
@@ -2937,7 +3008,9 @@ async def tailor_resume(base_resume: str, job_description: str,
 
 
     # Best-of-N final check
-    final_issues = lint_resume(raw, job_description, base_resume=base_resume, role_type=role_type) + detect_domain_leak(raw, role_type)
+    final_issues = _retryable(
+        lint_resume(raw, job_description, base_resume=base_resume, role_type=role_type)
+        + detect_domain_leak(raw, role_type, base_resume))
     if len(final_issues) < _best_issue_count:
         _best_raw = raw
         _best_issue_count = len(final_issues)
@@ -3012,7 +3085,7 @@ async def tailor_resume(base_resume: str, job_description: str,
             _audit_report = ""  # audit judged a discarded resume — rerun standalone
         elif reviewed != pre_review:
             print("[REVIEW] Reviewer made changes")
-            result = reviewed
+            result = _restore_closing_lines(reviewed, pre_review, role_type)
         else:
             print("[REVIEW] No semantic violations found — resume passed all checks")
             result = reviewed

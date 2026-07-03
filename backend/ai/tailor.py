@@ -2532,7 +2532,11 @@ OUTPUT LAW (violations fail lint again):
 - EDUCATION content stays byte-identical to input.
 - Never invent employers, dates, titles, degrees, or metrics.
 - When cutting an overflow bullet, cut the lowest-relevance one; never merge two bullets.
-- When a bullet is too long, TRIM words; never split into two bullets."""
+- When a bullet is too long, TRIM words; never split into two bullets.
+- NEVER add new bullets unless an issue explicitly says to add one — adding
+  bullets to unflagged jobs causes overflow failures.
+- PRESERVE all existing numbers and metrics in every bullet, including ones
+  you rewrite. Removing metrics from bullets is a failure."""
 
 
 # ── Closing-line restore — deterministic, no AI ───────────────────────────────
@@ -2907,10 +2911,19 @@ async def tailor_resume(base_resume: str, job_description: str,
     # Metric-density issues are handled deterministically by
     # _enforce_metric_density after the loop. Retrying them causes
     # ping-pong (HIGH 68% -> model overcorrects -> LOW 19% observed live).
-    _NO_RETRY_PREFIXES = ("[HIGH METRICS]", "[LOW METRICS]")
+    # LOW JD SKILL VISIBILITY never retries: skill-inject + keyword-inject
+    # own that downstream, and the loop can't sensibly add junk-adjacent
+    # skills anyway (burned 2 retries on "Computer Science" live).
+    _NO_RETRY_PREFIXES = ("[HIGH METRICS]", "[LOW METRICS]", "[LOW JD SKILL VISIBILITY]")
+    # JD ECHO gets ONE retry, then drops: live runs show whack-a-mole —
+    # fixing "workflows/reports" surfaces "analysis/dashboards" at 3x.
+    _ECHO_PREFIX = "[JD ECHO]"
 
-    def _retryable(iss_list):
-        return [i for i in iss_list if not i.startswith(_NO_RETRY_PREFIXES)]
+    def _retryable(iss_list, attempt: int = 0):
+        out = [i for i in iss_list if not i.startswith(_NO_RETRY_PREFIXES)]
+        if attempt >= 1:
+            out = [i for i in out if not i.startswith(_ECHO_PREFIX)]
+        return out
 
     # ── Quality gate: lint → up to 3 retries, best-of-N ────────────────────
     _best_raw         = raw
@@ -2922,7 +2935,7 @@ async def tailor_resume(base_resume: str, job_description: str,
     for attempt in range(3):
         issues = lint_resume(raw, job_description, base_resume=base_resume, role_type=role_type)
         issues += detect_domain_leak(raw, role_type, base_resume)
-        issues = _retryable(issues)
+        issues = _retryable(issues, attempt)
 
         if len(issues) <= _best_issue_count:
             _best_issue_count = len(issues)

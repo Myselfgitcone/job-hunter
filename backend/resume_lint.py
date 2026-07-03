@@ -940,6 +940,27 @@ def detect_domain_leak(text: str, role_type: str, base_resume: str = "") -> list
     return issues
 
 
+# Terms the JD extractor grabs that are never injectable/checkable skills.
+# Filtered at EXTRACTION so lint visibility, skill-inject, and keyword-inject
+# all stop chasing them (live runs chased "Computer Science", "M1", "Finance").
+_EXTRACTION_JUNK = {
+    "computer science", "information systems", "information technology",
+    "business analytics", "data analytics degree", "related field",
+    "finance", "healthcare", "insurance", "banking", "retail",
+    "erp",  # platform category, not a skill; specific ERPs (SAP, NetSuite) pass
+}
+
+def _is_junk_skill(s: str) -> bool:
+    s = s.lower().strip()
+    if s in _EXTRACTION_JUNK:
+        return True
+    if len(s) <= 2:                      # "M1", "BI"-style fragments, "R" handled elsewhere
+        return s not in {"r", "go", "c"}  # real language names survive
+    if re.fullmatch(r"[a-z]\d", s):      # M1, S3-style stray tokens (S3 arrives as "aws s3")
+        return True
+    return False
+
+
 def extract_jd_hard_skills(job_description: str, role_type: Optional[str] = None) -> list[str]:
     """
     Hybrid: dynamic extraction (primary) with catalog fallback for thin JDs.
@@ -948,6 +969,7 @@ def extract_jd_hard_skills(job_description: str, role_type: Optional[str] = None
     if not job_description:
         return []
     skills = extract_jd_keywords_dynamic(job_description)
+    skills = [s for s in skills if not _is_junk_skill(s)]
     if role_type:
         blocked: set[str] = set()
         for rt, terms in _DOMAIN_LOCKED_TERMS.items():
@@ -1141,6 +1163,13 @@ _BASE_STOPLIST = {
     "building", "scalable", "operational", "business", "technical", "teams",
     "processes", "process", "results", "performance", "support", "strategy",
     "initiatives", "projects", "stakeholders", "requirements",
+    # Generic role nouns/verbs — live runs showed echo whack-a-mole on these:
+    # fixing "workflows/reports/queries" surfaced "analysis/dashboards" at 3x.
+    # They're unavoidable vocabulary, not keyword stuffing.
+    "management", "workflows", "workflow", "reports", "queries", "query",
+    "solutions", "solution", "analysis", "dashboards", "dashboard",
+    "analytical", "gather", "validation", "financial", "efficiency",
+    "insights", "visualizations", "visualization", "compliance",
 }
 
 _ROLE_ECHO_STOPLIST: dict[str, set[str]] = {

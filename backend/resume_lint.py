@@ -85,27 +85,22 @@ def user_roles_to_role_type(job_roles: list[str]) -> str | None:
     return best
 
 
-# ── Per-role bullet budgets ────────────────────────────────────────────────────
+# ── Bullet budget — same for every role type ───────────────────────────────────
+# User only ever tailors for TECH/CYBER-family roles (data engineer, analyst,
+# BI, PM, java, cybersecurity). A single shared budget means role_type can
+# never disagree with itself on bullet count — the exact bug class that broke
+# a live tailor run when lint's JD-auto-detected role_type (CONSULTING) diverged
+# from the role_type the AI was actually told to write against (TECH).
 # (most_recent, second, third, fourth_plus, summary, hard_total)
-BULLET_BUDGETS = {
-    TECH:       (11, 8, 7, 5, 6, 37),
-    IB:         ( 5, 4, 3, 2, 5, 19),
-    FINANCE:    ( 5, 4, 3, 2, 5, 19),
-    CYBER:      ( 7, 5, 4, 2, 5, 23),
-    HEALTHCARE: ( 6, 4, 3, 2, 5, 20),
-    CONSULTING: ( 6, 5, 3, 2, 5, 21),
-    GENERAL:    ( 7, 5, 4, 2, 5, 23),
+_UNIFIED_BUDGET = (11, 8, 7, 5, 6, 37)
+BULLET_BUDGETS: dict[str, tuple[int, int, int, int, int, int]] = {
+    rt: _UNIFIED_BUDGET for rt in (TECH, IB, FINANCE, CYBER, HEALTHCARE, CONSULTING, GENERAL)
 }
 
-# Minimum bullets per job (same order as BULLET_BUDGETS: job1, job2, job3, job4+)
-BULLET_MINIMUMS = {
-    TECH:       (11, 8, 7, 5),
-    IB:         ( 4, 3, 2, 1),
-    FINANCE:    ( 4, 3, 2, 1),
-    CYBER:      ( 6, 4, 3, 1),
-    HEALTHCARE: ( 5, 3, 2, 1),
-    CONSULTING: ( 5, 4, 2, 1),
-    GENERAL:    ( 6, 4, 3, 1),
+# Minimum bullets per job (same order: job1, job2, job3, job4+) — same for every role.
+_UNIFIED_MINIMUMS = (11, 8, 7, 5)
+BULLET_MINIMUMS: dict[str, tuple[int, int, int, int]] = {
+    rt: _UNIFIED_MINIMUMS for rt in (TECH, IB, FINANCE, CYBER, HEALTHCARE, CONSULTING, GENERAL)
 }
 
 SUMMARY_EXACT = 6

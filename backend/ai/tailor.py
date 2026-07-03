@@ -271,6 +271,197 @@ def _insert_bullets_into_section(resume: str, block: dict, new_bullets: list[str
     return '\n'.join(lines)
 
 
+# ── Missing-skill bullet injection ────────────────────────────────────────────
+# For each JD hard skill absent from the BASE resume, generate ONE dedicated
+# bullet and place it in the best-matching job block. One AI call total.
+# Tier-aware wording so the downstream tier audit passes the bullets:
+#   W/A → production wording (reads as real employer work)
+#   S   → prototype/POC wording (real-looking, but audit-safe)
+#   H   → SKIP (never a bullet; skills-row injection handles visibility later)
+# Timeline-aware: skill must exist before the job's end date.
+# Budget-aware: never pushes a job block past its BULLET_BUDGETS max.
+
+_SKILL_INJECT_PROMPT = """You place missing JD skills into a resume as single dedicated bullets.
+
+For EACH skill in the MISSING SKILLS list, output exactly one line:
+  SKILL_NAME | TIER | JOB_NUMBER | BULLET_TEXT
+
+TIER — judge against the ORIGINAL RESUME (ground truth):
+  W = work-supported. Original resume shows directly related real work.
+  A = adjacent-stretch. Plausible extension of proven work (same ecosystem/category).
+  S = self-implementable. Learnable solo; no employer evidence at all.
+  H = high-risk. Certifications, licenses, clearances, regulated credentials.
+
+JOB_NUMBER — 1 = most recent job. Pick the job whose tech stack overlaps the skill most.
+  TIMELINE RULE: never place a skill in a job that ended before the skill's
+  general-availability year (e.g. no Snowflake before 2015, no Kubernetes
+  before 2016, no dbt before 2018, no GPT/LLM work before 2020). If the only
+  overlapping job predates the skill, move it to the most recent job that
+  doesn't violate the timeline.
+
+BULLET_TEXT rules:
+  - ONE skill per bullet. The skill name MUST appear verbatim in the bullet.
+  - Match the voice, tense, and specificity of that job's existing bullets.
+  - Start with a past-tense action verb not already used as an opener in that job.
+  - 14-22 words. At most one metric, and only if the job's bullets carry metrics.
+  - W/A tier: write it as real production work at that employer. Concrete,
+    specific, integrated with that job's actual domain and stack.
+  - S tier: real-looking but non-production framing woven into the job context:
+    "Built internal prototype using X to ...", "Developed proof-of-concept with X ...",
+    "Piloted X for ...". Never ownership verbs (Owned/Led/Architected), never
+    company-wide production claims.
+  - H tier: output exactly:  SKILL_NAME | H | SKIP | SKIP
+
+Do not invent employers, titles, or dates. Do not restate existing bullets.
+Return ONLY the pipe-delimited lines. No commentary, no markdown."""
+
+
+async def inject_missing_skill_bullets(
+    resume: str,
+    missing_skills: list[str],
+    base_resume: str,
+    jd: str,
+    role_type: str,
+    api_key: str,
+    provider: str,
+    model: str,
+    keys=None,
+) -> str:
+    """
+    One dedicated bullet per missing JD skill, placed in the best-match job.
+    Single AI call for all skills. Deterministic parse + insert + budget guard.
+    Returns resume unchanged on any failure.
+    """
+    from ai.llm import chat as _chat
+
+    # Filter noise the keyword injector also skips
+    skills = [
+        s for s in missing_skills
+        if s.lower() not in _INJECTION_SKIP and len(s) >= 2
+    ]
+    if not skills:
+        return resume
+
+    blocks = _parse_resume_sections(resume)
+    if not blocks:
+        return resume
+
+    budget = BULLET_BUDGETS[role_type]
+    job_limits = [budget[0], budget[1], budget[2], budget[3]]
+
+    jobs_ctx = []
+    for i, b in enumerate(blocks):
+        existing = "\n".join(f"  • {x}" for x in b["bullets"][:6])
+        tech = f"\n  {b['tech_line']}" if b.get("tech_line") else ""
+        jobs_ctx.append(f"JOB {i + 1}: {b['header']}\n{existing}{tech}")
+
+    user_msg = (
+        f"MISSING SKILLS:\n{', '.join(skills)}\n\n"
+        f"JOBS IN TAILORED RESUME (1 = most recent):\n" + "\n\n".join(jobs_ctx) + "\n\n"
+        f"JD EXCERPT:\n{jd[:800]}\n\n"
+        f"ORIGINAL RESUME (ground truth for tier judgment):\n{base_resume[:6000]}"
+    )
+
+    try:
+        raw = await _chat(
+            system=_SKILL_INJECT_PROMPT,
+            user=user_msg,
+            api_key=api_key,
+            provider=provider,
+            model=model,
+            max_tokens=120 * len(skills) + 200,
+            pass_name="skill-inject",
+            keys=keys,
+        )
+    except Exception as e:
+        print(f"[SKILL INJECT] AI call failed: {e}")
+        return resume
+
+    # Parse: SKILL | TIER | JOB_NUMBER | BULLET
+    from resume_lint import _dynamic_coverage_pattern
+    per_job_new: dict[int, list[str]] = {}
+    skills_lo = {s.lower(): s for s in skills}
+    seen: set[str] = set()
+
+    for line in raw.splitlines():
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) < 4:
+            continue
+        skill, tier, job_s, bullet = parts[0], parts[1].upper(), parts[2], "|".join(parts[3:]).strip()
+        skill_lo = skill.lower()
+        if skill_lo not in skills_lo or skill_lo in seen:
+            continue
+        seen.add(skill_lo)
+
+        if tier == "H" or job_s.upper() == "SKIP" or bullet.upper() == "SKIP":
+            print(f"[SKILL INJECT] '{skill}' tier={tier} — skipped (skills-row only)")
+            continue
+        if tier not in ("W", "A", "S"):
+            continue
+
+        m = re.match(r"(\d+)", job_s)
+        if not m:
+            continue
+        job_idx = int(m.group(1)) - 1
+        if job_idx < 0 or job_idx >= len(blocks):
+            continue
+
+        # Bullet must actually contain the skill (verbatim-ish)
+        if not re.search(_dynamic_coverage_pattern(skill), bullet.lower()):
+            print(f"[SKILL INJECT] '{skill}' — bullet missing skill mention, dropped")
+            continue
+
+        # Sanity: length + no header/company fabrication markers
+        wc = len(bullet.split())
+        if wc < 8 or wc > 30:
+            print(f"[SKILL INJECT] '{skill}' — bullet {wc} words out of range, dropped")
+            continue
+
+        bullet = bullet.lstrip("•").strip()
+        per_job_new.setdefault(job_idx, []).append((bullet, skill, tier))
+
+    if not per_job_new:
+        return resume
+
+    # Insert per job, newest-block indices shift after each insert → re-parse.
+    # Budget guard: cap so block never exceeds its role-type per-job max.
+    injected_total = 0
+    for job_idx in sorted(per_job_new):
+        blocks = _parse_resume_sections(resume)
+        if job_idx >= len(blocks):
+            continue
+        block = blocks[job_idx]
+        limit = job_limits[min(job_idx, 3)]
+        headroom = limit - len(block["bullets"])
+        if headroom <= 0:
+            print(f"[SKILL INJECT] job #{job_idx + 1} at budget cap ({limit}) — skipped")
+            continue
+        entries = per_job_new[job_idx][:headroom]
+        new_bullets = [b for b, _s, _t in entries]
+        resume = _insert_bullets_into_section(resume, block, new_bullets)
+        injected_total += len(new_bullets)
+        print(f"[SKILL INJECT] job #{job_idx + 1}: +{len(new_bullets)} skill bullet(s)")
+
+        # Sync Technologies Used line — W/A tiers only. An S-tier skill on
+        # the tech line reads as employer production use; the tier audit
+        # would flag it. Prototype bullets keep the skill visible without
+        # the production claim.
+        tech_line = block.get("tech_line")
+        if tech_line:
+            additions = [
+                s for _b, s, t in entries
+                if t in ("W", "A") and s.lower() not in tech_line.lower()
+            ]
+            if additions:
+                new_tech = tech_line.rstrip() + ", " + ", ".join(additions)
+                resume = resume.replace(tech_line, new_tech, 1)
+                print(f"[SKILL INJECT] job #{job_idx + 1} tech line += {', '.join(additions)}")
+
+    if injected_total:
+        print(f"[SKILL INJECT] Total: {injected_total} dedicated skill bullet(s) added")
+    return resume
+
+
 async def augment_bullet_counts(
     resume: str,
     issues: list[str],
@@ -296,7 +487,7 @@ async def augment_bullet_counts(
             continue
         # Parse: "[TOO FEW BULLETS] job #2 has 7 bullets (need exactly 8). Add 1 more..."
         job_m = re.search(r'job #(\d+)', issue, re.IGNORECASE)
-        need_m = re.search(r'need exactly (\d+)', issue)
+        need_m = re.search(r'need (?:exactly|at least) (\d+)', issue)
         has_m  = re.search(r'has (\d+) bullets', issue)
 
         if not job_m:
@@ -1896,25 +2087,58 @@ def _enforce_metric_density(resume: str, role_type: str) -> str:
 
     # Trailing outcome clause: ' — <verb phrase containing a digit>' at end of line
     _CLAUSE = re.compile(r'\s+[—–]\s+[a-z][^—–•\n]*\d[^•\n]*$', re.IGNORECASE)
+    # Vague metric: bare percentage improvement with no absolute anchor
+    # ('reducing latency by 40%', 'improved efficiency 25%'). Concrete metrics
+    # ($2M, 2M records, 500 users, 12 TB) get stripped only as a last resort.
+    _VAGUE = re.compile(
+        r'\b(?:by\s+)?~?\d{1,3}(?:\.\d+)?\s*%', re.IGNORECASE)
+    _CONCRETE = re.compile(
+        r'[$€£]\s?\d|\b\d[\d,.]*\s*(?:M|K|B|million|billion|thousand)?\+?\s*'
+        r'(?:records?|rows?|users?|customers?|clients?|TB|GB|PB|engineers?|'
+        r'analysts?|reports?|pipelines?|sources?|systems?|teams?|markets?|'
+        r'countries|hours?|days?)\b', re.IGNORECASE)
+
+    def _strippable(i: int):
+        """Return (head, clause) if bullet i has a strippable trailing clause."""
+        line = lines[i]
+        m = _CLAUSE.search(line)
+        if not m:
+            return None
+        head = line[:m.start()]
+        if re.search(r'\d', head):
+            return None  # stripping wouldn't make it metric-free
+        return head, line[m.start():]
+
+    def _finish(head: str) -> str:
+        head = head.rstrip().rstrip(',;')
+        if not head.endswith('.'):
+            head += '.'
+        return head
 
     stripped = 0
     if _ratio() > ceiling:
-        # Bottom-up = lowest-relevance bullets lose their metrics first
+        # PASS 1 — vague-percentage clauses, bottom-up. These read as filler
+        # ('by 40%') and are the least defensible in an interview.
         for i in reversed(bullet_idx):
             if _ratio() <= ceiling:
                 break
-            line = lines[i]
-            m = _CLAUSE.search(line)
-            if not m:
+            hit = _strippable(i)
+            if not hit:
                 continue
-            head = line[:m.start()]
-            # Only strip if the remainder is digit-free (bullet becomes metric-free)
-            if re.search(r'\d', head):
+            head, clause = hit
+            if _VAGUE.search(clause) and not _CONCRETE.search(clause):
+                lines[i] = _finish(head)
+                stripped += 1
+        # PASS 2 — still over ceiling: strip remaining clauses bottom-up,
+        # concrete metrics included (original behavior, last resort).
+        for i in reversed(bullet_idx):
+            if _ratio() <= ceiling:
+                break
+            hit = _strippable(i)
+            if not hit:
                 continue
-            head = head.rstrip().rstrip(',;')
-            if not head.endswith('.'):
-                head += '.'
-            lines[i] = head
+            head, _clause = hit
+            lines[i] = _finish(head)
             stripped += 1
 
     if stripped:
@@ -2281,6 +2505,32 @@ def _parse_tier_audit(report: str):
     return violations
 
 
+# ── Slim retry system prompt ──────────────────────────────────────────────────
+# Retries previously shipped the full ~15K-token SYSTEM_PROMPT on every call.
+# A targeted fix doesn't need generation strategy — only output-format law.
+# Per-issue fix rules already ride in the user message (_RETRY_RULES).
+# ~600 tokens vs ~15K → saves ~13-14K input tokens per retry call.
+RETRY_SYSTEM_PROMPT = """You are a precise resume editor fixing specific lint issues.
+
+Fix ONLY the issues listed in the user message. Change nothing else.
+
+OUTPUT LAW (violations fail lint again):
+- Plain text only. No markdown, no commentary, no <plan> block.
+- Output the COMPLETE resume, first line to last. Never truncate.
+- Keep the exact section order and every section header as given.
+- Line 1: name + title. Line 2: phone | email (keep verbatim).
+- Job headers stay verbatim: Title @ Company | City, State   Month YYYY – Month YYYY
+- Every experience bullet: starts with '• ', past-tense action verb, ≤25 words, ONE idea.
+- No two consecutive bullets open with the same verb.
+- Never use the words "utilized" or "leveraged" (except "leveraged finance/buyout" in IB).
+- PROFESSIONAL SUMMARY: exactly 6 bullets.
+- Keep each job's closing line (e.g. "Technologies Used:") with its exact label.
+- EDUCATION content stays byte-identical to input.
+- Never invent employers, dates, titles, degrees, or metrics.
+- When cutting an overflow bullet, cut the lowest-relevance one; never merge two bullets.
+- When a bullet is too long, TRIM words; never split into two bullets."""
+
+
 async def audit_tier_compliance(
     base_resume: str,
     final_resume: str,
@@ -2319,41 +2569,91 @@ async def audit_tier_compliance(
     return violations, report
 
 
+# Appended to REVIEWER_PROMPT when the review call also carries the tier audit.
+# Merging saves one full AI call + ~15s latency per run: both passes read the
+# same resume on the same cheap model.
+_AUDIT_ADDENDUM = """
+
+CHECK 5 — TIER-COMPLIANCE AUDIT (report only — do NOT edit for this check):
+You will also receive the CANDIDATE'S ORIGINAL RESUME and a list of GAP-FILLED
+SKILLS (absent from the original, present in the tailored resume). For EACH
+gap-filled skill, judge how it was placed:
+  TIER 1/2 (OK)  — production claim backed by clearly related real work in the
+                   ORIGINAL resume.
+  TIER 3/4 (OK)  — skills-section only, or non-production wording ("Built
+                   prototype...", "Working knowledge of...", "Piloted...").
+  VIOLATION      — reads as real employer production work (ownership verbs,
+                   company context, metrics) with NO real or adjacent basis in
+                   the original resume.
+
+OUTPUT FORMAT (STRICT):
+First output the complete corrected resume (checks 1-4 applied).
+Then a line containing exactly:  ===TIER AUDIT===
+Then one line per gap-filled skill:  SKILL_NAME | TIER_FOUND | OK-or-VIOLATION | one-line reason
+If a skill does not appear in the resume:  SKILL_NAME | NOT_PRESENT | OK | skill was not added
+Then a final line:  SUMMARY: N skills audited, M violations found"""
+
+
 async def review_resume(tailored: str, job_description: str,
                         api_key: str, provider: str, model: str,
                         profile_skills: list[str] | None = None,
-                        keys=None) -> str:
-    """One-shot semantic review pass. Fires exactly once after _enforce_limits."""
+                        base_resume: str = "",
+                        missing_skills: list[str] | None = None,
+                        keys=None) -> tuple[str, str]:
+    """
+    One-shot semantic review pass. Fires exactly once after _enforce_limits.
+    If missing_skills given, the same call also performs the tier audit
+    (CHECK 5) and returns its report — saving a separate audit call.
+    Returns (reviewed_resume, audit_report). audit_report == "" when the
+    audit wasn't requested or the model omitted the footer (caller should
+    then fall back to the standalone audit).
+    """
+    do_audit = bool(missing_skills and base_resume)
     skills_ctx = ""
     if profile_skills:
         skills_ctx = (
             f"\n=== CANDIDATE'S FULL SKILL INVENTORY (reference only) ===\n"
             f"{', '.join(profile_skills)}\n"
         )
+    audit_ctx = ""
+    if do_audit:
+        audit_ctx = (
+            f"\n=== GAP-FILLED SKILLS TO AUDIT (CHECK 5) ===\n"
+            f"{', '.join(missing_skills)}\n\n"
+            f"=== CANDIDATE'S ORIGINAL RESUME (ground truth for CHECK 5) ===\n"
+            f"{base_resume}\n"
+        )
     msg = (
-        "Review and fix the 3 semantic issues per your instructions.\n"
+        "Review and fix the semantic issues per your instructions.\n"
         "CRITICAL: Output the COMPLETE resume from first line to last — every section, "
         "every job, every bullet, TECHNICAL SKILLS, EDUCATION. Do NOT truncate or stop early.\n"
-        "Return the complete corrected resume as plain text only — no commentary, no plan block.\n"
-        f"{skills_ctx}\n"
-        f"=== JOB DESCRIPTION ===\n{job_description[:8000]}\n\n"
+        + ("After the resume, output the ===TIER AUDIT=== report per CHECK 5.\n" if do_audit else "")
+        + "Return plain text only — no commentary, no plan block.\n"
+        f"{skills_ctx}{audit_ctx}\n"
+        f"=== JOB DESCRIPTION ===\n{job_description[:5000]}\n\n"
         f"=== TAILORED RESUME ===\n{tailored}"
     )
 
     reviewed = await chat(
-        system=REVIEWER_PROMPT,
+        system=REVIEWER_PROMPT + (_AUDIT_ADDENDUM if do_audit else ""),
         user=msg,
         api_key=api_key,
         provider=provider,
         model=model,
         max_tokens=16384,
-        pass_name="reviewer",
+        pass_name="reviewer" + ("+audit" if do_audit else ""),
         keys=keys,
     )
     stripped = re.sub(r'<plan>.*?</plan>', '', reviewed, flags=re.DOTALL).strip()
     if stripped != reviewed:
         print("[WARN] Reviewer output contained <plan> block — may be over-thinking")
-    return stripped
+
+    audit_report = ""
+    if do_audit and "===TIER AUDIT===" in stripped:
+        stripped, _, audit_report = stripped.partition("===TIER AUDIT===")
+        stripped = stripped.strip()
+        audit_report = audit_report.strip()
+    return stripped, audit_report
 
 
 # ── Per-issue retry rules ─────────────────────────────────────────────────────
@@ -2369,7 +2669,7 @@ _RETRY_RULES = {
     "[MULTI-IDEA]":            "One accomplishment per bullet. Split into two or cut the weaker half.",
     "[SAME VERB]":             "No two consecutive experience bullets may open with the same verb — vary them.",
     "[SUMMARY]":               "PROFESSIONAL SUMMARY must have exactly 6 bullet lines — not 5, not 7. Count your bullets and add or remove to hit exactly 6.",
-    "[TOO FEW BULLETS]":       "A job block has fewer bullets than required. Add more specific, metric-backed bullets until the exact count is met. Do NOT cut other sections — add only to the flagged job.",
+    "[TOO FEW BULLETS]":       "A job block has fewer bullets than its minimum. Add more specific, metric-backed bullets until the minimum is met — quality over padding. Do NOT cut other sections — add only to the flagged job.",
     "[BULLET OVERFLOW]":       "Total bullets exceed the limit for this role type. Cut lowest-relevance bullets first.",
     "[MISSING SECTION]":       "A required section is missing — check for output truncation and regenerate the full resume.",
     "[LOW METRICS]":           "Add quantified outcomes to more experience bullets to meet the role-appropriate target.",
@@ -2497,15 +2797,21 @@ async def tailor_resume(base_resume: str, job_description: str,
             + " This list is a reference pool — not a mandate to include everything.\n"
         )
 
-    # Build per-job bullet requirement string
-    _job_counts = f"job1={minimums[0]}, job2={minimums[1]}, job3={minimums[2]}, job4+={minimums[3]}"
+    # Build per-job bullet requirement string — RANGES, not exact counts.
+    # Exact counts force filler bullets on thin jobs; ranges let the model
+    # stop when real content runs out. Lint enforces min and max separately.
+    _job_counts = (
+        f"job1={minimums[0]}-{budget[0]}, job2={minimums[1]}-{budget[1]}, "
+        f"job3={minimums[2]}-{budget[2]}, job4+={minimums[3]}-{budget[3]}"
+    )
 
     user_msg = (
         f"Tailor this resume to the JD. "
         f"Role type detected: {role_type}. "
-        f"REQUIRED bullet counts (EXACT — not max, not fewer): "
-        f"summary={SUMMARY_EXACT}, {_job_counts}. "
-        f"Total: {hard_total}. Lint will FAIL if any job has fewer than the required count. "
+        f"Bullet counts per job (min-max RANGES — hit the minimum, never exceed the max, "
+        f"and never pad with filler to reach the max): "
+        f"summary={SUMMARY_EXACT} (exact), {_job_counts}. "
+        f"Hard total cap: {hard_total}. Lint FAILS below any minimum or above any maximum. "
         f"Output: plain text resume only.\n"
         f"{declared_section}"
         f"{jd_skills_section}\n"
@@ -2541,6 +2847,7 @@ async def tailor_resume(base_resume: str, job_description: str,
     # ── Quality gate: lint → up to 3 retries, best-of-N ────────────────────
     _best_raw         = raw
     _best_issue_count = len(lint_resume(raw, job_description, base_resume=base_resume, role_type=role_type)) + len(detect_domain_leak(raw, role_type))
+    _lint_clean_first = False   # attempt 0 passed lint with zero issues
 
     for attempt in range(3):
         issues = lint_resume(raw, job_description, base_resume=base_resume, role_type=role_type)
@@ -2551,6 +2858,8 @@ async def tailor_resume(base_resume: str, job_description: str,
             _best_raw = raw
 
         if not issues:
+            if attempt == 0:
+                _lint_clean_first = True
             break
 
         # Log what lint found so Railway logs reveal the actual failure pattern
@@ -2611,7 +2920,7 @@ async def tailor_resume(base_resume: str, job_description: str,
         )
 
         raw = await chat(
-            system=SYSTEM_PROMPT,
+            system=RETRY_SYSTEM_PROMPT,
             user=fix_msg,
             api_key=api_key,
             provider=provider,
@@ -2650,25 +2959,67 @@ async def tailor_resume(base_resume: str, job_description: str,
     if reinserted_jobs:
         print(f"[JOB RESTORED] Re-inserted {len(reinserted_jobs)} real job(s) verbatim: {', '.join(reinserted_jobs)}")
 
+    # ── Missing-skill bullet injection — one dedicated bullet per JD gap ────
+    # Skills the ORIGINAL resume lacked that the main pass still left without
+    # an experience bullet each get one tier-worded bullet in the best job.
+    # Runs BEFORE review (reviewer polishes them) and BEFORE tier audit
+    # (audit validates the tier wording). Uses cheap secondary model.
+    if skills_missing_from_original:
+        try:
+            _still_unbulleted = []
+            _blocks_now = _parse_resume_sections(result)
+            _exp_blob = "\n".join(
+                "\n".join(b["bullets"]) for b in _blocks_now
+            ).lower()
+            from resume_lint import _dynamic_coverage_pattern as _cov_pat
+            for _sk in skills_missing_from_original:
+                if not re.search(_cov_pat(_sk), _exp_blob):
+                    _still_unbulleted.append(_sk)
+            if _still_unbulleted:
+                print(f"[SKILL INJECT] {len(_still_unbulleted)} JD skill(s) lack an experience bullet: {', '.join(_still_unbulleted[:8])}")
+                result = await inject_missing_skill_bullets(
+                    result, _still_unbulleted, base_resume, job_description,
+                    role_type, api_key, provider, _sec, keys=keys,
+                )
+        except Exception as e:
+            print(f"[SKILL INJECT] Failed: {e}")
+
     # ── Semantic review — 1 pass, no retry ──────────────────────────────────
+    # Merged with the tier audit (one call instead of two). Skipped entirely
+    # when attempt 0 passed lint clean — a first-try-clean resume gains
+    # nothing from review, so save the call. Audit still runs standalone
+    # if there are gap-filled skills to check.
     _REQUIRED_SECTIONS = ["WORK EXPERIENCE:", "TECHNICAL SKILLS:", "EDUCATION:"]
-    pre_review = result
-    reviewed = await review_resume(
-        result, job_description, api_key, provider, _sec,
-        profile_skills=profile_skills,
-        keys=keys,
-    )
-    # Truncation guard: if reviewer dropped any required section, discard its output
-    _review_truncated = any(s not in reviewed for s in _REQUIRED_SECTIONS)
-    if _review_truncated:
-        print("[REVIEW] Truncation detected — discarding reviewer output, keeping pre-review")
-        result = pre_review
-    elif reviewed != pre_review:
-        print("[REVIEW] Reviewer made changes")
-        result = reviewed
+    violations: list[str] = []
+    _audit_done = False
+
+    if _lint_clean_first:
+        print("[REVIEW] Skipped — lint clean on first attempt")
     else:
-        print("[REVIEW] No semantic violations found — resume passed all 3 checks")
-        result = reviewed
+        pre_review = result
+        reviewed, _audit_report = await review_resume(
+            result, job_description, api_key, provider, _sec,
+            profile_skills=profile_skills,
+            base_resume=base_resume,
+            missing_skills=skills_missing_from_original,
+            keys=keys,
+        )
+        # Truncation guard: if reviewer dropped any required section, discard its output
+        _review_truncated = any(s not in reviewed for s in _REQUIRED_SECTIONS)
+        if _review_truncated:
+            print("[REVIEW] Truncation detected — discarding reviewer output, keeping pre-review")
+            result = pre_review
+            _audit_report = ""  # audit judged a discarded resume — rerun standalone
+        elif reviewed != pre_review:
+            print("[REVIEW] Reviewer made changes")
+            result = reviewed
+        else:
+            print("[REVIEW] No semantic violations found — resume passed all checks")
+            result = reviewed
+        if _audit_report:
+            violations = _parse_tier_audit(_audit_report)
+            _audit_done = True
+            print("[TIER AUDIT] Merged with review call — no separate audit call")
 
     # ── Post-review lint — log WARN only, no retry ───────────────────────────
     post_issues = lint_resume(result, job_description, base_resume=base_resume, role_type=role_type)
@@ -2691,14 +3042,15 @@ async def tailor_resume(base_resume: str, job_description: str,
                 print("[VISIBILITY] Missing: " + ", ".join(coverage["missing"]))
 
     # ── Tier-compliance audit + hard-gate correction ─────────────────────────
-    # Checks skills added to close JD gaps. If violations found, runs one
-    # correction pass to remove/downgrade fabricated production claims.
+    # Audit normally rides the review call (above). Standalone call fires only
+    # when review was skipped, truncated, or dropped the audit footer.
     if skills_missing_from_original:
         try:
-            violations, raw_report = await audit_tier_compliance(
-                base_resume, result, skills_missing_from_original,
-                api_key, provider, _sec, keys=keys,
-            )
+            if not _audit_done:
+                violations, _ = await audit_tier_compliance(
+                    base_resume, result, skills_missing_from_original,
+                    api_key, provider, _sec, keys=keys,
+                )
             if violations:
                 print(f"[TIER AUDIT] {len(violations)} violation(s) found:")
                 for v in violations:

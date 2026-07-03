@@ -2540,10 +2540,10 @@ async def tailor_resume(base_resume: str, job_description: str,
 
     # ── Quality gate: lint → up to 3 retries, best-of-N ────────────────────
     _best_raw         = raw
-    _best_issue_count = len(lint_resume(raw, job_description, base_resume=base_resume)) + len(detect_domain_leak(raw, role_type))
+    _best_issue_count = len(lint_resume(raw, job_description, base_resume=base_resume, role_type=role_type)) + len(detect_domain_leak(raw, role_type))
 
     for attempt in range(3):
-        issues = lint_resume(raw, job_description, base_resume=base_resume)
+        issues = lint_resume(raw, job_description, base_resume=base_resume, role_type=role_type)
         issues += detect_domain_leak(raw, role_type)
 
         if len(issues) <= _best_issue_count:
@@ -2628,7 +2628,7 @@ async def tailor_resume(base_resume: str, job_description: str,
 
 
     # Best-of-N final check
-    final_issues = lint_resume(raw, job_description, base_resume=base_resume) + detect_domain_leak(raw, role_type)
+    final_issues = lint_resume(raw, job_description, base_resume=base_resume, role_type=role_type) + detect_domain_leak(raw, role_type)
     if len(final_issues) < _best_issue_count:
         _best_raw = raw
         _best_issue_count = len(final_issues)
@@ -2671,7 +2671,7 @@ async def tailor_resume(base_resume: str, job_description: str,
         result = reviewed
 
     # ── Post-review lint — log WARN only, no retry ───────────────────────────
-    post_issues = lint_resume(result, job_description, base_resume=base_resume)
+    post_issues = lint_resume(result, job_description, base_resume=base_resume, role_type=role_type)
     if post_issues:
         print(f"[WARN] post-review lint ({len(post_issues)}):")
         for iss in post_issues:

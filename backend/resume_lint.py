@@ -1268,10 +1268,16 @@ def _extract_years_claim(text: str) -> Optional[str]:
     return None
 
 
-def lint_resume(text: str, job_description: str = "", base_resume: str = "") -> list[str]:
+def lint_resume(text: str, job_description: str = "", base_resume: str = "",
+                 role_type: Optional[str] = None) -> list[str]:
     """
     Lint a tailored resume against the job description.
-    Auto-detects role type from job_description.
+    Pass role_type explicitly when the caller already knows it (e.g. from the
+    user's job preference) — auto-detecting from job_description text here
+    can disagree with the role_type the resume was actually written against,
+    causing every bullet-count/metric-density check to grade against the
+    wrong role's budget. Falls back to JD-text auto-detection only if
+    role_type is not supplied (standalone/CLI use).
     Pass base_resume to enable years-of-experience drift check.
     Returns list of issue strings. Empty = clean.
     """
@@ -1279,7 +1285,8 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "") -> 
     lines = [l.rstrip() for l in text.strip().split("\n")]
 
     # ── Role type detection ──────────────────────────────────────────────────
-    role_type = detect_role_type(job_description) if job_description else GENERAL
+    if role_type is None:
+        role_type = detect_role_type(job_description) if job_description else GENERAL
     budget = BULLET_BUDGETS[role_type]
     minimums = BULLET_MINIMUMS.get(role_type, (0, 0, 0, 0))
     job_limits = [budget[0], budget[1], budget[2], budget[3]]  # per-job max

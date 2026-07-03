@@ -2456,6 +2456,7 @@ async def tailor_resume(base_resume: str, job_description: str,
     # Role type comes from user's job preference only. No JD body scan.
     # Job preference is required to use the app — if empty, default TECH.
     role_type = user_roles_to_role_type(user_job_roles or []) or TECH
+    print(f"[TAILOR] user_job_roles={user_job_roles!r} -> role_type={role_type}")
     budget    = BULLET_BUDGETS[role_type]
     minimums  = BULLET_MINIMUMS.get(role_type, (0, 0, 0, 0))
     hard_total = budget[5]

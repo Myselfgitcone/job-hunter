@@ -943,21 +943,52 @@ def detect_domain_leak(text: str, role_type: str, base_resume: str = "") -> list
 # Terms the JD extractor grabs that are never injectable/checkable skills.
 # Filtered at EXTRACTION so lint visibility, skill-inject, and keyword-inject
 # all stop chasing them (live runs chased "Computer Science", "M1", "Finance").
+# Env override — no deploy needed: LINT_EXTRACTION_JUNK='["new junk","m2"]'
+def _env_set(name: str) -> set:
+    import os, json
+    raw = os.getenv(name, "")
+    try:
+        return {str(x).lower() for x in json.loads(raw)} if raw else set()
+    except Exception:
+        return set()
+
 _EXTRACTION_JUNK = {
     "computer science", "information systems", "information technology",
     "business analytics", "data analytics degree", "related field",
     "finance", "healthcare", "insurance", "banking", "retail",
     "erp",  # platform category, not a skill; specific ERPs (SAP, NetSuite) pass
-}
+} | _env_set("LINT_EXTRACTION_JUNK")
 
-def _is_junk_skill(s: str) -> bool:
-    s = s.lower().strip()
-    if s in _EXTRACTION_JUNK:
+# Skill-context patterns: real skills sit near tool-context words in the JD.
+# Positive validation — generalizes past any hardcoded junk list.
+_SKILL_CTX_RE = (
+    r"(?:using|with|in|via|like|include\w*|experience|expertise|proficien\w+|"
+    r"knowledge of|hands-on|skills? (?:in|with)|tools?(?: like| such as)?|"
+    r"stack|platforms?|technolog\w+|familiarity with)"
+)
+
+def _has_skill_context(s: str, jd: str) -> bool:
+    """True if the term appears near tool-context wording anywhere in the JD."""
+    esc = re.escape(s.strip())
+    pat = (rf"{_SKILL_CTX_RE}[^.\n]{{0,80}}\b{esc}\b"
+           rf"|\b{esc}\b[^.\n]{{0,50}}(?:experience|skills?|proficiency|"
+           rf"tooling|preferred|required|a plus|strong plus)")
+    return bool(re.search(pat, jd, re.IGNORECASE))
+
+def _is_junk_skill(s: str, jd: str = "") -> bool:
+    s_ = s.lower().strip()
+    if s_ in _EXTRACTION_JUNK:
         return True
-    if len(s) <= 2:                      # "M1", "BI"-style fragments, "R" handled elsewhere
-        return s not in {"r", "go", "c"}  # real language names survive
-    if re.fullmatch(r"[a-z]\d", s):      # M1, S3-style stray tokens (S3 arrives as "aws s3")
+    if len(s_) <= 2:                     # "M1", "BI"-style fragments
+        return s_ not in {"r", "go", "c", "c#", "f#"}
+    if re.fullmatch(r"[a-z]\d", s_):     # M1-style stray tokens
         return True
+    # Context gate: single generic English words with no tool-context in the
+    # JD are extraction noise ("Ownership", "Disciplined"). Multi-word terms
+    # and anything with digits/symbols skip this (clearly technical).
+    if jd and s_.isalpha() and " " not in s_ and len(s_) >= 5:
+        if not _has_skill_context(s_, jd):
+            return True
     return False
 
 
@@ -969,7 +1000,7 @@ def extract_jd_hard_skills(job_description: str, role_type: Optional[str] = None
     if not job_description:
         return []
     skills = extract_jd_keywords_dynamic(job_description)
-    skills = [s for s in skills if not _is_junk_skill(s)]
+    skills = [s for s in skills if not _is_junk_skill(s, job_description)]
     if role_type:
         blocked: set[str] = set()
         for rt, terms in _DOMAIN_LOCKED_TERMS.items():
@@ -1639,9 +1670,27 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
         jd_lo       = job_description.lower()
         res_lo      = bullet_text.lower()
         jd_words    = set(re.findall(r"[a-z][a-z\-]{5,}", jd_lo))
+        # Words that ARE skills must never be echo-flagged: a Python/SQL-heavy
+        # JD wants those words repeated. Live run: echo-fix on "python"
+        # mangled bullets into "in code and SQL". Harvest from (a) extracted
+        # JD hard skills and (b) the resume's own skills section + closing
+        # lines — (b) makes this robust when extraction returns thin results.
+        _skill_words = set()
+        for sk in extract_jd_hard_skills(job_description, role_type):
+            _skill_words.update(sk.lower().split())
+        _in_skills = False
+        for raw_l in lines:
+            s = raw_l.strip()
+            if _is_section_header(s):
+                _in_skills = any(k in s.upper() for k in
+                                 ("SKILL", "COMPETENC", "EXPERTISE"))
+                continue
+            if _in_skills or _is_closing_line(s, role_type):
+                for tok in re.findall(r"[a-z][a-z\-#+.]{2,}", s.lower()):
+                    _skill_words.add(tok)
         checked     = set()
         for w in jd_words:
-            if w in echo_stoplist or w in checked:
+            if w in echo_stoplist or w in checked or w in _skill_words:
                 continue
             checked.add(w)
             count = len(re.findall(rf"\b{re.escape(w)}\b", res_lo))

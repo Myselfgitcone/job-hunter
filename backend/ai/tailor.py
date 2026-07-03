@@ -306,10 +306,12 @@ BULLET_TEXT rules:
   - 14-22 words. At most one metric, and only if the job's bullets carry metrics.
   - W/A tier: write it as real production work at that employer. Concrete,
     specific, integrated with that job's actual domain and stack.
-  - S tier: real-looking but non-production framing woven into the job context:
-    "Built internal prototype using X to ...", "Developed proof-of-concept with X ...",
-    "Piloted X for ...". Never ownership verbs (Owned/Led/Architected), never
-    company-wide production claims.
+  - S tier: output JOB_NUMBER as exactly  PROJ  — the bullet goes to a
+    PROJECTS section, NOT a job block. Write it full-strength as a standalone
+    technical project: strong verbs fine (Designed/Built/Implemented), name
+    the skill plus 2-3 supporting technologies, describe what it does. No
+    employer, no company metrics. Example: "Designed Snowflake warehouse with
+    dbt models, clustering keys, and CI-driven deployments for analytics workloads".
   - H tier: output exactly:  SKILL_NAME | H | SKIP | SKIP
 
 Do not invent employers, titles, or dates. Do not restate existing bullets.
@@ -380,6 +382,7 @@ async def inject_missing_skill_bullets(
     # Parse: SKILL | TIER | JOB_NUMBER | BULLET
     from resume_lint import _dynamic_coverage_pattern
     per_job_new: dict[int, list[str]] = {}
+    project_new: list[str] = []
     skills_lo = {s.lower(): s for s in skills}
     seen: set[str] = set()
 
@@ -397,6 +400,19 @@ async def inject_missing_skill_bullets(
             print(f"[SKILL INJECT] '{skill}' tier={tier} — skipped (skills-row only)")
             continue
         if tier not in ("W", "A", "S"):
+            continue
+
+        # S tier → PROJECTS section: full-strength standalone project bullet,
+        # no employer attached. Honest AND strong — audit-proof by design.
+        if job_s.upper() == "PROJ" or tier == "S":
+            if not re.search(_dynamic_coverage_pattern(skill), bullet.lower()):
+                print(f"[SKILL INJECT] '{skill}' — project bullet missing skill, dropped")
+                continue
+            wc = len(bullet.split())
+            if wc < 8 or wc > 30:
+                print(f"[SKILL INJECT] '{skill}' — project bullet {wc} words, dropped")
+                continue
+            project_new.append(bullet.lstrip("•").strip())
             continue
 
         m = re.match(r"(\d+)", job_s)
@@ -420,7 +436,7 @@ async def inject_missing_skill_bullets(
         bullet = bullet.lstrip("•").strip()
         per_job_new.setdefault(job_idx, []).append((bullet, skill, tier))
 
-    if not per_job_new:
+    if not per_job_new and not project_new:
         return resume
 
     # Insert per job, newest-block indices shift after each insert → re-parse.
@@ -457,9 +473,46 @@ async def inject_missing_skill_bullets(
                 resume = resume.replace(tech_line, new_tech, 1)
                 print(f"[SKILL INJECT] job #{job_idx + 1} tech line += {', '.join(additions)}")
 
+    # ── PROJECTS section — S-tier landing zone ───────────────────────────
+    if project_new:
+        resume = _insert_project_bullets(resume, project_new)
+        injected_total += len(project_new)
+        print(f"[SKILL INJECT] PROJECTS: +{len(project_new)} project bullet(s)")
+
     if injected_total:
         print(f"[SKILL INJECT] Total: {injected_total} dedicated skill bullet(s) added")
     return resume
+
+
+def _insert_project_bullets(resume: str, bullets: list[str]) -> str:
+    """
+    Append bullets to an existing PROJECTS section, or create one directly
+    above TECHNICAL SKILLS. Deterministic. Lint whitelists PROJECTS for
+    TECH/CYBER/GENERAL, and per-job bullet counting ignores it.
+    """
+    lines = resume.split('\n')
+    new = [f'• {b}' for b in bullets]
+
+    # Existing PROJECTS section → append after its last bullet
+    for i, l in enumerate(lines):
+        if l.strip().upper().rstrip(':') == "PROJECTS":
+            insert_at = i + 1
+            for j in range(i + 1, len(lines)):
+                s = lines[j].strip()
+                if s and s == s.upper() and len(s) > 3 and not s.startswith('•'):
+                    break
+                if s.startswith('•'):
+                    insert_at = j + 1
+            return '\n'.join(lines[:insert_at] + new + lines[insert_at:])
+
+    # No PROJECTS section → create above TECHNICAL SKILLS (fallback: EDUCATION)
+    anchor = next((i for i, l in enumerate(lines)
+                   if l.strip().upper().startswith("TECHNICAL SKILLS")), None)
+    if anchor is None:
+        anchor = next((i for i, l in enumerate(lines)
+                       if l.strip().upper().startswith("EDUCATION")), len(lines))
+    block = ["PROJECTS:"] + new + [""]
+    return '\n'.join(lines[:anchor] + block + lines[anchor:])
 
 
 async def augment_bullet_counts(
@@ -2372,6 +2425,46 @@ def _remove_concept_redundancy(resume: str) -> str:
     return resume[:sec_start] + new_skills + resume[sec_end:]
 
 
+def _trim_tech_lines(resume: str, jd_keywords: list[str], role_type: str,
+                     max_items: int = 15) -> str:
+    """
+    Cap 'Technologies Used:' lines. Live output shipped a 35-item monster —
+    ATS-fine, human-hostile. Keep JD-matching items first (original order),
+    then non-matching items, cut at max_items. Paren groups stay intact.
+    Deterministic, no AI.
+    """
+    prefix = _CLOSING_PREFIXES.get(role_type)
+    if not prefix:
+        return resume
+    prefix_lo = prefix.lower()
+    kw_lo = [k.lower() for k in (jd_keywords or [])]
+
+    def _relevant(item: str) -> bool:
+        it = item.lower()
+        return any(k in it or it in k for k in kw_lo)
+
+    out = []
+    for line in resume.split('\n'):
+        s = line.strip()
+        if not s.lower().startswith(prefix_lo):
+            out.append(line)
+            continue
+        body = s[len(prefix):].strip()
+        # Split on commas NOT inside parens — "AWS (S3, EMR, Glue)" = one item
+        items = [i.strip() for i in re.split(r",\s*(?![^()]*\))", body) if i.strip()]
+        if len(items) <= max_items:
+            out.append(line)
+            continue
+        keep = [i for i in items if _relevant(i)]
+        keep += [i for i in items if not _relevant(i)]
+        keep = keep[:max_items]
+        # Preserve original relative order in final output
+        ordered = [i for i in items if i in set(keep)][:max_items]
+        out.append(f"{prefix} " + ", ".join(ordered))
+        print(f"[TECH LINE] Trimmed {len(items)} -> {len(ordered)} items")
+    return '\n'.join(out)
+
+
 def _merge_cont_rows(resume: str) -> str:
     """
     Merge 'Label (cont.): items' rows back into their base 'Label: ...' row.
@@ -2586,6 +2679,41 @@ def _restore_closing_lines(result: str, pre_review: str, role_type: str) -> str:
     if restored:
         print(f"[CLOSING RESTORE] Re-inserted {restored} closing line(s) dropped by reviewer")
     return '\n'.join(lines)
+
+
+# ── Summary restore — deterministic, no AI ────────────────────────────────────
+# Live run shipped a 5-bullet summary (must be exactly SUMMARY_EXACT).
+# Reviewer sometimes merges/drops a summary bullet post-loop; nothing
+# downstream re-adds. If reviewer output has FEWER summary bullets than
+# pre-review, splice the pre-review summary section back in verbatim.
+def _summary_block(text: str) -> tuple[int, int, int]:
+    """(start_line, end_line, bullet_count) of PROFESSIONAL SUMMARY block."""
+    lines = text.split('\n')
+    start = next((i for i, l in enumerate(lines)
+                  if l.strip().upper().startswith("PROFESSIONAL SUMMARY")), -1)
+    if start < 0:
+        return -1, -1, 0
+    end, count = len(lines), 0
+    for j in range(start + 1, len(lines)):
+        s = lines[j].strip()
+        if s and s == s.upper() and len(s) > 3 and not s.startswith('•'):
+            end = j
+            break
+        if s.startswith('•'):
+            count += 1
+    return start, end, count
+
+
+def _restore_summary(result: str, pre_review: str) -> str:
+    ps, pe, pc = _summary_block(pre_review)
+    rs, re_, rc = _summary_block(result)
+    if ps < 0 or rs < 0 or rc >= pc:
+        return result
+    pre_lines    = pre_review.split('\n')
+    result_lines = result.split('\n')
+    spliced = result_lines[:rs] + pre_lines[ps:pe] + result_lines[re_:]
+    print(f"[SUMMARY RESTORE] Reviewer dropped {pc - rc} summary bullet(s) — restored pre-review summary")
+    return '\n'.join(spliced)
 
 
 async def audit_tier_compliance(
@@ -3099,6 +3227,7 @@ async def tailor_resume(base_resume: str, job_description: str,
         elif reviewed != pre_review:
             print("[REVIEW] Reviewer made changes")
             result = _restore_closing_lines(reviewed, pre_review, role_type)
+            result = _restore_summary(result, pre_review)
         else:
             print("[REVIEW] No semantic violations found — resume passed all checks")
             result = reviewed
@@ -3252,6 +3381,12 @@ async def tailor_resume(base_resume: str, job_description: str,
         result = _merge_cont_rows(result)
     except Exception as e:
         print(f"[MERGE CONT] Failed: {e}")
+
+    # ── Tech-line cap — JD-relevant first, max 15 items ──────────────────
+    try:
+        result = _trim_tech_lines(result, jd_hard_skills, role_type)
+    except Exception as e:
+        print(f"[TECH LINE] Trim failed: {e}")
 
     # ── Education section safety net — deterministic, no AI involvement ──────
     # Runs after all AI passes. Compares EDUCATION section of final output

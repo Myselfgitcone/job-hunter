@@ -92,13 +92,16 @@ def user_roles_to_role_type(job_roles: list[str]) -> str | None:
 # a live tailor run when lint's JD-auto-detected role_type (CONSULTING) diverged
 # from the role_type the AI was actually told to write against (TECH).
 # (most_recent, second, third, fourth_plus, summary, hard_total)
-_UNIFIED_BUDGET = (11, 8, 7, 5, 6, 37)
+_UNIFIED_BUDGET = (11, 8, 7, 6, 6, 38)
 BULLET_BUDGETS: dict[str, tuple[int, int, int, int, int, int]] = {
     rt: _UNIFIED_BUDGET for rt in (TECH, IB, FINANCE, CYBER, HEALTHCARE, CONSULTING, GENERAL)
 }
 
 # Minimum bullets per job (same order: job1, job2, job3, job4+) — same for every role.
-_UNIFIED_MINIMUMS = (11, 8, 7, 5)
+# Set BELOW the budget maxima so min-max is a real range. Equal min/max forced
+# the model to pad thin jobs with filler bullets to hit an exact count — filler
+# is the main fabrication-pressure source. max-2 keeps depth without padding.
+_UNIFIED_MINIMUMS = (10, 7, 6, 5)
 BULLET_MINIMUMS: dict[str, tuple[int, int, int, int]] = {
     rt: _UNIFIED_MINIMUMS for rt in (TECH, IB, FINANCE, CYBER, HEALTHCARE, CONSULTING, GENERAL)
 }
@@ -947,7 +950,7 @@ def extract_jd_hard_skills(job_description: str, role_type: Optional[str] = None
 
 
 def _dynamic_coverage_pattern(skill: str) -> str:
-    """
+    r"""
     Build a word-boundary regex pattern dynamically from the skill name.
     No catalog lookup — derived entirely from the extracted skill string.
 
@@ -1310,6 +1313,7 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
     found_headers:        set[str] = set()
     per_job_bullets:      list[int] = []   # bullet count per job block
     current_job_bullets:  int = 0
+    _job_open:            bool = False  # bullets attribute to a job only while open
 
     for raw in lines:
         line    = raw.strip()
@@ -1331,6 +1335,12 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
         if _is_section_header(line):
             if current_job_header and closing_required and not job_has_closing_line:
                 jobs_missing_closing.append(current_job_header)
+            # Close job counting — bullets in later sections (PROJECTS etc.)
+            # must not be attributed to the last job block.
+            if _job_open and job_index >= 0:
+                per_job_bullets.append(current_job_bullets)
+                current_job_bullets = 0
+                _job_open = False
             current_job_header   = None
             job_has_closing_line = False
             prev_verb            = None
@@ -1343,9 +1353,10 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
             if current_job_header and closing_required and not job_has_closing_line:
                 jobs_missing_closing.append(current_job_header)
             # Save bullet count for the job we're leaving
-            if job_index >= 0:
+            if _job_open and job_index >= 0:
                 per_job_bullets.append(current_job_bullets)
             current_job_bullets  = 0
+            _job_open            = True
             current_job_header   = line
             job_has_closing_line = False
             prev_verb            = None
@@ -1433,7 +1444,7 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
     if current_job_header and closing_required and not job_has_closing_line:
         jobs_missing_closing.append(current_job_header)
     # Save the last job's bullet count
-    if job_index >= 0:
+    if _job_open and job_index >= 0:
         per_job_bullets.append(current_job_bullets)
 
     # ── Aggregate checks ──────────────────────────────────────────────────────
@@ -1462,7 +1473,7 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
         job_label = f"job #{ji+1}"
         if actual < min_req:
             issues.append(
-                f"[TOO FEW BULLETS] {job_label} has {actual} bullets (need exactly {min_req}). "
+                f"[TOO FEW BULLETS] {job_label} has {actual} bullets (need at least {min_req}). "
                 f"Add {min_req - actual} more specific, metric-backed bullets."
             )
         elif actual > max_req:

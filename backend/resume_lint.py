@@ -914,19 +914,27 @@ _DOMAIN_LEAK_PHRASES: dict[str, list[str]] = {
 }
 
 
-def detect_domain_leak(text: str, role_type: str) -> list[str]:
+def detect_domain_leak(text: str, role_type: str, base_resume: str = "") -> list[str]:
     """
     Flags finance/healthcare/IB business-domain jargon that doesn't belong in a
     resume locked to a different role type — even when the JD's employer is in
     that domain. Catches phrasing the model echoes straight from JD body text
     (not just extracted "hard skills").
+
+    base_resume exemption: a term already present in the candidate's ORIGINAL
+    resume is real work history, not a JD leak — never flag it. Also fixes the
+    'emr' false positive: AWS EMR in a tech stack is not Electronic Medical
+    Records, and it lives in the base resume, so the exemption clears it.
     """
     issues: list[str] = []
+    base_lo = (base_resume or "").lower()
     for domain, phrases in _DOMAIN_LEAK_PHRASES.items():
         if domain == role_type:
             continue
         for phrase in phrases:
             if re.search(phrase, text, re.IGNORECASE):
+                if base_lo and re.search(phrase, base_lo, re.IGNORECASE):
+                    continue  # candidate's own history — not a leak
                 shown = phrase.replace("\\b", "")
                 issues.append(f"[DOMAIN LEAK] '{shown}' is {domain}-specific jargon — not allowed when role type is {role_type}.")
     return issues

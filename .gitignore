@@ -28,6 +28,14 @@ backend/proof_*.txt
 backend/pipeline_out.txt
 backend/preview_output.pdf
 
+# Personal data — never commit resumes or role-pref fixtures
+backend/resume_raw.txt
+backend/role_pref_*.txt
+
+# Git internals / editor backups
+.git-rewrite/
+*.bak
+
 # Misc
 .DS_Store
 *.log

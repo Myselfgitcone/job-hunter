@@ -16,6 +16,7 @@ Usage:
     result = await chat(system=..., user=..., model="claude-sonnet-4-5", keys=keys)
 """
 import asyncio
+import time
 import httpx
 from dataclasses import dataclass, field
 
@@ -154,7 +155,7 @@ async def chat(
     # ── Direct Anthropic (SDK) ────────────────────────────────────────────────
     if provider == "anthropic":
         clean_model = _strip_provider_prefix(model)
-        return await _call_anthropic(system, user, api_key, clean_model, max_tokens)
+        return await _call_anthropic(system, user, api_key, clean_model, max_tokens, pass_name)
 
     # ── Direct Google AI Studio (REST) ───────────────────────────────────────
     if provider == "google":
@@ -277,18 +278,23 @@ async def chat(
 # ── Direct provider callers ───────────────────────────────────────────────────
 
 async def _call_anthropic(system: str, user: str, api_key: str,
-                           model: str, max_tokens: int) -> str:
+                           model: str, max_tokens: int, pass_name: str = "") -> str:
     """Anthropic SDK — direct API, no service fees."""
     import anthropic
     # Anthropic API requires dashes not dots: claude-sonnet-4-6, not claude-sonnet-4.6
     model = model.replace(".", "-")
-    client = anthropic.AsyncAnthropic(api_key=api_key)
-    msg = await client.messages.create(
-        model=model or "claude-sonnet-4-6",
-        max_tokens=max_tokens,
-        system=system,
-        messages=[{"role": "user", "content": user}],
-    )
+    client = anthropic.AsyncAnthropic(api_key=api_key, timeout=120, max_retries=1)
+    label = f"[{pass_name}]" if pass_name else "[anthropic]"
+    start = time.perf_counter()
+    try:
+        msg = await client.messages.create(
+            model=model or "claude-sonnet-4-6",
+            max_tokens=max_tokens,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+        )
+    finally:
+        print(f"{label} anthropic call took {time.perf_counter() - start:.1f}s")
     return msg.content[0].text
 
 

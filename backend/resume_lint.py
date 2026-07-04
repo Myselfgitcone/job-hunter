@@ -1065,6 +1065,7 @@ _EXTRACTION_JUNK = {
     "computer science", "information systems", "information technology",
     "business analytics", "data analytics degree", "related field",
     "finance", "healthcare", "insurance", "banking", "retail",
+    "data science",  # degree/team name in JDs, not an injectable skill; live run burned 2 retries chasing it
     "erp",  # platform category, not a skill; specific ERPs (SAP, NetSuite) pass
 } | _env_set("LINT_EXTRACTION_JUNK")
 
@@ -1724,7 +1725,7 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
     # Multi-idea bullets
     for wc, body in multi_idea_bullets:
         issues.append(
-            f'[MULTI-IDEA] {wc} words, 2+ accomplishments — split or cut: "{body[:70]}..."'
+            f'[MULTI-IDEA] {wc} words, 2+ accomplishments — cut the weaker half: "{body[:70]}..."'
         )
 
     # Metrics density
@@ -1866,7 +1867,7 @@ RETRY_RULES: dict[str, str] = {
     "[BANNED WORD]":           "Replace 'utilized' and 'leveraged' with active verbs: 'used', 'built', 'ran'.",
     "[META LEAK]":             "Remove all instruction text, placeholders, or commentary from the resume body.",
     "[TOO LONG]":              "Shorten to ≤22 words. One idea per bullet only. Split compound bullets.",
-    "[MULTI-IDEA]":            "One accomplishment per bullet. Split into two or cut the weaker half.",
+    "[MULTI-IDEA]":            "One accomplishment per bullet. CUT the weaker half — never split into two bullets (splitting overflows the bullet budget).",
     "[SAME VERB]":             "No two consecutive experience bullets may open with the same verb — vary them.",
     "[SUMMARY]":               "PROFESSIONAL SUMMARY must have exactly 5 bullet lines — not 4, not 6.",
     "[TOO FEW BULLETS]":       "A job block has fewer bullets than required. Add more specific, metric-backed bullets to reach the exact required count.",

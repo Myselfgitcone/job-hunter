@@ -2854,7 +2854,7 @@ _RETRY_RULES = {
     "[META LEAK]":             "Remove all instruction text, placeholders, or commentary from the resume body.",
     "[TOO LONG]":              "Shorten to ≤25 words by TRIMMING words — never split one bullet into two (that overflows the bullet budget). Cut justification clauses, filler, and secondary details.",
     "[METRIC NARRATION]":      "Delete the measurement-methodology clause ('measured by...', 'tracked via...', 'confirmed by...'). Keep only the action and outcome. Resumes assert results; they never present evidence.",
-    "[MULTI-IDEA]":            "One accomplishment per bullet. Split into two or cut the weaker half.",
+    "[MULTI-IDEA]":            "One accomplishment per bullet. CUT the weaker half — never split into two bullets (splitting overflows the bullet budget and triggers [BULLET OVERFLOW]).",
     "[SAME VERB]":             "No two consecutive experience bullets may open with the same verb — vary them.",
     "[SUMMARY]":               "PROFESSIONAL SUMMARY must have exactly 6 bullet lines — not 5, not 7. Count your bullets and add or remove to hit exactly 6.",
     "[TOO FEW BULLETS]":       "A job block has fewer bullets than its minimum. Add more specific, metric-backed bullets until the minimum is met — quality over padding. Do NOT cut other sections — add only to the flagged job.",
@@ -2931,21 +2931,36 @@ def _trim_long_bullets(resume: str, word_limit: int) -> str:
         if len(words) <= word_limit:
             return text
 
+        had_metric = bool(re.search(r"\d", text))
+
         # Find the rightmost natural break within [word_limit-5, word_limit]
         # Reconstruct progressively to find break positions
         best_trim = None
+        metric_trim = None   # best candidate that still contains a digit
         for target in range(word_limit, max(word_limit - 6, 5), -1):
             prefix = ' '.join(words[:target])
             for brk in _BREAKS:
                 last = prefix.rfind(brk)
                 if last > 0:
-                    # Found a break — trim there
                     trimmed = prefix[:last].rstrip()
                     if len(trimmed.split()) >= 8:  # don't make it too short
-                        best_trim = trimmed
+                        if best_trim is None:
+                            best_trim = trimmed
+                        if metric_trim is None and re.search(r"\d", trimmed):
+                            metric_trim = trimmed
                         break
-            if best_trim:
+            if metric_trim:
                 break
+
+        # Metric preservation: original bullet had a number — never emit a
+        # trim that lost it (live run: '95%+ of schema violations' vanished).
+        if had_metric:
+            if metric_trim:
+                return metric_trim
+            hard = ' '.join(words[:word_limit])
+            if re.search(r"\d", hard):
+                return hard
+            return text   # can't keep the metric under limit — leave for LLM pass
 
         if best_trim:
             return best_trim
@@ -3207,6 +3222,9 @@ async def tailor_resume(base_resume: str, job_description: str,
             f"({_best_issue_count} issues remaining vs {len(final_issues)} in last)"
         )
     raw = _best_raw
+    print(f"[lint-final] " + ("CLEAN" if _best_issue_count == 0 else
+          f"{_best_issue_count} unresolved: " +
+          " | ".join(i[:60] for i in final_issues[:6])))
 
     # ── Enforce hard limits — role-type-aware ────────────────────────────────
     result = _enforce_limits(raw, role_type=role_type)

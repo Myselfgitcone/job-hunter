@@ -940,6 +940,115 @@ def detect_domain_leak(text: str, role_type: str, base_resume: str = "") -> list
     return issues
 
 
+# ── JD artifact leaks + verbatim clone runs ───────────────────────────────────
+# Fully derivational — no term lists. Three signals:
+#   1. Tag payloads (#LI-YG1 → "YG1") that exist ONLY as tags in the JD.
+#   2. Code-shaped identifiers (RMC-6236, CHTRJP00090270) present in both.
+#   3. Boilerplate-only tokens: in raw JD but stripped by _strip_jd_noise(),
+#      i.e. they live in legal/benefits/EEO zones (CCPA, PAIR, E-Verify...).
+# base_resume exemption throughout: candidate's own history is never a leak.
+
+_JD_TAG_RE  = re.compile(r"#([A-Za-z]{2})-([A-Za-z0-9]{2,})")
+_JD_CODE_RE = re.compile(r"\b([A-Z]{2,6}-\d{2,6}|[A-Z]{2,8}\d{3,10})\b")
+_LEAK_TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9\-+#]*")
+
+_CLONE_STOPWORDS = frozenset(
+    "the a an and or of to in for with on at by from as is are be will can "
+    "you your our this that using use used data team teams work working "
+    "experience across including such other more most".split()
+)
+
+
+def _leak_tokens(text: str) -> set[str]:
+    return set(_LEAK_TOKEN_RE.findall(text.lower()))
+
+
+def detect_jd_artifact_leak(text: str, job_description: str,
+                            base_resume: str = "") -> list[str]:
+    """Recruiter tags, internal codes, and legal-boilerplate terms that
+    traveled JD → resume but were never in the candidate's base resume."""
+    if not job_description:
+        return []
+    issues: list[str] = []
+    seen: set[str] = set()
+    res_lo    = text.lower()
+    base_toks = _leak_tokens(base_resume) if base_resume else set()
+    jd_clean  = _strip_jd_noise(clean_jd_html(job_description))
+    body_toks = _leak_tokens(_JD_TAG_RE.sub(" ", jd_clean))
+
+    def _flag(tok: str, tag: str, why: str):
+        key = tok.lower()
+        if key in seen or key in base_toks:
+            return
+        seen.add(key)
+        issues.append(f"{tag} '{tok}' — {why}")
+
+    # 1. tag payloads that exist only as tags
+    for m in _JD_TAG_RE.finditer(job_description):
+        payload = m.group(2)
+        p_lo = payload.lower()
+        if (len(payload) >= 3 and p_lo in res_lo
+                and p_lo not in body_toks):
+            _flag(payload, "[JD ARTIFACT LEAK]",
+                  f"recruiter/tracking tag payload ({m.group(0)}) copied "
+                  f"from the JD into the resume. Delete it.")
+
+    # 2. code-shaped identifiers present in both JD and resume
+    res_codes = set(_JD_CODE_RE.findall(text))
+    for code in set(_JD_CODE_RE.findall(job_description)) & res_codes:
+        _flag(code, "[JD ARTIFACT LEAK]",
+              "internal code/identifier copied from the JD. Delete it.")
+
+    # 3. boilerplate-only tokens (stripped zones), absent from base resume
+    raw_toks = _leak_tokens(clean_jd_html(job_description))
+    res_toks = _leak_tokens(text)
+    for tok in (raw_toks - body_toks) & res_toks:
+        if len(tok) >= 4 and tok not in _CLONE_STOPWORDS and not tok.isdigit():
+            _flag(tok, "[JD BOILERPLATE TERM]",
+                  "this term appears only in the JD's legal/benefits "
+                  "boilerplate, not its requirements. Remove it unless it "
+                  "exists in the original resume.")
+    return issues
+
+
+def detect_jd_clone_runs(bullet_text: str, job_description: str,
+                         base_resume: str = "",
+                         min_words: int = 6, min_content: int = 4,
+                         max_reports: int = 5) -> list[str]:
+    """Verbatim word runs (≥min_words) shared between JD and resume bullets.
+    Runs already present in the base resume are the candidate's own phrasing."""
+    if not job_description or not bullet_text:
+        return []
+    jd_toks  = _LEAK_TOKEN_RE.findall(
+        _strip_jd_noise(clean_jd_html(job_description)).lower())
+    res_join  = " " + " ".join(_LEAK_TOKEN_RE.findall(bullet_text.lower())) + " "
+    base_join = (" " + " ".join(_LEAK_TOKEN_RE.findall(base_resume.lower())) + " "
+                 if base_resume else "")
+    issues: list[str] = []
+    seen: set[str] = set()
+    i, n = 0, len(jd_toks)
+    while i <= n - min_words and len(issues) < max_reports:
+        phrase = " ".join(jd_toks[i:i + min_words])
+        if f" {phrase} " in res_join:
+            run = min_words
+            while (i + run < n and
+                   f" {' '.join(jd_toks[i:i + run + 1])} " in res_join):
+                run += 1
+            phrase = " ".join(jd_toks[i:i + run])
+            content = sum(1 for w in jd_toks[i:i + run]
+                          if w not in _CLONE_STOPWORDS)
+            if (content >= min_content and phrase not in seen
+                    and not (base_join and f" {phrase} " in base_join)):
+                seen.add(phrase)
+                issues.append(
+                    f'[JD CLONE] {run}-word verbatim JD run in bullets — '
+                    f'"{phrase}". Reword: screeners spot mirrored JDs.')
+            i += run
+        else:
+            i += 1
+    return issues
+
+
 # Terms the JD extractor grabs that are never injectable/checkable skills.
 # Filtered at EXTRACTION so lint visibility, skill-inject, and keyword-inject
 # all stop chasing them (live runs chased "Computer Science", "M1", "Finance").
@@ -1702,6 +1811,12 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
                 )
 
 
+    # JD artifact leaks (tags/codes/boilerplate) + verbatim clone runs
+    if job_description:
+        issues += detect_jd_artifact_leak(text, job_description, base_resume)
+        bullet_blob = " ".join(body for body, _ in exp_bullets)
+        issues += detect_jd_clone_runs(bullet_blob, job_description, base_resume)
+
     # JD hard-skill VISIBILITY check — this is a presence/absence check only.
     # It can confirm a skill word appears SOMEWHERE on the resume (bullet, stretch
     # bullet, or skills/project section). It CANNOT distinguish a WORK-SUPPORTED
@@ -1760,6 +1875,9 @@ RETRY_RULES: dict[str, str] = {
     "[LOW METRICS]":           "Add quantified outcomes to more experience bullets (role-appropriate target).",
     "[HIGH METRICS]":          "Remove forced numbers from process/collaboration bullets — looks artificial.",
     "[JD ECHO]":               "A JD word repeated 3+ times reads as keyword stuffing. Vary phrasing.",
+    "[JD ARTIFACT LEAK]":      "Delete this token everywhere — it is a recruiter tag or internal code scraped from the JD, not a real term.",
+    "[JD BOILERPLATE TERM]":   "Remove this term — it comes from the JD's legal/benefits boilerplate, not its requirements.",
+    "[JD CLONE]":              "Reword this bullet so no 6+ consecutive words match the JD. Keep the skills, change the sentence.",
     "[LOW JD SKILL VISIBILITY]": "Add 1–3 missing skills via the correct tier: WORK-SUPPORTED bullet, ADJACENT-STRETCH bullet (max 1/job, 2 total), or SELF-IMPLEMENTABLE/HIGH-RISK skills-project wording. Visibility-only placement is acceptable — never force a production claim.",
     "[PROFILE SKILL DROPPED]":   "These skills exist in the candidate's original resume — they are WORK-SUPPORTED. Add each back: write a real bullet in the most relevant job, add to that job's Technologies Used, add to Technical Skills. Do not omit them because the JD listed them as 'or' alternatives.",
 }

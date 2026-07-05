@@ -3128,16 +3128,19 @@ async def tailor_resume(base_resume: str, job_description: str,
     # LOW JD SKILL VISIBILITY never retries: skill-inject + keyword-inject
     # own that downstream, and the loop can't sensibly add junk-adjacent
     # skills anyway (burned 2 retries on "Computer Science" live).
-    _NO_RETRY_PREFIXES = ("[HIGH METRICS]", "[LOW METRICS]", "[LOW JD SKILL VISIBILITY]")
-    # JD ECHO gets ONE retry, then drops: live runs show whack-a-mole —
-    # fixing "workflows/reports" surfaces "analysis/dashboards" at 3x.
-    _ECHO_PREFIX = "[JD ECHO]"
+    # ADVISORY-ONLY checks: logged for the user, but never drive retries and
+    # never mutate the resume. Echo/boilerplate/clone are style-and-leak
+    # advisories — retrying them caused whack-a-mole rewrites and, in one
+    # live run (boilerplate false-flood on a blob JD), deleted requirements
+    # vocabulary from the resume. [FABRICATED TOOL] stays retryable: it
+    # protects honesty and showed zero false positives against real data.
+    _NO_RETRY_PREFIXES = (
+        "[HIGH METRICS]", "[LOW METRICS]", "[LOW JD SKILL VISIBILITY]",
+        "[JD ECHO]", "[JD BOILERPLATE TERM]", "[JD CLONE]",
+    )
 
     def _retryable(iss_list, attempt: int = 0):
-        out = [i for i in iss_list if not i.startswith(_NO_RETRY_PREFIXES)]
-        if attempt >= 1:
-            out = [i for i in out if not i.startswith(_ECHO_PREFIX)]
-        return out
+        return [i for i in iss_list if not i.startswith(_NO_RETRY_PREFIXES)]
 
     # ── Quality gate: lint → up to 3 retries, best-of-N ────────────────────
     _best_raw         = raw

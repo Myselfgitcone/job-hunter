@@ -92,16 +92,13 @@ def user_roles_to_role_type(job_roles: list[str]) -> str | None:
 # a live tailor run when lint's JD-auto-detected role_type (CONSULTING) diverged
 # from the role_type the AI was actually told to write against (TECH).
 # (most_recent, second, third, fourth_plus, summary, hard_total)
-_UNIFIED_BUDGET = (11, 8, 7, 6, 6, 38)
+_UNIFIED_BUDGET = (11, 8, 7, 5, 6, 37)
 BULLET_BUDGETS: dict[str, tuple[int, int, int, int, int, int]] = {
     rt: _UNIFIED_BUDGET for rt in (TECH, IB, FINANCE, CYBER, HEALTHCARE, CONSULTING, GENERAL)
 }
 
 # Minimum bullets per job (same order: job1, job2, job3, job4+) — same for every role.
-# Set BELOW the budget maxima so min-max is a real range. Equal min/max forced
-# the model to pad thin jobs with filler bullets to hit an exact count — filler
-# is the main fabrication-pressure source. max-2 keeps depth without padding.
-_UNIFIED_MINIMUMS = (10, 7, 6, 5)
+_UNIFIED_MINIMUMS = (11, 8, 7, 5)
 BULLET_MINIMUMS: dict[str, tuple[int, int, int, int]] = {
     rt: _UNIFIED_MINIMUMS for rt in (TECH, IB, FINANCE, CYBER, HEALTHCARE, CONSULTING, GENERAL)
 }
@@ -492,7 +489,6 @@ _DYN_ACRONYM_SKIP: set[str] = {
     # English function words that appear in ALL-CAPS for emphasis
     "THE","AND","OR","NOT","FOR","ARE","HAS","WITH","FROM","THAT","THIS",
     "THEY","ALSO","BOTH","EACH","HAVE","WILL","MUST","CAN","MAY","WHO","HOW",
-    "WHAT","WHY","WHEN","ROLE","PERKS","YOULL",
     "YOU","WE","ALL","ANY","DO","WAS","ITS","BUT","NOW","END","NEW","INC","LLC",
     # Business model / org hierarchy — appear even in requirements sections
     "B2B","B2C","B2G","D2C","VP","SVP","EVP","CEO","CTO","CFO","COO","CIO",
@@ -735,19 +731,6 @@ def clean_jd_html(text: str) -> str:
     return text.strip()
 
 
-# Sentence-level noise for single-paragraph blob JDs (no line structure):
-# benefits, EEO/legal, recruiting-agency, and pay-disclosure sentences.
-_BLOB_NOISE_RE = re.compile(
-    r"\b(benefits?\s+include|medical\s+insurance|dental|vision\s+insurance|"
-    r"401\s*\(?k\)?|paid\s+time\s+off|pto\b|paid\s+holidays?|perks?\b|"
-    r"equal\s+opportunity|discriminat\w+|harassment|protected\s+characteristic|"
-    r"accommodations?\s+to\s+applicants|search\s+firms?|unsolicited|"
-    r"base\s+pay|salary\s+range|pay\s+position|total\s+rewards|"
-    r"come\s+(check\s+us\s+out|grow)|#li-)",
-    re.IGNORECASE,
-)
-
-
 def _strip_jd_noise(jd_text: str) -> str:
     """
     Remove benefits/culture/legal/physical sections from JD text before extraction.
@@ -757,17 +740,6 @@ def _strip_jd_noise(jd_text: str) -> str:
     - Individual physical/legal boilerplate lines are always dropped regardless
     """
     lines = jd_text.splitlines()
-    # Zone logic is line-based. Scraped JDs sometimes arrive as one paragraph
-    # blob (no newlines) — a leading "About Us ..." would then nuke the ENTIRE
-    # JD, and downstream boilerplate detection would flag every requirements
-    # word as noise (live run: 24 false [JD BOILERPLATE TERM] flags told
-    # retries to delete 'conceptual'/'logical'/'canonical' from the resume).
-    if len([l for l in lines if l.strip()]) < 5:
-        # Sentence-level fallback: drop benefits/EEO/legal sentences inline,
-        # keep requirements text intact.
-        sentences = re.split(r"(?<=[.!?])\s+", jd_text)
-        kept = [s for s in sentences if not _BLOB_NOISE_RE.search(s)]
-        return " ".join(kept) if kept else jd_text
     result = []
     skip = False
     for line in lines:
@@ -784,12 +756,7 @@ def _strip_jd_noise(jd_text: str) -> str:
         if _PHYSICAL_SIGNALS.search(stripped):
             continue
         result.append(line)
-    out = "\n".join(result)
-    # Stripped more than ~2/3 of the JD → headers misfired for this format;
-    # extraction on the full text beats extraction on a gutted fragment.
-    if len(out) < 0.35 * len(jd_text):
-        return jd_text
-    return out
+    return "\n".join(result)
 
 
 def extract_jd_keywords_dynamic(jd_text: str) -> list[str]:
@@ -944,285 +911,22 @@ _DOMAIN_LEAK_PHRASES: dict[str, list[str]] = {
 }
 
 
-def detect_domain_leak(text: str, role_type: str, base_resume: str = "") -> list[str]:
+def detect_domain_leak(text: str, role_type: str) -> list[str]:
     """
     Flags finance/healthcare/IB business-domain jargon that doesn't belong in a
     resume locked to a different role type — even when the JD's employer is in
     that domain. Catches phrasing the model echoes straight from JD body text
     (not just extracted "hard skills").
-
-    base_resume exemption: a term already present in the candidate's ORIGINAL
-    resume is real work history, not a JD leak — never flag it. Also fixes the
-    'emr' false positive: AWS EMR in a tech stack is not Electronic Medical
-    Records, and it lives in the base resume, so the exemption clears it.
     """
     issues: list[str] = []
-    base_lo = (base_resume or "").lower()
     for domain, phrases in _DOMAIN_LEAK_PHRASES.items():
         if domain == role_type:
             continue
         for phrase in phrases:
             if re.search(phrase, text, re.IGNORECASE):
-                if base_lo and re.search(phrase, base_lo, re.IGNORECASE):
-                    continue  # candidate's own history — not a leak
                 shown = phrase.replace("\\b", "")
                 issues.append(f"[DOMAIN LEAK] '{shown}' is {domain}-specific jargon — not allowed when role type is {role_type}.")
     return issues
-
-
-# ── JD artifact leaks + verbatim clone runs ───────────────────────────────────
-# Fully derivational — no term lists. Three signals:
-#   1. Tag payloads (#LI-YG1 → "YG1") that exist ONLY as tags in the JD.
-#   2. Code-shaped identifiers (RMC-6236, CHTRJP00090270) present in both.
-#   3. Boilerplate-only tokens: in raw JD but stripped by _strip_jd_noise(),
-#      i.e. they live in legal/benefits/EEO zones (CCPA, PAIR, E-Verify...).
-# base_resume exemption throughout: candidate's own history is never a leak.
-
-_JD_TAG_RE  = re.compile(r"#([A-Za-z]{2})-([A-Za-z0-9]{2,})")
-_JD_CODE_RE = re.compile(r"\b([A-Z]{2,6}-\d{2,6}|[A-Z]{2,8}\d{3,10})\b")
-_LEAK_TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9\-+#]*")
-
-_CLONE_STOPWORDS = frozenset(
-    "the a an and or of to in for with on at by from as is are be will can "
-    "you your our this that using use used data team teams work working "
-    "experience across including such other more most".split()
-)
-
-
-def _leak_tokens(text: str) -> set[str]:
-    return set(_LEAK_TOKEN_RE.findall(text.lower()))
-
-
-def detect_jd_artifact_leak(text: str, job_description: str,
-                            base_resume: str = "") -> list[str]:
-    """Recruiter tags, internal codes, and legal-boilerplate terms that
-    traveled JD → resume but were never in the candidate's base resume."""
-    if not job_description:
-        return []
-    issues: list[str] = []
-    seen: set[str] = set()
-    res_lo    = text.lower()
-    base_toks = _leak_tokens(base_resume) if base_resume else set()
-    jd_clean  = _strip_jd_noise(clean_jd_html(job_description))
-    body_toks = _leak_tokens(_JD_TAG_RE.sub(" ", jd_clean))
-
-    def _flag(tok: str, tag: str, why: str):
-        key = tok.lower()
-        if key in seen or key in base_toks:
-            return
-        seen.add(key)
-        issues.append(f"{tag} '{tok}' — {why}")
-
-    # 1. tag payloads that exist only as tags
-    for m in _JD_TAG_RE.finditer(job_description):
-        payload = m.group(2)
-        p_lo = payload.lower()
-        if (len(payload) >= 3 and p_lo in res_lo
-                and p_lo not in body_toks):
-            _flag(payload, "[JD ARTIFACT LEAK]",
-                  f"recruiter/tracking tag payload ({m.group(0)}) copied "
-                  f"from the JD into the resume. Delete it.")
-
-    # 2. code-shaped identifiers present in both JD and resume
-    res_codes = set(_JD_CODE_RE.findall(text))
-    for code in set(_JD_CODE_RE.findall(job_description)) & res_codes:
-        _flag(code, "[JD ARTIFACT LEAK]",
-              "internal code/identifier copied from the JD. Delete it.")
-
-    # 3. boilerplate-only tokens (stripped zones), absent from base resume.
-    # Two precision guards (live run flagged 24 requirements words as
-    # "boilerplate" on a single-paragraph JD and retries deleted them):
-    #   a. If noise-stripping removed a large share of the JD vocabulary,
-    #      zoning failed for this JD format — skip the signal entirely.
-    #   b. Only identifier-shaped tokens qualify (contains digit/hyphen, or
-    #      never appears as a plain lowercase word in the JD): CCPA, E-Verify,
-    #      LI-Hybrid — never ordinary English words like 'major' or 'near'.
-    jd_raw = clean_jd_html(job_description)
-    raw_toks = _leak_tokens(jd_raw)
-    if len(body_toks) >= 0.3 * len(raw_toks):   # skip only on catastrophic zone failure
-        res_toks = _leak_tokens(text)
-        for tok in (raw_toks - body_toks) & res_toks:
-            if len(tok) < 4 or tok in _CLONE_STOPWORDS or tok.isdigit():
-                continue
-            occ = re.findall(rf"\b{re.escape(tok)}\b", jd_raw, re.IGNORECASE)
-            identifier_like = occ and all(
-                "-" in o or any(c.isdigit() for c in o)
-                or o.isupper() or o[1:] != o[1:].lower()   # CCPA, E-Verify, LangChain — not sentence-start 'Major'
-                for o in occ
-            )
-            if identifier_like:
-                _flag(tok, "[JD BOILERPLATE TERM]",
-                      "this term appears only in the JD's legal/benefits "
-                      "boilerplate, not its requirements. Remove it unless it "
-                      "exists in the original resume.")
-    return issues
-
-
-def detect_jd_clone_runs(bullet_text: str, job_description: str,
-                         base_resume: str = "",
-                         min_words: int = 6, min_content: int = 4,
-                         max_reports: int = 5) -> list[str]:
-    """Verbatim word runs (≥min_words) shared between JD and resume bullets.
-    Runs already present in the base resume are the candidate's own phrasing."""
-    if not job_description or not bullet_text:
-        return []
-    jd_toks  = _LEAK_TOKEN_RE.findall(
-        _strip_jd_noise(clean_jd_html(job_description)).lower())
-    res_join  = " " + " ".join(_LEAK_TOKEN_RE.findall(bullet_text.lower())) + " "
-    base_join = (" " + " ".join(_LEAK_TOKEN_RE.findall(base_resume.lower())) + " "
-                 if base_resume else "")
-    issues: list[str] = []
-    seen: set[str] = set()
-    i, n = 0, len(jd_toks)
-    while i <= n - min_words and len(issues) < max_reports:
-        phrase = " ".join(jd_toks[i:i + min_words])
-        if f" {phrase} " in res_join:
-            run = min_words
-            while (i + run < n and
-                   f" {' '.join(jd_toks[i:i + run + 1])} " in res_join):
-                run += 1
-            phrase = " ".join(jd_toks[i:i + run])
-            content = sum(1 for w in jd_toks[i:i + run]
-                          if w not in _CLONE_STOPWORDS)
-            if (content >= min_content and phrase not in seen
-                    and not (base_join and f" {phrase} " in base_join)):
-                seen.add(phrase)
-                issues.append(
-                    f'[JD CLONE] {run}-word verbatim JD run in bullets — '
-                    f'"{phrase}". Reword: screeners spot mirrored JDs.')
-            i += run
-        else:
-            i += 1
-    return issues
-
-
-_TOOL_TOKEN_RES = (
-    re.compile(r"\b[A-Z][a-z]+(?:[A-Z][a-zA-Z0-9]*)+\b"),   # CamelCase: PySpark, LangChain
-    re.compile(r"\b[A-Z]{1,4}\d[a-zA-Z0-9]*\b"),            # alnum tools: S3, DB2, H2O
-    re.compile(r"\b[A-Z]{3,6}\b"),                          # acronyms: HIPAA, SIEM
-)
-
-
-def detect_fabricated_tools(text: str, base_resume: str,
-                            job_description: str = "",
-                            max_reports: int = 5) -> list[str]:
-    """Tech-shaped tokens (CamelCase / alphanumeric / acronym) in experience
-    bullets or Technologies Used lines that exist in NEITHER the candidate's
-    original resume NOR the JD. Those can only come from model priors —
-    the model naming tools the candidate never claimed and the JD never asked
-    for. Fully derivational: the allowed vocabulary IS base resume + JD."""
-    if not base_resume:
-        return []
-    allowed = (base_resume + "\n" + (job_description or "")).lower()
-    issues: list[str] = []
-    seen: set[str] = set()
-    in_exp = False
-    for raw in text.splitlines():
-        line = raw.strip()
-        if _is_section_header(line):
-            in_exp = "EXPERIENCE" in line.upper()
-            continue
-        if not in_exp or not line:
-            continue
-        is_tech_line = bool(re.match(r"^Technolog", line, re.IGNORECASE))
-        if not (line.startswith("•") or is_tech_line):
-            continue
-        for tok_re in _TOOL_TOKEN_RES:
-            for tok in tok_re.findall(line):
-                key = tok.lower()
-                if (key in seen or tok in _DYN_ACRONYM_SKIP
-                        or key in allowed):
-                    continue
-                seen.add(key)
-                if len(issues) < max_reports:
-                    where = "Technologies Used line" if is_tech_line else "bullet"
-                    issues.append(
-                        f"[FABRICATED TOOL] '{tok}' appears in a {where} but exists "
-                        f"in neither the original resume nor the JD — the model "
-                        f"invented it. Replace with a tool the candidate actually "
-                        f"used, or delete."
-                    )
-    return issues
-
-
-# Terms the JD extractor grabs that are never injectable/checkable skills.
-# Filtered at EXTRACTION so lint visibility, skill-inject, and keyword-inject
-# all stop chasing them (live runs chased "Computer Science", "M1", "Finance").
-# Env override — no deploy needed: LINT_EXTRACTION_JUNK='["new junk","m2"]'
-def _env_set(name: str) -> set:
-    import os, json
-    raw = os.getenv(name, "")
-    try:
-        return {str(x).lower() for x in json.loads(raw)} if raw else set()
-    except Exception:
-        return set()
-
-_EXTRACTION_JUNK = {
-    "computer science", "information systems", "information technology",
-    "business analytics", "data analytics degree", "related field",
-    "finance", "healthcare", "insurance", "banking", "retail",
-    "data science",  # degree/team name in JDs, not an injectable skill; live run burned 2 retries chasing it
-    "erp",  # platform category, not a skill; specific ERPs (SAP, NetSuite) pass
-} | _env_set("LINT_EXTRACTION_JUNK")
-
-# Skill-context patterns: real skills sit near tool-context words in the JD.
-# Positive validation — generalizes past any hardcoded junk list.
-_SKILL_CTX_RE = (
-    r"(?:using|with|in|via|like|include\w*|experience|expertise|proficien\w+|"
-    r"knowledge of|hands-on|skills? (?:in|with)|tools?(?: like| such as)?|"
-    r"stack|platforms?|technolog\w+|familiarity with)"
-)
-
-def _has_skill_context(s: str, jd: str) -> bool:
-    """True if the term appears near tool-context wording anywhere in the JD."""
-    esc = re.escape(s.strip())
-    pat = (rf"{_SKILL_CTX_RE}[^.\n]{{0,80}}\b{esc}\b"
-           rf"|\b{esc}\b[^.\n]{{0,50}}(?:experience|skills?|proficiency|"
-           rf"tooling|preferred|required|a plus|strong plus)")
-    return bool(re.search(pat, jd, re.IGNORECASE))
-
-# Degree/education phrasing that precedes a field-of-study list:
-# "Bachelor's or master's degree in computer science, engineering, or related field".
-# A term whose EVERY JD occurrence sits inside such a phrase is a field of study,
-# not a skill — fully derivational, catches Statistics/Mathematics/any field name
-# without ever growing _EXTRACTION_JUNK.
-_DEGREE_IN_RE = re.compile(
-    r"\b(?:bachelor|master|b\.?s\.?c?|m\.?s\.?c?|b\.?a\.?|m\.?a\.?|mba|ph\.?d"
-    r"|doctorate|degree|diploma|major(?:ing)?|educat\w+|graduate[ds]?)\b"
-    r"(?:['’]s)?[^.\n;:]{0,60}?\bin\b[^.\n;:]{0,80}$",
-    re.IGNORECASE,
-)
-
-def _is_degree_only_term(s: str, jd: str) -> bool:
-    """True if every occurrence of the term in the JD is inside a degree
-    phrase ('degree in X, Y, or related field'). One occurrence outside
-    degree context rescues it — a JD can want both a CS degree and CS skills."""
-    esc = re.escape(s.strip())
-    found_any = False
-    for m in re.finditer(rf"\b{esc}\b", jd, re.IGNORECASE):
-        found_any = True
-        window = jd[max(0, m.start() - 160):m.start()]
-        if not _DEGREE_IN_RE.search(window):
-            return False
-    return found_any
-
-def _is_junk_skill(s: str, jd: str = "") -> bool:
-    s_ = s.lower().strip()
-    if s_ in _EXTRACTION_JUNK:
-        return True
-    if len(s_) <= 2:                     # "M1", "BI"-style fragments
-        return s_ not in {"r", "go", "c", "c#", "f#"}
-    if re.fullmatch(r"[a-z]\d", s_):     # M1-style stray tokens
-        return True
-    if jd and _is_degree_only_term(s_, jd):
-        return True
-    # Context gate: single generic English words with no tool-context in the
-    # JD are extraction noise ("Ownership", "Disciplined"). Multi-word terms
-    # and anything with digits/symbols skip this (clearly technical).
-    if jd and s_.isalpha() and " " not in s_ and len(s_) >= 5:
-        if not _has_skill_context(s_, jd):
-            return True
-    return False
 
 
 def extract_jd_hard_skills(job_description: str, role_type: Optional[str] = None) -> list[str]:
@@ -1233,7 +937,6 @@ def extract_jd_hard_skills(job_description: str, role_type: Optional[str] = None
     if not job_description:
         return []
     skills = extract_jd_keywords_dynamic(job_description)
-    skills = [s for s in skills if not _is_junk_skill(s, job_description)]
     if role_type:
         blocked: set[str] = set()
         for rt, terms in _DOMAIN_LOCKED_TERMS.items():
@@ -1244,7 +947,7 @@ def extract_jd_hard_skills(job_description: str, role_type: Optional[str] = None
 
 
 def _dynamic_coverage_pattern(skill: str) -> str:
-    r"""
+    """
     Build a word-boundary regex pattern dynamically from the skill name.
     No catalog lookup — derived entirely from the extracted skill string.
 
@@ -1427,13 +1130,6 @@ _BASE_STOPLIST = {
     "building", "scalable", "operational", "business", "technical", "teams",
     "processes", "process", "results", "performance", "support", "strategy",
     "initiatives", "projects", "stakeholders", "requirements",
-    # Generic role nouns/verbs — live runs showed echo whack-a-mole on these:
-    # fixing "workflows/reports/queries" surfaced "analysis/dashboards" at 3x.
-    # They're unavoidable vocabulary, not keyword stuffing.
-    "management", "workflows", "workflow", "reports", "queries", "query",
-    "solutions", "solution", "analysis", "dashboards", "dashboard",
-    "analytical", "gather", "validation", "financial", "efficiency",
-    "insights", "visualizations", "visualization", "compliance",
 }
 
 _ROLE_ECHO_STOPLIST: dict[str, set[str]] = {
@@ -1614,7 +1310,6 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
     found_headers:        set[str] = set()
     per_job_bullets:      list[int] = []   # bullet count per job block
     current_job_bullets:  int = 0
-    _job_open:            bool = False  # bullets attribute to a job only while open
 
     for raw in lines:
         line    = raw.strip()
@@ -1636,12 +1331,6 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
         if _is_section_header(line):
             if current_job_header and closing_required and not job_has_closing_line:
                 jobs_missing_closing.append(current_job_header)
-            # Close job counting — bullets in later sections (PROJECTS etc.)
-            # must not be attributed to the last job block.
-            if _job_open and job_index >= 0:
-                per_job_bullets.append(current_job_bullets)
-                current_job_bullets = 0
-                _job_open = False
             current_job_header   = None
             job_has_closing_line = False
             prev_verb            = None
@@ -1654,10 +1343,9 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
             if current_job_header and closing_required and not job_has_closing_line:
                 jobs_missing_closing.append(current_job_header)
             # Save bullet count for the job we're leaving
-            if _job_open and job_index >= 0:
+            if job_index >= 0:
                 per_job_bullets.append(current_job_bullets)
             current_job_bullets  = 0
-            _job_open            = True
             current_job_header   = line
             job_has_closing_line = False
             prev_verb            = None
@@ -1708,7 +1396,7 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
                 continue
 
             # Experience bullet
-            has_metric = bool(re.search(r"(?<![A-Za-z])\d", body))  # S3/HL7/2.0-in-name are not metrics
+            has_metric = bool(re.search(r"\d", body))
             exp_bullets.append((body, has_metric))
             current_job_bullets += 1
 
@@ -1745,7 +1433,7 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
     if current_job_header and closing_required and not job_has_closing_line:
         jobs_missing_closing.append(current_job_header)
     # Save the last job's bullet count
-    if _job_open and job_index >= 0:
+    if job_index >= 0:
         per_job_bullets.append(current_job_bullets)
 
     # ── Aggregate checks ──────────────────────────────────────────────────────
@@ -1774,7 +1462,7 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
         job_label = f"job #{ji+1}"
         if actual < min_req:
             issues.append(
-                f"[TOO FEW BULLETS] {job_label} has {actual} bullets (need at least {min_req}). "
+                f"[TOO FEW BULLETS] {job_label} has {actual} bullets (need exactly {min_req}). "
                 f"Add {min_req - actual} more specific, metric-backed bullets."
             )
         elif actual > max_req:
@@ -1848,7 +1536,7 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
     # Multi-idea bullets
     for wc, body in multi_idea_bullets:
         issues.append(
-            f'[MULTI-IDEA] {wc} words, 2+ accomplishments — cut the weaker half: "{body[:70]}..."'
+            f'[MULTI-IDEA] {wc} words, 2+ accomplishments — split or cut: "{body[:70]}..."'
         )
 
     # Metrics density
@@ -1897,91 +1585,25 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
                 f'measurement method. Delete the justification clause: "{body[:60]}..."'
             )
 
-    # JD echo check — experience bullets + summary bullets (summary is the
-    # highest-echo zone: models mirror JD responsibility verbs there first)
+    # JD echo check — on experience bullet text only
     if job_description:
         bullet_text = " ".join(body for body, _ in exp_bullets)
-        bullet_text += " " + " ".join(summary_bullets)
         jd_lo       = job_description.lower()
         res_lo      = bullet_text.lower()
         jd_words    = set(re.findall(r"[a-z][a-z\-]{5,}", jd_lo))
-        # Words that ARE skills must never be echo-flagged: a Python/SQL-heavy
-        # JD wants those words repeated. Live run: echo-fix on "python"
-        # mangled bullets into "in code and SQL". Harvest from (a) extracted
-        # JD hard skills and (b) the resume's own skills section + closing
-        # lines — (b) makes this robust when extraction returns thin results.
-        _skill_words = set()
-        for sk in extract_jd_hard_skills(job_description, role_type):
-            _skill_words.update(sk.lower().split())
-        # Role-title words are expected to repeat — a "Data Architect" JD
-        # legitimately produces Architected/Architects bullets. Derivational:
-        # harvest from the JD title line AND any TitleCase role phrase in the
-        # JD head ("...seeking a skilled Data Architect to support...") —
-        # covers JDs whose first line is boilerplate like "Position Summary".
-        _skill_words.update(_extract_jd_title(job_description).lower().split())
-        # Whole JD, not just the head — single-paragraph blob JDs bury the
-        # role title mid-text ("...the Sr Data Architect is the owner...")
-        for m in re.finditer(
-            r"\b((?:[A-Z][a-z]+\s+){0,3}[A-Z][a-z]+)\b", job_description
-        ):
-            phrase = m.group(1)
-            if _TITLE_ROLE_RE.search(phrase.split()[-1]):
-                _skill_words.update(phrase.lower().split())
-        _in_skills = False
-        for raw_l in lines:
-            s = raw_l.strip()
-            if _is_section_header(s):
-                _in_skills = any(k in s.upper() for k in
-                                 ("SKILL", "COMPETENC", "EXPERTISE"))
-                continue
-            if _in_skills or _is_closing_line(s, role_type):
-                for tok in re.findall(r"[a-z][a-z\-#+.]{2,}", s.lower()):
-                    _skill_words.add(tok)
-        # Stem-fold both sides so inflections count as the same word:
-        # JD "evaluate and recommend" + resume "Evaluated... recommended..."
-        # is the same echo. Suffix-strip then drop trailing 'e' — cheap
-        # stemmer, no dictionary, generalizes to any JD.
-        def _stem(w: str) -> str:
-            for suf in ("ing", "ed", "es", "s"):
-                if w.endswith(suf) and len(w) - len(suf) >= 4:
-                    w = w[: -len(suf)]
-                    break
-            return w[:-1] if w.endswith("e") and len(w) > 4 else w
-
-        from collections import Counter as _Counter
-        res_stem_counts: dict = _Counter(
-            _stem(t) for t in re.findall(r"[a-z][a-z\-]{4,}", res_lo)
-        )
-        _skill_stems    = {_stem(w) for w in _skill_words}
-        _stoplist_stems = {_stem(w) for w in echo_stoplist}
         checked     = set()
         for w in jd_words:
-            st = _stem(w)
-            if st in checked or st in _skill_stems or st in _stoplist_stems:
+            if w in echo_stoplist or w in checked:
                 continue
-            checked.add(st)
-            count = res_stem_counts.get(st, 0)
+            checked.add(w)
+            count = len(re.findall(rf"\b{re.escape(w)}\b", res_lo))
             if count > 2:
                 issues.append(
-                    f'[JD ECHO] "{w}" (incl. variants) appears {count}x in resume bullets — '
+                    f'[JD ECHO] "{w}" appears {count}x in resume bullets — '
                     f"a distinctive JD word repeated 3+ times reads as copied. "
                     f"Vary phrasing; keep ≤2 uses."
                 )
 
-
-    # JD artifact leaks (tags/codes/boilerplate) + verbatim clone runs.
-    # Clone scan covers summary bullets too — verbatim JD phrases land there
-    # most often ("...with Data Strategists, Data Analysts, and Solutions
-    # Developers" cloned into a summary bullet in a live run).
-    if job_description:
-        issues += detect_jd_artifact_leak(text, job_description, base_resume)
-        bullet_blob = (" ".join(body for body, _ in exp_bullets)
-                       + " " + " ".join(summary_bullets))
-        issues += detect_jd_clone_runs(bullet_blob, job_description, base_resume)
-
-    # Tools named in bullets/tech-lines that exist in neither base resume nor JD
-    if base_resume:
-        issues += detect_fabricated_tools(text, base_resume, job_description)
 
     # JD hard-skill VISIBILITY check — this is a presence/absence check only.
     # It can confirm a skill word appears SOMEWHERE on the resume (bullet, stretch
@@ -2032,7 +1654,7 @@ RETRY_RULES: dict[str, str] = {
     "[BANNED WORD]":           "Replace 'utilized' and 'leveraged' with active verbs: 'used', 'built', 'ran'.",
     "[META LEAK]":             "Remove all instruction text, placeholders, or commentary from the resume body.",
     "[TOO LONG]":              "Shorten to ≤22 words. One idea per bullet only. Split compound bullets.",
-    "[MULTI-IDEA]":            "One accomplishment per bullet. CUT the weaker half — never split into two bullets (splitting overflows the bullet budget).",
+    "[MULTI-IDEA]":            "One accomplishment per bullet. Split into two or cut the weaker half.",
     "[SAME VERB]":             "No two consecutive experience bullets may open with the same verb — vary them.",
     "[SUMMARY]":               "PROFESSIONAL SUMMARY must have exactly 5 bullet lines — not 4, not 6.",
     "[TOO FEW BULLETS]":       "A job block has fewer bullets than required. Add more specific, metric-backed bullets to reach the exact required count.",
@@ -2041,10 +1663,6 @@ RETRY_RULES: dict[str, str] = {
     "[LOW METRICS]":           "Add quantified outcomes to more experience bullets (role-appropriate target).",
     "[HIGH METRICS]":          "Remove forced numbers from process/collaboration bullets — looks artificial.",
     "[JD ECHO]":               "A JD word repeated 3+ times reads as keyword stuffing. Vary phrasing.",
-    "[JD ARTIFACT LEAK]":      "Delete this token everywhere — it is a recruiter tag or internal code scraped from the JD, not a real term.",
-    "[JD BOILERPLATE TERM]":   "Remove this term — it comes from the JD's legal/benefits boilerplate, not its requirements.",
-    "[JD CLONE]":              "Reword this bullet so no 6+ consecutive words match the JD. Keep the skills, change the sentence.",
-    "[FABRICATED TOOL]":       "Replace the invented tool with one the candidate actually lists in the original resume, or delete the mention.",
     "[LOW JD SKILL VISIBILITY]": "Add 1–3 missing skills via the correct tier: WORK-SUPPORTED bullet, ADJACENT-STRETCH bullet (max 1/job, 2 total), or SELF-IMPLEMENTABLE/HIGH-RISK skills-project wording. Visibility-only placement is acceptable — never force a production claim.",
     "[PROFILE SKILL DROPPED]":   "These skills exist in the candidate's original resume — they are WORK-SUPPORTED. Add each back: write a real bullet in the most relevant job, add to that job's Technologies Used, add to Technical Skills. Do not omit them because the JD listed them as 'or' alternatives.",
 }

@@ -492,6 +492,7 @@ _DYN_ACRONYM_SKIP: set[str] = {
     # English function words that appear in ALL-CAPS for emphasis
     "THE","AND","OR","NOT","FOR","ARE","HAS","WITH","FROM","THAT","THIS",
     "THEY","ALSO","BOTH","EACH","HAVE","WILL","MUST","CAN","MAY","WHO","HOW",
+    "WHAT","WHY","WHEN","ROLE","PERKS","YOULL",
     "YOU","WE","ALL","ANY","DO","WAS","ITS","BUT","NOW","END","NEW","INC","LLC",
     # Business model / org hierarchy — appear even in requirements sections
     "B2B","B2C","B2G","D2C","VP","SVP","EVP","CEO","CTO","CFO","COO","CIO",
@@ -734,6 +735,19 @@ def clean_jd_html(text: str) -> str:
     return text.strip()
 
 
+# Sentence-level noise for single-paragraph blob JDs (no line structure):
+# benefits, EEO/legal, recruiting-agency, and pay-disclosure sentences.
+_BLOB_NOISE_RE = re.compile(
+    r"\b(benefits?\s+include|medical\s+insurance|dental|vision\s+insurance|"
+    r"401\s*\(?k\)?|paid\s+time\s+off|pto\b|paid\s+holidays?|perks?\b|"
+    r"equal\s+opportunity|discriminat\w+|harassment|protected\s+characteristic|"
+    r"accommodations?\s+to\s+applicants|search\s+firms?|unsolicited|"
+    r"base\s+pay|salary\s+range|pay\s+position|total\s+rewards|"
+    r"come\s+(check\s+us\s+out|grow)|#li-)",
+    re.IGNORECASE,
+)
+
+
 def _strip_jd_noise(jd_text: str) -> str:
     """
     Remove benefits/culture/legal/physical sections from JD text before extraction.
@@ -743,6 +757,17 @@ def _strip_jd_noise(jd_text: str) -> str:
     - Individual physical/legal boilerplate lines are always dropped regardless
     """
     lines = jd_text.splitlines()
+    # Zone logic is line-based. Scraped JDs sometimes arrive as one paragraph
+    # blob (no newlines) — a leading "About Us ..." would then nuke the ENTIRE
+    # JD, and downstream boilerplate detection would flag every requirements
+    # word as noise (live run: 24 false [JD BOILERPLATE TERM] flags told
+    # retries to delete 'conceptual'/'logical'/'canonical' from the resume).
+    if len([l for l in lines if l.strip()]) < 5:
+        # Sentence-level fallback: drop benefits/EEO/legal sentences inline,
+        # keep requirements text intact.
+        sentences = re.split(r"(?<=[.!?])\s+", jd_text)
+        kept = [s for s in sentences if not _BLOB_NOISE_RE.search(s)]
+        return " ".join(kept) if kept else jd_text
     result = []
     skip = False
     for line in lines:
@@ -759,7 +784,12 @@ def _strip_jd_noise(jd_text: str) -> str:
         if _PHYSICAL_SIGNALS.search(stripped):
             continue
         result.append(line)
-    return "\n".join(result)
+    out = "\n".join(result)
+    # Stripped more than ~2/3 of the JD → headers misfired for this format;
+    # extraction on the full text beats extraction on a gutted fragment.
+    if len(out) < 0.35 * len(jd_text):
+        return jd_text
+    return out
 
 
 def extract_jd_keywords_dynamic(jd_text: str) -> list[str]:
@@ -999,15 +1029,32 @@ def detect_jd_artifact_leak(text: str, job_description: str,
         _flag(code, "[JD ARTIFACT LEAK]",
               "internal code/identifier copied from the JD. Delete it.")
 
-    # 3. boilerplate-only tokens (stripped zones), absent from base resume
-    raw_toks = _leak_tokens(clean_jd_html(job_description))
-    res_toks = _leak_tokens(text)
-    for tok in (raw_toks - body_toks) & res_toks:
-        if len(tok) >= 4 and tok not in _CLONE_STOPWORDS and not tok.isdigit():
-            _flag(tok, "[JD BOILERPLATE TERM]",
-                  "this term appears only in the JD's legal/benefits "
-                  "boilerplate, not its requirements. Remove it unless it "
-                  "exists in the original resume.")
+    # 3. boilerplate-only tokens (stripped zones), absent from base resume.
+    # Two precision guards (live run flagged 24 requirements words as
+    # "boilerplate" on a single-paragraph JD and retries deleted them):
+    #   a. If noise-stripping removed a large share of the JD vocabulary,
+    #      zoning failed for this JD format — skip the signal entirely.
+    #   b. Only identifier-shaped tokens qualify (contains digit/hyphen, or
+    #      never appears as a plain lowercase word in the JD): CCPA, E-Verify,
+    #      LI-Hybrid — never ordinary English words like 'major' or 'near'.
+    jd_raw = clean_jd_html(job_description)
+    raw_toks = _leak_tokens(jd_raw)
+    if len(body_toks) >= 0.3 * len(raw_toks):   # skip only on catastrophic zone failure
+        res_toks = _leak_tokens(text)
+        for tok in (raw_toks - body_toks) & res_toks:
+            if len(tok) < 4 or tok in _CLONE_STOPWORDS or tok.isdigit():
+                continue
+            occ = re.findall(rf"\b{re.escape(tok)}\b", jd_raw, re.IGNORECASE)
+            identifier_like = occ and all(
+                "-" in o or any(c.isdigit() for c in o)
+                or o.isupper() or o[1:] != o[1:].lower()   # CCPA, E-Verify, LangChain — not sentence-start 'Major'
+                for o in occ
+            )
+            if identifier_like:
+                _flag(tok, "[JD BOILERPLATE TERM]",
+                      "this term appears only in the JD's legal/benefits "
+                      "boilerplate, not its requirements. Remove it unless it "
+                      "exists in the original resume.")
     return issues
 
 
@@ -1661,7 +1708,7 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
                 continue
 
             # Experience bullet
-            has_metric = bool(re.search(r"\d", body))
+            has_metric = bool(re.search(r"(?<![A-Za-z])\d", body))  # S3/HL7/2.0-in-name are not metrics
             exp_bullets.append((body, has_metric))
             current_job_bullets += 1
 
@@ -1872,8 +1919,10 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
         # JD head ("...seeking a skilled Data Architect to support...") —
         # covers JDs whose first line is boilerplate like "Position Summary".
         _skill_words.update(_extract_jd_title(job_description).lower().split())
+        # Whole JD, not just the head — single-paragraph blob JDs bury the
+        # role title mid-text ("...the Sr Data Architect is the owner...")
         for m in re.finditer(
-            r"\b((?:[A-Z][a-z]+\s+){0,3}[A-Z][a-z]+)\b", job_description[:600]
+            r"\b((?:[A-Z][a-z]+\s+){0,3}[A-Z][a-z]+)\b", job_description
         ):
             phrase = m.group(1)
             if _TITLE_ROLE_RE.search(phrase.split()[-1]):

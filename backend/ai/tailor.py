@@ -2144,7 +2144,7 @@ def _enforce_metric_density(resume: str, role_type: str) -> str:
         return resume
 
     def _ratio() -> float:
-        withm = sum(1 for i in bullet_idx if re.search(r'\d', lines[i]))
+        withm = sum(1 for i in bullet_idx if re.search(r'(?<![A-Za-z])\d', lines[i]))
         return withm / len(bullet_idx)
 
     # Trailing outcome clause: ' — <verb phrase containing a digit>' at end of line
@@ -2167,7 +2167,7 @@ def _enforce_metric_density(resume: str, role_type: str) -> str:
         if not m:
             return None
         head = line[:m.start()]
-        if re.search(r'\d', head):
+        if re.search(r'(?<![A-Za-z])\d', head):
             return None  # stripping wouldn't make it metric-free
         return head, line[m.start():]
 
@@ -2932,12 +2932,24 @@ def _trim_long_bullets(resume: str, word_limit: int) -> str:
     # Natural break characters, in preference order
     _BREAKS = ('—', '–', ';', ',')
 
+    def _tidy(t: str) -> str:
+        # Unmatched comparative: "...dropped from 3 days" with no "to X" left
+        # (live run shipped exactly that). Cut the dangling 'from' clause.
+        m = re.search(r"\s+from\s+[^,;—–]*$", t)
+        if m and " to " not in t[m.start():]:
+            t = t[:m.start()]
+        # Trailing connectives/prepositions left by a mid-phrase cut
+        t = re.sub(r"(?:\s+(?:and|or|with|from|to|of|in|on|for|by|via|"
+                   r"across|per|than|the|a|an|using|into))+$", "", t,
+                   flags=re.IGNORECASE)
+        return t.rstrip(" ,;—–.").rstrip()
+
     def trim_bullet(text: str) -> str:
         words = text.split()
         if len(words) <= word_limit:
             return text
 
-        had_metric = bool(re.search(r"\d", text))
+        had_metric = bool(re.search(r"(?<![A-Za-z])\d", text))
 
         # Find the rightmost natural break within [word_limit-5, word_limit]
         # Reconstruct progressively to find break positions
@@ -2952,26 +2964,33 @@ def _trim_long_bullets(resume: str, word_limit: int) -> str:
                     if len(trimmed.split()) >= 8:  # don't make it too short
                         if best_trim is None:
                             best_trim = trimmed
-                        if metric_trim is None and re.search(r"\d", trimmed):
+                        if metric_trim is None and re.search(r"(?<![A-Za-z])\d", trimmed):
                             metric_trim = trimmed
                         break
             if metric_trim:
                 break
 
+        # A break near the START of the bullet guts it (live run: 34->14 and
+        # 27->9 word summaries lost the JD's 'conceptual, logical' asks).
+        # Below 15 words, prefer a hard cut at the limit over the stub.
+        _MIN_KEEP = 15
+        hard = ' '.join(words[:word_limit])
+
         # Metric preservation: original bullet had a number — never emit a
         # trim that lost it (live run: '95%+ of schema violations' vanished).
         if had_metric:
+            if metric_trim and len(metric_trim.split()) >= _MIN_KEEP:
+                return _tidy(metric_trim)
+            if re.search(r"(?<![A-Za-z])\d", _tidy(hard)):
+                return _tidy(hard)
             if metric_trim:
-                return metric_trim
-            hard = ' '.join(words[:word_limit])
-            if re.search(r"\d", hard):
-                return hard
+                return _tidy(metric_trim)
             return text   # can't keep the metric under limit — leave for LLM pass
 
-        if best_trim:
-            return best_trim
-        # Hard truncation at word_limit
-        return ' '.join(words[:word_limit])
+        if best_trim and len(best_trim.split()) >= _MIN_KEEP:
+            return _tidy(best_trim)
+        # Hard truncation at word_limit beats a gutted stub
+        return _tidy(hard)
 
     lines = resume.split('\n')
     out = []

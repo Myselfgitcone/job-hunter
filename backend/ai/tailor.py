@@ -10,6 +10,11 @@ except ImportError:  # Backward compatibility if older resume_lint.py is used.
     skill_coverage_report = None
     extract_jd_hard_skills = None
 
+try:
+    from resume_lint import find_base_only_skills
+except ImportError:
+    find_base_only_skills = None
+
 
 # ── Hard limits enforced in Python (AI cannot count) ─────────────────────────
 # Bullet limits are now role-type-aware. Loaded dynamically from resume_lint.
@@ -1779,6 +1784,17 @@ For each skill, decide:
     but the ORIGINAL RESUME shows no real or adjacent basis for it. This is the case you are
     specifically hunting for — a fabricated or unsupported claim dressed up to look real.
 
+  TWO TRAPS THAT LOOK LIKE EVIDENCE BUT ARE NOT:
+  1. The skill sitting in the original resume's SKILLS/TECHNICAL SKILLS section with NO
+     supporting bullet anywhere in the original is a SELF-CLAIM, not proof of production use.
+     A production-style bullet built from a skills-list-only entry is a VIOLATION even though
+     the word technically "appears" in the original resume.
+  2. A skill is NOT adjacent merely because it is a companion/bundled product in the same
+     vendor suite as something the candidate really used (e.g., OneLake is not adjacent just
+     because Microsoft Fabric is claimed; SageMaker is not adjacent just because AWS is used).
+     Adjacency requires real transferable technical similarity to work actually described in
+     the original resume — not vendor bundling.
+
 Return your findings as plain text, one line per skill, in exactly this format:
   SKILL_NAME | TIER_FOUND | VERDICT (OK or VIOLATION) | ONE-LINE REASON
 
@@ -2874,6 +2890,7 @@ _RETRY_RULES = {
     "[FABRICATED TOOL]":       "The flagged tool exists in neither the original resume nor the JD — you invented it. Replace it with an equivalent tool the candidate actually lists in the original resume, or delete the mention. Never introduce tools from outside the original resume and JD.",
     "[LOW JD SKILL VISIBILITY]": "Add 1–3 missing skills via the correct tier: WORK-SUPPORTED bullet, ADJACENT-STRETCH bullet (max 1/job, 2 total), or SELF-IMPLEMENTABLE/HIGH-RISK skills-project wording. Visibility-only placement is acceptable — never force a production claim.",
     "[UNSUPPORTED BULLET]":   "This bullet has no basis in the original resume. Rewrite it as a rephrasing of a REAL original-resume accomplishment, or delete it entirely. Never invent new accomplishments.",
+    "[JOB TOOL MISMATCH]":    "Move the flagged tool to the job where the candidate actually used it (per the original resume), or delete it from this job entirely. Never let a real tool from one employer bleed into a different employer's bullets or Technologies Used line.",
     "[PROFILE SKILL DROPPED]":   "These skills exist in the candidate's original resume and are WORK-SUPPORTED. Add each back: write a real bullet in the most relevant job, add to that job's Technologies Used, add to Technical Skills. Do not omit because JD listed them as 'or' alternatives.",
     "[YEARS MISMATCH]":          "Use the exact years-of-experience number from the ORIGINAL RESUME — do not inflate or deflate it.",
     "[DOMAIN LEAK]":             "Remove this phrase entirely and rewrite the bullet using neutral technical/data language only — do not reference the JD employer's specific business domain (finance KPIs, clinical/regulatory program names) when it doesn't match the locked role type.",
@@ -3047,6 +3064,22 @@ async def tailor_resume(base_resume: str, job_description: str,
             base_resume, job_description, role_type=role_type, profile_skills=profile_skills
         )
         skills_missing_from_original = original_coverage.get("missing", [])
+
+        # Skills-row self-claims with zero supporting bullet ANYWHERE in the
+        # base resume are structurally the same risk as a truly-missing
+        # skill — the model still needs tier guidance, not a free pass to
+        # write a production bullet just because the word exists in a
+        # skills list. Route them into the same audit+correction machinery
+        # (live case: 'Microsoft Fabric' sat in base skills only, no bullet
+        # — CASE 2 turned it into a fabricated Cargill production claim
+        # that no existing check caught, because coverage saw it as
+        # "present" and skipped the audit entirely).
+        if find_base_only_skills is not None:
+            base_only = find_base_only_skills(base_resume, jd_hard_skills)
+            if base_only:
+                print(f"[TIER SCOPE] {len(base_only)} JD skill(s) exist only in base skills list "
+                      f"(no job evidence) — routed to gap audit: {', '.join(base_only)}")
+                skills_missing_from_original = sorted(set(skills_missing_from_original) | set(base_only))
 
     jd_skills_section = ""
     if jd_hard_skills:

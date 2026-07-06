@@ -1145,6 +1145,118 @@ def detect_fabricated_tools(text: str, base_resume: str,
     return issues
 
 
+def find_base_only_skills(base_resume: str, jd_skills: list[str]) -> list[str]:
+    """JD skills that appear SOMEWHERE in the base resume (so skill_coverage_report
+    marks them 'covered') but never inside a WORK EXPERIENCE bullet — meaning the
+    only 'evidence' is a self-declared summary sentence or skills-row entry, not
+    real job-tied work. A summary bullet ('Strong cloud platform experience across
+    ... Microsoft Fabric ...') is the same self-claim as a skills row — neither
+    proves the candidate did real work with it at an employer. These are
+    structurally identical to a truly-missing skill for tier-audit purposes: the
+    model still has to decide how to place them, and self-declaration is not
+    enough basis for a production bullet. Feeding these into the same audit list
+    that already catches wholly-missing skills closes the gap deterministically —
+    no new AI call, reuses the existing tier-audit + correction machinery."""
+    if not base_resume or not jd_skills:
+        return []
+    exp_blocks = _split_into_job_blocks(base_resume)
+    exp_bullet_lines = [
+        l for block in exp_blocks for l in block.splitlines()
+        if l.strip().startswith("•")
+    ]
+    evidence_blob = "\n".join(exp_bullet_lines).lower()
+    base_lo = base_resume.lower()
+    out = []
+    for sk in jd_skills:
+        pattern = _dynamic_coverage_pattern(sk)
+        in_base_anywhere = bool(re.search(pattern, base_lo))
+        in_job_evidence  = bool(re.search(pattern, evidence_blob))
+        if in_base_anywhere and not in_job_evidence:
+            out.append(sk)
+    return out
+
+
+def _split_into_job_blocks(text: str) -> list[str]:
+    """Split resume text into per-job blocks (job header line through the line
+    before the next job header or next section header), in document order.
+    Used to compare 'which job used which tool' between base and tailored text."""
+    lines = text.split("\n")
+    blocks: list[str] = []
+    current: list[str] = []
+    section: Optional[str] = None
+    in_exp = False
+    job_open = False  # only start collecting once the first job header is seen —
+    # the blank line most resumes place between "WORK EXPERIENCE:" and the first
+    # job header must never become its own (empty) block, which would shift
+    # every later block's index and break base<->tailored job alignment.
+    for line in lines:
+        s = line.strip()
+        if _is_section_header(s):
+            if current:
+                blocks.append("\n".join(current))
+                current = []
+            section = s.rstrip(":").upper()
+            in_exp = "EXPERIENCE" in section
+            job_open = False
+            continue
+        if in_exp and _is_job_header(s, section):
+            if current:
+                blocks.append("\n".join(current))
+            current = [line]
+            job_open = True
+            continue
+        if in_exp and job_open:
+            current.append(line)
+    if current:
+        blocks.append("\n".join(current))
+    return blocks
+
+
+def detect_job_scope_leak(text: str, base_resume: str,
+                          max_reports: int = 5) -> list[str]:
+    """A tool the candidate genuinely used — but only at a DIFFERENT job than
+    where the tailored resume now places it. Catches timeline/employer
+    relocation fabrications (e.g., 'Medallion Architecture' real at Job A,
+    invented into Job B's bullet where the candidate never worked with it).
+    Jobs are matched by ORDER (SYSTEM_PROMPT requires job headers copied
+    verbatim in the same sequence — JOB_HEADERS plan step enforces this).
+    Fully derivational: ground truth is which base job-block contains the tool."""
+    base_blocks = _split_into_job_blocks(base_resume)
+    tail_blocks = _split_into_job_blocks(text)
+    if not base_blocks or not tail_blocks:
+        return []
+
+    def _toks(block: str) -> set:
+        found: set = set()
+        for tok_re in _TOOL_TOKEN_RES:
+            found |= set(tok_re.findall(block))
+        return {t for t in found if t not in _DYN_ACRONYM_SKIP}
+
+    base_tok_sets = [_toks(b) for b in base_blocks]
+    all_base_toks: set = set().union(*base_tok_sets) if base_tok_sets else set()
+
+    issues: list[str] = []
+    seen: set = set()
+    for i, tb in enumerate(tail_blocks):
+        if i >= len(base_blocks):
+            break  # extra job blocks are the job-hallucination guard's territory
+        this_job_toks  = base_tok_sets[i]
+        other_job_toks = all_base_toks - this_job_toks
+        for tok in _toks(tb):
+            key = tok.lower()
+            if key in seen or tok in this_job_toks:
+                continue
+            if tok in other_job_toks:
+                seen.add(key)
+                if len(issues) < max_reports:
+                    issues.append(
+                        f"[JOB TOOL MISMATCH] '{tok}' appears at job #{i+1} in the tailored "
+                        f"resume, but the original resume only shows it at a DIFFERENT job. "
+                        f"Move it to the job where the candidate actually used it, or remove it."
+                    )
+    return issues
+
+
 def detect_unsupported_bullets(text: str, base_resume: str,
                                job_description: str = "",
                                role_type: Optional[str] = None,
@@ -2049,6 +2161,8 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
         issues += detect_fabricated_tools(text, base_resume, job_description)
         # Bullet provenance — invented claims with no basis in the original
         issues += detect_unsupported_bullets(text, base_resume, job_description, role_type)
+        # Job-scoped tool relocation — real tool, wrong employer's timeline
+        issues += detect_job_scope_leak(text, base_resume)
 
     # JD hard-skill VISIBILITY check — this is a presence/absence check only.
     # It can confirm a skill word appears SOMEWHERE on the resume (bullet, stretch
@@ -2114,6 +2228,7 @@ RETRY_RULES: dict[str, str] = {
     "[FABRICATED TOOL]":       "Replace the invented tool with one the candidate actually lists in the original resume, or delete the mention.",
     "[LOW JD SKILL VISIBILITY]": "Add 1–3 missing skills via the correct tier: WORK-SUPPORTED bullet, ADJACENT-STRETCH bullet (max 1/job, 2 total), or SELF-IMPLEMENTABLE/HIGH-RISK skills-project wording. Visibility-only placement is acceptable — never force a production claim.",
     "[UNSUPPORTED BULLET]":   "This bullet has no basis in the original resume. Rewrite it as a rephrasing of a REAL original-resume accomplishment, or delete it entirely. Never invent new accomplishments.",
+    "[JOB TOOL MISMATCH]":    "Move the flagged tool to the job where the candidate actually used it (per the original resume), or delete it from this job entirely. Never let a real tool from one employer bleed into a different employer's bullets or Technologies Used line.",
     "[PROFILE SKILL DROPPED]":   "These skills exist in the candidate's original resume — they are WORK-SUPPORTED. Add each back: write a real bullet in the most relevant job, add to that job's Technologies Used, add to Technical Skills. Do not omit them because the JD listed them as 'or' alternatives.",
 }
 

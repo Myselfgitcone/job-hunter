@@ -587,6 +587,17 @@ function ResumeTab({ job, tailoring, startedAt, onTailor, onCancel, onToast, onU
           {disqualifiers.map((d, i) => <div key={i} style={{ fontSize: 12.5, color: "#fca5a5" }}>{d}</div>)}
         </div>
       )}
+      {job.needs_review === true && (
+        <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.35)", borderRadius: 10, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#fbbf24", marginBottom: 2 }}>🔴 Needs review — read this resume before applying</div>
+          {(job.review_reasons || []).slice(0, 6).map((r, i) => <div key={i} style={{ fontSize: 12.5, color: "#fcd34d" }}>{r}</div>)}
+        </div>
+      )}
+      {job.needs_review === false && job.tailored_resume && (
+        <div style={{ background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 10, padding: "8px 14px", fontSize: 12.5, color: "#4ade80", fontWeight: 600 }}>
+          🟢 Auto-approved — passed all quality checks, safe to apply
+        </div>
+      )}
       <div style={{ display: "flex", gap: 18 }}>
       <div style={{ flex: 1.5, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>

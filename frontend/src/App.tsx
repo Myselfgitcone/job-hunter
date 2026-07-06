@@ -579,8 +579,11 @@ export default function App() {
           ats_score_after:  r.ats_after?.score ?? null,
           ats_keywords_matched: r.ats_after?.matched ?? [],
           ats_keywords_missing: r.ats_after?.missing ?? [],
+          needs_review: r.needs_review ?? false,
+          review_reasons: r.review_reasons ?? [],
         });
-        toast("Resume tailored", "success");
+        toast(r.needs_review ? "Resume tailored — needs review before applying" : "Resume tailored — auto-approved ✓",
+              r.needs_review ? "error" : "success");
       } else if (action === "fit") {
         const r = await api.tailor(selectedJob.id);
         updateJob(selectedJob.id, { fit_analysis: r.fit_analysis, interview_tips: r.interview_tips });

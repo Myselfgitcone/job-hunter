@@ -184,6 +184,9 @@ class UserJob(Base):
     applied_at           = Column(String, default=None)
     tailored_at          = Column(String, default=None)
     saved_at             = Column(String, default="")
+    # Review gate: GREEN (False) = auto-approved, RED (True) = human must read
+    needs_review         = Column(Boolean, default=False)
+    review_reasons       = Column(Text, default=None)   # JSON list of gate issues
 
 
 class QuickTailorHistory(Base):
@@ -251,6 +254,9 @@ async def init_db():
         "ALTER TABLE jobs ADD COLUMN company_funding BIGINT",
         "ALTER TABLE jobs ADD COLUMN ai_keywords TEXT DEFAULT ''",
         "ALTER TABLE jobs ADD COLUMN experience_level_inferred BOOLEAN DEFAULT FALSE",
+        # Review gate
+        "ALTER TABLE user_jobs ADD COLUMN needs_review BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE user_jobs ADD COLUMN review_reasons TEXT",
     ]
     for stmt in migrations:
         try:

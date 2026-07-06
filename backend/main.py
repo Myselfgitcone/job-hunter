@@ -1871,6 +1871,8 @@ async def list_jobs(
             d["qualify_result"] = json.loads(uj.qualify_result) if uj.qualify_result else None
             d["deadline"] = uj.deadline or ""
             d["interview_date"] = uj.interview_date or ""
+            d["needs_review"] = bool(uj.needs_review)
+            d["review_reasons"] = json.loads(uj.review_reasons) if uj.review_reasons else []
         else:
             d["status"] = "new"
         out.append(d)
@@ -1907,6 +1909,8 @@ async def get_job(job_id: str, user_id: str = Depends(get_current_user_id)):
             d["interview_date"] = uj.interview_date or ""
             d["applied_at"] = uj.applied_at or ""
             d["tailored_at"] = uj.tailored_at or ""
+            d["needs_review"] = bool(uj.needs_review)
+            d["review_reasons"] = json.loads(uj.review_reasons) if uj.review_reasons else []
         return d
 
 
@@ -2539,7 +2543,7 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
 
     ats_before = score_ats(base_resume, jd)
 
-    tailored_text = await tailor_resume(
+    tailored_text, review = await tailor_resume(
         base_resume, jd, api_key, provider, model,
         profile_skills=profile_skills,
         secondary_model=user_cfg.get("ai_model_secondary") or "anthropic/claude-haiku-4-5",
@@ -2567,6 +2571,8 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
         uj.ats_keywords_missing = json.dumps(ats_after["missing"])
         uj.fit_analysis = fit["analysis"]
         uj.interview_tips = json.dumps(fit["tips"])
+        uj.needs_review = review["needs_review"]
+        uj.review_reasons = json.dumps(review["reasons"] + review["notes"]) if (review["reasons"] or review["notes"]) else None
         await db.commit()
 
     return {
@@ -2575,6 +2581,9 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
         "tailored_resume": tailored_text,
         "fit_analysis": fit["analysis"],
         "interview_tips": fit["tips"],
+        "needs_review": review["needs_review"],
+        "review_reasons": review["reasons"],
+        "review_notes": review["notes"],
     }
 
 
@@ -2817,7 +2826,7 @@ async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_curr
         raise HTTPException(400, "No base resume found. Add it in Settings.")
 
     profile_skills = await _load_profile_skills(user_id)
-    tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model,
+    tailored, review = await tailor_resume(base_resume, body.jd, api_key, provider, model,
                                    profile_skills=profile_skills,
                                    secondary_model=user_cfg.get("ai_model_secondary") or "anthropic/claude-haiku-4-5",
                                    user_job_roles=user_cfg.get("job_roles") or [],
@@ -2835,7 +2844,8 @@ async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_curr
         db.add(record)
         await db.commit()
 
-    return {"tailored_resume": tailored}
+    return {"tailored_resume": tailored, "needs_review": review["needs_review"],
+            "review_reasons": review["reasons"], "review_notes": review["notes"]}
 
 
 @app.post("/api/quick-tailor/pdf")
@@ -2861,7 +2871,7 @@ async def quick_tailor_pdf(body: QuickTailorRequest, user_id: str = Depends(get_
         if not any([_mk.anthropic, _mk.google, _mk.openai, _mk.openrouter]):
             raise HTTPException(400, "No AI API key set.")
         profile_skills = await _load_profile_skills(user_id)
-        tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model,
+        tailored, _review = await tailor_resume(base_resume, body.jd, api_key, provider, model,
                                        profile_skills=profile_skills,
                                        secondary_model=user_cfg.get("ai_model_secondary") or "anthropic/claude-haiku-4-5",
                                        user_job_roles=user_cfg.get("job_roles") or [],
@@ -2896,7 +2906,7 @@ async def quick_tailor_docx(body: QuickTailorRequest, user_id: str = Depends(get
         if not any([_mk.anthropic, _mk.google, _mk.openai, _mk.openrouter]):
             raise HTTPException(400, "No AI API key set.")
         profile_skills = await _load_profile_skills(user_id)
-        tailored = await tailor_resume(base_resume, body.jd, api_key, provider, model,
+        tailored, _review = await tailor_resume(base_resume, body.jd, api_key, provider, model,
                                        profile_skills=profile_skills,
                                        secondary_model=user_cfg.get("ai_model_secondary") or "anthropic/claude-haiku-4-5",
                                        user_job_roles=user_cfg.get("job_roles") or [],

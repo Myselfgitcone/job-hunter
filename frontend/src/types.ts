@@ -73,6 +73,9 @@ export interface Job {
   interview_date: string;
   priority: number;
   qualify_result: QualifyResult | null;
+  // Review gate: true = pipeline flagged issues, read before applying
+  needs_review?: boolean;
+  review_reasons?: string[];
   // FJ enrichment
   visa_sponsorship: boolean | null;
   experience_level: string;
@@ -130,4 +133,7 @@ export interface TailorResult {
   tailored_resume: string;
   fit_analysis: string;
   interview_tips: string[];
+  needs_review?: boolean;
+  review_reasons?: string[];
+  review_notes?: string[];
 }

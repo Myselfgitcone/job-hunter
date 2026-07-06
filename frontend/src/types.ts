@@ -73,9 +73,12 @@ export interface Job {
   interview_date: string;
   priority: number;
   qualify_result: QualifyResult | null;
-  // Review gate: true = pipeline flagged issues, read before applying
+  // Review gate: true = pipeline flagged issues, read before applying.
+  // review_reasons = blocking only (shown in UI). review_notes = advisory/
+  // cosmetic (JD echo, clone, metric density) — never blocking, not shown.
   needs_review?: boolean;
   review_reasons?: string[];
+  review_notes?: string[];
   // FJ enrichment
   visa_sponsorship: boolean | null;
   experience_level: string;

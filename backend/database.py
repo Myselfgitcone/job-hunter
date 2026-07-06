@@ -186,7 +186,8 @@ class UserJob(Base):
     saved_at             = Column(String, default="")
     # Review gate: GREEN (False) = auto-approved, RED (True) = human must read
     needs_review         = Column(Boolean, default=False)
-    review_reasons       = Column(Text, default=None)   # JSON list of gate issues
+    review_reasons       = Column(Text, default=None)   # JSON list — BLOCKING issues only
+    review_notes         = Column(Text, default=None)   # JSON list — advisory/cosmetic, never blocking
 
 
 class QuickTailorHistory(Base):
@@ -257,6 +258,7 @@ async def init_db():
         # Review gate
         "ALTER TABLE user_jobs ADD COLUMN needs_review BOOLEAN DEFAULT FALSE",
         "ALTER TABLE user_jobs ADD COLUMN review_reasons TEXT",
+        "ALTER TABLE user_jobs ADD COLUMN review_notes TEXT",
     ]
     for stmt in migrations:
         try:

@@ -1873,6 +1873,7 @@ async def list_jobs(
             d["interview_date"] = uj.interview_date or ""
             d["needs_review"] = bool(uj.needs_review)
             d["review_reasons"] = json.loads(uj.review_reasons) if uj.review_reasons else []
+            d["review_notes"] = json.loads(uj.review_notes) if uj.review_notes else []
         else:
             d["status"] = "new"
         out.append(d)
@@ -1911,6 +1912,7 @@ async def get_job(job_id: str, user_id: str = Depends(get_current_user_id)):
             d["tailored_at"] = uj.tailored_at or ""
             d["needs_review"] = bool(uj.needs_review)
             d["review_reasons"] = json.loads(uj.review_reasons) if uj.review_reasons else []
+            d["review_notes"] = json.loads(uj.review_notes) if uj.review_notes else []
         return d
 
 
@@ -2572,7 +2574,8 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
         uj.fit_analysis = fit["analysis"]
         uj.interview_tips = json.dumps(fit["tips"])
         uj.needs_review = review["needs_review"]
-        uj.review_reasons = json.dumps(review["reasons"] + review["notes"]) if (review["reasons"] or review["notes"]) else None
+        uj.review_reasons = json.dumps(review["reasons"]) if review["reasons"] else None
+        uj.review_notes = json.dumps(review["notes"]) if review["notes"] else None
         await db.commit()
 
     return {

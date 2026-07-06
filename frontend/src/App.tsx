@@ -582,8 +582,9 @@ export default function App() {
           needs_review: r.needs_review ?? false,
           review_reasons: r.review_reasons ?? [],
         });
-        toast(r.needs_review ? "Resume tailored — needs review before applying" : "Resume tailored — auto-approved ✓",
-              r.needs_review ? "error" : "success");
+        // Review-gate-aware toast disabled alongside the banner (2026-07-06) —
+        // backend always returns needs_review=false now, so this is a plain toast.
+        toast("Resume tailored", "success");
       } else if (action === "fit") {
         const r = await api.tailor(selectedJob.id);
         updateJob(selectedJob.id, { fit_analysis: r.fit_analysis, interview_tips: r.interview_tips });

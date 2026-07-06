@@ -3556,35 +3556,41 @@ async def tailor_resume(base_resume: str, job_description: str,
     except Exception as e:
         print(f"[FORMAT] Normalizer failed: {e}")
 
-    # ── REVIEW GATE — green/red light for hands-off applying ──────────────
+    # ── REVIEW GATE — DISABLED by user request (2026-07-06) ────────────────
+    # Green/red banner turned off. Function signature kept as (result, review)
+    # so every caller in main.py still unpacks a 2-tuple without changes —
+    # review is just always the inert/clean default now. To re-enable, restore
+    # the block below (kept intact) and remove the two lines above `return`.
+    #
     # GREEN: no blocking issues → safe to download and apply without reading.
     # RED:   structural/honesty issues survived every pass → human reads
     #        THIS resume only. Advisory style notes (echo/boilerplate/clone/
     #        metric density) never turn the light red.
+    # review = {"needs_review": False, "reasons": [], "notes": []}
+    # try:
+    #     _final = (lint_resume(result, job_description, base_resume=base_resume,
+    #                           role_type=role_type)
+    #               + detect_domain_leak(result, role_type, base_resume))
+    #     _ADVISORY = ("[HIGH METRICS]", "[LOW METRICS]", "[LOW JD SKILL VISIBILITY]",
+    #                  "[JD ECHO]", "[JD BOILERPLATE TERM]", "[JD CLONE]",
+    #                  "[SAME VERB]")
+    #     red   = [i for i in _final if not i.startswith(_ADVISORY)]
+    #     notes = [i for i in _final if i.startswith(_ADVISORY)]
+    #     review = {"needs_review": bool(red), "reasons": red, "notes": notes}
+    #     if red:
+    #         print(f"[REVIEW GATE] RED — needs human review ({len(red)} blocking issue(s)):")
+    #         for i in red:
+    #             print("  X " + i[:160])
+    #     else:
+    #         print("[REVIEW GATE] GREEN — auto-approved, safe to apply"
+    #               + (f" ({len(notes)} style note(s), non-blocking)" if notes else ""))
+    # except Exception as e:
+    #     # Gate must never break tailoring — but a broken gate means unreviewed
+    #     # output, so fail SAFE: mark for review.
+    #     print(f"[REVIEW GATE] Gate failed to run ({e}) — marking for review.")
+    #     review = {"needs_review": True,
+    #               "reasons": [f"[GATE ERROR] review gate crashed: {e}"], "notes": []}
     review = {"needs_review": False, "reasons": [], "notes": []}
-    try:
-        _final = (lint_resume(result, job_description, base_resume=base_resume,
-                              role_type=role_type)
-                  + detect_domain_leak(result, role_type, base_resume))
-        _ADVISORY = ("[HIGH METRICS]", "[LOW METRICS]", "[LOW JD SKILL VISIBILITY]",
-                     "[JD ECHO]", "[JD BOILERPLATE TERM]", "[JD CLONE]",
-                     "[SAME VERB]")
-        red   = [i for i in _final if not i.startswith(_ADVISORY)]
-        notes = [i for i in _final if i.startswith(_ADVISORY)]
-        review = {"needs_review": bool(red), "reasons": red, "notes": notes}
-        if red:
-            print(f"[REVIEW GATE] RED — needs human review ({len(red)} blocking issue(s)):")
-            for i in red:
-                print("  X " + i[:160])
-        else:
-            print("[REVIEW GATE] GREEN — auto-approved, safe to apply"
-                  + (f" ({len(notes)} style note(s), non-blocking)" if notes else ""))
-    except Exception as e:
-        # Gate must never break tailoring — but a broken gate means unreviewed
-        # output, so fail SAFE: mark for review.
-        print(f"[REVIEW GATE] Gate failed to run ({e}) — marking for review.")
-        review = {"needs_review": True,
-                  "reasons": [f"[GATE ERROR] review gate crashed: {e}"], "notes": []}
 
     return result, review
 

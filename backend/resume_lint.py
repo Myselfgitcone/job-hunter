@@ -1383,6 +1383,36 @@ def _is_degree_only_term(s: str, jd: str) -> bool:
             return False
     return found_any
 
+
+# Certification-title phrasing: "Certifications such as Microsoft Certified:
+# Azure Database Administrator Associate or similar credentials are a plus".
+# Long-form vendor credential NAMES get shredded by the TitleCase/list-context
+# extraction steps into individual words ("Administrator", "Associate") that
+# read as skills but are really just words inside a credential's title — the
+# candidate can't honestly claim "Administrator" as a standalone skill.
+# Same derivational shape as the degree filter: a term whose EVERY JD
+# occurrence sits inside a certified/certification/credential window is
+# fabrication bait, not a skill — any word ALSO used elsewhere is rescued
+# (e.g. a JD naming "Administrator" both as a cert title word and as a real
+# responsibility keyword stays a valid skill).
+_CERT_TITLE_RE = re.compile(
+    r"\b(?:certifications?|certificates?|credentials?|certified)\b[^.\n;]{0,150}$",
+    re.IGNORECASE,
+)
+
+def _is_cert_title_only_term(s: str, jd: str) -> bool:
+    """True if every occurrence of the term in the JD sits inside a
+    certification/credential-title phrase — a shredded fragment of a
+    credential NAME, not an independent skill."""
+    esc = re.escape(s.strip())
+    found_any = False
+    for m in re.finditer(rf"\b{esc}\b", jd, re.IGNORECASE):
+        found_any = True
+        window = jd[max(0, m.start() - 160):m.start()]
+        if not _CERT_TITLE_RE.search(window):
+            return False
+    return found_any
+
 def _is_junk_skill(s: str, jd: str = "") -> bool:
     s_ = s.lower().strip()
     if s_ in _EXTRACTION_JUNK:
@@ -1392,6 +1422,8 @@ def _is_junk_skill(s: str, jd: str = "") -> bool:
     if re.fullmatch(r"[a-z]\d", s_):     # M1-style stray tokens
         return True
     if jd and _is_degree_only_term(s_, jd):
+        return True
+    if jd and _is_cert_title_only_term(s_, jd):
         return True
     # Context gate: single generic English words with no tool-context in the
     # JD are extraction noise ("Ownership", "Disciplined"). Multi-word terms

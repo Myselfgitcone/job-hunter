@@ -112,6 +112,19 @@ WORD_TARGET   = 20
 
 BANNED_WORDS = ["utilized", "leveraged"]
 
+# Universal corporate clichés — empty filler phrases that carry no verifiable
+# signal regardless of role type (tech, IB, healthcare, consulting...). Same
+# category as BANNED_WORDS: a small, stable, non-JD-specific list, not a
+# per-case patch. Two entries have legitimate domain meanings and are
+# exempted contextually below (mirrors the "leveraged finance" exemption).
+CORPORATE_CLICHES = [
+    "team player", "detail-oriented", "detail oriented", "results-driven",
+    "results oriented", "hard worker", "hardworking", "go-getter",
+    "think outside the box", "proven track record", "excellent communication skills",
+    "strong work ethic", "passionate about", "wheelhouse", "highly motivated",
+    "dynamic professional", "synergy", "synergies", "value add", "value-add",
+]
+
 META_LEAKS = [
     "fabricat", "as per the jd", "as required", "[[", "note:",
     "lorem", "placeholder", "tbd", "insert here", "your name",
@@ -1897,6 +1910,13 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
                     ):
                         continue
                     issues.append(f'[BANNED WORD] "{w}" in: "{body[:60]}..."')
+            for c in CORPORATE_CLICHES:
+                if re.search(rf"\b{re.escape(c)}\b", body_lo):
+                    # "synergy/synergies" and "value add/value-add" are real M&A/PE/real-estate
+                    # terms in IB and finance roles, not filler — only flag outside that domain.
+                    if c in ("synergy", "synergies", "value add", "value-add") and role_type in (IB, FINANCE):
+                        continue
+                    issues.append(f'[CORPORATE CLICHE] "{c}" in: "{body[:60]}..."')
             for m in META_LEAKS:
                 if m in body_lo:
                     issues.append(f'[META LEAK] "{m}" in: "{body[:60]}..."')
@@ -2243,6 +2263,7 @@ RETRY_RULES: dict[str, str] = {
     "[MISSING CLOSING LINE]":  "Every job block must end with the correct closing line for this role type.",
     "[BANNED CLOSING LABEL]":  "Use the exact closing line label required for this role type.",
     "[BANNED WORD]":           "Replace 'utilized' and 'leveraged' with active verbs: 'used', 'built', 'ran'.",
+    "[CORPORATE CLICHE]":     "Delete the empty filler phrase. Replace it with a specific, concrete detail from the actual accomplishment (a tool, a metric, a real outcome) instead of a generic claim.",
     "[META LEAK]":             "Remove all instruction text, placeholders, or commentary from the resume body.",
     "[TOO LONG]":              "Shorten to ≤22 words. One idea per bullet only. Split compound bullets.",
     "[MULTI-IDEA]":            "One accomplishment per bullet. CUT the weaker half — never split into two bullets (splitting overflows the bullet budget).",

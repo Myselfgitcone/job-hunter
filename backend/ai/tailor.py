@@ -2872,6 +2872,7 @@ _RETRY_RULES = {
     "[MISSING CLOSING LINE]":  "Every job block must end with the correct closing line for this role type (e.g. 'Technologies Used:' for tech, 'Selected Transactions:' for IB, 'Technologies & Platforms:' for cyber).",
     "[BANNED CLOSING LABEL]":  "Use the exact closing line label required for this role type — no substitutes.",
     "[BANNED WORD]":           "Replace 'utilized' and 'leveraged' with active verbs: 'used', 'built', 'ran'.",
+    "[CORPORATE CLICHE]":     "Delete the empty filler phrase. Replace it with a specific, concrete detail from the actual accomplishment (a tool, a metric, a real outcome) instead of a generic claim.",
     "[META LEAK]":             "Remove all instruction text, placeholders, or commentary from the resume body.",
     "[TOO LONG]":              "Shorten to ≤25 words by TRIMMING words — never split one bullet into two (that overflows the bullet budget). Cut justification clauses, filler, and secondary details.",
     "[METRIC NARRATION]":      "Delete the measurement-methodology clause ('measured by...', 'tracked via...', 'confirmed by...'). Keep only the action and outcome. Resumes assert results; they never present evidence.",

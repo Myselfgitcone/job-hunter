@@ -903,6 +903,16 @@ def extract_jd_keywords_dynamic(jd_text: str) -> list[str]:
         if s.upper() not in _DYN_ACRONYM_SKIP:
             found.add(s)
 
+    # 7b. Single-letter-plus-hash language names: C#, F#. Every other step
+    # requires a minimum token length (CamelCase needs an internal lowercase
+    # run, ALL-CAPS needs 2+ letters, the signal-phrase step needs 4+ chars)
+    # so a 2-character symbol token structurally can never surface — "C#"
+    # was invisible to JD-skill extraction even when it was a JD's #1 named
+    # requirement. Pattern-based (not a name list) so it generalizes to any
+    # future single-letter+# language, not just these two.
+    for m in re.finditer(r"(?<![A-Za-z0-9])([A-Za-z])#(?![A-Za-z0-9])", text_full):
+        found.add(m.group(1).upper() + "#")
+
     # 8. Capitalized words after skill-signal phrases
     # Strip parenthetical expansions before scanning inner words — "(Data Build Tool)"
     # is an acronym expansion, not a list of independent skills.

@@ -162,7 +162,10 @@ function AreaChart({ scrape, applied, points }: { scrape: number[]; applied: num
         ))}
       </div>
 
-      <div style={{ flex: 1, minWidth: 0 }}>
+      {/* Chart body scrolls horizontally (Y axis stays pinned) — every day
+          keeps a readable width instead of squeezing; scrollbar at bottom. */}
+      <div style={{ flex: 1, minWidth: 0, overflowX: "auto", paddingBottom: 6 }}>
+      <div style={{ minWidth: n * 34 }}>
         <div ref={wrapRef} style={{ position: "relative" }} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
           <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: 300, display: "block" }}>
             <defs>
@@ -222,24 +225,7 @@ function AreaChart({ scrape, applied, points }: { scrape: number[]; applied: num
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-// ── Horizontal bars ───────────────────────────────────────────────────────────
-function HBars({ data }: { data: Array<{ country: string; count: number }> }) {
-  const max = Math.max(...data.map(d => d.count), 1);
-  return (
-    <div className="hbars">
-      {data.map((d, i) => (
-        <div className="hbar-row" key={i}>
-          <span className="hbar-label">{d.country}</span>
-          <div className="hbar-track">
-            <div className="hbar-fill" style={{ width: (d.count / max * 100) + "%", transitionDelay: (i * 70) + "ms" }} />
-          </div>
-          <span className="hbar-val">{d.count.toLocaleString()}</span>
-        </div>
-      ))}
+      </div>
     </div>
   );
 }
@@ -247,17 +233,21 @@ function HBars({ data }: { data: Array<{ country: string; count: number }> }) {
 // ── Vertical bars ─────────────────────────────────────────────────────────────
 function VBars({ data }: { data: Array<{ source: string; count: number; color: string }> }) {
   const max = Math.max(...data.map(d => d.count), 1);
+  // Horizontal scroll: every source keeps a readable column width instead of
+  // squeezing to fit — scrollbar sits at the card's bottom edge.
   return (
-    <div className="vbars">
-      {data.map((d, i) => (
-        <div className="vbar-col" key={i}>
-          <div className="vbar-track">
-            <div className="vbar-fill" style={{ height: (d.count / max * 100) + "%", background: d.color, transitionDelay: (i * 70) + "ms" }} />
+    <div style={{ overflowX: "auto", paddingBottom: 6 }}>
+      <div className="vbars" style={{ minWidth: data.length * 84 }}>
+        {data.map((d, i) => (
+          <div className="vbar-col" key={i} style={{ minWidth: 72 }}>
+            <div className="vbar-track">
+              <div className="vbar-fill" style={{ height: (d.count / max * 100) + "%", background: d.color, transitionDelay: (i * 70) + "ms" }} />
+            </div>
+            <span className="vbar-val">{(d.count / 1000).toFixed(1)}k</span>
+            <span className="vbar-label">{d.source}</span>
           </div>
-          <span className="vbar-val">{(d.count / 1000).toFixed(1)}k</span>
-          <span className="vbar-label">{d.source}</span>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
@@ -662,8 +652,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
     ? timeline
     : fullTimeline.filter((d: any) => (d.date || "").startsWith(monthFilter));
 
-  // Country/source bars
-  const byCountry = (data.by_country || []).map(([country, count]: [string, number]) => ({ country, count }));
+  // Source bars
   const SRC_COLORS: Record<string, string> = {
     greenhouse:  "#22c55e",
     ashby:       "#ef4444",
@@ -838,16 +827,10 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
           </div>
         </div>
 
-        {/* Row 3 (admin only): Jobs by Country + Jobs by Source */}
+        {/* Row 3 (admin only): Jobs by Source — full width, scrolls horizontally.
+            Jobs by Country card removed (USA-only now, nothing to compare). */}
         {isAdmin && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 14, marginBottom: 14 }}>
-            <div className="chart-card">
-              <div className="chart-head"><span className="chart-title">Jobs by Country</span></div>
-              {byCountry.length > 0
-                ? <HBars data={byCountry} />
-                : <div style={{ height: 100, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No country data yet</div>
-              }
-            </div>
+          <div style={{ marginBottom: 14 }}>
             <div className="chart-card">
               <div className="chart-head"><span className="chart-title">Jobs by Source</span></div>
               {bySource.length > 0

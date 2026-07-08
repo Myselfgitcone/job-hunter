@@ -1,6 +1,7 @@
 import re
 from ai.llm import chat
 from resume_lint import lint_resume, detect_role_type, detect_domain_leak, BULLET_BUDGETS, BULLET_MINIMUMS, SUMMARY_EXACT
+from resume_lint import detect_skill_scatter, detect_cross_job_metric_theft
 from resume_lint import TECH, IB, FINANCE, CYBER, HEALTHCARE, CONSULTING, GENERAL
 from resume_lint import user_roles_to_role_type
 
@@ -1333,7 +1334,17 @@ For EVERY JD-required hard skill the base resume doesn't already support, classi
      → Add to an experience bullet AND the skills section. Counts toward both visibility and production-claim.
 
   2. ADJACENT-STRETCH — candidate used the same underlying pattern with a related tool, method, or domain.
+     "Same underlying pattern" means comparable DEPTH, not just the same broad category. General NoSQL
+     exposure (e.g., Cassandra, Redis) does NOT make deep specialist internals of a DIFFERENT database
+     (e.g., MongoDB sharded-cluster architecture, replica-set internals, shard-key design) adjacent — that
+     is a distinct specialist skill set the candidate has never touched, and belongs in tier 3/4 instead.
      → Add ONE defensible stretch bullet in the most relevant job. Counts toward both visibility and production-claim — this is the only stretch tier allowed to touch production-claim coverage.
+     → Placement rule: put the ONE stretch bullet at the job whose real business domain (finance, healthcare,
+       agribusiness/commodities, retail-banking, etc. — read from that job's own existing bullets) actually
+       matches the claim's language. Never place a "financial transaction" or "retail-banking" claim at an
+       agribusiness or healthcare employer just because it's the most recent job — domain fit beats recency.
+     → Never repeat the same stretch skill as a second production claim at any other job (Technologies Used
+       lines included) — one honest, contained placement only. See the hard limits below.
 
   3. SELF-IMPLEMENTABLE — candidate has not used it in employer production, but could implement it independently.
      → Add to the skills section. If format permits, add an optional project/prototype-style bullet.
@@ -1373,9 +1384,11 @@ For every JD hard skill not present in the base resume, execute this decision in
     YES → tier 1 (WORK-SUPPORTED). Strengthen the existing context. Add to Technologies Used + Skills.
     NO  → STEP 2.
 
-  STEP 2 — Does any work bullet demonstrate the same underlying capability with a different tool or domain?
-    YES → tier 2 (ADJACENT-STRETCH). Write one real contextual bullet at the most relevant job.
-           Respect the 2-stretch-bullet resume cap.
+  STEP 2 — Does any work bullet demonstrate the same underlying capability AT COMPARABLE DEPTH, with only
+    a different tool or domain (not a deeper specialist skill the candidate has never touched)?
+    YES → tier 2 (ADJACENT-STRETCH). Write one real contextual bullet at the ONE job whose business
+           domain actually matches the claim. Respect the 2-stretch-bullet resume cap and the "one
+           placement only, never repeated at another job" rule.
     NO  → STEP 3.
 
   STEP 3 — Is this a self-learnable tool a competent professional in this role could implement independently?
@@ -2929,6 +2942,8 @@ _RETRY_RULES = {
     "[DOMAIN LEAK]":             "Remove this phrase entirely and rewrite the bullet using neutral technical/data language only — do not reference the JD employer's specific business domain (finance KPIs, clinical/regulatory program names) when it doesn't match the locked role type.",
     "[YEARS FABRICATED]":        "The original resume has no years-of-experience claim in the summary. Remove the years number entirely — do not invent one.",
     "[UNSUPPORTED EXPERIENCE CLAIM]": "Remove or rewrite the summary claim to only reflect experience types supported by the work bullets below it.",
+    "[SKILL SCATTER]":        "This skill has no real-work basis anywhere in the original resume. Keep it at ONE job only — the single most domain-relevant one — and delete every other job's bullet/Technologies Used mention of it.",
+    "[METRIC RELOCATION]":    "This number belongs to a different job's real achievement. Delete it from this bullet, or replace it with a number actually grounded in this job's original bullets — never borrow another employer's metric.",
 }
 
 
@@ -3209,17 +3224,21 @@ async def tailor_resume(base_resume: str, job_description: str,
     def _retryable(iss_list, attempt: int = 0):
         return [i for i in iss_list if not i.startswith(_NO_RETRY_PREFIXES)]
 
+    def _all_lint_issues(candidate: str) -> list[str]:
+        return (
+            lint_resume(candidate, job_description, base_resume=base_resume, role_type=role_type)
+            + detect_domain_leak(candidate, role_type, base_resume)
+            + detect_skill_scatter(candidate, skills_missing_from_original)
+            + detect_cross_job_metric_theft(candidate, base_resume)
+        )
+
     # ── Quality gate: lint → up to 3 retries, best-of-N ────────────────────
     _best_raw         = raw
-    _best_issue_count = len(_retryable(
-        lint_resume(raw, job_description, base_resume=base_resume, role_type=role_type)
-        + detect_domain_leak(raw, role_type, base_resume)))
+    _best_issue_count = len(_retryable(_all_lint_issues(raw)))
     _lint_clean_first = False   # attempt 0 passed lint with zero issues
 
     for attempt in range(3):
-        issues = lint_resume(raw, job_description, base_resume=base_resume, role_type=role_type)
-        issues += detect_domain_leak(raw, role_type, base_resume)
-        issues = _retryable(issues, attempt)
+        issues = _retryable(_all_lint_issues(raw), attempt)
 
         if len(issues) <= _best_issue_count:
             _best_issue_count = len(issues)
@@ -3305,9 +3324,7 @@ async def tailor_resume(base_resume: str, job_description: str,
 
 
     # Best-of-N final check
-    final_issues = _retryable(
-        lint_resume(raw, job_description, base_resume=base_resume, role_type=role_type)
-        + detect_domain_leak(raw, role_type, base_resume))
+    final_issues = _retryable(_all_lint_issues(raw))
     if len(final_issues) < _best_issue_count:
         _best_raw = raw
         _best_issue_count = len(final_issues)

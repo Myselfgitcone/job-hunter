@@ -1183,11 +1183,12 @@ def find_base_only_skills(base_resume: str, jd_skills: list[str]) -> list[str]:
     if not base_resume or not jd_skills:
         return []
     exp_blocks = _split_into_job_blocks(base_resume)
-    exp_bullet_lines = [
-        l for block in exp_blocks for l in block.splitlines()
-        if l.strip().startswith("•")
-    ]
-    evidence_blob = "\n".join(exp_bullet_lines).lower()
+    # Evidence includes job HEADER lines, not just bullets — a term that's part
+    # of the candidate's own role title ("Data Engineer") is real, stronger-than-
+    # a-bullet proof of that work, not a self-declared claim. Restricting to
+    # bullet lines only made every job's own title read as "no job evidence"
+    # for its own role-name terms, since headers were excluded.
+    evidence_blob = "\n".join(exp_blocks).lower()
     base_lo = base_resume.lower()
     out = []
     for sk in jd_skills:
@@ -1276,6 +1277,94 @@ def detect_job_scope_leak(text: str, base_resume: str,
                         f"[JOB TOOL MISMATCH] '{tok}' appears at job #{i+1} in the tailored "
                         f"resume, but the original resume only shows it at a DIFFERENT job. "
                         f"Move it to the job where the candidate actually used it, or remove it."
+                    )
+    return issues
+
+
+def detect_skill_scatter(text: str, missing_skills: list[str] | None,
+                         max_reports: int = 3) -> list[str]:
+    """A JD skill with ZERO real-work basis anywhere in the base resume
+    (missing_skills — the same ground-truth list the tier audit uses) may get
+    at most ONE job-block placement as a production/stretch bullet. Live bug:
+    'MongoDB' had no job-tied evidence anywhere in the base resume, yet the
+    tailored output placed it as a production claim at 3 different employers
+    (a dedicated fabricated bullet at one job, appended to a real bullet at
+    another, listed in Technologies Used at a third) — scattering a never-used
+    skill across a candidate's whole career reads as systemic experience that
+    never existed, which is worse than one contained, honest stretch bullet.
+    Fully derivational: ground truth is the tier-audit missing-skills list
+    already computed from the base resume before tailoring starts."""
+    if not missing_skills:
+        return []
+    blocks = _split_into_job_blocks(text)
+    if len(blocks) < 2:
+        return []
+    issues: list[str] = []
+    for sk in missing_skills:
+        pattern = _dynamic_coverage_pattern(sk)
+        hit_jobs = [i for i, b in enumerate(blocks) if re.search(pattern, b, re.IGNORECASE)]
+        if len(hit_jobs) > 1 and len(issues) < max_reports:
+            issues.append(
+                f"[SKILL SCATTER] '{sk}' has no real-work basis anywhere in the original "
+                f"resume, but appears as a claim at {len(hit_jobs)} different jobs "
+                f"(#{', #'.join(str(i + 1) for i in hit_jobs)}). A skill with no real "
+                f"history gets AT MOST ONE stretch placement, at the single most relevant "
+                f"job — remove it from all other jobs' bullets and Technologies Used lines."
+            )
+    return issues
+
+
+_METRIC_SCALE_RE = re.compile(r"\$?\d[\d,]*(?:\.\d+)?\+?\s*[MB]\+?\b")
+_METRIC_UPTIME_RE = re.compile(r"\b(?:9[5-9](?:\.\d+)?)\s?%")
+
+
+def _distinctive_metrics(block: str) -> set[str]:
+    found = set()
+    for m in _METRIC_SCALE_RE.finditer(block):
+        found.add(re.sub(r"[,\s]", "", m.group(0)).upper())
+    for m in _METRIC_UPTIME_RE.finditer(block):
+        found.add(re.sub(r"\s", "", m.group(0)))
+    return found
+
+
+def detect_cross_job_metric_theft(text: str, base_resume: str,
+                                  max_reports: int = 5) -> list[str]:
+    """A distinctive metric (M+/B+ scale volume, or a ≥95% uptime/SLA figure)
+    that belongs to exactly ONE job in the base resume, reappearing verbatim
+    at a DIFFERENT job in the tailored resume. Live bug: JPMorgan's real
+    '500M+ daily transaction records' and '99.8% uptime' were copied onto a
+    fabricated Cargill bullet claiming MongoDB production work — the exact
+    number lifted from one employer's real achievement and relocated to
+    another employer's invented one. Fully derivational: ground truth is
+    which base-resume job block each distinctive number actually belongs to."""
+    base_blocks = _split_into_job_blocks(base_resume)
+    tail_blocks = _split_into_job_blocks(text)
+    if len(base_blocks) < 2 or not tail_blocks:
+        return []
+
+    base_metric_sets = [_distinctive_metrics(b) for b in base_blocks]
+    issues: list[str] = []
+    seen: set[str] = set()
+    for i, tb in enumerate(tail_blocks):
+        if i >= len(base_blocks):
+            break
+        this_job_metrics = base_metric_sets[i] if i < len(base_metric_sets) else set()
+        for metric in _distinctive_metrics(tb):
+            if metric in this_job_metrics or metric in seen:
+                continue
+            owner = next(
+                (j for j, ms in enumerate(base_metric_sets) if j != i and metric in ms),
+                None,
+            )
+            if owner is not None:
+                seen.add(metric)
+                if len(issues) < max_reports:
+                    issues.append(
+                        f"[METRIC RELOCATION] '{metric}' belongs to job #{owner + 1} in "
+                        f"the original resume, but appears at job #{i + 1} in the tailored "
+                        f"resume — a real achievement's number was copied onto a different "
+                        f"employer's claim. Remove it or replace with a number grounded in "
+                        f"that job's actual original bullets."
                     )
     return issues
 
@@ -1747,8 +1836,15 @@ def _words(text: str) -> int:
 
 
 def _is_section_header(line: str) -> bool:
-    s = line.strip()
-    return (s == s.upper() and len(s) > 3 and s.endswith(":")
+    # Colon-optional: the tailoring pipeline's own output always adds a
+    # trailing colon, but a candidate's raw uploaded base resume often
+    # doesn't (e.g. a PDF-extracted "WORK EXPERIENCE" with no ":"). Requiring
+    # the colon silently broke job-block splitting on base resumes in that
+    # format — every base-resume-side check that depends on it
+    # (find_base_only_skills, detect_job_scope_leak, detect_cross_job_metric_theft)
+    # went blind. An all-caps line >3 chars, not a bullet/tech-line, is enough.
+    s = line.strip().rstrip(":")
+    return (s == s.upper() and len(s) > 3
             and not s.startswith("•") and not s.startswith("Technologies")
             and not s.startswith("Selected") and not s.startswith("Key Tools")
             and not s.startswith("Systems") and not s.startswith("Technologies &"))

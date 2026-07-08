@@ -681,8 +681,8 @@ function ResumeTab({ job, tailoring, startedAt, onTailor, onCancel, onToast, onU
       <div style={{ display: "flex", gap: 18 }}>
       <div style={{ flex: 1.5, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)" }}>Tailored Resume</div>
+          <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)" }}>Tailored Resume</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {typeof job.generation_seconds === "number" && (
               <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                 Generated in {(() => {
@@ -691,7 +691,6 @@ function ResumeTab({ job, tailoring, startedAt, onTailor, onCancel, onToast, onU
                 })()}
               </span>
             )}
-          </div>
           {!editing ? (
             <button className="btn btn-ghost" style={{ fontSize: 11, height: 28, padding: "0 10px" }}
               onClick={() => { setDraft(job.tailored_resume || ""); setEditing(true); }}>
@@ -720,6 +719,7 @@ function ResumeTab({ job, tailoring, startedAt, onTailor, onCancel, onToast, onU
               </button>
             </div>
           )}
+          </div>
         </div>
         {editing ? (
           <textarea

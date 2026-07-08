@@ -390,7 +390,7 @@ function DescriptionTab({ job, onUpdate, onToast }: { job: Job; onUpdate: (p: Pa
   // HTML description — render directly with scoped styles
   if (isHtml) {
     return (
-      <div style={{ maxWidth: 720 }}>
+      <div>
         {actionsRow}
         <div
           className="jd-body jd-html"
@@ -417,7 +417,7 @@ function DescriptionTab({ job, onUpdate, onToast }: { job: Job; onUpdate: (p: Pa
   });
   flush(9999);
   return (
-    <div style={{ maxWidth: 720 }}>
+    <div>
       {actionsRow}
       {isPartial && (
         <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 8, background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.3)", fontSize: 12.5, color: "#92400e", display: "flex", alignItems: "center", gap: 8 }}>

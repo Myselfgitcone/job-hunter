@@ -61,100 +61,35 @@ function Donut({ data }: { data: Array<{ label: string; value: number; color: st
 
 // ── Monthly bars (CSS animated) ───────────────────────────────────────────────
 // ── Monthly trend lines (SVG) ─────────────────────────────────────────────────
-function MonthlyLines({ data }: { data: Array<{ m: string; scraped: number; applied: number; tailored: number }> }) {
-  const [hover, setHover] = useState<number | null>(null);
-  const wrapRef = React.useRef<HTMLDivElement>(null);
-  const n = Math.max(data.length, 2);
-
-  // One shared max across all 3 series — same reasoning as the bar-chart fix:
-  // independent per-series scales would make lines cross/overlap in ways that
-  // imply false parity between numbers that are actually 100x apart.
-  const peak = Math.max(...data.flatMap(d => [d.scraped, d.applied, d.tailored]), 4);
-  const pow = Math.pow(10, Math.floor(Math.log10(peak)));
-  const niceMax = [1, 2, 5, 10].map(m => m * pow).find(m => m >= peak) || peak;
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(niceMax * f));
-
-  const W = 1000, H = 260;
-  const x = (i: number) => (i / (n - 1)) * W;
-  const y = (v: number) => 8 + (1 - v / niceMax) * (H - 16);
-
-  const smooth = (vals: number[]) => {
-    const P = vals.map((v, i) => [x(i), y(v)]);
-    if (P.length < 2) return "";
-    let d = `M ${P[0][0]} ${P[0][1]}`;
-    for (let i = 0; i < P.length - 1; i++) {
-      const p0 = P[Math.max(i - 1, 0)], p1 = P[i], p2 = P[i + 1], p3 = P[Math.min(i + 2, P.length - 1)];
-      const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
-      const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
-      d += ` C ${c1[0]} ${c1[1]}, ${c2[0]} ${c2[1]}, ${p2[0]} ${p2[1]}`;
-    }
-    return d;
-  };
-  const series: [string, string, number][] = [
-    ["scraped",  "#6366f1", 3],
-    ["applied",  "#3b82f6", 2.5],
-    ["tailored", "#7c3aed", 2.5],
+function MonthlyBars({ data }: { data: Array<{ m: string; scraped: number; applied: number; tailored: number }> }) {
+  // ONE shared max across all 3 series, not one max per series. Per-series
+  // maxes made bars incomparable to each other: if June happened to be the
+  // peak month for Scraped(1500), Applied(18), AND Tailored(10), all three
+  // rendered near 100% height simultaneously — implying rough parity
+  // between numbers that are actually 100x apart. A single shared scale
+  // (plus sqrt, so Applied/Tailored don't vanish next to Scraped's volume)
+  // keeps bar height honestly meaningful both across months (same series)
+  // AND across series (same month).
+  const globalMax = Math.max(...data.flatMap(d => [d.scraped, d.applied, d.tailored]), 1);
+  const series: [string, string][] = [
+    ["scraped",  "#6366f1"],
+    ["applied",  "#3b82f6"],
+    ["tailored", "#7c3aed"],
   ];
-
-  const onMove = (e: React.MouseEvent) => {
-    const box = wrapRef.current?.getBoundingClientRect();
-    if (!box) return;
-    const idx = Math.round(((e.clientX - box.left) / box.width) * (n - 1));
-    setHover(Math.min(Math.max(idx, 0), n - 1));
-  };
-
-  const hp = hover != null ? data[hover] : null;
-  const hoverLeftPct = hover != null ? (hover / (n - 1)) * 100 : 0;
-
   return (
-    <div style={{ display: "flex", gap: 8 }}>
-      <div style={{ position: "relative", width: 34, height: H, flexShrink: 0 }}>
-        {ticks.map(t => (
-          <span key={t} style={{ position: "absolute", right: 4, top: `${(y(t) / H) * 100}%`, transform: "translateY(-50%)",
-            fontSize: 10.5, color: "var(--tx-3)", fontFamily: "var(--f-mono)" }}>{t}</span>
-        ))}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div ref={wrapRef} style={{ position: "relative" }} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
-          <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: H, display: "block" }}>
-            {ticks.map(t => (
-              <line key={t} x1={0} x2={W} y1={y(t)} y2={y(t)} stroke="var(--line)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-            ))}
-            {series.map(([k, c, sw]) => (
-              <path key={k} d={smooth(data.map(d => (d as any)[k]))} fill="none" stroke={c} strokeWidth={sw}
-                strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-            ))}
-            {hover != null && (
-              <line x1={x(hover)} x2={x(hover)} y1={0} y2={H} stroke="var(--tx-3)" strokeWidth="1" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
-            )}
-            {series.map(([k, c]) => data.map((d, i) => (
-              <path key={`${k}${i}`} d={`M ${x(i)} ${y((d as any)[k])} l 0 0.01`} stroke={c}
-                strokeWidth={hover === i ? 11 : 7} strokeLinecap="round" vectorEffect="non-scaling-stroke" fill="none" />
-            )))}
-          </svg>
-          {hp && (
-            <div style={{ position: "absolute", top: 8, left: `${hoverLeftPct}%`,
-              transform: hoverLeftPct > 70 ? "translateX(calc(-100% - 12px))" : "translateX(12px)",
-              background: "var(--bg-surface)", border: "1px solid var(--line)", borderRadius: 10,
-              boxShadow: "0 8px 24px rgba(0,0,0,.12)", padding: "10px 14px", pointerEvents: "none", zIndex: 5, whiteSpace: "nowrap" }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--tx)", marginBottom: 6 }}>{hp.m}</div>
-              {series.map(([k, c]) => (
-                <div key={k} style={{ fontSize: 12, color: "var(--tx-2)", display: "flex", alignItems: "center", gap: 6, marginTop: 3, textTransform: "capitalize" }}>
-                  <i style={{ width: 9, height: 9, borderRadius: 3, background: c, display: "inline-block" }} />
-                  {k}: <b>{(hp as any)[k]}</b>
-                </div>
-              ))}
-            </div>
-          )}
+    <div className="mbars" style={{ overflow: "hidden" }}>
+      {data.map((d, i) => (
+        <div className="mbar-col" key={i}>
+          <div className="mbar-stack">
+            {series.map(([k, c]) => {
+              const raw = (d as any)[k];
+              const v = Math.sqrt(raw / globalMax);
+              return <div key={k} className="mbar" style={{ height: (raw > 0 ? Math.max(4, v * 100) : 0) + "%", background: c, "--d": (i * 60) + "ms" } as React.CSSProperties} title={`${k}: ${raw}`} />;
+            })}
+          </div>
+          <span className="mbar-label">{d.m}</span>
         </div>
-        <div style={{ display: "flex", marginTop: 8 }}>
-          {data.map((d, i) => (
-            <span key={i} style={{ flex: "1 1 0", minWidth: 0, display: "flex", justifyContent: "center" }}>
-              <span style={{ fontSize: 11.5, color: hover === i ? "var(--tx)" : "var(--tx-3)", fontFamily: "var(--f-mono)" }}>{d.m}</span>
-            </span>
-          ))}
-        </div>
-      </div>
+      ))}
     </div>
   );
 }
@@ -853,7 +788,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
               </div>
             </div>
             {monthly.length > 0
-              ? <MonthlyLines data={monthly} />
+              ? <MonthlyBars data={monthly} />
               : <div style={{ height: 150, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No data yet — scrape to populate</div>
             }
           </div>

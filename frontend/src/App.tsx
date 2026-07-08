@@ -566,11 +566,7 @@ export default function App() {
     }
     setBusy(action); setBusyJobId(selectedJob.id); setBusyStartedAt(Date.now());
     try {
-      if (action === "qualify") {
-        const r = await api.qualifyJob(selectedJob.id);
-        updateJob(selectedJob.id, { qualify_result: r });
-        toast("Qualification complete", "success");
-      } else if (action === "resume") {
+      if (action === "resume") {
         abortRef.current = new AbortController();
         const genStart = Date.now();
         const r = await api.tailor(selectedJob.id, abortRef.current.signal);
@@ -588,10 +584,6 @@ export default function App() {
         // Review-gate-aware toast disabled alongside the banner (2026-07-06) —
         // backend always returns needs_review=false now, so this is a plain toast.
         toast("Resume tailored", "success");
-      } else if (action === "fit") {
-        const r = await api.tailor(selectedJob.id);
-        updateJob(selectedJob.id, { fit_analysis: r.fit_analysis, interview_tips: r.interview_tips });
-        toast("Fit analysis ready", "success");
       } else if (action === "cover") {
         const r = await api.generateCoverLetter(selectedJob.id);
         updateJob(selectedJob.id, { cover_letter: r.cover_letter });

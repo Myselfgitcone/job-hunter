@@ -29,7 +29,6 @@ from scrapers.jobspy_scraper import fetch as jobspy_fetch
 from ai.ats import score_ats
 from ai.tailor import tailor_resume
 from ai.llm import set_fallback_notifier
-from ai.fit import analyze_fit
 from ai.cover_letter import generate_cover_letter
 from pdf_gen import generate_pdf
 from docx_gen import generate_docx
@@ -2554,7 +2553,8 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
     )
     ats_after = score_ats(tailored_text, jd)
 
-    fit = await analyze_fit(base_resume, jd, job.title, job.company, api_key, provider, model, keys=_mk)
+    # Fit analysis (analyze_fit) removed 2026-07-08 — cost-saving, was an
+    # unconditional extra AI call on every single "Tailor Resume" click.
 
     # Write tailored resume to user_jobs table
     async with SessionLocal() as db:
@@ -2571,8 +2571,6 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
         uj.ats_score_after = ats_after["score"]
         uj.ats_keywords_matched = json.dumps(ats_after["matched"])
         uj.ats_keywords_missing = json.dumps(ats_after["missing"])
-        uj.fit_analysis = fit["analysis"]
-        uj.interview_tips = json.dumps(fit["tips"])
         uj.needs_review = review["needs_review"]
         uj.review_reasons = json.dumps(review["reasons"]) if review["reasons"] else None
         uj.review_notes = json.dumps(review["notes"]) if review["notes"] else None
@@ -2582,8 +2580,6 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
         "ats_before": ats_before,
         "ats_after": ats_after,
         "tailored_resume": tailored_text,
-        "fit_analysis": fit["analysis"],
-        "interview_tips": fit["tips"],
         "needs_review": review["needs_review"],
         "review_reasons": review["reasons"],
         "review_notes": review["notes"],

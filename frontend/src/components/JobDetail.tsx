@@ -94,8 +94,7 @@ const I = {
 
 const TABS = [
   { id: "jobdetails", label: "Job Details" },
-  { id: "qualify",    label: "Qualify" },
-  { id: "resume",     label: "Resume & Fit" },
+  { id: "resume",     label: "Resume" },
   { id: "cover",      label: "Cover Letter" },
 ];
 
@@ -420,77 +419,6 @@ function DescriptionTab({ job, onUpdate, onToast }: { job: Job; onUpdate: (p: Pa
   );
 }
 
-// ── Qualify tab ────────────────────────────────────────────────────────────────
-function QualifyTab({ job, running, onRun }: { job: Job; running: boolean; onRun: () => void }) {
-  const qr = job.qualify_result;
-  if (!qr) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", gap: 18, textAlign: "center" }}>
-        <div style={{ width: 64, height: 64, borderRadius: 999, background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--border-subtle)" }}>
-          <Ic d={I.target} size={28} color="var(--text-muted)" />
-        </div>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>No qualification yet</div>
-          <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 4 }}>Run qualification to see your match score</div>
-        </div>
-        <button className="btn btn-accent" onClick={onRun} disabled={running} style={{ height: 40, padding: "0 20px", fontSize: 13.5, width: 280, justifyContent: "center" }}>
-          {running ? <><Spinner size={14} color="#fff" /> Analyzing with AI…</> : <><Ic d={I.sparkles} size={15} /> Run Qualification Analysis</>}
-        </button>
-      </div>
-    );
-  }
-  // Handle both array-of-tuples format and object format
-  const criteriaList: Array<{ state: string; name: string; detail: string; weight?: string }> = [];
-  if (Array.isArray(qr.criteria)) {
-    qr.criteria.forEach((c: any) => {
-      if (Array.isArray(c)) criteriaList.push({ state: c[0], name: c[1], detail: c[2], weight: c[3] });
-      else criteriaList.push({ state: c.pass ? "pass" : "fail", name: c.name || c.key, detail: c.note, weight: c.weight });
-    });
-  } else if (qr.criteria && typeof qr.criteria === "object") {
-    Object.entries(qr.criteria).forEach(([key, val]: [string, any]) => {
-      criteriaList.push({ state: val.pass ? "pass" : "fail", name: key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()), detail: val.note });
-    });
-  }
-
-  return (
-    <div>
-      <div className="qual-hero">
-        <div className="qual-score">
-          <div className="qual-num">{qr.score}<small>/100</small></div>
-          <div className={`qual-flag ${qr.qualified ? "yes" : "no"}`}>
-            <Ic d={qr.qualified ? I.check : I.xCircle} size={12} />
-            {qr.qualified ? "Qualified" : "Not qualified"}
-          </div>
-        </div>
-        <div className="qual-meta">
-          <div className="qual-verdict">{(qr as any).verdict || (qr.qualified ? "Good Match" : "Partial Match")}</div>
-          <p className="qual-summary">{qr.summary}</p>
-          <button onClick={onRun} disabled={running} className="act ghost" style={{ marginTop: 14, height: 30 }}>
-            {running ? <><Spinner size={12} /> Re-analyzing…</> : <><Ic d={I.refresh} size={13} /> Re-run</>}
-          </button>
-        </div>
-      </div>
-      {criteriaList.length > 0 && (
-        <>
-          <div className="crit-list-label">Criteria breakdown</div>
-          {criteriaList.map((c, i) => (
-            <div key={i} className="crit">
-              <div className={`crit-ico ${c.state === "pass" ? "pass" : c.state === "partial" ? "partial" : "fail"}`}>
-                <Ic d={c.state === "pass" ? I.check : c.state === "partial" ? I.chevDown : I.xCircle} size={12} />
-              </div>
-              <div className="crit-main">
-                <div className="crit-name">{c.name}</div>
-                <div className="crit-detail">{c.detail}</div>
-              </div>
-              {c.weight && <div className="crit-weight">{c.weight}</div>}
-            </div>
-          ))}
-        </>
-      )}
-    </div>
-  );
-}
-
 // ── Resume tab ─────────────────────────────────────────────────────────────────
 function ResumeTab({ job, tailoring, startedAt, onTailor, onCancel, onToast, onUpdate }: {
   job: Job; tailoring: boolean; startedAt?: number | null; onTailor: () => void; onCancel: () => void;
@@ -709,64 +637,6 @@ function ResumeTab({ job, tailoring, startedAt, onTailor, onCancel, onToast, onU
   );
 }
 
-// ── Fit tab ────────────────────────────────────────────────────────────────────
-function FitTab({ job, running, onRun }: { job: Job; running: boolean; onRun: () => void }) {
-  const [openTip, setOpenTip] = useState(-1);
-  const fitAnalysis = job.fit_analysis;
-  const tips = job.interview_tips || [];
-
-  if (!fitAnalysis && !running) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", gap: 18, textAlign: "center" }}>
-        <div style={{ width: 64, height: 64, borderRadius: 999, background: "var(--bg-elevated)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--border-subtle)" }}>
-          <Ic d={I.zap} size={26} color="var(--text-muted)" />
-        </div>
-        <div style={{ fontSize: 13.5, color: "var(--text-muted)" }}>Run analysis to see your fit and interview prep tips</div>
-        <button className="btn btn-accent" onClick={onRun} style={{ height: 40, padding: "0 20px", width: 240, justifyContent: "center" }}>
-          {running ? <><Spinner size={14} color="#fff" /> Analyzing…</> : <><Ic d={I.zap} size={15} /> Analyze Fit</>}
-        </button>
-      </div>
-    );
-  }
-  if (running) return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 0", gap: 12, color: "var(--text-muted)" }}><Spinner size={24} color="var(--accent)" /> Analyzing…</div>;
-
-  return (
-    <div style={{ maxWidth: 760 }}>
-      {fitAnalysis && (
-        <>
-          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
-            <Ic d={I.checkCircle} size={16} color="#4ade80" /> Why You're a Strong Fit
-          </div>
-          <div style={{ background: "rgba(34,197,94,0.05)", borderLeft: "3px solid #22c55e", borderRadius: "0 10px 10px 0", padding: "14px 16px", marginBottom: 28 }}>
-            <p style={{ fontSize: 13.5, color: "var(--text-secondary)", lineHeight: 1.7 }}>{fitAnalysis}</p>
-          </div>
-        </>
-      )}
-      {tips.length > 0 && (
-        <>
-          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
-            <Ic d={I.zap} size={16} color="#fbbf24" /> Interview Prep Tips
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {tips.map((tip: string, i: number) => {
-              const isOpen = openTip === i;
-              return (
-                <div key={i} style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", borderRadius: 10, overflow: "hidden" }}>
-                  <button onClick={() => setOpenTip(isOpen ? -1 : i)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "12px 14px", textAlign: "left" }}>
-                    <span className="mono" style={{ fontSize: 18, fontWeight: 600, color: "var(--text-disabled)", width: 26 }}>{String(i + 1).padStart(2, "0")}</span>
-                    <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500, color: "var(--text-primary)" }}>{tip}</span>
-                    <Ic d={I.chevDown} size={16} color="var(--text-muted)" style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 200ms ease" }} />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 // ── Cover Letter tab ───────────────────────────────────────────────────────────
 function CoverTab({ job, generating, onGenerate, onChange, onToast }: {
   job: Job; generating: boolean; onGenerate: () => void;
@@ -896,9 +766,8 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
   }
 
   const tabHasContent: Record<string, boolean> = {
-    resume: !!(job.tailored_resume || job.fit_analysis),
+    resume: !!job.tailored_resume,
     cover: !!job.cover_letter,
-    qualify: !!job.qualify_result,
     info: !!(job.notes || job.deadline || job.interview_date),
   };
 
@@ -960,11 +829,11 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
             <button onClick={() => runAction("resume")} disabled={!!busy} className="act ai">
               {busy === "resume" && busyJobId === job.id ? <><Spinner size={13} /> Tailoring…</> : <><Ic d={I.sparkles} size={14} /> Tailor Resume</>}
             </button>
-            <button onClick={() => runAction("qualify")} disabled={!!busy} className="act ai">
-              {busy === "qualify" && busyJobId === job.id ? <><Spinner size={13} /> Analyzing…</> : <><Ic d={I.target} size={14} /> Qualify</>}
-            </button>
             <button className="act" onClick={() => handleStatusChange("applied")}>
               <Ic d={I.checkCircle} size={14} /> Mark Applied
+            </button>
+            <button className="act" onClick={() => handleStatusChange("skipped")}>
+              <Ic d={I.xCircle} size={14} /> Skip
             </button>
             <StatusDropdown status={job.status} onChange={handleStatusChange} />
           </div>
@@ -1009,14 +878,9 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
 
             </div>
           )}
-          {tab === "qualify"  && <QualifyTab job={job} running={busy === "qualify" && busyJobId === job.id} onRun={() => runAction("qualify")} />}
           {tab === "resume"   && (
             <div style={{ display: "flex", flexDirection: "column" }}>
               <ResumeTab job={job} tailoring={busy === "resume" && busyJobId === job.id} startedAt={busyStartedAt} onTailor={() => runAction("resume")} onCancel={onCancel} onToast={onToast} onUpdate={onUpdate} />
-              <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 20, marginTop: 24 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 12 }}>Fit & Tips</div>
-                <FitTab job={job} running={busy === "fit" && busyJobId === job.id} onRun={() => runAction("fit")} />
-              </div>
             </div>
           )}
           {tab === "cover"    && <CoverTab job={job} generating={busy === "cover" && busyJobId === job.id} onGenerate={() => runAction("cover")} onChange={v => onUpdate({ cover_letter: v })} onToast={onToast} />}

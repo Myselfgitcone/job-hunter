@@ -60,35 +60,131 @@ function Donut({ data }: { data: Array<{ label: string; value: number; color: st
 }
 
 // ── Monthly bars (CSS animated) ───────────────────────────────────────────────
-function MonthlyBars({ data }: { data: Array<{ m: string; scraped: number; applied: number; tailored: number }> }) {
-  // ONE shared max across all 3 series, not one max per series. Per-series
-  // maxes made bars incomparable to each other: if June happened to be the
-  // peak month for Scraped(1500), Applied(18), AND Tailored(10), all three
-  // rendered near 100% height simultaneously — implying rough parity
-  // between numbers that are actually 100x apart. A single shared scale
-  // (plus sqrt, so Applied/Tailored don't vanish next to Scraped's volume)
-  // keeps bar height honestly meaningful both across months (same series)
-  // AND across series (same month).
-  const globalMax = Math.max(...data.flatMap(d => [d.scraped, d.applied, d.tailored]), 1);
-  const series: [string, string][] = [
-    ["scraped",  "#6366f1"],
-    ["applied",  "#3b82f6"],
-    ["tailored", "#7c3aed"],
+// ── Monthly trend lines (SVG) ─────────────────────────────────────────────────
+function MonthlyLines({ data }: { data: Array<{ m: string; scraped: number; applied: number; tailored: number }> }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const wrapRef = React.useRef<HTMLDivElement>(null);
+  const n = Math.max(data.length, 2);
+
+  // One shared max across all 3 series — same reasoning as the bar-chart fix:
+  // independent per-series scales would make lines cross/overlap in ways that
+  // imply false parity between numbers that are actually 100x apart.
+  const peak = Math.max(...data.flatMap(d => [d.scraped, d.applied, d.tailored]), 4);
+  const pow = Math.pow(10, Math.floor(Math.log10(peak)));
+  const niceMax = [1, 2, 5, 10].map(m => m * pow).find(m => m >= peak) || peak;
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(niceMax * f));
+
+  const W = 1000, H = 260;
+  const x = (i: number) => (i / (n - 1)) * W;
+  const y = (v: number) => 8 + (1 - v / niceMax) * (H - 16);
+
+  const smooth = (vals: number[]) => {
+    const P = vals.map((v, i) => [x(i), y(v)]);
+    if (P.length < 2) return "";
+    let d = `M ${P[0][0]} ${P[0][1]}`;
+    for (let i = 0; i < P.length - 1; i++) {
+      const p0 = P[Math.max(i - 1, 0)], p1 = P[i], p2 = P[i + 1], p3 = P[Math.min(i + 2, P.length - 1)];
+      const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
+      const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+      d += ` C ${c1[0]} ${c1[1]}, ${c2[0]} ${c2[1]}, ${p2[0]} ${p2[1]}`;
+    }
+    return d;
+  };
+  const series: [string, string, number][] = [
+    ["scraped",  "#6366f1", 3],
+    ["applied",  "#3b82f6", 2.5],
+    ["tailored", "#7c3aed", 2.5],
   ];
+
+  const onMove = (e: React.MouseEvent) => {
+    const box = wrapRef.current?.getBoundingClientRect();
+    if (!box) return;
+    const idx = Math.round(((e.clientX - box.left) / box.width) * (n - 1));
+    setHover(Math.min(Math.max(idx, 0), n - 1));
+  };
+
+  const hp = hover != null ? data[hover] : null;
+  const hoverLeftPct = hover != null ? (hover / (n - 1)) * 100 : 0;
+
   return (
-    <div className="mbars" style={{ overflow: "hidden" }}>
-      {data.map((d, i) => (
-        <div className="mbar-col" key={i}>
-          <div className="mbar-stack">
-            {series.map(([k, c]) => {
-              const raw = (d as any)[k];
-              const v = Math.sqrt(raw / globalMax);
-              return <div key={k} className="mbar" style={{ height: (raw > 0 ? Math.max(4, v * 100) : 0) + "%", background: c, "--d": (i * 60) + "ms" } as React.CSSProperties} title={`${k}: ${raw}`} />;
-            })}
-          </div>
-          <span className="mbar-label">{d.m}</span>
+    <div style={{ display: "flex", gap: 8 }}>
+      <div style={{ position: "relative", width: 34, height: H, flexShrink: 0 }}>
+        {ticks.map(t => (
+          <span key={t} style={{ position: "absolute", right: 4, top: `${(y(t) / H) * 100}%`, transform: "translateY(-50%)",
+            fontSize: 10.5, color: "var(--tx-3)", fontFamily: "var(--f-mono)" }}>{t}</span>
+        ))}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div ref={wrapRef} style={{ position: "relative" }} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+          <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: H, display: "block" }}>
+            {ticks.map(t => (
+              <line key={t} x1={0} x2={W} y1={y(t)} y2={y(t)} stroke="var(--line)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+            ))}
+            {series.map(([k, c, sw]) => (
+              <path key={k} d={smooth(data.map(d => (d as any)[k]))} fill="none" stroke={c} strokeWidth={sw}
+                strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+            ))}
+            {hover != null && (
+              <line x1={x(hover)} x2={x(hover)} y1={0} y2={H} stroke="var(--tx-3)" strokeWidth="1" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
+            )}
+            {series.map(([k, c]) => data.map((d, i) => (
+              <path key={`${k}${i}`} d={`M ${x(i)} ${y((d as any)[k])} l 0 0.01`} stroke={c}
+                strokeWidth={hover === i ? 11 : 7} strokeLinecap="round" vectorEffect="non-scaling-stroke" fill="none" />
+            )))}
+          </svg>
+          {hp && (
+            <div style={{ position: "absolute", top: 8, left: `${hoverLeftPct}%`,
+              transform: hoverLeftPct > 70 ? "translateX(calc(-100% - 12px))" : "translateX(12px)",
+              background: "var(--bg-surface)", border: "1px solid var(--line)", borderRadius: 10,
+              boxShadow: "0 8px 24px rgba(0,0,0,.12)", padding: "10px 14px", pointerEvents: "none", zIndex: 5, whiteSpace: "nowrap" }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--tx)", marginBottom: 6 }}>{hp.m}</div>
+              {series.map(([k, c]) => (
+                <div key={k} style={{ fontSize: 12, color: "var(--tx-2)", display: "flex", alignItems: "center", gap: 6, marginTop: 3, textTransform: "capitalize" }}>
+                  <i style={{ width: 9, height: 9, borderRadius: 3, background: c, display: "inline-block" }} />
+                  {k}: <b>{(hp as any)[k]}</b>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      ))}
+        <div style={{ display: "flex", marginTop: 8 }}>
+          {data.map((d, i) => (
+            <span key={i} style={{ flex: "1 1 0", minWidth: 0, display: "flex", justifyContent: "center" }}>
+              <span style={{ fontSize: 11.5, color: hover === i ? "var(--tx)" : "var(--tx-3)", fontFamily: "var(--f-mono)" }}>{d.m}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Daily activity bars — horizontally scrollable ─────────────────────────────
+function DailyBars({ points }: { points: Array<{ date: string; scraped: number; applied: number }> }) {
+  const globalMax = Math.max(...points.flatMap(d => [d.scraped, d.applied]), 1);
+  const COL_W = 34;
+  return (
+    <div style={{ overflowX: "auto", overflowY: "hidden", paddingBottom: 4 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", height: 220, gap: 6, minWidth: points.length * COL_W }}>
+        {points.map((d, i) => {
+          const sv = Math.sqrt(d.scraped / globalMax);
+          const av = Math.sqrt(d.applied / globalMax);
+          return (
+            <div key={i} title={`${_fmtDay(d.date)} — Scraped: ${d.scraped}, Applications: ${d.applied}`}
+              style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, width: COL_W - 6, height: "100%" }}>
+              <div style={{ flex: 1, display: "flex", alignItems: "flex-end", gap: 3, width: "100%", justifyContent: "center" }}>
+                <div style={{ width: 10, borderRadius: "3px 3px 0 0", background: "#7c3aed",
+                  height: (d.scraped > 0 ? Math.max(3, sv * 100) : 0) + "%", transition: "height .4s ease", transitionDelay: `${i * 15}ms` }} />
+                <div style={{ width: 10, borderRadius: "3px 3px 0 0", background: "#3b82f6",
+                  height: (d.applied > 0 ? Math.max(3, av * 100) : 0) + "%", transition: "height .4s ease", transitionDelay: `${i * 15}ms` }} />
+              </div>
+              <span style={{ fontSize: 10, color: "var(--tx-3)", fontFamily: "var(--f-mono)", marginTop: 6, whiteSpace: "nowrap" }}>
+                {d.date.slice(8, 10)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -573,6 +669,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
   const [usersData, setUsersData]     = useState<any[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [loading, setLoading]         = useState(true);
+  const [monthFilter, setMonthFilter] = useState<string>("all"); // "all" or "YYYY-MM"
 
   useEffect(() => {
     setLoading(true);
@@ -645,8 +742,20 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
   const timeline = firstDataIdx > 0 && fullTimeline.length - firstDataIdx >= 2
     ? fullTimeline.slice(firstDataIdx)
     : fullTimeline;
-  const activity = timeline.map((d: any) => d.scraped || 0);
-  const activityApplied = timeline.map((d: any) => d.applied || 0);
+
+  // Month dropdown — derived from whatever months actually appear in the raw
+  // (untrimmed) timeline, so picking a month shows that month's full data,
+  // not just whatever survived the "trim empty leading days" logic above.
+  const _MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const monthKeys = Array.from(new Set(fullTimeline.map((d: any) => (d.date || "").slice(0, 7)).filter(Boolean))) as string[];
+  monthKeys.sort();
+  const monthOptions = monthKeys.map(key => {
+    const [, mm] = key.split("-").map(Number);
+    return { key, label: `${_MONTH_NAMES[(mm || 1) - 1]} ${key.slice(0, 4)}` };
+  });
+  const displayTimeline = monthFilter === "all"
+    ? timeline
+    : fullTimeline.filter((d: any) => (d.date || "").startsWith(monthFilter));
 
   // Country/source bars
   const byCountry = (data.by_country || []).map(([country, count]: [string, number]) => ({ country, count }));
@@ -774,7 +883,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
               </div>
             </div>
             {monthly.length > 0
-              ? <MonthlyBars data={monthly} />
+              ? <MonthlyLines data={monthly} />
               : <div style={{ height: 150, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No data yet — scrape to populate</div>
             }
           </div>
@@ -797,19 +906,27 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
           </div>
         </div>
 
-        {/* Row 2: 30-Day Activity full width */}
+        {/* Row 2: Daily Activity full width */}
         <div style={{ marginBottom: 14 }}>
           <div className="chart-card">
             <div className="chart-head">
-              <span className="chart-title">30-Day Activity</span>
-              <div className="legend">
-                <span><i style={{ background: "#7c3aed" }} />Scraped</span>
-                <span><i style={{ background: "#3b82f6" }} />Applications</span>
+              <span className="chart-title">Daily Activity{monthFilter !== "all" ? ` — ${monthOptions.find(m => m.key === monthFilter)?.label || ""}` : ""}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div className="legend">
+                  <span><i style={{ background: "#7c3aed" }} />Scraped</span>
+                  <span><i style={{ background: "#3b82f6" }} />Applications</span>
+                </div>
+                <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)}
+                  style={{ fontSize: 12, padding: "5px 10px", borderRadius: 8, border: "1px solid var(--line)",
+                    background: "var(--bg-surface)", color: "var(--tx-2)", cursor: "pointer" }}>
+                  <option value="all">All months</option>
+                  {monthOptions.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                </select>
               </div>
             </div>
-            {activity.length > 1
-              ? <AreaChart scrape={activity} applied={activityApplied} points={timeline} />
-              : <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No activity data yet</div>
+            {displayTimeline.length > 0
+              ? <DailyBars points={displayTimeline} />
+              : <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No activity data for this period</div>
             }
           </div>
         </div>

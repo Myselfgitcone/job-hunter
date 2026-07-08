@@ -87,6 +87,7 @@ const I = {
   fileText:   '<path d="M14 3v5h5"/><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M8 13h8M8 17h6"/>',
   grip:       '<circle cx="9" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="18" r="1"/>',
   briefcase:  '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/>',
+  building:   '<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 21v-4h6v4"/><path d="M8 7h1M12 7h1M16 7h1M8 11h1M12 11h1M16 11h1M8 15h1M16 15h1"/>',
   folder:     '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   alert:      '<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/>',
   clip:       '<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
@@ -139,6 +140,21 @@ function StatusDropdown({ status, onChange }: { status: string; onChange: (s: st
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Section title — icon badge + label, shared by Job Info / Company Info / Job Description
+function SectionTitle({ icon, children }: { icon: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+      <div style={{
+        width: 26, height: 26, borderRadius: 8, background: "rgba(124,58,237,0.10)",
+        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+      }}>
+        <Ic d={icon} size={14} color="var(--violet)" />
+      </div>
+      <span style={{ fontSize: 13, fontWeight: 700, color: "var(--tx-1)", letterSpacing: "0.01em" }}>{children}</span>
     </div>
   );
 }
@@ -892,17 +908,17 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
               {/* Job Info + Company Info side by side */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
                 <div style={{ paddingRight: 32, borderRight: "1px solid var(--border-subtle)" }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.09em", color: "var(--tx-3)", marginBottom: 16 }}>Job Info</div>
+                  <SectionTitle icon={I.briefcase}>Job Info</SectionTitle>
                   <JobInfoTab job={job} />
                 </div>
                 <div style={{ paddingLeft: 32 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.09em", color: "var(--tx-3)", marginBottom: 16 }}>Company Info</div>
+                  <SectionTitle icon={I.building}>Company Info</SectionTitle>
                   <CompanyInfoTab job={job} />
                 </div>
               </div>
               {/* Job Description full width below */}
               <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 28, marginTop: 28 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.09em", color: "var(--tx-3)", marginBottom: 16 }}>Job Description</div>
+                <SectionTitle icon={I.fileText}>Job Description</SectionTitle>
                 <DescriptionTab job={job} onUpdate={onUpdate} onToast={onToast} />
               </div>
 

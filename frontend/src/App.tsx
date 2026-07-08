@@ -1013,7 +1013,7 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
 
   return (
     <div className="topbar" style={{ paddingLeft: sidebarCollapsed ? 18 : 20 }}>
-      <div style={{ display: "flex", alignItems: "center" }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
         {sidebarCollapsed && (
           <div style={{ display: "flex", alignItems: "center", width: 230, flexShrink: 0 }}>
             <button onClick={() => setSidebarCollapsed(false)} className="collapse-btn" title="Open sidebar" style={{ marginRight: 16 }}>

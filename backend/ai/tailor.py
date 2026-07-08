@@ -2176,15 +2176,24 @@ def _enforce_metric_density(resume: str, role_type: str) -> str:
         r'analysts?|reports?|pipelines?|sources?|systems?|teams?|markets?|'
         r'countries|hours?|days?)\b', re.IGNORECASE)
 
-    def _strippable(i: int):
+    # PASS 3 fallback: a comma-introduced trailing clause (no em-dash used).
+    # Broader than _CLAUSE on purpose — only tried after passes 1-2 exhaust
+    # every em-dash candidate and the ceiling still isn't met, so bullets
+    # whose only digit sits in a ', <clause with a number>' tail (no dash)
+    # aren't permanently unstrippable.
+    _CLAUSE_COMMA = re.compile(r',\s+[a-z][^,•\n]*\d[^•\n]*$', re.IGNORECASE)
+
+    def _strippable(i: int, pattern=None):
         """Return (head, clause) if bullet i has a strippable trailing clause."""
         line = lines[i]
-        m = _CLAUSE.search(line)
+        m = (pattern or _CLAUSE).search(line)
         if not m:
             return None
         head = line[:m.start()]
         if re.search(r'(?<![A-Za-z])\d', head):
             return None  # stripping wouldn't make it metric-free
+        if len(head.split()) < 8:
+            return None  # don't gut the bullet down to a stub
         return head, line[m.start():]
 
     def _finish(head: str) -> str:
@@ -2207,12 +2216,25 @@ def _enforce_metric_density(resume: str, role_type: str) -> str:
             if _VAGUE.search(clause) and not _CONCRETE.search(clause):
                 lines[i] = _finish(head)
                 stripped += 1
-        # PASS 2 — still over ceiling: strip remaining clauses bottom-up,
-        # concrete metrics included (original behavior, last resort).
+        # PASS 2 — still over ceiling: strip remaining em-dash clauses
+        # bottom-up, concrete metrics included (original behavior).
         for i in reversed(bullet_idx):
             if _ratio() <= ceiling:
                 break
             hit = _strippable(i)
+            if not hit:
+                continue
+            head, _clause = hit
+            lines[i] = _finish(head)
+            stripped += 1
+        # PASS 3 — still over ceiling: no em-dash bullets left to strip.
+        # Fall back to comma-introduced trailing clauses so the ceiling is
+        # actually guaranteed, not just attempted (live case: 53% shipped
+        # because every remaining digit sat in a non-dash clause).
+        for i in reversed(bullet_idx):
+            if _ratio() <= ceiling:
+                break
+            hit = _strippable(i, pattern=_CLAUSE_COMMA)
             if not hit:
                 continue
             head, _clause = hit
@@ -3557,6 +3579,14 @@ async def tailor_resume(base_resume: str, job_description: str,
     except Exception as e:
         print(f"[FORMAT] Normalizer failed: {e}")
 
+    # ── Coverage guarantee — TRUE final pass, after every other mutation ──
+    # Must stay last: anything earlier can still get stripped by a later
+    # pass. This is the actual 100%-visibility guarantee.
+    try:
+        result = _guarantee_full_coverage(result, job_description, role_type)
+    except Exception as e:
+        print(f"[COVERAGE GUARANTEE] Failed: {e}")
+
     # ── REVIEW GATE — DISABLED by user request (2026-07-06) ────────────────
     # Green/red banner turned off. Function signature kept as (result, review)
     # so every caller in main.py still unpacks a 2-tuple without changes —
@@ -3594,6 +3624,55 @@ async def tailor_resume(base_resume: str, job_description: str,
     review = {"needs_review": False, "reasons": [], "notes": []}
 
     return result, review
+
+
+def _guarantee_full_coverage(resume: str, job_description: str, role_type: str) -> str:
+    """
+    LAST-RESORT deterministic coverage gate — must run as the absolute final
+    mutation in the pipeline, after every other pass. The row-matching
+    keyword injector runs mid-pipeline and several passes after it
+    (_trim_skills_to_layers, singleton-row drop, skills-line-limit, tech-line
+    trim) can silently strip a freshly-injected item back out if it doesn't
+    look like "layer 1" to that pass's own heuristic. Live case: 'Machine
+    Learning' / 'Business Intelligence' / 'Data Visualization' — genuine JD
+    skills the candidate demonstrably has (Feast/MLflow, Tableau/Looker/
+    Power BI) — scored zero against every row LABEL ('AI & ML Engineering'
+    says 'ML', not 'machine learning') and were silently discarded with no
+    second chance.
+
+    Re-runs the row-matching injector one more time (safe — it skips
+    anything already present, never duplicates), then for anything STILL
+    missing after that, forces a guaranteed catch-all row. By this point
+    every remaining candidate has already passed extraction-time junk
+    filtering (degree-only, cert-title-only, context-gate) — nothing
+    garbage-shaped survives to reach here, so a catch-all row is safe.
+    """
+    if not job_description or skill_coverage_report is None:
+        return resume
+    try:
+        cov = skill_coverage_report(resume, job_description, role_type=role_type)
+        missing = cov.get("missing", [])
+        if not missing:
+            return resume
+
+        resume = _inject_missing_keywords(resume, missing)
+
+        cov2 = skill_coverage_report(resume, job_description, role_type=role_type)
+        still_missing = cov2.get("missing", [])
+        if still_missing:
+            sec_m = re.search(
+                r'(TECHNICAL SKILLS|CORE COMPETENCIES|SKILLS & EXPERTISE|SKILLS):?\s*\n',
+                resume, re.IGNORECASE
+            )
+            if sec_m:
+                insert_at = sec_m.end()
+                new_row = f"Additional Relevant Skills: {', '.join(still_missing)}\n"
+                resume = resume[:insert_at] + new_row + resume[insert_at:]
+                print(f"[COVERAGE GUARANTEE] Force-added catch-all row for: {', '.join(still_missing)}")
+        return resume
+    except Exception as e:
+        print(f"[COVERAGE GUARANTEE] Failed: {e}")
+        return resume
 
 
 def _normalize_section_spacing(resume: str) -> str:

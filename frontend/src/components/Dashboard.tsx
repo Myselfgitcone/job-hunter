@@ -76,8 +76,16 @@ function MonthlyBars({ data }: { data: Array<{ m: string; scraped: number; appli
         <div className="mbar-col" key={i}>
           <div className="mbar-stack">
             {series.map(([k, c, mx]) => {
-              const v = (d as any)[k] / mx;
-              return <div key={k} className="mbar" style={{ height: Math.max(2, v * 100) + "%", background: c, "--d": (i * 60) + "ms" } as React.CSSProperties} title={`${k}: ${(d as any)[k]}`} />;
+              const raw = (d as any)[k];
+              // Sqrt scale, not linear — with one huge month (Jun/Jul) and
+              // several small-but-different months (Feb-May), a linear
+              // ratio put every small month under the 2% floor, so they
+              // all rendered as the SAME height regardless of their real
+              // (different) values. Sqrt compresses the top and expands
+              // the bottom, so small-but-distinct values stay visually
+              // distinct instead of all pancaking to the floor.
+              const v = Math.sqrt(raw / mx);
+              return <div key={k} className="mbar" style={{ height: (raw > 0 ? Math.max(4, v * 100) : 0) + "%", background: c, "--d": (i * 60) + "ms" } as React.CSSProperties} title={`${k}: ${raw}`} />;
             })}
           </div>
           <span className="mbar-label">{d.m}</span>
@@ -613,11 +621,15 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
     { label: "AI Tailored",   value: tailored,     delta: "+this week", grad: ["#7c3aed","#a78bfa"] as [string,string] },
   ];
 
+  // Tailored is a flag a job can carry WHILE still being New/Applied/etc --
+  // not a mutually-exclusive status. It was previously listed as a 5th
+  // additive slice here, double-counting those jobs and inflating the
+  // donut's center total past the real Total Scraped count (2014 vs 1917).
+  // It's already shown correctly as its own "AI Tailored" stat card above.
   const statusData = [
     { label: "New",       value: newJobs,   color: "#3b82f6" },
     { label: "Applied",   value: applied,   color: "#10b981" },
     { label: "Interview", value: interview, color: "#f59e0b" },
-    { label: "Tailored",  value: tailored,  color: "#7c3aed" },
     { label: "Skipped",   value: skipped,   color: "#64748b" },
   ];
 

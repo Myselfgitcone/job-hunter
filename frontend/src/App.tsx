@@ -1320,14 +1320,9 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
   const [draft, setDraft] = React.useState({ source: [] as string[], score: "any" as string });
   const filterBtnRef = React.useRef<HTMLButtonElement>(null);
   const filterPanelRef = React.useRef<HTMLDivElement>(null);
-  const [nowTs, setNowTs] = React.useState(() => Date.now());
   const [infoTip, setInfoTip]         = React.useState(false);
   const [infoTipPos, setInfoTipPos]   = React.useState({ top: 0, right: 0 });
   const infoIconRef                   = React.useRef<HTMLSpanElement>(null);
-  React.useEffect(() => {
-    const id = setInterval(() => setNowTs(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
 
   React.useEffect(() => {
     if (open) setDraft({ source: filters.source, score: filters.score });
@@ -1540,20 +1535,8 @@ function FilterBar({ filters, setFilters, SOURCES, yearsCounts, visaFilter, setV
           document.body
         )}
       </div>
-      {/* Clock pills inline + ℹ tooltip for retention notice */}
-      <div style={{ display: "flex", gap: 5, alignItems: "center", marginLeft: 10, paddingLeft: 10, borderLeft: "1px solid var(--line)", flexShrink: 0 }}>
-        {([
-          { tz: "UTC", zone: "UTC",               bg: "rgba(127,119,221,0.13)", color: "#9d78f5" },
-          { tz: "EST", zone: "America/New_York",   bg: "rgba(29,158,117,0.13)",  color: "#1fba8a" },
-          { tz: "CST", zone: "America/Chicago",    bg: "rgba(186,117,23,0.13)",  color: "#d4940f" },
-        ] as const).map(({ tz, zone, bg, color }) => {
-          const t = new Date(nowTs).toLocaleTimeString("en-US", { timeZone: zone, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-          return (
-            <span key={tz} style={{ fontSize: 10, fontFamily: "monospace", background: bg, color, padding: "2px 7px", borderRadius: 20, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
-              {tz} {t}
-            </span>
-          );
-        })}
+      {/* ℹ tooltip for retention notice */}
+      <div style={{ display: "flex", alignItems: "center", marginLeft: 10, paddingLeft: 10, borderLeft: "1px solid var(--line)", flexShrink: 0 }}>
         <span
           ref={infoIconRef}
           style={{ flexShrink: 0, marginLeft: 2, cursor: "pointer", display: "inline-flex", alignItems: "center" }}

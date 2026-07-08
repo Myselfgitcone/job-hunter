@@ -415,6 +415,158 @@ function DescriptionTab({ job, onUpdate, onToast }: { job: Job; onUpdate: (p: Pa
   );
 }
 
+// ── Tailored resume — structured document view ──────────────────────────────
+// Parses the plain-text tailored resume into name/contact/sections so it
+// renders like an actual resume document instead of a monospace text dump.
+type ResumeJobBlock = { header: string; bullets: string[]; techLine: string };
+type ResumeSection  = { title: string; kind: "experience" | "skills" | "plain"; lines: string[]; jobs: ResumeJobBlock[] };
+type ParsedResume    = { name: string; contact: string; sections: ResumeSection[] };
+
+function _isAllCapsHeader(line: string): boolean {
+  const s = line.trim().replace(/:$/, "");
+  return s.length > 3 && s === s.toUpperCase() && /[A-Z]/.test(s) && !s.startsWith("•");
+}
+
+function parseResumeDoc(text: string): ParsedResume {
+  const lines = (text || "").replace(/\r\n/g, "\n").split("\n");
+  let i = 0;
+  while (i < lines.length && !lines[i].trim()) i++;
+  const name = (lines[i] || "").trim();
+  i++;
+  while (i < lines.length && !lines[i].trim()) i++;
+  const contact = (lines[i] && !_isAllCapsHeader(lines[i])) ? lines[i].trim() : "";
+  if (contact) i++;
+
+  const sections: ResumeSection[] = [];
+  let cur: ResumeSection | null = null;
+  let curJob: ResumeJobBlock | null = null;
+
+  const pushJob = () => { if (curJob) { cur!.jobs.push(curJob); curJob = null; } };
+  const closeSection = () => { pushJob(); if (cur) sections.push(cur); cur = null; };
+
+  for (; i < lines.length; i++) {
+    const raw = lines[i];
+    const s = raw.trim();
+    if (_isAllCapsHeader(s)) {
+      closeSection();
+      const title = s.replace(/:$/, "");
+      const kind: ResumeSection["kind"] =
+        title.includes("EXPERIENCE") ? "experience" :
+        title.includes("SKILL") ? "skills" : "plain";
+      cur = { title, kind, lines: [], jobs: [] };
+      continue;
+    }
+    if (!cur) continue; // stray lines before first header — ignore
+    if (cur.kind === "experience") {
+      if (!s) continue;
+      if (/^Technolog/i.test(s)) { if (curJob) curJob.techLine = s; continue; }
+      if (s.includes(" @ ") && !s.startsWith("•")) {
+        pushJob();
+        curJob = { header: s, bullets: [], techLine: "" };
+        continue;
+      }
+      if (curJob) {
+        if (s.startsWith("•")) curJob.bullets.push(s.slice(1).trim());
+        else curJob.header += " " + s; // wrapped header (e.g. location on its own line)
+      }
+      continue;
+    }
+    cur.lines.push(raw);
+  }
+  closeSection();
+
+  return { name, contact, sections };
+}
+
+const _RESUME_ACCENT = "#7c3aed";
+
+function ResumeSkillsBlock({ lines }: { lines: string[] }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {lines.filter(l => l.trim()).map((l, i) => {
+        const idx = l.indexOf(":");
+        const label = idx > -1 ? l.slice(0, idx).trim() : "";
+        const rest  = idx > -1 ? l.slice(idx + 1).trim() : l.trim();
+        const items = rest.split(",").map(x => x.trim()).filter(Boolean);
+        return (
+          <div key={i} style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+            {label && <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-primary)", minWidth: 170, flexShrink: 0 }}>{label}</span>}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+              {items.map((it, j) => (
+                <span key={j} style={{ fontSize: 11.5, padding: "2px 8px", borderRadius: 999, background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)", color: "var(--text-secondary)" }}>{it}</span>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ResumeJobBlockView({ job }: { job: ResumeJobBlock }) {
+  // Header shape: "Title @ Company | City, State          Date – Date"
+  const m = job.header.match(/^(.*?)\s+@\s+(.*?)(?:\s{2,}|\t)([A-Za-z].*(?:–|-|Present).*)?$/);
+  let left = job.header, dates = "";
+  if (m) {
+    dates = (m[3] || "").trim();
+    left = `${m[1].trim()} @ ${m[2].trim()}`;
+  }
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text-primary)" }}>{left}</span>
+        {dates && <span style={{ fontSize: 11.5, color: "var(--text-muted)", fontFamily: "var(--f-mono, monospace)", whiteSpace: "nowrap" }}>{dates}</span>}
+      </div>
+      <ul style={{ margin: "6px 0 0", padding: "0 0 0 18px", display: "flex", flexDirection: "column", gap: 5 }}>
+        {job.bullets.map((b, i) => (
+          <li key={i} style={{ fontSize: 12.5, lineHeight: 1.6, color: "var(--text-secondary)" }}>{b}</li>
+        ))}
+      </ul>
+      {job.techLine && (
+        <div style={{ marginTop: 7, fontSize: 11, color: "var(--text-muted)", lineHeight: 1.5 }}>
+          <span style={{ fontWeight: 600 }}>{job.techLine.split(":")[0]}:</span>{job.techLine.split(":").slice(1).join(":")}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResumeDocView({ text }: { text: string }) {
+  const parsed = parseResumeDoc(text);
+  if (!parsed.name) {
+    // Fallback — unparseable format, show raw text rather than an empty page
+    return <pre className="mono" style={{ fontSize: 11.5, lineHeight: 1.7, color: "var(--text-secondary)", whiteSpace: "pre-wrap" }}>{text}</pre>;
+  }
+  return (
+    <div style={{
+      background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 14,
+      padding: "32px 40px", width: "100%", boxSizing: "border-box",
+    }}>
+      <div style={{ textAlign: "center", marginBottom: 18 }}>
+        <div style={{ fontSize: 21, fontWeight: 800, color: "var(--text-primary)", letterSpacing: "0.01em" }}>{parsed.name}</div>
+        {parsed.contact && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>{parsed.contact}</div>}
+      </div>
+      {parsed.sections.map((sec, i) => (
+        <div key={i} style={{ marginBottom: 20 }}>
+          <div style={{
+            fontSize: 11.5, fontWeight: 700, color: _RESUME_ACCENT, letterSpacing: "0.08em",
+            paddingBottom: 5, marginBottom: 12, borderBottom: `2px solid ${_RESUME_ACCENT}33`,
+          }}>{sec.title}</div>
+          {sec.kind === "experience" && sec.jobs.map((jb, j) => <ResumeJobBlockView key={j} job={jb} />)}
+          {sec.kind === "skills" && <ResumeSkillsBlock lines={sec.lines} />}
+          {sec.kind === "plain" && (
+            <ul style={{ margin: 0, padding: sec.lines.some(l => l.trim().startsWith("•")) ? "0 0 0 18px" : 0, display: "flex", flexDirection: "column", gap: 5, listStyle: sec.lines.some(l => l.trim().startsWith("•")) ? "disc" : "none" }}>
+              {sec.lines.filter(l => l.trim()).map((l, k) => (
+                <li key={k} style={{ fontSize: 12.5, lineHeight: 1.65, color: "var(--text-secondary)" }}>{l.trim().replace(/^•\s*/, "")}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Resume tab ─────────────────────────────────────────────────────────────────
 function ResumeTab({ job, tailoring, startedAt, onTailor, onCancel, onToast, onUpdate }: {
   job: Job; tailoring: boolean; startedAt?: number | null; onTailor: () => void; onCancel: () => void;
@@ -504,7 +656,7 @@ function ResumeTab({ job, tailoring, startedAt, onTailor, onCancel, onToast, onU
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 980 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
       {disqualifiers.length > 0 && (
         <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
           <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#f87171", marginBottom: 2 }}>⚠ Qualify flags — review before applying</div>
@@ -529,7 +681,17 @@ function ResumeTab({ job, tailoring, startedAt, onTailor, onCancel, onToast, onU
       <div style={{ display: "flex", gap: 18 }}>
       <div style={{ flex: 1.5, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)" }}>Tailored Resume</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)" }}>Tailored Resume</div>
+            {typeof job.generation_seconds === "number" && (
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                Generated in {(() => {
+                  const m = Math.floor(job.generation_seconds / 60), s = job.generation_seconds % 60;
+                  return m > 0 ? `${m}min ${s}sec` : `${s}sec`;
+                })()}
+              </span>
+            )}
+          </div>
           {!editing ? (
             <button className="btn btn-ghost" style={{ fontSize: 11, height: 28, padding: "0 10px" }}
               onClick={() => { setDraft(job.tailored_resume || ""); setEditing(true); }}>
@@ -566,16 +728,10 @@ function ResumeTab({ job, tailoring, startedAt, onTailor, onCancel, onToast, onU
             style={{ flex: 1, width: "100%", background: "var(--bg-surface)", border: "1px solid var(--purple)", borderRadius: 12, padding: 18, fontSize: 11.5, lineHeight: 1.7, color: "var(--text-primary)", resize: "vertical", minHeight: 420, fontFamily: "var(--f-mono, monospace)", outline: "none", boxSizing: "border-box" }}
           />
         ) : (
-          <pre className="mono" style={{ flex: 1, background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, padding: 18, fontSize: 11.5, lineHeight: 1.7, color: "var(--text-secondary)", overflow: "auto", whiteSpace: "pre-wrap", maxHeight: 500 }}>{job.tailored_resume}</pre>
+          <div style={{ flex: 1, overflow: "auto", maxHeight: 620 }}>
+            <ResumeDocView text={job.tailored_resume || ""} />
+          </div>
         )}
-        <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-          <button className="btn btn-ghost" onClick={() => downloadFile(api.pdfUrl(job.id), "resume.pdf").catch(e => onToast(e.message, "error"))}><Ic d={I.download} size={14} /> PDF</button>
-          <button className="btn btn-ghost" onClick={() => downloadFile(api.docxUrl(job.id), "resume.docx").catch(e => onToast(e.message, "error"))}><Ic d={I.download} size={14} /> DOCX</button>
-          <button className="btn btn-ghost" onClick={() => { navigator.clipboard.writeText(editing ? draft : (job.tailored_resume || "")); onToast("Copied!", "success"); }}><Ic d={I.copy} size={14} /> Copy</button>
-          <button className="btn btn-subtle" onClick={() => downloadFile(api.savePackageUrl(job.id), "package.zip").catch(e => onToast(e.message, "error"))}>
-            <Ic d={I.folder} size={14} /> Save Package
-          </button>
-        </div>
 
         {/* ATS keywords */}
         {(job.ats_keywords_matched?.length > 0 || job.ats_keywords_missing?.length > 0) && (
@@ -618,14 +774,14 @@ function ResumeTab({ job, tailoring, startedAt, onTailor, onCancel, onToast, onU
             <span style={{ fontSize: 22, fontWeight: 700, color: "#4ade80" }}>+{after - before}</span>
             <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 4 }}>pts</span>
           </div>
-          {typeof job.generation_seconds === "number" && (
-            <div style={{ marginTop: 4, textAlign: "center", padding: "8px 0 0", borderTop: "1px solid var(--border-subtle)", fontSize: 11.5, color: "var(--text-muted)" }}>
-              Generated in {(() => {
-                const m = Math.floor(job.generation_seconds / 60), s = job.generation_seconds % 60;
-                return m > 0 ? `${m}min ${s}sec` : `${s}sec`;
-              })()}
-            </div>
-          )}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+          <button className="btn btn-ghost" onClick={() => downloadFile(api.pdfUrl(job.id), "resume.pdf").catch(e => onToast(e.message, "error"))}><Ic d={I.download} size={14} /> PDF</button>
+          <button className="btn btn-ghost" onClick={() => downloadFile(api.docxUrl(job.id), "resume.docx").catch(e => onToast(e.message, "error"))}><Ic d={I.download} size={14} /> DOCX</button>
+          <button className="btn btn-ghost" onClick={() => { navigator.clipboard.writeText(editing ? draft : (job.tailored_resume || "")); onToast("Copied!", "success"); }}><Ic d={I.copy} size={14} /> Copy</button>
+          <button className="btn btn-subtle" onClick={() => downloadFile(api.savePackageUrl(job.id), "package.zip").catch(e => onToast(e.message, "error"))}>
+            <Ic d={I.folder} size={14} /> Save Package
+          </button>
         </div>
       </div>
       </div>

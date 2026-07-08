@@ -181,12 +181,10 @@ function JobInfoTab({ job }: { job: Job }) {
   const fields: { label: string; value: string; title?: string; hide?: boolean }[] = [
     { label: "Posted",     value: postedLabel || "Unknown", title: postedTitle },
     { label: "Location",   value: job.location || "" },
-    { label: "Country",    value: job.country  || "" },
     { label: "Work Type",  value: job.remote || (job.location||"").toLowerCase().includes("remote") ? "Remote" : "Onsite" },
     { label: "Employment", value: job.employment_type || "", hide: !job.employment_type },
     { label: "Experience", value: job.experience_level ? `${job.experience_level} yrs` : "", hide: !job.experience_level },
     { label: "Salary",     value: job.salary || "", hide: !job.salary },
-    { label: "Source",     value: job.source  || "" },
     { label: "Expires",    value: job.job_expiry ? new Date(job.job_expiry).toLocaleDateString("en-US", { timeZone: "America/New_York" }) : "", hide: !job.job_expiry },
   ].filter(f => !f.hide && f.value);
 

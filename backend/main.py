@@ -30,6 +30,7 @@ from ai.ats import score_ats
 from ai.tailor import tailor_resume
 from ai.llm import set_fallback_notifier
 from ai.cover_letter import generate_cover_letter
+from resume_lint import clean_jd_html
 from pdf_gen import generate_pdf
 from docx_gen import generate_docx
 from jd_docx_gen import generate_jd_docx
@@ -2453,6 +2454,9 @@ async def fetch_jd(job_id: str, user_id: str = Depends(get_current_user_id)):
         if len(existing) > 100:
             full_desc = existing   # existing Adzuna API snippet is better
         # else leave the error message so user knows to paste manually
+    # Decode/strip (possibly double-encoded) HTML before storing + returning —
+    # harmless no-op on the plain error-message branch above.
+    full_desc = clean_jd_html(full_desc)
 
     async with SessionLocal() as db:
         job = await db.get(Job, job_id)
@@ -3357,7 +3361,13 @@ def _job_to_dict(job: Job) -> dict:
         "country": getattr(job, "country", "") or "",
         "url": job.url,
         "source": job.source,
-        "description": job.description,
+        # clean_jd_html decodes (possibly double-encoded) HTML entities and
+        # strips tags to readable plain text — some ATS feeds deliver raw/
+        # double-encoded HTML in the description field, which the frontend
+        # can't detect as HTML (no literal '<' chars) so it renders the
+        # escaped tag soup as visible text. Read-time fix: covers every
+        # already-scraped dirty row too, no DB migration needed.
+        "description": clean_jd_html(job.description or ""),
         "salary": job.salary,
         "remote": job.remote,
         "posted_at": job.posted_at,

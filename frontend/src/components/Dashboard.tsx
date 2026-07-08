@@ -76,20 +76,49 @@ function MonthlyBars({ data }: { data: Array<{ m: string; scraped: number; appli
     ["applied",  "#3b82f6"],
     ["tailored", "#7c3aed"],
   ];
+  // Level gridlines (1k, 2k, 3k...) — a nice step so there are 4-9 lines up
+  // to the peak. Positioned with the SAME sqrt scale the bars use, so a bar
+  // top always aligns with the line for its true value.
+  const STACK_H = 190;
+  const _rawStep = globalMax / 8;
+  const _mag = Math.pow(10, Math.floor(Math.log10(Math.max(_rawStep, 1))));
+  const step = [1, 2, 5, 10].map(m => m * _mag).find(s => globalMax / s <= 9) || _mag * 10;
+  const levels: number[] = [];
+  for (let v = step; v <= globalMax; v += step) levels.push(v);
+  const yPx = (v: number) => Math.sqrt(v / globalMax) * STACK_H;
+  const fmtLvl = (v: number) => v >= 1000 ? (v % 1000 === 0 ? v / 1000 + "k" : (v / 1000).toFixed(1) + "k") : String(v);
+
   return (
-    <div className="mbars" style={{ overflow: "hidden" }}>
-      {data.map((d, i) => (
-        <div className="mbar-col" key={i}>
-          <div className="mbar-stack">
-            {series.map(([k, c]) => {
-              const raw = (d as any)[k];
-              const v = Math.sqrt(raw / globalMax);
-              return <div key={k} className="mbar" style={{ height: (raw > 0 ? Math.max(4, v * 100) : 0) + "%", background: c, "--d": (i * 60) + "ms" } as React.CSSProperties} title={`${k}: ${raw}`} />;
-            })}
-          </div>
-          <span className="mbar-label">{d.m}</span>
+    <div>
+      <div style={{ position: "relative", height: STACK_H, marginLeft: 40 }}>
+        {levels.map(v => (
+          <div key={v} style={{ position: "absolute", left: 0, right: 0, bottom: yPx(v), borderTop: "1px solid var(--line)" }} />
+        ))}
+        {levels.map(v => (
+          <span key={"l" + v} style={{ position: "absolute", left: -40, width: 34, textAlign: "right", bottom: yPx(v) - 7,
+            fontSize: 10, color: "var(--tx-3)", fontFamily: "var(--f-mono)" }}>{fmtLvl(v)}</span>
+        ))}
+        <div className="mbars" style={{ position: "absolute", inset: 0, height: STACK_H, overflow: "hidden" }}>
+          {data.map((d, i) => (
+            <div className="mbar-col" key={i} style={{ gap: 0 }}>
+              <div className="mbar-stack">
+                {series.map(([k, c]) => {
+                  const raw = (d as any)[k];
+                  const v = Math.sqrt(raw / globalMax);
+                  return <div key={k} className="mbar" style={{ height: (raw > 0 ? Math.max(4, v * 100) : 0) + "%", background: c, "--d": (i * 60) + "ms" } as React.CSSProperties} title={`${k}: ${raw}`} />;
+                })}
+              </div>
+            </div>
+          ))}
         </div>
-      ))}
+      </div>
+      <div className="mbars" style={{ height: "auto", marginLeft: 40, marginTop: 8 }}>
+        {data.map((d, i) => (
+          <div className="mbar-col" key={i} style={{ height: "auto" }}>
+            <span className="mbar-label">{d.m}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

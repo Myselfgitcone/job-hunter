@@ -701,12 +701,14 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
   const selectedUser = selectedUserId ? usersData.find((u: any) => u.user?.id === selectedUserId) : null;
 
   const visibleTailored = selectedUser
-    ? (selectedUser.tailored || []).map((j: any) => ({
-        id: j.id, company: j.company, title: j.title, location: j.location,
-        exp: j.experience_level,
-        when: timeAgo(j.tailored_at), whenFull: _fmtFullDate(j.tailored_at),
-        source: j.source as "job" | "quick",
-      }))
+    ? (selectedUser.tailored || [])
+        .map((j: any) => ({
+          id: j.id, company: j.company, title: j.title, location: j.location,
+          exp: j.experience_level,
+          when: timeAgo(j.tailored_at), whenFull: _fmtFullDate(j.tailored_at),
+          source: j.source as "job" | "quick", tailored_at: j.tailored_at || "",
+        }))
+        .sort((a: any, b: any) => (b.tailored_at > a.tailored_at ? 1 : -1))
     : tailoredJobs;
 
   const visibleApplied = selectedUser

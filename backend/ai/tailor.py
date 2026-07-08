@@ -2,6 +2,7 @@ import re
 from ai.llm import chat
 from resume_lint import lint_resume, detect_role_type, detect_domain_leak, BULLET_BUDGETS, BULLET_MINIMUMS, SUMMARY_EXACT
 from resume_lint import detect_skill_scatter, detect_cross_job_metric_theft
+from resume_lint import _is_job_header, _is_section_header
 from resume_lint import TECH, IB, FINANCE, CYBER, HEALTHCARE, CONSULTING, GENERAL
 from resume_lint import user_roles_to_role_type
 
@@ -2910,6 +2911,133 @@ async def review_resume(tailored: str, job_description: str,
     return stripped, audit_report
 
 
+# ── Deterministic auto-fixes — applied before any AI retry ───────────────────
+# These issue types are pure text surgery (word swap, token deletion) — no
+# content invention needed, so there's no reason to burn a full-resume AI
+# call on them. Cuts most retry cycles to zero extra latency/cost; only
+# genuinely semantic issues (needs rewriting, not just removing/swapping)
+# still reach the AI retry below.
+def _job_index_per_line(lines: list[str]) -> list[int]:
+    """0-based job-block index for each line (-1 if outside WORK EXPERIENCE),
+    using the same header/section detection resume_lint's job-block splitter
+    uses — kept line-addressable here so fixes can edit in place."""
+    out: list[int] = []
+    section: str | None = None
+    in_exp = False
+    job_idx = -1
+    for raw in lines:
+        s = raw.strip()
+        if _is_section_header(s):
+            section = s.rstrip(":").upper()
+            in_exp = "EXPERIENCE" in section
+            job_idx = -1
+            out.append(-1)
+            continue
+        if in_exp and _is_job_header(s, section):
+            job_idx += 1
+        out.append(job_idx if in_exp else -1)
+    return out
+
+
+def _strip_token(line: str, token: str) -> str:
+    pat = re.compile(r'(?<![A-Za-z0-9])' + re.escape(token) + r'(?![A-Za-z0-9])', re.IGNORECASE)
+    if not pat.search(line):
+        return line
+    new = pat.sub("", line)
+    new = re.sub(r'\s*,\s*,', ',', new)          # "X, , Y" -> "X, Y"
+    new = re.sub(r':\s*,\s*', ': ', new)         # "Used: , X" -> "Used: X"
+    new = re.sub(r',\s*$', '', new)              # trailing dangling comma
+    new = re.sub(r'[ \t]{2,}', ' ', new)
+    return new.rstrip()
+
+
+def _remove_token_in_scope(lines: list[str], drop: set, token: str, scope) -> None:
+    """Within lines where scope(index) is True: a full-sentence bullet gets
+    dropped entirely (stripping one word out of a sentence leaves grammar
+    debris — 'alongside .' — so the safer move is removing the whole claim);
+    a comma-list line (Technologies Used, skills row) gets the token stripped
+    in place, since removing one item from a list is always grammatical.
+    Mutates `lines` in place for strips; `drop` collects bullet line indices
+    for the caller to remove in one pass at the end."""
+    pat = re.compile(r'(?<![A-Za-z0-9])' + re.escape(token) + r'(?![A-Za-z0-9])', re.IGNORECASE)
+    for k, ln in enumerate(lines):
+        if not scope(k) or not pat.search(ln):
+            continue
+        if ln.strip().startswith("•"):
+            drop.add(k)
+        else:
+            lines[k] = _strip_token(ln, token)
+
+
+def _apply_deterministic_fixes(raw: str, issues: list[str], base_resume: str) -> tuple[str, list[str]]:
+    lines = raw.split("\n")
+    job_of = _job_index_per_line(lines)
+    resolved: set = set()
+    drop: set = set()
+
+    for iss in issues:
+        m_tok = re.search(r"'([^']+)'", iss)
+        token = m_tok.group(1) if m_tok else None
+
+        if iss.startswith("[BANNED WORD]"):
+            def _swap(m: "re.Match") -> str:
+                repl = "used" if m.group(1).lower() == "ed" else "using"
+                return repl.capitalize() if m.group(0)[0].isupper() else repl
+            new_lines = []
+            changed = False
+            for ln in lines:
+                repl = re.sub(r'\butiliz(ed|ing)\b', _swap, ln, flags=re.IGNORECASE)
+                repl = re.sub(r'\bleverag(ed|ing)\b', _swap, repl, flags=re.IGNORECASE)
+                if repl != ln:
+                    changed = True
+                new_lines.append(repl)
+            if changed:
+                lines = new_lines
+                resolved.add(iss)
+            continue
+
+        if iss.startswith("[FABRICATED TOOL]") and token:
+            _remove_token_in_scope(lines, drop, token, lambda k: True)
+            resolved.add(iss)
+            continue
+
+        if iss.startswith("[JOB TOOL MISMATCH]") and token:
+            m_job = re.search(r'job #(\d+)', iss)
+            if m_job:
+                wrong_job = int(m_job.group(1)) - 1
+                _remove_token_in_scope(lines, drop, token, lambda k: job_of[k] == wrong_job)
+                resolved.add(iss)
+            continue
+
+        if iss.startswith("[SKILL SCATTER]") and token:
+            hit_jobs = sorted(set(
+                job_of[k] for k, ln in enumerate(lines)
+                if job_of[k] >= 0 and re.search(r'(?<![A-Za-z0-9])' + re.escape(token) + r'(?![A-Za-z0-9])', ln, re.IGNORECASE)
+            ))
+            if len(hit_jobs) > 1:
+                keep = hit_jobs[0]
+                _remove_token_in_scope(lines, drop, token, lambda k: job_of[k] >= 0 and job_of[k] != keep)
+            resolved.add(iss)
+            continue
+
+        if iss.startswith("[METRIC RELOCATION]") and token:
+            m_jobs = re.findall(r'job #(\d+)', iss)
+            if len(m_jobs) > 1:
+                wrong_job = int(m_jobs[1]) - 1
+                tok_lo = token.rstrip("%").lower()
+                for k, ln in enumerate(lines):
+                    if job_of[k] == wrong_job and ln.strip().startswith("•") and tok_lo in ln.lower():
+                        drop.add(k)
+                resolved.add(iss)
+            continue
+
+    if drop:
+        lines = [ln for k, ln in enumerate(lines) if k not in drop]
+
+    remaining = [i for i in issues if i not in resolved]
+    return "\n".join(lines), remaining
+
+
 # ── Per-issue retry rules ─────────────────────────────────────────────────────
 _RETRY_RULES = {
     "[MISSING CONTACT]":       "Line 2 must be 'phone | email' — add the contact line with real phone and email.",
@@ -3239,6 +3367,11 @@ async def tailor_resume(base_resume: str, job_description: str,
 
     for attempt in range(3):
         issues = _retryable(_all_lint_issues(raw), attempt)
+
+        # Deterministic fixes (word swaps, token deletion) before any AI call —
+        # if this clears every issue, the loop's own "if not issues: break"
+        # below fires and skips the retry entirely.
+        raw, issues = _apply_deterministic_fixes(raw, issues, base_resume)
 
         if len(issues) <= _best_issue_count:
             _best_issue_count = len(issues)

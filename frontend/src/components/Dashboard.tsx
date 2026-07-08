@@ -159,36 +159,6 @@ function MonthlyLines({ data }: { data: Array<{ m: string; scraped: number; appl
   );
 }
 
-// ── Daily activity bars — horizontally scrollable ─────────────────────────────
-function DailyBars({ points }: { points: Array<{ date: string; scraped: number; applied: number }> }) {
-  const globalMax = Math.max(...points.flatMap(d => [d.scraped, d.applied]), 1);
-  const COL_W = 34;
-  return (
-    <div style={{ overflowX: "auto", overflowY: "hidden", paddingBottom: 4 }}>
-      <div style={{ display: "flex", alignItems: "flex-end", height: 220, gap: 6, minWidth: points.length * COL_W }}>
-        {points.map((d, i) => {
-          const sv = Math.sqrt(d.scraped / globalMax);
-          const av = Math.sqrt(d.applied / globalMax);
-          return (
-            <div key={i} title={`${_fmtDay(d.date)} — Scraped: ${d.scraped}, Applications: ${d.applied}`}
-              style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, width: COL_W - 6, height: "100%" }}>
-              <div style={{ flex: 1, display: "flex", alignItems: "flex-end", gap: 3, width: "100%", justifyContent: "center" }}>
-                <div style={{ width: 10, borderRadius: "3px 3px 0 0", background: "#7c3aed",
-                  height: (d.scraped > 0 ? Math.max(3, sv * 100) : 0) + "%", transition: "height .4s ease", transitionDelay: `${i * 15}ms` }} />
-                <div style={{ width: 10, borderRadius: "3px 3px 0 0", background: "#3b82f6",
-                  height: (d.applied > 0 ? Math.max(3, av * 100) : 0) + "%", transition: "height .4s ease", transitionDelay: `${i * 15}ms` }} />
-              </div>
-              <span style={{ fontSize: 10, color: "var(--tx-3)", fontFamily: "var(--f-mono)", marginTop: 6, whiteSpace: "nowrap" }}>
-                {d.date.slice(8, 10)}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 // ── Area chart (SVG) ─────────────────────────────────────────────────────────
 const _MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 function _fmtDay(iso: string): string {
@@ -925,7 +895,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
               </div>
             </div>
             {displayTimeline.length > 0
-              ? <DailyBars points={displayTimeline} />
+              ? <AreaChart scrape={displayTimeline.map((d: any) => d.scraped || 0)} applied={displayTimeline.map((d: any) => d.applied || 0)} points={displayTimeline} />
               : <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No activity data for this period</div>
             }
           </div>

@@ -572,7 +572,9 @@ export default function App() {
         toast("Qualification complete", "success");
       } else if (action === "resume") {
         abortRef.current = new AbortController();
+        const genStart = Date.now();
         const r = await api.tailor(selectedJob.id, abortRef.current.signal);
+        const genSeconds = Math.round((Date.now() - genStart) / 1000);
         updateJob(selectedJob.id, {
           tailored_resume: r.tailored_resume,
           ats_score_before: r.ats_before?.score ?? null,
@@ -581,6 +583,7 @@ export default function App() {
           ats_keywords_missing: r.ats_after?.missing ?? [],
           needs_review: r.needs_review ?? false,
           review_reasons: r.review_reasons ?? [],
+          generation_seconds: genSeconds,
         });
         // Review-gate-aware toast disabled alongside the banner (2026-07-06) —
         // backend always returns needs_review=false now, so this is a plain toast.

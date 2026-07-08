@@ -694,6 +694,14 @@ function ResumeTab({ job, tailoring, startedAt, onTailor, onCancel, onToast, onU
             <span style={{ fontSize: 22, fontWeight: 700, color: "#4ade80" }}>+{after - before}</span>
             <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 4 }}>pts</span>
           </div>
+          {typeof job.generation_seconds === "number" && (
+            <div style={{ marginTop: 4, textAlign: "center", padding: "8px 0 0", borderTop: "1px solid var(--border-subtle)", fontSize: 11.5, color: "var(--text-muted)" }}>
+              Generated in {(() => {
+                const m = Math.floor(job.generation_seconds / 60), s = job.generation_seconds % 60;
+                return m > 0 ? `${m}min ${s}sec` : `${s}sec`;
+              })()}
+            </div>
+          )}
         </div>
       </div>
       </div>

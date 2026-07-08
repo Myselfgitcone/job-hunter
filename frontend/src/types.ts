@@ -79,6 +79,10 @@ export interface Job {
   needs_review?: boolean;
   review_reasons?: string[];
   review_notes?: string[];
+  // Client-side only — how long the last tailor run took, in seconds.
+  // Not persisted server-side; survives refreshJob() because that merge
+  // only overwrites keys present in the server response.
+  generation_seconds?: number;
   // FJ enrichment
   visa_sponsorship: boolean | null;
   experience_level: string;

@@ -35,7 +35,9 @@ BASE_EXPIRED_JB  = "https://data.fantastic.jobs/v1/expired-jb"
 ACTIVE_FEEDS = [BASE_ATS]
 LOCATIONS_FOR_JB = {"India"}  # only run JB feed for these locations (when JB active)
 
-LOCATIONS = ["United States", "India"]
+# India removed 2026-07-08 per user — USA-only hunting; halves job-credit burn.
+# Re-enable: LOCATIONS = ["United States", "India"]
+LOCATIONS = ["United States"]
 
 # Pagination constants (module-level so fetch_modified can use them)
 PAGE_SIZE = 100   # FJ recommends 100-1000; bigger pages = fewer request credits

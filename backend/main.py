@@ -3224,6 +3224,18 @@ async def get_analytics(user_id: str = Depends(get_current_user_id),
         if not is_admin_analytics and user_roles_analytics:
             rows = [r for r in rows if _title_matches_roles(r[4] or "", user_roles_analytics)]
 
+    # Dedupe by job id — user_jobs has no unique (user_id, job_id) constraint,
+    # so duplicate overlay rows multiply the same job through the outerjoin and
+    # inflate every dashboard count (live: jobs list said 4,853 real jobs while
+    # this endpoint reported 11,444). Keep the row with user activity (status/
+    # applied/tailored) so those counts stay accurate.
+    _by_job: dict = {}
+    for r in rows:
+        prev = _by_job.get(r[0])
+        if prev is None or (r[8] or r[9] or r[10]):
+            _by_job[r[0]] = r
+    rows = list(_by_job.values())
+
     total = len(rows)
     by_status  = defaultdict(int)
     by_country = defaultdict(int)

@@ -614,6 +614,20 @@ async def startup():
     except Exception as e:
         print(f"[Startup] DB migration error: {e}")
 
+    # India purge (2026-07-08, per user): USA-only hunting now. Scraping India
+    # is already disabled (fantasticjobs LOCATIONS); this clears existing rows
+    # plus their user_jobs overlays. Idempotent — deletes 0 rows once clean.
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text(
+                "DELETE FROM user_jobs WHERE job_id IN (SELECT id FROM jobs WHERE country = 'India')"
+            ))
+            res = await conn.execute(text("DELETE FROM jobs WHERE country = 'India'"))
+        if getattr(res, "rowcount", 0):
+            print(f"[Startup] India purge: deleted {res.rowcount} India jobs")
+    except Exception as e:
+        print(f"[Startup] India purge skipped: {e}")
+
     # One-time: utility model Gemini → Haiku (Google 503 storms disrupted
     # user-facing tailor passes; Haiku via Anthropic is reliable, Gemini
     # stays for background bulk passes like qualify/exp-sweep)

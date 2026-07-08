@@ -241,7 +241,6 @@ function CompanyInfoTab({ job }: { job: Job }) {
   let careerDomain = "";
   try { careerDomain = new URL(job.url).hostname.replace("www.", ""); } catch {}
 
-  const logoSrc = job.logo_url || "";
   const funding = job.company_funding && job.company_funding > 0
     ? job.company_funding >= 1_000_000_000
       ? `$${(job.company_funding / 1_000_000_000).toFixed(1)}B`
@@ -249,6 +248,7 @@ function CompanyInfoTab({ job }: { job: Job }) {
     : "";
 
   const companyFields: { label: string; value: string; link?: boolean; hide?: boolean }[] = [
+    { label: "Industry",     value: job.company_industry || "", hide: !job.company_industry },
     { label: "Headquarters", value: job.company_hq      || "", hide: !job.company_hq },
     { label: "Company Size", value: job.company_size     || "", hide: !job.company_size },
     { label: "Funding",      value: funding,                    hide: !funding },
@@ -275,14 +275,6 @@ function CompanyInfoTab({ job }: { job: Job }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 2 }}>
 
-      {/* Company hero — name removed, already shown in the page header above */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        {logoSrc
-          ? <img src={logoSrc} alt={job.company} style={{ width: 40, height: 40, borderRadius: 10, objectFit: "contain", background: "var(--bg-2)", padding: 5, flexShrink: 0 }} />
-          : <CompanyLogo url={job.url} company={job.company} size={40} />
-        }
-        {job.company_industry && <span style={{ fontSize: 12.5, color: "var(--tx-3)", fontWeight: 500 }}>{job.company_industry}</span>}
-      </div>
 
       {/* Fields — all in one line, equal width, no wrap */}
       <div style={{ display: "flex", flexWrap: "nowrap", gap: 8 }}>

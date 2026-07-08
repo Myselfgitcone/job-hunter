@@ -145,18 +145,20 @@ function StatusDropdown({ status, onChange }: { status: string; onChange: (s: st
 }
 
 // ── Section title — icon badge + label, shared by Job Info / Company Info / Job Description
-function SectionTitle({ icon, children }: { icon: string; children: React.ReactNode }) {
+function SectionTitle({ icon, children, color = "#7c3aed", bg = "rgba(124,58,237,0.10)" }: {
+  icon: string; children: React.ReactNode; color?: string; bg?: string;
+}) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
       <div style={{
-        width: 22, height: 22, borderRadius: 7, background: "rgba(124,58,237,0.10)",
+        width: 22, height: 22, borderRadius: 7, background: bg,
         display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
       }}>
-        <Ic d={icon} size={12} color="var(--violet)" />
+        <Ic d={icon} size={12} color={color} />
       </div>
       <span style={{
-        fontSize: 13.5, fontWeight: 700, color: "var(--violet)", letterSpacing: "0.01em",
-        background: "rgba(124,58,237,0.10)", padding: "3px 10px", borderRadius: 6,
+        fontSize: 13.5, fontWeight: 700, color, letterSpacing: "0.01em",
+        background: bg, padding: "3px 10px", borderRadius: 6,
       }}>{children}</span>
     </div>
   );
@@ -888,15 +890,15 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
                   Side-by-side previously left a ragged gap under Job Info whenever
                   Company Info ran taller (e.g. a long Benefits list). */}
               <div>
-                <SectionTitle icon={I.briefcase}>Job Info</SectionTitle>
+                <SectionTitle icon={I.briefcase} color="#3b82f6" bg="rgba(59,130,246,0.10)">Job Info</SectionTitle>
                 <JobInfoTab job={job} />
               </div>
               <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 18, marginTop: 18 }}>
-                <SectionTitle icon={I.building}>Company Info</SectionTitle>
+                <SectionTitle icon={I.building} color="#d97706" bg="rgba(217,119,6,0.10)">Company Info</SectionTitle>
                 <CompanyInfoTab job={job} />
               </div>
               <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 18, marginTop: 18 }}>
-                <SectionTitle icon={I.fileText}>Job Description</SectionTitle>
+                <SectionTitle icon={I.fileText} color="#10b981" bg="rgba(16,185,129,0.10)">Job Description</SectionTitle>
                 <DescriptionTab job={job} onUpdate={onUpdate} onToast={onToast} />
               </div>
 

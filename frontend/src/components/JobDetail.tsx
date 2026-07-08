@@ -221,9 +221,9 @@ function JobInfoTab({ job }: { job: Job }) {
         </div>
       </div>
 
-      {/* Fields — 4 per row (full-width panel now), uniform tile height via ellipsis truncation */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
-        {fields.map(f => <Field key={f.label} label={f.label} value={f.value} />)}
+      {/* Fields — all in one line, equal width, no wrap */}
+      <div style={{ display: "flex", flexWrap: "nowrap", gap: 10 }}>
+        {fields.map(f => <div key={f.label} style={{ flex: "1 1 0", minWidth: 0 }}><Field label={f.label} value={f.value} /></div>)}
       </div>
 
       {/* Apply link — small pill button, matches the tile aesthetic above */}
@@ -289,24 +289,10 @@ function CompanyInfoTab({ job }: { job: Job }) {
         </div>
       </div>
 
-      {/* Fields — 4 per row (full-width panel now) */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
-        {companyFields.map(f => <Field key={f.label} label={f.label} value={f.value} link={f.link} />)}
+      {/* Fields — all in one line, equal width, no wrap */}
+      <div style={{ display: "flex", flexWrap: "nowrap", gap: 10 }}>
+        {companyFields.map(f => <div key={f.label} style={{ flex: "1 1 0", minWidth: 0 }}><Field label={f.label} value={f.value} link={f.link} /></div>)}
       </div>
-
-      {/* Benefits */}
-      {job.benefits && job.benefits.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.07em", color: "var(--tx-3)" }}>Benefits</span>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {job.benefits.map((b, i) => (
-              <span key={i} style={{ fontSize: 12.5, padding: "5px 12px", borderRadius: 20,
-                background: "rgba(124,58,237,0.07)", color: "var(--violet)", fontWeight: 500,
-                border: "1px solid rgba(124,58,237,0.15)" }}>{b}</span>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

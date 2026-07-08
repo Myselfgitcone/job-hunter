@@ -167,42 +167,55 @@ function JobInfoTab({ job }: { job: Job }) {
     { label: "Expires",    value: job.job_expiry ? new Date(job.job_expiry).toLocaleDateString("en-US", { timeZone: "America/New_York" }) : "", hide: !job.job_expiry },
   ].filter(f => !f.hide && f.value);
 
-  // Helper: one field row — label muted above, value below
+  // Helper: one field tile — bordered chip, label muted above, value below.
+  // Fixed single-line value with ellipsis + title tooltip keeps every tile
+  // the same height regardless of content length ("Cupertino, California,
+  // United States" no longer wraps and breaks row alignment).
   const Field = ({ label, value }: { label: string; value: string }) => (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.07em", color: "var(--tx-3)" }}>{label}</span>
-      <span style={{ fontSize: 14, color: "var(--tx-1)", fontWeight: 500 }}>{value}</span>
+    <div style={{
+      display: "flex", flexDirection: "column", gap: 4, minWidth: 0,
+      background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)",
+      borderRadius: 10, padding: "9px 12px",
+    }}>
+      <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.06em", color: "var(--tx-3)" }}>{label}</span>
+      <span
+        title={value}
+        style={{
+          fontSize: 13.5, color: "var(--tx-1)", fontWeight: 600, lineHeight: 1.3,
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        }}
+      >{value}</span>
     </div>
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24, paddingTop: 6 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 22, paddingTop: 6 }}>
 
-      {/* Posted */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.07em", color: "var(--tx-3)" }}>Posted</span>
-        <span style={{ fontSize: 26, fontWeight: 700, color: "var(--tx-1)", lineHeight: 1.1 }}>{postedLabel || "Unknown"}</span>
-        {showOriginal && <span style={{ fontSize: 11.5, color: "var(--tx-3)", marginTop: 2 }}>Originally {hcOrigLabel} (HC estimate)</span>}
+      {/* Posted + Visa on one line — tighter header block */}
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.07em", color: "var(--tx-3)" }}>Posted</span>
+          <span style={{ fontSize: 24, fontWeight: 700, color: "var(--tx-1)", lineHeight: 1.1 }}>{postedLabel || "Unknown"}</span>
+          {showOriginal && <span style={{ fontSize: 11.5, color: "var(--tx-3)", marginTop: 2 }}>Originally {hcOrigLabel} (HC estimate)</span>}
+        </div>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "5px 12px", borderRadius: 20,
+          background: visaBg, flexShrink: 0, marginBottom: 2 }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: visaClr, flexShrink: 0 }} />
+          <span style={{ fontSize: 12.5, fontWeight: 500, color: visaClr }}>{visaLabel}</span>
+        </div>
       </div>
 
-      {/* Visa badge */}
-      <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "5px 12px", borderRadius: 20,
-        background: visaBg, alignSelf: "flex-start" }}>
-        <span style={{ width: 7, height: 7, borderRadius: "50%", background: visaClr, flexShrink: 0 }} />
-        <span style={{ fontSize: 12.5, fontWeight: 500, color: visaClr }}>{visaLabel}</span>
-        <span style={{ fontSize: 11, color: "var(--tx-3)", marginLeft: 2 }}>· Visa</span>
-      </div>
-
-      {/* Fields — 3 per row, saves vertical space for the description below */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", columnGap: 16, rowGap: 18 }}>
+      {/* Fields — 3 per row, uniform tile height via ellipsis truncation */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
         {fields.map(f => <Field key={f.label} label={f.label} value={f.value} />)}
       </div>
 
-      {/* Apply link — clean button, not raw URL */}
+      {/* Apply link — small pill button, matches the tile aesthetic above */}
       <a href={job.url} target="_blank" rel="noreferrer"
         style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600,
-          color: "var(--accent)", textDecoration: "none", padding: "7px 0",
-          borderBottom: "1px solid var(--border-subtle)", width: "fit-content" }}>
+          color: "var(--accent)", textDecoration: "none", padding: "8px 14px",
+          background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)",
+          borderRadius: 20, width: "fit-content" }}>
         <Ic d={I.link} size={13} /> Open Application
       </a>
     </div>
@@ -223,19 +236,24 @@ function CompanyInfoTab({ job }: { job: Job }) {
 
   const companyFields: { label: string; value: string; link?: boolean; hide?: boolean }[] = [
     { label: "Headquarters", value: job.company_hq      || "", hide: !job.company_hq },
-    { label: "Industry",     value: job.company_industry || "", hide: !job.company_industry },
     { label: "Company Size", value: job.company_size     || "", hide: !job.company_size },
     { label: "Funding",      value: funding,                    hide: !funding },
     { label: "ATS Platform", value: job.source },
     { label: "Career Page",  value: careerDomain, link: true,   hide: !careerDomain },
   ].filter(f => !f.hide && f.value);
 
+  // Matches JobInfoTab's tile treatment — bordered chip, single-line
+  // ellipsis truncation so a long value never wraps and breaks row height.
   const Field = ({ label, value, link }: { label: string; value: string; link?: boolean }) => (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.07em", color: "var(--tx-3)" }}>{label}</span>
+    <div style={{
+      display: "flex", flexDirection: "column", gap: 4, minWidth: 0,
+      background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)",
+      borderRadius: 10, padding: "9px 12px",
+    }}>
+      <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.06em", color: "var(--tx-3)" }}>{label}</span>
       {link
-        ? <a href={job.url} target="_blank" rel="noreferrer" style={{ fontSize: 14, color: "var(--accent)", textDecoration: "none", fontWeight: 500 }}>{value}</a>
-        : <span style={{ fontSize: 14, color: "var(--tx-1)", fontWeight: 500 }}>{value}</span>
+        ? <a href={job.url} target="_blank" rel="noreferrer" title={value} style={{ fontSize: 13.5, color: "var(--accent)", textDecoration: "none", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</a>
+        : <span title={value} style={{ fontSize: 13.5, color: "var(--tx-1)", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</span>
       }
     </div>
   );
@@ -255,8 +273,8 @@ function CompanyInfoTab({ job }: { job: Job }) {
         </div>
       </div>
 
-      {/* Fields grid */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      {/* Fields — 2 per row, mirrors Job Info's tile grid on the left */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
         {companyFields.map(f => <Field key={f.label} label={f.label} value={f.value} link={f.link} />)}
       </div>
 

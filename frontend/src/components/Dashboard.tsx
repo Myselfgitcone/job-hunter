@@ -61,30 +61,28 @@ function Donut({ data }: { data: Array<{ label: string; value: number; color: st
 
 // ── Monthly bars (CSS animated) ───────────────────────────────────────────────
 function MonthlyBars({ data }: { data: Array<{ m: string; scraped: number; applied: number; tailored: number }> }) {
-  // Fix: use per-series max so bars never overflow the container
-  const maxScraped  = Math.max(...data.map(d => d.scraped),  1);
-  const maxApplied  = Math.max(...data.map(d => d.applied),  1);
-  const maxTailored = Math.max(...data.map(d => d.tailored), 1);
-  const series: [string, string, number][] = [
-    ["scraped",  "#6366f1", maxScraped],
-    ["applied",  "#3b82f6", maxApplied],
-    ["tailored", "#7c3aed", maxTailored],
+  // ONE shared max across all 3 series, not one max per series. Per-series
+  // maxes made bars incomparable to each other: if June happened to be the
+  // peak month for Scraped(1500), Applied(18), AND Tailored(10), all three
+  // rendered near 100% height simultaneously — implying rough parity
+  // between numbers that are actually 100x apart. A single shared scale
+  // (plus sqrt, so Applied/Tailored don't vanish next to Scraped's volume)
+  // keeps bar height honestly meaningful both across months (same series)
+  // AND across series (same month).
+  const globalMax = Math.max(...data.flatMap(d => [d.scraped, d.applied, d.tailored]), 1);
+  const series: [string, string][] = [
+    ["scraped",  "#6366f1"],
+    ["applied",  "#3b82f6"],
+    ["tailored", "#7c3aed"],
   ];
   return (
     <div className="mbars" style={{ overflow: "hidden" }}>
       {data.map((d, i) => (
         <div className="mbar-col" key={i}>
           <div className="mbar-stack">
-            {series.map(([k, c, mx]) => {
+            {series.map(([k, c]) => {
               const raw = (d as any)[k];
-              // Sqrt scale, not linear — with one huge month (Jun/Jul) and
-              // several small-but-different months (Feb-May), a linear
-              // ratio put every small month under the 2% floor, so they
-              // all rendered as the SAME height regardless of their real
-              // (different) values. Sqrt compresses the top and expands
-              // the bottom, so small-but-distinct values stay visually
-              // distinct instead of all pancaking to the floor.
-              const v = Math.sqrt(raw / mx);
+              const v = Math.sqrt(raw / globalMax);
               return <div key={k} className="mbar" style={{ height: (raw > 0 ? Math.max(4, v * 100) : 0) + "%", background: c, "--d": (i * 60) + "ms" } as React.CSSProperties} title={`${k}: ${raw}`} />;
             })}
           </div>

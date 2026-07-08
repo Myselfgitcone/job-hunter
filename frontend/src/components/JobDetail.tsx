@@ -154,7 +154,7 @@ function SectionTitle({ icon, children }: { icon: string; children: React.ReactN
       }}>
         <Ic d={icon} size={12} color="var(--violet)" />
       </div>
-      <span style={{ fontSize: 13, fontWeight: 700, color: "var(--tx-1)", letterSpacing: "0.01em" }}>{children}</span>
+      <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--violet)", letterSpacing: "0.01em" }}>{children}</span>
     </div>
   );
 }
@@ -212,12 +212,15 @@ function JobInfoTab({ job }: { job: Job }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 2 }}>
 
-      {/* Visa — small standalone badge, no more paired oversized Posted block */}
-      <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 11px", borderRadius: 20,
-        background: visaBg, alignSelf: "flex-start" }}>
-        <span style={{ width: 6, height: 6, borderRadius: "50%", background: visaClr, flexShrink: 0 }} />
-        <span style={{ fontSize: 12, fontWeight: 500, color: visaClr }}>{visaLabel}</span>
-      </div>
+      {/* Visa badge — only shown when sponsorship is positively confirmed.
+          "Not mentioned" / "Unknown" told the user nothing useful, just clutter. */}
+      {visaOk && (
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 11px", borderRadius: 20,
+          background: visaBg, alignSelf: "flex-start" }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: visaClr, flexShrink: 0 }} />
+          <span style={{ fontSize: 12, fontWeight: 500, color: visaClr }}>{visaLabel}</span>
+        </div>
+      )}
 
       {/* Fields — all in one line, equal width, no wrap. Open Application
           link removed — the Apply button in the top action bar covers it. */}
@@ -267,16 +270,13 @@ function CompanyInfoTab({ job }: { job: Job }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 2 }}>
 
-      {/* Company hero */}
+      {/* Company hero — name removed, already shown in the page header above */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         {logoSrc
-          ? <img src={logoSrc} alt={job.company} style={{ width: 44, height: 44, borderRadius: 10, objectFit: "contain", background: "var(--bg-2)", padding: 5, flexShrink: 0 }} />
-          : <CompanyLogo url={job.url} company={job.company} size={44} />
+          ? <img src={logoSrc} alt={job.company} style={{ width: 40, height: 40, borderRadius: 10, objectFit: "contain", background: "var(--bg-2)", padding: 5, flexShrink: 0 }} />
+          : <CompanyLogo url={job.url} company={job.company} size={40} />
         }
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          <span style={{ fontSize: 16, fontWeight: 700, color: "var(--tx-1)", lineHeight: 1.2 }}>{job.company}</span>
-          {job.company_industry && <span style={{ fontSize: 11.5, color: "var(--tx-3)" }}>{job.company_industry}</span>}
-        </div>
+        {job.company_industry && <span style={{ fontSize: 12.5, color: "var(--tx-3)", fontWeight: 500 }}>{job.company_industry}</span>}
       </div>
 
       {/* Fields — all in one line, equal width, no wrap */}

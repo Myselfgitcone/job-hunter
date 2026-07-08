@@ -1921,12 +1921,22 @@ def _inject_missing_keywords(resume: str, missing: list[str]) -> str:
                         row_indices = [i for i, l in enumerate(lines) if ':' in l and l.strip()]
                 continue
 
-        # 4. Score rows by label similarity
+        # 4. Score rows by label similarity — literal word overlap AND
+        # acronym-initials overlap. Fully derivational, no lookup table:
+        # 'Machine Learning' -> initials 'ML' -> matches a row labeled
+        # 'AI & ML Engineering' because 'ML' is already a standalone token
+        # in that label. Generalizes to any phrase whose initials happen to
+        # already appear as an acronym somewhere in the resume's own
+        # category names (BI, CI/CD, NLP, API...) — nothing to maintain.
         kw_words = [w for w in kw.lower().split() if len(w) > 2]
+        kw_initials = ''.join(w[0] for w in kw.split() if w[0].isalpha()).upper()
         best_idx, best_score = -1, 0
         for i in row_indices:
-            label = lines[i].split(':')[0].lower()
+            label_raw = lines[i].split(':')[0]
+            label = label_raw.lower()
             score = sum(len(w) for w in kw_words if w in label)
+            if len(kw_initials) >= 2 and re.search(rf'\b{re.escape(kw_initials)}\b', label_raw):
+                score += len(kw_initials) * 3  # acronym match beats partial word overlap
             if score > best_score:
                 best_score, best_idx = score, i
 
@@ -3633,19 +3643,21 @@ def _guarantee_full_coverage(resume: str, job_description: str, role_type: str) 
     keyword injector runs mid-pipeline and several passes after it
     (_trim_skills_to_layers, singleton-row drop, skills-line-limit, tech-line
     trim) can silently strip a freshly-injected item back out if it doesn't
-    look like "layer 1" to that pass's own heuristic. Live case: 'Machine
-    Learning' / 'Business Intelligence' / 'Data Visualization' — genuine JD
-    skills the candidate demonstrably has (Feast/MLflow, Tableau/Looker/
-    Power BI) — scored zero against every row LABEL ('AI & ML Engineering'
-    says 'ML', not 'machine learning') and were silently discarded with no
-    second chance.
+    look like "layer 1" to that pass's own heuristic.
 
     Re-runs the row-matching injector one more time (safe — it skips
-    anything already present, never duplicates), then for anything STILL
-    missing after that, forces a guaranteed catch-all row. By this point
-    every remaining candidate has already passed extraction-time junk
-    filtering (degree-only, cert-title-only, context-gate) — nothing
-    garbage-shaped survives to reach here, so a catch-all row is safe.
+    anything already present, never duplicates; its scoring now also checks
+    acronym-initials against row labels, e.g. 'Machine Learning' -> 'ML'
+    matches a row labeled 'AI & ML Engineering' — closes most synonym/
+    phrasing gaps with zero lookup tables, purely derived from the resume's
+    own existing category names).
+
+    NEVER creates a new skills row (standing rule — a fabricated-looking
+    catch-all row is worse than omitting a word). Anything still unmatched
+    after this has genuinely zero relation to any existing category in the
+    resume — that is a real capability gap, not a phrasing gap, and forcing
+    it into an unrelated row would be the same class of dishonesty as
+    claiming a tool the candidate never used. Logged, left out.
     """
     if not job_description or skill_coverage_report is None:
         return resume
@@ -3660,15 +3672,9 @@ def _guarantee_full_coverage(resume: str, job_description: str, role_type: str) 
         cov2 = skill_coverage_report(resume, job_description, role_type=role_type)
         still_missing = cov2.get("missing", [])
         if still_missing:
-            sec_m = re.search(
-                r'(TECHNICAL SKILLS|CORE COMPETENCIES|SKILLS & EXPERTISE|SKILLS):?\s*\n',
-                resume, re.IGNORECASE
-            )
-            if sec_m:
-                insert_at = sec_m.end()
-                new_row = f"Additional Relevant Skills: {', '.join(still_missing)}\n"
-                resume = resume[:insert_at] + new_row + resume[insert_at:]
-                print(f"[COVERAGE GUARANTEE] Force-added catch-all row for: {', '.join(still_missing)}")
+            print(f"[COVERAGE GUARANTEE] {len(still_missing)} skill(s) have no honest home in any "
+                  f"existing row — genuine capability gap, left out (no fabricated catch-all row): "
+                  f"{', '.join(still_missing)}")
         return resume
     except Exception as e:
         print(f"[COVERAGE GUARANTEE] Failed: {e}")

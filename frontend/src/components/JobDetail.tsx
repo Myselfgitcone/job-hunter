@@ -172,10 +172,7 @@ function JobInfoTab({ job }: { job: Job }) {
   const hcOrigLabel = hcOrig ? relTimeDetail(hcOrig) : "";
   const showOriginal = hcOrig && hcOrigLabel && hcOrigLabel !== postedLabel;
 
-  const visaOk    = job.visa_sponsorship === true;
-  const visaLabel = visaOk ? "Sponsorship mentioned" : job.visa_sponsorship === false ? "Not mentioned — ask recruiter" : "Unknown";
-  const visaBg    = visaOk ? "rgba(22,163,74,0.10)" : "var(--bg-2)";
-  const visaClr   = visaOk ? "#16a34a" : "var(--tx-3)";
+  const visaOk = job.visa_sponsorship === true;
 
   // Posted is now just another tile in the row — the oversized standalone
   // hero block wasted vertical space. HC's "originally posted" estimate
@@ -191,6 +188,7 @@ function JobInfoTab({ job }: { job: Job }) {
     { label: "Experience", value: job.experience_level ? `${job.experience_level} yrs` : "", hide: !job.experience_level },
     { label: "Salary",     value: job.salary || "", hide: !job.salary },
     { label: "Expires",    value: job.job_expiry ? new Date(job.job_expiry).toLocaleDateString("en-US", { timeZone: "America/New_York" }) : "", hide: !job.job_expiry },
+    { label: "Sponsorship", value: visaOk ? "Mentioned" : "Not mentioned" },
   ].filter(f => !f.hide && f.value);
 
   // Helper: one field tile — bordered chip, label muted above, value below.
@@ -217,18 +215,9 @@ function JobInfoTab({ job }: { job: Job }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 2 }}>
 
-      {/* Visa badge — only shown when sponsorship is positively confirmed.
-          "Not mentioned" / "Unknown" told the user nothing useful, just clutter. */}
-      {visaOk && (
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 11px", borderRadius: 20,
-          background: visaBg, alignSelf: "flex-start" }}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: visaClr, flexShrink: 0 }} />
-          <span style={{ fontSize: 12, fontWeight: 500, color: visaClr }}>{visaLabel}</span>
-        </div>
-      )}
-
       {/* Fields — all in one line, equal width, no wrap. Open Application
-          link removed — the Apply button in the top action bar covers it. */}
+          link removed — the Apply button in the top action bar covers it.
+          Sponsorship is the last tile, always shown (Mentioned / Not mentioned). */}
       <div style={{ display: "flex", flexWrap: "nowrap", gap: 8 }}>
         {fields.map(f => <div key={f.label} style={{ flex: "1 1 0", minWidth: 0 }}><Field label={f.label} value={f.value} title={f.title} /></div>)}
       </div>

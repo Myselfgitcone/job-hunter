@@ -154,7 +154,10 @@ function SectionTitle({ icon, children }: { icon: string; children: React.ReactN
       }}>
         <Ic d={icon} size={12} color="var(--violet)" />
       </div>
-      <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--violet)", letterSpacing: "0.01em" }}>{children}</span>
+      <span style={{
+        fontSize: 13.5, fontWeight: 700, color: "var(--violet)", letterSpacing: "0.01em",
+        background: "rgba(124,58,237,0.10)", padding: "3px 10px", borderRadius: 6,
+      }}>{children}</span>
     </div>
   );
 }

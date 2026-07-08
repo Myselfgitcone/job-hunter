@@ -1369,6 +1369,48 @@ def detect_cross_job_metric_theft(text: str, base_resume: str,
     return issues
 
 
+def detect_cover_letter_fabrication(cover_letter: str, resume: str, job_description: str = "",
+                                    max_reports: int = 5) -> list[str]:
+    """Cover letters get a single one-shot AI call with no verification loop —
+    the same 'never fabricate' prompt-only instruction that let the resume
+    pipeline invent MongoDB production work despite an identical rule. Checks:
+      1. Distinctive metrics (M+/B+ scale, near-100% percentages) in the letter
+         that appear nowhere in the resume — an invented number.
+      2. Tech-shaped tokens (tool names) in the letter that exist in neither
+         the resume nor the JD — an invented tool/technology claim.
+    Fully derivational: ground truth is the resume + JD text, same pattern as
+    the resume-side fabrication checks."""
+    if not cover_letter or not resume:
+        return []
+    issues: list[str] = []
+
+    cl_metrics  = _distinctive_metrics(cover_letter)
+    res_metrics = _distinctive_metrics(resume)
+    for m in sorted(cl_metrics - res_metrics):
+        if len(issues) < max_reports:
+            issues.append(
+                f"[CL FABRICATED METRIC] '{m}' appears in the cover letter but not "
+                f"anywhere in the resume — invented number. Remove it or replace with "
+                f"a number that actually appears in the resume."
+            )
+
+    allowed = (resume + "\n" + (job_description or "")).lower()
+    seen: set[str] = set()
+    for tok_re in _TOOL_TOKEN_RES:
+        for tok in tok_re.findall(cover_letter):
+            key = tok.lower()
+            if key in seen or tok in _DYN_ACRONYM_SKIP or key in allowed:
+                continue
+            seen.add(key)
+            if len(issues) < max_reports:
+                issues.append(
+                    f"[CL FABRICATED TOOL] '{tok}' appears in the cover letter but exists "
+                    f"in neither the resume nor the job description — invented. Remove it "
+                    f"or replace with a tool the candidate actually used."
+                )
+    return issues
+
+
 def detect_unsupported_bullets(text: str, base_resume: str,
                                job_description: str = "",
                                role_type: Optional[str] = None,

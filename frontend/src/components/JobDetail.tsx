@@ -147,12 +147,12 @@ function StatusDropdown({ status, onChange }: { status: string; onChange: (s: st
 // ── Section title — icon badge + label, shared by Job Info / Company Info / Job Description
 function SectionTitle({ icon, children }: { icon: string; children: React.ReactNode }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
       <div style={{
-        width: 26, height: 26, borderRadius: 8, background: "rgba(124,58,237,0.10)",
+        width: 22, height: 22, borderRadius: 7, background: "rgba(124,58,237,0.10)",
         display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
       }}>
-        <Ic d={icon} size={14} color="var(--violet)" />
+        <Ic d={icon} size={12} color="var(--violet)" />
       </div>
       <span style={{ fontSize: 13, fontWeight: 700, color: "var(--tx-1)", letterSpacing: "0.01em" }}>{children}</span>
     </div>
@@ -172,7 +172,14 @@ function JobInfoTab({ job }: { job: Job }) {
   const visaBg    = visaOk ? "rgba(22,163,74,0.10)" : "var(--bg-2)";
   const visaClr   = visaOk ? "#16a34a" : "var(--tx-3)";
 
-  const fields: { label: string; value: string; hide?: boolean }[] = [
+  // Posted is now just another tile in the row — the oversized standalone
+  // hero block wasted vertical space. HC's "originally posted" estimate
+  // (when different) folds into the tile's hover tooltip instead of its
+  // own visible line.
+  const postedTitle = showOriginal ? `Originally ${hcOrigLabel} (HC estimate)` : undefined;
+
+  const fields: { label: string; value: string; title?: string; hide?: boolean }[] = [
+    { label: "Posted",     value: postedLabel || "Unknown", title: postedTitle },
     { label: "Location",   value: job.location || "" },
     { label: "Country",    value: job.country  || "" },
     { label: "Work Type",  value: job.remote || (job.location||"").toLowerCase().includes("remote") ? "Remote" : "Onsite" },
@@ -187,17 +194,17 @@ function JobInfoTab({ job }: { job: Job }) {
   // Fixed single-line value with ellipsis + title tooltip keeps every tile
   // the same height regardless of content length ("Cupertino, California,
   // United States" no longer wraps and breaks row alignment).
-  const Field = ({ label, value }: { label: string; value: string }) => (
+  const Field = ({ label, value, title }: { label: string; value: string; title?: string }) => (
     <div style={{
-      display: "flex", flexDirection: "column", gap: 4, minWidth: 0,
+      display: "flex", flexDirection: "column", gap: 3, minWidth: 0,
       background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)",
-      borderRadius: 10, padding: "9px 12px",
+      borderRadius: 10, padding: "7px 11px",
     }}>
-      <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.06em", color: "var(--tx-3)" }}>{label}</span>
+      <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.06em", color: "var(--tx-3)" }}>{label}</span>
       <span
-        title={value}
+        title={title || value}
         style={{
-          fontSize: 13.5, color: "var(--tx-1)", fontWeight: 600, lineHeight: 1.3,
+          fontSize: 13, color: "var(--tx-1)", fontWeight: 600, lineHeight: 1.25,
           whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
         }}
       >{value}</span>
@@ -205,35 +212,20 @@ function JobInfoTab({ job }: { job: Job }) {
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 22, paddingTop: 6 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 2 }}>
 
-      {/* Posted + Visa on one line — tighter header block */}
-      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.07em", color: "var(--tx-3)" }}>Posted</span>
-          <span style={{ fontSize: 24, fontWeight: 700, color: "var(--tx-1)", lineHeight: 1.1 }}>{postedLabel || "Unknown"}</span>
-          {showOriginal && <span style={{ fontSize: 11.5, color: "var(--tx-3)", marginTop: 2 }}>Originally {hcOrigLabel} (HC estimate)</span>}
-        </div>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "5px 12px", borderRadius: 20,
-          background: visaBg, flexShrink: 0, marginBottom: 2 }}>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: visaClr, flexShrink: 0 }} />
-          <span style={{ fontSize: 12.5, fontWeight: 500, color: visaClr }}>{visaLabel}</span>
-        </div>
+      {/* Visa — small standalone badge, no more paired oversized Posted block */}
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 11px", borderRadius: 20,
+        background: visaBg, alignSelf: "flex-start" }}>
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: visaClr, flexShrink: 0 }} />
+        <span style={{ fontSize: 12, fontWeight: 500, color: visaClr }}>{visaLabel}</span>
       </div>
 
-      {/* Fields — all in one line, equal width, no wrap */}
-      <div style={{ display: "flex", flexWrap: "nowrap", gap: 10 }}>
-        {fields.map(f => <div key={f.label} style={{ flex: "1 1 0", minWidth: 0 }}><Field label={f.label} value={f.value} /></div>)}
+      {/* Fields — all in one line, equal width, no wrap. Open Application
+          link removed — the Apply button in the top action bar covers it. */}
+      <div style={{ display: "flex", flexWrap: "nowrap", gap: 8 }}>
+        {fields.map(f => <div key={f.label} style={{ flex: "1 1 0", minWidth: 0 }}><Field label={f.label} value={f.value} title={f.title} /></div>)}
       </div>
-
-      {/* Apply link — small pill button, matches the tile aesthetic above */}
-      <a href={job.url} target="_blank" rel="noreferrer"
-        style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600,
-          color: "var(--accent)", textDecoration: "none", padding: "8px 14px",
-          background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)",
-          borderRadius: 20, width: "fit-content" }}>
-        <Ic d={I.link} size={13} /> Open Application
-      </a>
     </div>
   );
 }
@@ -262,35 +254,35 @@ function CompanyInfoTab({ job }: { job: Job }) {
   // ellipsis truncation so a long value never wraps and breaks row height.
   const Field = ({ label, value, link }: { label: string; value: string; link?: boolean }) => (
     <div style={{
-      display: "flex", flexDirection: "column", gap: 4, minWidth: 0,
+      display: "flex", flexDirection: "column", gap: 3, minWidth: 0,
       background: "var(--bg-elevated)", border: "1px solid var(--border-subtle)",
-      borderRadius: 10, padding: "9px 12px",
+      borderRadius: 10, padding: "7px 11px",
     }}>
-      <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.06em", color: "var(--tx-3)" }}>{label}</span>
+      <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.06em", color: "var(--tx-3)" }}>{label}</span>
       {link
-        ? <a href={job.url} target="_blank" rel="noreferrer" title={value} style={{ fontSize: 13.5, color: "var(--accent)", textDecoration: "none", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</a>
-        : <span title={value} style={{ fontSize: 13.5, color: "var(--tx-1)", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</span>
+        ? <a href={job.url} target="_blank" rel="noreferrer" title={value} style={{ fontSize: 13, color: "var(--accent)", textDecoration: "none", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</a>
+        : <span title={value} style={{ fontSize: 13, color: "var(--tx-1)", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</span>
       }
     </div>
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24, paddingTop: 6 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 2 }}>
 
       {/* Company hero */}
-      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         {logoSrc
-          ? <img src={logoSrc} alt={job.company} style={{ width: 52, height: 52, borderRadius: 12, objectFit: "contain", background: "var(--bg-2)", padding: 6, flexShrink: 0 }} />
-          : <CompanyLogo url={job.url} company={job.company} size={52} />
+          ? <img src={logoSrc} alt={job.company} style={{ width: 44, height: 44, borderRadius: 10, objectFit: "contain", background: "var(--bg-2)", padding: 5, flexShrink: 0 }} />
+          : <CompanyLogo url={job.url} company={job.company} size={44} />
         }
-        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-          <span style={{ fontSize: 18, fontWeight: 700, color: "var(--tx-1)", lineHeight: 1.2 }}>{job.company}</span>
-          {job.company_industry && <span style={{ fontSize: 12, color: "var(--tx-3)" }}>{job.company_industry}</span>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <span style={{ fontSize: 16, fontWeight: 700, color: "var(--tx-1)", lineHeight: 1.2 }}>{job.company}</span>
+          {job.company_industry && <span style={{ fontSize: 11.5, color: "var(--tx-3)" }}>{job.company_industry}</span>}
         </div>
       </div>
 
       {/* Fields — all in one line, equal width, no wrap */}
-      <div style={{ display: "flex", flexWrap: "nowrap", gap: 10 }}>
+      <div style={{ display: "flex", flexWrap: "nowrap", gap: 8 }}>
         {companyFields.map(f => <div key={f.label} style={{ flex: "1 1 0", minWidth: 0 }}><Field label={f.label} value={f.value} link={f.link} /></div>)}
       </div>
     </div>
@@ -898,11 +890,11 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
                 <SectionTitle icon={I.briefcase}>Job Info</SectionTitle>
                 <JobInfoTab job={job} />
               </div>
-              <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 28, marginTop: 28 }}>
+              <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 18, marginTop: 18 }}>
                 <SectionTitle icon={I.building}>Company Info</SectionTitle>
                 <CompanyInfoTab job={job} />
               </div>
-              <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 28, marginTop: 28 }}>
+              <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 18, marginTop: 18 }}>
                 <SectionTitle icon={I.fileText}>Job Description</SectionTitle>
                 <DescriptionTab job={job} onUpdate={onUpdate} onToast={onToast} />
               </div>

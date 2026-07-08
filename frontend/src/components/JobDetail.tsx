@@ -193,8 +193,8 @@ function JobInfoTab({ job }: { job: Job }) {
         <span style={{ fontSize: 11, color: "var(--tx-3)", marginLeft: 2 }}>· Visa</span>
       </div>
 
-      {/* Fields — single column stacked list */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      {/* Fields — 3 per row, saves vertical space for the description below */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", columnGap: 16, rowGap: 18 }}>
         {fields.map(f => <Field key={f.label} label={f.label} value={f.value} />)}
       </div>
 
@@ -829,11 +829,23 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
             <button onClick={() => runAction("resume")} disabled={!!busy} className="act ai">
               {busy === "resume" && busyJobId === job.id ? <><Spinner size={13} /> Tailoring…</> : <><Ic d={I.sparkles} size={14} /> Tailor Resume</>}
             </button>
-            <button className="act" onClick={() => handleStatusChange("applied")}>
-              <Ic d={I.checkCircle} size={14} /> Mark Applied
+            <button
+              className="act"
+              onClick={() => handleStatusChange(job.status === "applied" ? "new" : "applied")}
+              style={job.status === "applied" ? {
+                background: "rgba(16,185,129,0.12)", borderColor: "var(--st-applied)", color: "var(--st-applied)",
+              } : undefined}
+            >
+              <Ic d={I.checkCircle} size={14} /> {job.status === "applied" ? "Applied" : "Mark Applied"}
             </button>
-            <button className="act" onClick={() => handleStatusChange("skipped")}>
-              <Ic d={I.xCircle} size={14} /> Skip
+            <button
+              className="act"
+              onClick={() => handleStatusChange(job.status === "skipped" ? "new" : "skipped")}
+              style={job.status === "skipped" ? {
+                background: "rgba(93,99,112,0.15)", borderColor: "var(--st-skipped)", color: "var(--st-skipped)",
+              } : undefined}
+            >
+              <Ic d={I.xCircle} size={14} /> {job.status === "skipped" ? "Skipped" : "Skip"}
             </button>
             <StatusDropdown status={job.status} onChange={handleStatusChange} />
           </div>

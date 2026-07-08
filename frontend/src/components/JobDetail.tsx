@@ -221,8 +221,8 @@ function JobInfoTab({ job }: { job: Job }) {
         </div>
       </div>
 
-      {/* Fields — 3 per row, uniform tile height via ellipsis truncation */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+      {/* Fields — 4 per row (full-width panel now), uniform tile height via ellipsis truncation */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
         {fields.map(f => <Field key={f.label} label={f.label} value={f.value} />)}
       </div>
 
@@ -289,8 +289,8 @@ function CompanyInfoTab({ job }: { job: Job }) {
         </div>
       </div>
 
-      {/* Fields — 2 per row, mirrors Job Info's tile grid on the left */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+      {/* Fields — 4 per row (full-width panel now) */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
         {companyFields.map(f => <Field key={f.label} label={f.label} value={f.value} link={f.link} />)}
       </div>
 
@@ -905,18 +905,17 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
         <div className="tab-body">
           {tab === "jobdetails" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-              {/* Job Info + Company Info side by side */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
-                <div style={{ paddingRight: 32, borderRight: "1px solid var(--border-subtle)" }}>
-                  <SectionTitle icon={I.briefcase}>Job Info</SectionTitle>
-                  <JobInfoTab job={job} />
-                </div>
-                <div style={{ paddingLeft: 32 }}>
-                  <SectionTitle icon={I.building}>Company Info</SectionTitle>
-                  <CompanyInfoTab job={job} />
-                </div>
+              {/* Job Info, Company Info, Job Description — stacked, each full width.
+                  Side-by-side previously left a ragged gap under Job Info whenever
+                  Company Info ran taller (e.g. a long Benefits list). */}
+              <div>
+                <SectionTitle icon={I.briefcase}>Job Info</SectionTitle>
+                <JobInfoTab job={job} />
               </div>
-              {/* Job Description full width below */}
+              <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 28, marginTop: 28 }}>
+                <SectionTitle icon={I.building}>Company Info</SectionTitle>
+                <CompanyInfoTab job={job} />
+              </div>
               <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 28, marginTop: 28 }}>
                 <SectionTitle icon={I.fileText}>Job Description</SectionTitle>
                 <DescriptionTab job={job} onUpdate={onUpdate} onToast={onToast} />

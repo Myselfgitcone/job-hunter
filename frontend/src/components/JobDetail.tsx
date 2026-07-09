@@ -819,9 +819,15 @@ function CoverTab({ job, generating, onGenerate, onChange, onToast }: {
         <textarea className="cover-text" value={job.cover_letter || ""} onChange={e => onChange(e.target.value)}
           style={{ width: "100%", minHeight: 280, fontSize: 13.5, lineHeight: 1.7, background: "transparent", border: "none", color: "var(--tx-2)", fontFamily: "var(--f-ui)", resize: "vertical" }} />
       </div>
-      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+      <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
         <button className="act ai" onClick={() => { navigator.clipboard.writeText(job.cover_letter || ""); onToast("Cover letter copied", "success"); }}>
           <Ic d={I.copy} size={14} /> Copy letter
+        </button>
+        <button className="act" onClick={() => downloadFile(api.coverPdfUrl(job.id), "cover_letter.pdf").catch(e => onToast(e.message, "error"))}>
+          <Ic d={I.download} size={14} /> PDF
+        </button>
+        <button className="act" onClick={() => downloadFile(api.coverDocxUrl(job.id), "cover_letter.docx").catch(e => onToast(e.message, "error"))}>
+          <Ic d={I.download} size={14} /> DOCX
         </button>
         <button className="act ghost" onClick={onGenerate}>
           <Ic d={I.sparkles} size={14} /> Regenerate

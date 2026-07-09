@@ -146,6 +146,8 @@ export const api = {
 
   pdfUrl:  (id: string) => `${BASE}/api/jobs/${id}/resume/pdf`,
   docxUrl: (id: string) => `${BASE}/api/jobs/${id}/resume/docx`,
+  coverPdfUrl:  (id: string) => `${BASE}/api/jobs/${id}/cover-letter/pdf`,
+  coverDocxUrl: (id: string) => `${BASE}/api/jobs/${id}/cover-letter/docx`,
   jdUrl:   (id: string) => `${BASE}/api/jobs/${id}/jd`,
 
   clearAllJobs: () => req<{ deleted: number }>("/api/jobs/all", { method: "DELETE" }),

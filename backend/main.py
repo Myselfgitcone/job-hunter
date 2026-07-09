@@ -3052,6 +3052,53 @@ async def download_docx(job_id: str, user_id: str = Depends(get_current_user_id)
     )
 
 
+# ── Cover Letter downloads ────────────────────────────────────────────────────
+
+async def _cover_letter_context(job_id: str, user_id: str):
+    """Shared: fetch letter + candidate name/contact for the header block."""
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        letter = (uj.cover_letter if uj else None) or ""
+        if not letter.strip():
+            raise HTTPException(400, "No cover letter yet. Generate one first.")
+        resume_src = (uj.tailored_resume if uj else None) or ""
+    user_cfg = await _get_user_settings(user_id)
+    if not resume_src:
+        resume_src = user_cfg.get("resume", "")
+    lines = [l.strip() for l in resume_src.strip().split("\n") if l.strip()][:2]
+    name_line = lines[0] if lines else (user_cfg.get("profile_name", "") or "")
+    candidate_name = name_line.split("—")[0].strip() if "—" in name_line else name_line.strip()
+    contact_line = lines[1] if len(lines) > 1 else ""
+    cand_slug = _candidate_slug(user_cfg.get("profile_name", ""))
+    company_slug = re.sub(r"[^\w]+", "_", job.company or "Company").strip("_")
+    return letter, candidate_name, contact_line, job.company or "", f"{cand_slug}_{company_slug}_CoverLetter"
+
+
+@app.get("/api/jobs/{job_id}/cover-letter/pdf")
+async def download_cover_pdf(job_id: str, user_id: str = Depends(get_current_user_id)):
+    from cover_gen import generate_cover_pdf
+    letter, cand, contact, company, fname = await _cover_letter_context(job_id, user_id)
+    pdf_bytes = generate_cover_pdf(letter, cand, contact, company)
+    return StreamingResponse(iter([pdf_bytes]), media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{fname}.pdf"'})
+
+
+@app.get("/api/jobs/{job_id}/cover-letter/docx")
+async def download_cover_docx(job_id: str, user_id: str = Depends(get_current_user_id)):
+    from cover_gen import generate_cover_docx
+    letter, cand, contact, company, fname = await _cover_letter_context(job_id, user_id)
+    docx_bytes = generate_cover_docx(letter, cand, contact, company)
+    return StreamingResponse(iter([docx_bytes]),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{fname}.docx"'})
+
+
 # â"€â"€ Quick Tailor (paste any JD, no job record needed) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @app.get("/api/jobs/{job_id}/jd")

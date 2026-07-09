@@ -1,16 +1,19 @@
 """
-Generate DOCX matching exact formatting of Jagadish_Resume_Resume.docx reference.
+Generate DOCX — user-specified formatting (2026-07-09).
 
-Specs extracted from reference:
-  Name:    18pt  bold  NAVY  CENTER
-  Title:   12pt        GRAY  CENTER
-  Contact: 9.5pt       GRAY  CENTER  + NAVY bottom border
-  Section: 11pt  bold  NAVY         + NAVY bottom border  space_before=11pt after=4pt
-  JobHdr:  10.5pt bold BLACK        + right-tab for date  space_before=8pt after=2.5pt
-  Bullet:  9.5pt       BLACK  List Paragraph  left=440 hanging=260 twips  after=1.6pt
-  Tech:    9pt  italic  GRAY   indent left=200 twips  "Technologies Used:" bold+italic
-  Skill:   9.5pt       BLACK  List Paragraph (same bullet)  bold label + plain value
-  Edu:     9.5pt bold BLACK + GRAY plain
+  Font: Calibri throughout. US Letter, 0.55" margins, single line spacing.
+  Left-aligned. No tables, no text boxes, no headers/footers. Round bullets.
+  Dates right-aligned via right tab stop (never spaces).
+
+  Name:     19pt   bold             after=3pt
+  Title:    13pt   regular          after=3pt
+  Contact:  11pt   regular (body text, not a Word header)
+  Section:  12.5pt bold             before=7pt after=2pt  (+ thin rule)
+  JobHdr:   12pt   bold title, 12pt regular company/loc/date  before=5pt after=1.5pt
+  Bullet:   11pt   regular          after=1pt
+  Tech:     10.5pt "Technologies Used:" bold+italic, content italic
+  Skills:   11pt   bold label + regular value (no bullet glyph)
+  Edu:      11pt   bold degree + regular school
 """
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches, Twips, Emu
@@ -26,13 +29,13 @@ NAVY  = RGBColor(0x1F, 0x38, 0x64)
 BLACK = RGBColor(0x1A, 0x1A, 0x1A)
 GRAY  = RGBColor(0x55, 0x55, 0x55)
 
-SZ_NAME    = Pt(17)
-SZ_TITLE   = Pt(11)
-SZ_CONTACT = Pt(9)
-SZ_SECTION = Pt(10.5)
-SZ_JOB     = Pt(10)
-SZ_BODY    = Pt(9)
-SZ_TECH    = Pt(8.5)
+SZ_NAME    = Pt(19)
+SZ_TITLE   = Pt(13)
+SZ_CONTACT = Pt(11)
+SZ_SECTION = Pt(12.5)
+SZ_JOB     = Pt(12)
+SZ_BODY    = Pt(11)
+SZ_TECH    = Pt(10.5)
 
 FONT = "Calibri"
 
@@ -128,7 +131,7 @@ def _ensure_numbering(doc):
             '<w:rPr>'
             '<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/>'
             '<w:color w:val="1A1A1A"/>'
-            '<w:sz w:val="19"/>'
+            '<w:sz w:val="22"/>'
             '</w:rPr>'
             '</w:lvl>'
             '</w:abstractNum>'
@@ -166,7 +169,7 @@ def _ensure_numbering(doc):
         '<w:rPr>'
         '<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/>'
         '<w:color w:val="1A1A1A"/>'
-        '<w:sz w:val="19"/>'
+        '<w:sz w:val="22"/>'
         '</w:rPr>'
         '</w:lvl>'
         '</w:abstractNum>'
@@ -200,7 +203,7 @@ def _apply_bullet_numbering(para):
 
 def _add_name(doc, text):
     p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
     _set_spacing(p, before_pt=0, after_pt=3)
     r = p.add_run(text)
     _set_run(r, SZ_NAME, NAVY, bold=True)
@@ -209,7 +212,7 @@ def _add_name(doc, text):
 
 def _add_title(doc, text):
     p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
     _set_spacing(p, before_pt=0, after_pt=3)
     r = p.add_run(text)
     _set_run(r, SZ_TITLE, GRAY)
@@ -218,7 +221,7 @@ def _add_title(doc, text):
 
 def _add_contact(doc, text):
     p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
     _set_spacing(p, before_pt=0, after_pt=4)
     _add_bottom_border(p, "1F3864", size=8, space=4)
     r = p.add_run(text)
@@ -419,6 +422,18 @@ def generate_docx(resume_text: str, job_title: str = "", company: str = "") -> b
         # Job title lines: "Title @ Company | Location  Date"
         if re.match(r"^.+? @ .+", line):
             _add_job_header(doc, line)
+            continue
+
+        # Skills rows come as plain "Label: item, item, ..." lines (no bullet
+        # glyph in the tailored text) — bold label + regular content at body size
+        if in_skills and ":" in line:
+            label, _, value = line.partition(":")
+            p = doc.add_paragraph()
+            _set_spacing(p, after_pt=1)
+            r1 = p.add_run(f"{label.strip()}: ")
+            _set_run(r1, SZ_BODY, BLACK, bold=True)
+            r2 = p.add_run(value.strip())
+            _set_run(r2, SZ_BODY, BLACK, bold=False)
             continue
 
         # Default body

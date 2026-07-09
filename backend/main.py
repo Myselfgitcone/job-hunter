@@ -2360,6 +2360,21 @@ async def admin_chat_threads(user_id: str = Depends(get_current_user_id)):
     return out
 
 
+@app.get("/api/admin/chat/users")
+async def admin_chat_users(user_id: str = Depends(get_current_user_id)):
+    """All non-admin users — lets admin search anyone and start a new thread,
+    not just users who already messaged."""
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        res = await db.execute(select(User))
+        users = res.scalars().all()
+    return [
+        {"user_id": u.id, "name": u.name or u.email, "email": u.email,
+         "active": _is_active(u.last_seen_at or "")}
+        for u in users if u.email.lower() != ADMIN_EMAIL.lower()
+    ]
+
+
 @app.get("/api/admin/chat/{thread_user_id}/messages")
 async def admin_chat_thread(thread_user_id: str, user_id: str = Depends(get_current_user_id)):
     await _verify_admin(user_id)

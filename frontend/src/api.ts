@@ -200,6 +200,7 @@ export const api = {
   chatUnread:        () => req<{ count: number }>("/api/chat/unread"),
   chatSend:          (text: string) => req("/api/chat/send", { method: "POST", body: JSON.stringify({ text }) }),
   adminChatThreads:  () => req<any[]>("/api/admin/chat/threads"),
+  adminChatUsers:    () => req<any[]>("/api/admin/chat/users"),
   adminChatMessages: (uid: string) => req<any[]>(`/api/admin/chat/${uid}/messages`),
   adminChatSend:     (uid: string, text: string) => req(`/api/admin/chat/${uid}/send`, { method: "POST", body: JSON.stringify({ text }) }),
 

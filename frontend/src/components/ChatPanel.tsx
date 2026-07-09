@@ -44,6 +44,8 @@ export default function ChatPanel({ isAdmin, adminActive, onClose, onRead }: {
 }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [threads, setThreads] = useState<Thread[]>([]);
+  const [allUsers, setAllUsers] = useState<Thread[]>([]);   // admin: every user, for search/new-thread
+  const [query, setQuery] = useState("");
   const [activeThread, setActiveThread] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -68,6 +70,12 @@ export default function ChatPanel({ isAdmin, adminActive, onClose, onRead }: {
     const t = setInterval(load, 3000); // poll every 3s while open — near-live feel
     return () => clearInterval(t);
   }, [load]);
+
+  // Admin: full user list once per open, so search can find users with no thread yet
+  useEffect(() => {
+    if (!isAdmin) return;
+    api.adminChatUsers().then(us => setAllUsers(us.map((u: any) => ({ ...u, unread: 0, last: null })))).catch(() => {});
+  }, [isAdmin]);
 
   // Auto-scroll to newest message
   const lastId = msgs.length ? msgs[msgs.length - 1].id : 0;
@@ -94,7 +102,16 @@ export default function ChatPanel({ isAdmin, adminActive, onClose, onRead }: {
   };
 
   const showThreadList = isAdmin && !activeThread;
-  const openThread = isAdmin ? threads.find(t => t.user_id === activeThread) : null;
+  const openThread = isAdmin
+    ? (threads.find(t => t.user_id === activeThread) || allUsers.find(u => u.user_id === activeThread))
+    : null;
+
+  // Search: matching threads first, then users without a thread ("start new")
+  const q = query.trim().toLowerCase();
+  const matches = (t: Thread) => !q || (t.name || "").toLowerCase().includes(q) || (t.email || "").toLowerCase().includes(q);
+  const shownThreads = threads.filter(matches);
+  const threadIds = new Set(threads.map(t => t.user_id));
+  const newChatUsers = q ? allUsers.filter(u => !threadIds.has(u.user_id) && matches(u)) : [];
   const peerActive = isAdmin ? !!openThread?.active : !!adminActive;
   const headerTitle = isAdmin
     ? (activeThread ? (openThread?.name || "Chat") : "Help & Chat")
@@ -152,17 +169,27 @@ export default function ChatPanel({ isAdmin, adminActive, onClose, onRead }: {
 
       {/* Body */}
       {showThreadList ? (
-        <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-elevated)" }}>
-          {threads.length === 0 && (
+        <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-elevated)", display: "flex", flexDirection: "column" }}>
+          {/* Search — finds existing threads AND any user to start a new chat */}
+          <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--line)", background: "var(--bg-surface)", flexShrink: 0 }}>
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search users by name or email…"
+              style={{ width: "100%", height: 34, padding: "0 14px", borderRadius: 18, border: "1px solid var(--line)",
+                background: "var(--bg-elevated)", color: "var(--tx)", fontSize: 12.5, outline: "none", boxSizing: "border-box" }}
+            />
+          </div>
+          {shownThreads.length === 0 && newChatUsers.length === 0 && (
             <div style={{ padding: "60px 24px", textAlign: "center", color: "var(--tx-3)" }}>
               <div style={{ fontSize: 30, marginBottom: 10 }}>💬</div>
-              <div style={{ fontSize: 12.5 }}>No conversations yet.<br/>User messages will appear here.</div>
+              <div style={{ fontSize: 12.5 }}>{q ? "No users match that search." : <>No conversations yet.<br/>Search a user above to start one.</>}</div>
             </div>
           )}
-          {threads.map(t => (
-            <button key={t.user_id} onClick={() => { setActiveThread(t.user_id); setMsgs([]); }}
+          {shownThreads.map(t => (
+            <button key={t.user_id} onClick={() => { setActiveThread(t.user_id); setMsgs([]); setQuery(""); }}
               style={{ display: "flex", alignItems: "center", gap: 11, width: "100%", textAlign: "left",
-                padding: "12px 16px", background: "var(--bg-surface)", border: "none", borderBottom: "1px solid var(--line)", cursor: "pointer" }}>
+                padding: "12px 16px", background: "var(--bg-surface)", border: "none", borderBottom: "1px solid var(--line)", cursor: "pointer", flexShrink: 0 }}>
               <Avatar name={t.name} size={36} active={!!t.active} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
@@ -182,6 +209,24 @@ export default function ChatPanel({ isAdmin, adminActive, onClose, onRead }: {
               )}
             </button>
           ))}
+          {newChatUsers.length > 0 && (
+            <>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em",
+                color: "var(--tx-3)", padding: "10px 16px 5px", flexShrink: 0 }}>Start new chat</div>
+              {newChatUsers.map(u => (
+                <button key={u.user_id} onClick={() => { setActiveThread(u.user_id); setMsgs([]); setQuery(""); }}
+                  style={{ display: "flex", alignItems: "center", gap: 11, width: "100%", textAlign: "left",
+                    padding: "10px 16px", background: "var(--bg-surface)", border: "none", borderBottom: "1px solid var(--line)", cursor: "pointer", flexShrink: 0 }}>
+                  <Avatar name={u.name} size={32} active={!!u.active} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--tx)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{u.name}</div>
+                    <div style={{ fontSize: 10.5, color: "var(--tx-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{u.email}</div>
+                  </div>
+                  <span style={{ fontSize: 11, color: VIOLET, fontWeight: 600, flexShrink: 0 }}>Message →</span>
+                </button>
+              ))}
+            </>
+          )}
         </div>
       ) : (
         <>

@@ -895,11 +895,12 @@ function InfoTab({ job, onUpdate, onToast }: {
 }
 
 // ── Main JobDetail ─────────────────────────────────────────────────────────────
-export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId, busyStartedAt, runAction, onCancel }: {
+export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId, busyStartedAt, tailorRuns, runAction, onCancel }: {
   job: Job | null; tab: string; setTab: (t: string) => void;
   onUpdate: (patch: Partial<Job>) => void;
   onToast: (m: string, t?: "success" | "error") => void;
-  busy: string | null; busyJobId: string | null; busyStartedAt?: number | null; runAction: (a: string) => void; onCancel: () => void;
+  busy: string | null; busyJobId: string | null; busyStartedAt?: number | null;
+  tailorRuns: Record<string, number>; runAction: (a: string) => void; onCancel: (jobId?: string) => void;
 }) {
   if (!job) {
     return (
@@ -978,8 +979,9 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
             <a href={job.url} target="_blank" rel="noreferrer" className="act primary" style={{ textDecoration: "none" }}>
               <Ic d={I.link} size={14} /> Apply
             </a>
-            <button onClick={() => runAction("resume")} disabled={!!busy} className="act ai">
-              {busy === "resume" && busyJobId === job.id ? <><Spinner size={13} /> Tailoring…</> : <><Ic d={I.sparkles} size={14} /> Tailor Resume</>}
+            <button onClick={() => runAction("resume")} disabled={!!tailorRuns[job.id]} className="act ai"
+              title={Object.keys(tailorRuns).length ? `${Object.keys(tailorRuns).length} tailoring in parallel` : undefined}>
+              {tailorRuns[job.id] ? <><Spinner size={13} /> Tailoring…</> : <><Ic d={I.sparkles} size={14} /> Tailor Resume</>}
             </button>
             <button
               className="act"
@@ -1043,7 +1045,7 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
           )}
           {tab === "resume"   && (
             <div style={{ display: "flex", flexDirection: "column" }}>
-              <ResumeTab job={job} tailoring={busy === "resume" && busyJobId === job.id} startedAt={busyStartedAt} onTailor={() => runAction("resume")} onCancel={onCancel} onToast={onToast} onUpdate={onUpdate} />
+              <ResumeTab job={job} tailoring={!!tailorRuns[job.id]} startedAt={tailorRuns[job.id] || null} onTailor={() => runAction("resume")} onCancel={() => onCancel(job.id)} onToast={onToast} onUpdate={onUpdate} />
             </div>
           )}
           {tab === "cover"    && <CoverTab job={job} generating={busy === "cover" && busyJobId === job.id} onGenerate={() => runAction("cover")} onChange={v => onUpdate({ cover_letter: v })} onToast={onToast} />}

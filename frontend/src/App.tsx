@@ -249,6 +249,11 @@ export default function App() {
   const [busyJobId, setBusyJobId]   = useState<string | null>(null);
   const [busyStartedAt, setBusyStartedAt] = useState<number | null>(null);
   const abortRef                    = useRef<AbortController | null>(null);
+  // Parallel resume tailoring: jobId -> startedAt. Up to MAX_PARALLEL_TAILORS
+  // run concurrently (backend is async; each POST is independent).
+  const MAX_PARALLEL_TAILORS = 3;
+  const [tailorRuns, setTailorRuns] = useState<Record<string, number>>({});
+  const tailorCtrls = useRef<Record<string, AbortController>>({});
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem("jh_welcomed"));
   const { toasts, toast }           = useToasts();
 
@@ -559,9 +564,18 @@ export default function App() {
   };
 
   const runAction = async (action: string) => {
-    if (!selectedJob || busy) return;
+    if (!selectedJob) return;
+
     if (action === "resume") {
-      const jd = selectedJob.description || "";
+      // Parallel path — snapshot the job now; the user can select another
+      // job while this one runs and each finish updates its own row.
+      const job = selectedJob;
+      if (tailorRuns[job.id]) return;   // this job already tailoring
+      if (Object.keys(tailorRuns).length >= MAX_PARALLEL_TAILORS) {
+        toast(`Max ${MAX_PARALLEL_TAILORS} tailors at once — wait for one to finish`, "error");
+        return;
+      }
+      const jd = job.description || "";
       const flags: string[] = [];
       if (/\b(TS\/SCI|top\s+secret|secret\s+clearance|security\s+clearance|clearance\s+required|active\s+(in-scope\s+)?clearance|polygraph|poly\b)/i.test(jd))
         flags.push("security clearance");
@@ -569,15 +583,15 @@ export default function App() {
         flags.push("U.S. citizenship");
       if (flags.length > 0 && !window.confirm(`⚠️ This job requires ${flags.join(" and ")}.\n\nYou may not be eligible. Tailor anyway?`))
         return;
-    }
-    setBusy(action); setBusyJobId(selectedJob.id); setBusyStartedAt(Date.now());
-    try {
-      if (action === "resume") {
-        abortRef.current = new AbortController();
-        const genStart = Date.now();
-        const r = await api.tailor(selectedJob.id, abortRef.current.signal);
+
+      const ctrl = new AbortController();
+      tailorCtrls.current[job.id] = ctrl;
+      setTailorRuns(m => ({ ...m, [job.id]: Date.now() }));
+      const genStart = Date.now();
+      try {
+        const r = await api.tailor(job.id, ctrl.signal);
         const genSeconds = Math.round((Date.now() - genStart) / 1000);
-        updateJob(selectedJob.id, {
+        updateJob(job.id, {
           tailored_resume: r.tailored_resume,
           ats_score_before: r.ats_before?.score ?? null,
           ats_score_after:  r.ats_after?.score ?? null,
@@ -587,10 +601,22 @@ export default function App() {
           review_reasons: r.review_reasons ?? [],
           generation_seconds: genSeconds,
         });
-        // Review-gate-aware toast disabled alongside the banner (2026-07-06) —
-        // backend always returns needs_review=false now, so this is a plain toast.
-        toast("Resume tailored", "success");
-      } else if (action === "cover") {
+        toast(`Resume tailored — ${job.company}`, "success");
+        await refreshJob(job.id);
+      } catch (e: any) {
+        if (e?.name !== "AbortError") toast(`${job.company}: ${e.message || "Tailor failed"}`, "error");
+      } finally {
+        delete tailorCtrls.current[job.id];
+        setTailorRuns(m => { const n = { ...m }; delete n[job.id]; return n; });
+      }
+      return;
+    }
+
+    // Non-resume actions keep the single global busy flag
+    if (busy) return;
+    setBusy(action); setBusyJobId(selectedJob.id); setBusyStartedAt(Date.now());
+    try {
+      if (action === "cover") {
         const r = await api.generateCoverLetter(selectedJob.id);
         updateJob(selectedJob.id, { cover_letter: r.cover_letter });
         toast("Cover letter generated", "success");
@@ -600,7 +626,10 @@ export default function App() {
     finally { setBusy(null); setBusyJobId(null); setBusyStartedAt(null); abortRef.current = null; }
   };
 
-  const cancelAction = () => { abortRef.current?.abort(); };
+  const cancelAction = (jobId?: string) => {
+    if (jobId && tailorCtrls.current[jobId]) { tailorCtrls.current[jobId].abort(); return; }
+    abortRef.current?.abort();
+  };
 
   const handleSelect = (id: string) => { setSelectedId(id); setTab("jobdetails"); };
   // Expose nav to Settings component for "Go to Profile" link
@@ -975,7 +1004,7 @@ export default function App() {
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                   title="Drag to resize"
                 />
-                <JobDetail job={selectedJob} tab={tab} setTab={setTab} onUpdate={(patch: Partial<Job>) => selectedJob && updateJob(selectedJob.id, patch)} onToast={toast} busy={busy} busyJobId={busyJobId} busyStartedAt={busyStartedAt} runAction={runAction} onCancel={cancelAction} />
+                <JobDetail job={selectedJob} tab={tab} setTab={setTab} onUpdate={(patch: Partial<Job>) => selectedJob && updateJob(selectedJob.id, patch)} onToast={toast} busy={busy} busyJobId={busyJobId} busyStartedAt={busyStartedAt} tailorRuns={tailorRuns} runAction={runAction} onCancel={cancelAction} />
               </div>
             )}
           </>

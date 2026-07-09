@@ -989,9 +989,11 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
               title={Object.keys(tailorRuns).length ? `${Object.keys(tailorRuns).length} tailoring in parallel` : undefined}>
               {tailorRuns[job.id] ? <><Spinner size={13} /> Tailoring…</> : <><Ic d={I.sparkles} size={14} /> Tailor Resume</>}
             </button>
-            {/* Tailored-resume quick downloads — appear only once a resume exists */}
+            {/* Tailored-resume quick downloads — far right of the action row,
+                only once a resume exists */}
             {job.tailored_resume && !tailorRuns[job.id] && (
               <div style={{ display: "inline-flex", alignItems: "stretch", height: 32, borderRadius: 8, overflow: "hidden",
+                marginLeft: "auto",
                 border: "1px solid rgba(124,58,237,0.35)", background: "rgba(124,58,237,0.07)" }}>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "0 10px", fontSize: 11,
                   fontWeight: 700, color: "#7c3aed", borderRight: "1px solid rgba(124,58,237,0.25)" }}>

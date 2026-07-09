@@ -70,54 +70,118 @@ function MonthlyBars({ data }: { data: Array<{ m: string; scraped: number; appli
   // (plus sqrt, so Applied/Tailored don't vanish next to Scraped's volume)
   // keeps bar height honestly meaningful both across months (same series)
   // AND across series (same month).
+  const [hover, setHover] = useState<number | null>(null);
+  const wrapRef = React.useRef<HTMLDivElement>(null);
   const globalMax = Math.max(...data.flatMap(d => [d.scraped, d.applied, d.tailored]), 1);
-  const series: [string, string][] = [
-    ["scraped",  "#6366f1"],
-    ["applied",  "#3b82f6"],
-    ["tailored", "#7c3aed"],
+  const series: [string, string, string][] = [
+    ["scraped",  "#6366f1", "Scraped"],
+    ["applied",  "#3b82f6", "Applied"],
+    ["tailored", "#7c3aed", "Tailored"],
   ];
-  // Level gridlines (1k, 2k, 3k...) — a nice step so there are 4-9 lines up
-  // to the peak. Positioned with the SAME sqrt scale the bars use, so a bar
-  // top always aligns with the line for its true value.
-  const STACK_H = 190;
-  const _rawStep = globalMax / 8;
-  const _mag = Math.pow(10, Math.floor(Math.log10(Math.max(_rawStep, 1))));
-  const step = [1, 2, 5, 10].map(m => m * _mag).find(s => globalMax / s <= 9) || _mag * 10;
-  const levels: number[] = [];
-  for (let v = step; v <= globalMax; v += step) levels.push(v);
-  const yPx = (v: number) => Math.sqrt(v / globalMax) * STACK_H;
+
+  const W = 1000, H = 240, TOP = 10;
+  const n = Math.max(data.length, 1);
+  const y = (v: number) => H - Math.sqrt(v / globalMax) * (H - TOP);
+
+  // Gridline levels picked to be EVENLY SPACED on the sqrt axis (not uniform
+  // 1k steps, which bunch at the top and leave the bottom half empty).
+  // Each target height maps back to a value (p² × max) snapped to a nice
+  // number, so lines land at readable values spread across the full chart.
+  const _nice = (x: number) => {
+    if (x <= 0) return 0;
+    const mag = Math.pow(10, Math.floor(Math.log10(x)));
+    let best = mag, bd = Infinity;
+    for (const m of [1, 2, 2.5, 5, 10]) {
+      const c = m * mag;
+      if (Math.abs(c - x) < bd) { bd = Math.abs(c - x); best = c; }
+    }
+    return best;
+  };
+  const levels = Array.from(new Set(
+    [0.18, 0.38, 0.58, 0.78, 1.0]
+      .map(p => _nice(p * p * globalMax))
+      .filter(v => v > 0 && v <= globalMax * 1.02)
+  )).sort((a, b) => a - b);
   const fmtLvl = (v: number) => v >= 1000 ? (v % 1000 === 0 ? v / 1000 + "k" : (v / 1000).toFixed(1) + "k") : String(v);
 
+  // Grouped bars: 3 per month, centered in the month's band
+  const band = W / n;
+  const barW = Math.min(30, band / 5);
+  const gap  = barW * 0.35;
+  const groupW = 3 * barW + 2 * gap;
+
+  const onMove = (e: React.MouseEvent) => {
+    const box = wrapRef.current?.getBoundingClientRect();
+    if (!box) return;
+    const idx = Math.floor(((e.clientX - box.left) / box.width) * n);
+    setHover(Math.min(Math.max(idx, 0), n - 1));
+  };
+  const hp = hover != null ? data[hover] : null;
+  const hoverLeftPct = hover != null ? ((hover + 0.5) / n) * 100 : 0;
+
   return (
-    <div>
-      <div style={{ position: "relative", height: STACK_H, marginLeft: 40 }}>
+    <div style={{ display: "flex", gap: 8 }}>
+      {/* Y axis labels */}
+      <div style={{ position: "relative", width: 34, height: 260, flexShrink: 0 }}>
         {levels.map(v => (
-          <div key={v} style={{ position: "absolute", left: 0, right: 0, bottom: yPx(v), borderTop: "1px solid var(--line)" }} />
-        ))}
-        {levels.map(v => (
-          <span key={"l" + v} style={{ position: "absolute", left: -40, width: 34, textAlign: "right", bottom: yPx(v) - 7,
+          <span key={v} style={{ position: "absolute", right: 4, top: `${(y(v) / H) * 100 * (240 / 260)}%`, transform: "translateY(-50%)",
             fontSize: 10, color: "var(--tx-3)", fontFamily: "var(--f-mono)" }}>{fmtLvl(v)}</span>
         ))}
-        <div className="mbars" style={{ position: "absolute", inset: 0, height: STACK_H, overflow: "hidden" }}>
-          {data.map((d, i) => (
-            <div className="mbar-col" key={i} style={{ gap: 0 }}>
-              <div className="mbar-stack">
-                {series.map(([k, c]) => {
-                  const raw = (d as any)[k];
-                  const v = Math.sqrt(raw / globalMax);
-                  return <div key={k} className="mbar" style={{ height: (raw > 0 ? Math.max(4, v * 100) : 0) + "%", background: c, "--d": (i * 60) + "ms" } as React.CSSProperties} title={`${k}: ${raw}`} />;
-                })}
-              </div>
+      </div>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div ref={wrapRef} style={{ position: "relative" }} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+          <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: 240, display: "block" }}>
+            {/* hover band */}
+            {hover != null && (
+              <rect x={hover * band} y={0} width={band} height={H} fill="rgba(124,58,237,0.06)" />
+            )}
+            {/* gridlines */}
+            {levels.map(v => (
+              <line key={v} x1={0} x2={W} y1={y(v)} y2={y(v)} stroke="var(--line)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+            ))}
+            <line x1={0} x2={W} y1={H} y2={H} stroke="var(--line)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+            {/* grouped bars */}
+            {data.map((d, i) => {
+              const gx = i * band + (band - groupW) / 2;
+              return series.map(([k, c], s) => {
+                const raw = (d as any)[k] as number;
+                if (!raw) return null;
+                const by = y(raw);
+                return (
+                  <rect key={`${i}${k}`} x={gx + s * (barW + gap)} y={by}
+                    width={barW} height={Math.max(H - by, 3)} rx={3}
+                    fill={c} opacity={hover == null || hover === i ? 1 : 0.45}
+                    style={{ transition: "opacity .15s" }} />
+                );
+              });
+            })}
+          </svg>
+
+          {/* tooltip — same style as Daily Activity */}
+          {hp && (
+            <div style={{ position: "absolute", top: 8, left: `${hoverLeftPct}%`,
+              transform: hoverLeftPct > 70 ? "translateX(calc(-100% - 14px))" : "translateX(14px)",
+              background: "var(--bg-surface)", border: "1px solid var(--line)", borderRadius: 10,
+              boxShadow: "0 8px 24px rgba(0,0,0,.12)", padding: "10px 14px", pointerEvents: "none", zIndex: 5, whiteSpace: "nowrap" }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--tx)", marginBottom: 6 }}>{hp.m}</div>
+              {series.map(([k, c, label]) => (
+                <div key={k} style={{ fontSize: 12, color: "var(--tx-2)", display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
+                  <i style={{ width: 9, height: 9, borderRadius: 3, background: c, display: "inline-block" }} />
+                  {label}: <b>{((hp as any)[k] as number).toLocaleString()}</b>
+                </div>
+              ))}
             </div>
+          )}
+        </div>
+
+        {/* month labels */}
+        <div style={{ display: "flex", marginTop: 8 }}>
+          {data.map((d, i) => (
+            <span key={i} style={{ flex: "1 1 0", minWidth: 0, textAlign: "center", fontSize: 11,
+              color: hover === i ? "var(--tx)" : "var(--tx-3)", fontFamily: "var(--f-mono)" }}>{d.m}</span>
           ))}
         </div>
-      </div>
-      <div className="mbars" style={{ height: "auto", marginLeft: 40, marginTop: 8 }}>
-        {data.map((d, i) => (
-          <div className="mbar-col" key={i} style={{ height: "auto" }}>
-            <span className="mbar-label">{d.m}</span>
-          </div>
-        ))}
       </div>
     </div>
   );

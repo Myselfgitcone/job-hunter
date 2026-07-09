@@ -2267,7 +2267,21 @@ async def _is_admin_user(db, user_id: str) -> bool:
 
 
 def _msg_dict(m: ChatMessage) -> dict:
-    return {"id": m.id, "sender": m.sender, "text": m.text, "created_at": m.created_at}
+    # seen = has the OTHER party read it
+    return {"id": m.id, "sender": m.sender, "text": m.text, "created_at": m.created_at,
+            "seen": bool(m.read_by_admin if m.sender == "user" else m.read_by_user)}
+
+
+def _is_active(last_seen_iso: str, window_s: int = 60) -> bool:
+    """Active = heartbeat (chat unread poll, every 15s) within the last minute."""
+    if not last_seen_iso:
+        return False
+    try:
+        from datetime import timezone as _tz
+        dt = datetime.fromisoformat(last_seen_iso.replace("Z", "+00:00"))
+        return (datetime.now(_tz.utc) - dt).total_seconds() <= window_s
+    except Exception:
+        return False
 
 
 @app.get("/api/chat/messages")
@@ -2287,16 +2301,25 @@ async def chat_messages(user_id: str = Depends(get_current_user_id)):
 
 @app.get("/api/chat/unread")
 async def chat_unread(user_id: str = Depends(get_current_user_id)):
-    """Badge count — for admin: total unread user messages across all threads."""
+    """Badge count + presence. Every logged-in client polls this (15s), so it
+    doubles as the presence heartbeat: caller's last_seen_at is stamped here,
+    and 'active within 60s' is what the green dot means everywhere."""
     async with SessionLocal() as db:
+        u = await db.get(User, user_id)
+        if u:
+            u.last_seen_at = _now_iso()
+            await db.commit()
         if await _is_admin_user(db, user_id):
             r = await db.execute(select(func.count()).select_from(ChatMessage).where(
                 ChatMessage.sender == "user", ChatMessage.read_by_admin == False))
-        else:
-            r = await db.execute(select(func.count()).select_from(ChatMessage).where(
-                ChatMessage.user_id == user_id, ChatMessage.sender == "admin",
-                ChatMessage.read_by_user == False))
-        return {"count": r.scalar() or 0}
+            return {"count": r.scalar() or 0, "peer_active": False}
+        r = await db.execute(select(func.count()).select_from(ChatMessage).where(
+            ChatMessage.user_id == user_id, ChatMessage.sender == "admin",
+            ChatMessage.read_by_user == False))
+        adm_res = await db.execute(select(User).where(func.lower(User.email) == ADMIN_EMAIL.lower()))
+        adm = adm_res.scalar_one_or_none()
+        return {"count": r.scalar() or 0,
+                "peer_active": _is_active(adm.last_seen_at if adm else "")}
 
 
 @app.post("/api/chat/send")
@@ -2341,7 +2364,8 @@ async def admin_chat_threads(user_id: str = Depends(get_current_user_id)):
     out = []
     for uid, t in threads.items():
         u = users.get(uid)
-        out.append({**t, "name": (u.name or u.email) if u else uid, "email": u.email if u else ""})
+        out.append({**t, "name": (u.name or u.email) if u else uid, "email": u.email if u else "",
+                    "active": _is_active(u.last_seen_at if u else "")})
     out.sort(key=lambda x: x["last"]["created_at"] if x["last"] else "", reverse=True)
     return out
 

@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { api } from "../api";
 
-type Msg = { id: number; sender: "user" | "admin"; text: string; created_at: string };
-type Thread = { user_id: string; name: string; email: string; unread: number; last: { text: string; sender: string; created_at: string } | null };
+type Msg = { id: number; sender: "user" | "admin"; text: string; created_at: string; seen?: boolean };
+type Thread = { user_id: string; name: string; email: string; unread: number; active?: boolean; last: { text: string; sender: string; created_at: string } | null };
 
 function fmtTime(iso: string): string {
   try {
@@ -10,9 +10,18 @@ function fmtTime(iso: string): string {
   } catch { return ""; }
 }
 
+function Presence({ active }: { active: boolean }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, color: active ? "#22c55e" : "var(--tx-3)" }}>
+      <span style={{ width: 7, height: 7, borderRadius: 999, background: active ? "#22c55e" : "var(--tx-3)", display: "inline-block" }} />
+      {active ? "online" : "offline"}
+    </span>
+  );
+}
+
 // Floating Help & Chat panel — user talks to admin; admin sees all threads.
-export default function ChatPanel({ isAdmin, onClose, onRead }: {
-  isAdmin: boolean; onClose: () => void; onRead: () => void;
+export default function ChatPanel({ isAdmin, adminActive, onClose, onRead }: {
+  isAdmin: boolean; adminActive?: boolean; onClose: () => void; onRead: () => void;
 }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -85,7 +94,8 @@ export default function ChatPanel({ isAdmin, onClose, onRead }: {
             ? (activeThread ? (threads.find(t => t.user_id === activeThread)?.name || "Chat") : "Help & Chat — Threads")
             : "Help & Chat"}
         </span>
-        {!isAdmin && <span style={{ fontSize: 11, color: "var(--tx-3)" }}>· admin replies here</span>}
+        {!isAdmin && <Presence active={!!adminActive} />}
+        {isAdmin && activeThread && <Presence active={!!threads.find(t => t.user_id === activeThread)?.active} />}
         <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "var(--tx-3)", fontSize: 16, padding: 0 }}>✕</button>
       </div>
 
@@ -99,9 +109,15 @@ export default function ChatPanel({ isAdmin, onClose, onRead }: {
             <button key={t.user_id} onClick={() => { setActiveThread(t.user_id); setMsgs([]); }}
               style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
                 padding: "10px 14px", background: "none", border: "none", borderBottom: "1px solid var(--line)", cursor: "pointer" }}>
-              <div style={{ width: 32, height: 32, borderRadius: 999, background: "rgba(124,58,237,0.15)", color: "var(--violet)",
-                display: "grid", placeItems: "center", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
-                {(t.name || "?").slice(0, 1).toUpperCase()}
+              <div style={{ position: "relative", flexShrink: 0 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 999, background: "rgba(124,58,237,0.15)", color: "var(--violet)",
+                  display: "grid", placeItems: "center", fontSize: 13, fontWeight: 700 }}>
+                  {(t.name || "?").slice(0, 1).toUpperCase()}
+                </div>
+                {t.active && (
+                  <span style={{ position: "absolute", right: -1, bottom: -1, width: 10, height: 10, borderRadius: 999,
+                    background: "#22c55e", border: "2px solid var(--bg-surface)" }} />
+                )}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--tx)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
@@ -124,24 +140,39 @@ export default function ChatPanel({ isAdmin, onClose, onRead }: {
                 {isAdmin ? "No messages in this thread yet." : "Questions or issues? Message the admin here — replies show up in this window."}
               </div>
             )}
-            {msgs.map(m => {
-              const mine = isAdmin ? m.sender === "admin" : m.sender === "user";
-              return (
-                <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start" }}>
-                  <div style={{
-                    maxWidth: "82%", padding: "8px 12px", borderRadius: 12, fontSize: 12.5, lineHeight: 1.5,
-                    whiteSpace: "pre-wrap", wordBreak: "break-word",
-                    background: mine ? "var(--violet)" : "var(--bg-elevated)",
-                    color: mine ? "#fff" : "var(--tx)",
-                    border: mine ? "none" : "1px solid var(--line)",
-                    borderBottomRightRadius: mine ? 4 : 12, borderBottomLeftRadius: mine ? 12 : 4,
-                  }}>{m.text}</div>
-                  <span style={{ fontSize: 9.5, color: "var(--tx-3)", marginTop: 2 }}>
-                    {!mine && (isAdmin ? "" : "Admin · ")}{fmtTime(m.created_at)}
-                  </span>
-                </div>
-              );
-            })}
+            {(() => {
+              // "Seen" shows only under my LATEST message (standard chat UX)
+              const lastMineIdx = (() => {
+                for (let i = msgs.length - 1; i >= 0; i--) {
+                  const mine = isAdmin ? msgs[i].sender === "admin" : msgs[i].sender === "user";
+                  if (mine) return i;
+                }
+                return -1;
+              })();
+              return msgs.map((m, idx) => {
+                const mine = isAdmin ? m.sender === "admin" : m.sender === "user";
+                return (
+                  <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start" }}>
+                    <div style={{
+                      maxWidth: "82%", padding: "8px 12px", borderRadius: 12, fontSize: 12.5, lineHeight: 1.5,
+                      whiteSpace: "pre-wrap", wordBreak: "break-word",
+                      background: mine ? "var(--violet)" : "var(--bg-elevated)",
+                      color: mine ? "#fff" : "var(--tx)",
+                      border: mine ? "none" : "1px solid var(--line)",
+                      borderBottomRightRadius: mine ? 4 : 12, borderBottomLeftRadius: mine ? 12 : 4,
+                    }}>{m.text}</div>
+                    <span style={{ fontSize: 9.5, color: "var(--tx-3)", marginTop: 2 }}>
+                      {!mine && (isAdmin ? "" : "Admin · ")}{fmtTime(m.created_at)}
+                      {mine && idx === lastMineIdx && (
+                        <span style={{ marginLeft: 4, color: m.seen ? "#22c55e" : "var(--tx-3)", fontWeight: 600 }}>
+                          · {m.seen ? "Seen ✓✓" : "Sent ✓"}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                );
+              });
+            })()}
           </div>
           <div style={{ display: "flex", gap: 8, padding: "10px 12px", borderTop: "1px solid var(--line)", flexShrink: 0 }}>
             <textarea

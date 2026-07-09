@@ -629,15 +629,17 @@ export default function App() {
     return () => clearInterval(t);
   }, [isAuthenticated, isAdmin]);
 
-  // Help & Chat — open state + unread badge (all users)
+  // Help & Chat — open state + unread badge + admin presence (all users).
+  // The 15s unread poll doubles as the presence heartbeat server-side.
   const [chatOpen, setChatOpen] = useState(false);
   const [chatUnread, setChatUnread] = useState(0);
+  const [chatPeerActive, setChatPeerActive] = useState(false);
   const loadChatUnread = useCallback(
-    () => api.chatUnread().then(d => setChatUnread(d.count || 0)).catch(() => {}), []);
+    () => api.chatUnread().then(d => { setChatUnread(d.count || 0); setChatPeerActive(!!(d as any).peer_active); }).catch(() => {}), []);
   useEffect(() => {
     if (!isAuthenticated) return;
     loadChatUnread();
-    const t = setInterval(loadChatUnread, 30000);
+    const t = setInterval(loadChatUnread, 15000);
     return () => clearInterval(t);
   }, [isAuthenticated, loadChatUnread]);
 
@@ -974,7 +976,7 @@ export default function App() {
 
       <Toasts toasts={toasts} />
 
-      {chatOpen && <ChatPanel isAdmin={isAdmin} onClose={() => setChatOpen(false)} onRead={loadChatUnread} />}
+      {chatOpen && <ChatPanel isAdmin={isAdmin} adminActive={chatPeerActive} onClose={() => setChatOpen(false)} onRead={loadChatUnread} />}
 
       {/* Welcome modal removed */}
     </div>

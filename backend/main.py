@@ -22,7 +22,7 @@ load_dotenv()
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from database import init_db, SessionLocal, engine, Job, Setting, User, UserSettings, UserJob, Company, AppLog, QuickTailorHistory, ChatMessage
+from database import init_db, SessionLocal, engine, Job, Setting, User, UserSettings, UserJob, Company, AppLog, QuickTailorHistory, ChatMessage, AssistantMessage
 from auth import get_current_user_id, get_optional_user_id, hash_password, verify_password, create_token
 from scrapers import run_all_scrapers, run_group_fast, run_group_greenhouse, run_group_hiringcafe, run_group_jobo, run_group_fantasticjobs
 from scrapers.jobspy_scraper import fetch as jobspy_fetch
@@ -2402,6 +2402,133 @@ async def admin_chat_send(thread_user_id: str, body: dict, user_id: str = Depend
         db.add(ChatMessage(user_id=thread_user_id, sender="admin", text=text_val, created_at=_now_iso()))
         await db.commit()
     return {"ok": True}
+
+
+# ── AI Assistant — resume-grounded Q&A ("can I apply to this JD?") ────────────
+
+ASSISTANT_DAILY_LIMIT = 30
+
+# JD-shaped input heuristic: long text or requirement-section vocabulary
+_JD_SHAPE_RE = re.compile(
+    r"(responsibilit|qualification|requirement|what you.ll do|you will|"
+    r"we are looking|experience with|years of experience|about the role)", re.IGNORECASE)
+
+# No-sponsorship / clearance hard blockers in JD text
+_SPONSOR_BLOCK_RE = re.compile(
+    r"(without\s+(?:the\s+need\s+for\s+)?sponsorship|no\s+(?:visa\s+)?sponsorship"
+    r"|not\s+(?:able\s+to\s+|offer(?:ing)?\s+)?sponsor|unable\s+to\s+sponsor"
+    r"|will\s+not\s+sponsor|cannot\s+sponsor|sponsorship\s+is\s+not\s+available"
+    r"|now\s+or\s+in\s+the\s+future"
+    r"|security\s+clearance|ts/sci|top.?secret|u\.?s\.?\s+citizens?\s+only"
+    r"|must\s+be\s+(?:a\s+)?u\.?s\.?\s+citizen|citizenship\s+required)", re.IGNORECASE)
+
+_ASSISTANT_SYSTEM = """You are the Job Hunter app's AI assistant. You answer a job seeker's questions grounded ONLY in their actual resume and the FACTS block provided.
+
+HARD RULES:
+- Never claim the candidate has a skill, tool, or experience that is not in their resume text.
+- When a FACTS block is present (JD analysis), your verdict MUST agree with it — especially the sponsorship blocker and skill coverage numbers. Do not soften a hard blocker.
+- For "can I apply" questions: start your reply with exactly one of: "YES —", "STRETCH —", or "NO —", then 2-4 short bullet reasons (matched strengths, missing skills, blockers), then one practical tip.
+- General career questions: answer from the resume; concise, specific, honest about gaps.
+- Keep replies under 180 words. Plain text, no markdown headers."""
+
+
+@app.get("/api/assistant/messages")
+async def assistant_messages(user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        res = await db.execute(
+            select(AssistantMessage).where(AssistantMessage.user_id == user_id)
+            .order_by(AssistantMessage.id.desc()).limit(100))
+        msgs = list(reversed(res.scalars().all()))
+        today = _now_iso()[:10]
+        used_r = await db.execute(select(func.count()).select_from(AssistantMessage).where(
+            AssistantMessage.user_id == user_id, AssistantMessage.role == "user",
+            AssistantMessage.created_at.like(f"{today}%")))
+        used = used_r.scalar() or 0
+    return {"messages": [{"id": m.id, "role": m.role, "text": m.text, "created_at": m.created_at} for m in msgs],
+            "remaining": max(0, ASSISTANT_DAILY_LIMIT - used)}
+
+
+@app.post("/api/assistant/ask")
+async def assistant_ask(body: dict, user_id: str = Depends(get_current_user_id)):
+    question = (body.get("text") or "").strip()
+    if not question:
+        raise HTTPException(400, "Empty question")
+    if len(question) > 20000:
+        raise HTTPException(400, "Too long — paste the JD's key sections, not the whole page")
+
+    today = _now_iso()[:10]
+    async with SessionLocal() as db:
+        used_r = await db.execute(select(func.count()).select_from(AssistantMessage).where(
+            AssistantMessage.user_id == user_id, AssistantMessage.role == "user",
+            AssistantMessage.created_at.like(f"{today}%")))
+        used = used_r.scalar() or 0
+        if used >= ASSISTANT_DAILY_LIMIT:
+            raise HTTPException(429, f"Daily limit reached ({ASSISTANT_DAILY_LIMIT} questions). Resets at midnight UTC.")
+
+    user_cfg = await _get_user_settings(user_id)
+    resume = user_cfg.get("resume", "")
+    if not resume.strip():
+        raise HTTPException(400, "Upload your resume in Profile first — the assistant answers from it.")
+    visa = user_cfg.get("profile_visa", "") or "not specified"
+    roles = user_cfg.get("job_roles") or []
+
+    from ai.llm import ModelKeys as _MK
+    mk = _MK(
+        anthropic=user_cfg.get("anthropic_api_key", "") or "",
+        google=user_cfg.get("google_api_key", "") or "",
+        openai=user_cfg.get("openai_api_key", "") or "",
+        openrouter=user_cfg.get("ai_api_key", "") or "",
+    )
+    if not any([mk.anthropic, mk.google, mk.openai, mk.openrouter]):
+        raise HTTPException(400, "No AI API key set. Add one in Settings.")
+    model = user_cfg.get("ai_model_secondary") or "anthropic/claude-haiku-4-5"
+
+    # Deterministic JD analysis — the AI narrates these facts, never invents them
+    facts = ""
+    if len(question) > 500 or _JD_SHAPE_RE.search(question):
+        try:
+            from resume_lint import clean_jd_html, extract_jd_hard_skills, skill_coverage_report, user_roles_to_role_type, TECH
+            jd = clean_jd_html(question)
+            role_type = user_roles_to_role_type(roles) or TECH
+            jd_skills = extract_jd_hard_skills(jd, role_type)
+            cov = skill_coverage_report(resume, jd, role_type=role_type) if jd_skills else {}
+            sponsor_hit = _SPONSOR_BLOCK_RE.search(jd)
+            yoe = [int(m) for m in re.findall(r"(\d{1,2})\+?\s*(?:\+\s*)?years", jd, re.IGNORECASE) if int(m) <= 30]
+            facts_lines = []
+            if jd_skills:
+                facts_lines.append(f"JD hard skills detected ({len(jd_skills)}): {', '.join(jd_skills[:40])}")
+                facts_lines.append(f"Resume skill coverage: {cov.get('coverage_pct', '?')}% — matched: {', '.join(cov.get('matched', [])[:25]) or 'none'}")
+                facts_lines.append(f"Missing from resume: {', '.join(cov.get('missing', [])[:25]) or 'none'}")
+            if sponsor_hit:
+                facts_lines.append(f"SPONSORSHIP/CLEARANCE BLOCKER in JD: \"{sponsor_hit.group(0)}\" — candidate visa status: {visa}. "
+                                   "If the candidate needs sponsorship, this is a hard NO regardless of skills.")
+            else:
+                facts_lines.append(f"No sponsorship/clearance blocker language detected in JD. Candidate visa status: {visa}.")
+            if yoe:
+                facts_lines.append(f"Years-of-experience figures mentioned in JD: {sorted(set(yoe))}")
+            facts = "=== FACTS (computed, authoritative) ===\n" + "\n".join(facts_lines) + "\n"
+        except Exception as e:
+            print(f"[Assistant] JD analysis failed (answering without facts): {e}")
+
+    from ai.llm import chat as _chat
+    user_msg = (
+        f"{facts}\n=== CANDIDATE RESUME ===\n{resume[:12000]}\n\n"
+        f"=== CANDIDATE VISA STATUS ===\n{visa}\n\n"
+        f"=== QUESTION ===\n{question[:16000]}"
+    )
+    try:
+        answer = await _chat(system=_ASSISTANT_SYSTEM, user=user_msg,
+                             api_key="", provider="", model=model,
+                             max_tokens=600, pass_name="assistant", keys=mk)
+    except Exception as e:
+        raise HTTPException(502, f"AI call failed: {e}")
+
+    now = _now_iso()
+    async with SessionLocal() as db:
+        db.add(AssistantMessage(user_id=user_id, role="user", text=question, created_at=now))
+        db.add(AssistantMessage(user_id=user_id, role="assistant", text=answer.strip(), created_at=now))
+        await db.commit()
+    return {"answer": answer.strip(), "remaining": max(0, ASSISTANT_DAILY_LIMIT - used - 1)}
 
 
 @app.post("/api/admin/backfill-trays")

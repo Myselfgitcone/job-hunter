@@ -213,6 +213,16 @@ class ChatMessage(Base):
     read_by_user  = Column(Boolean, default=False)
 
 
+class AssistantMessage(Base):
+    """AI Assistant — per-user Q&A history, grounded in that user's resume."""
+    __tablename__ = "assistant_messages"
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    user_id    = Column(String, nullable=False)
+    role       = Column(String, nullable=False)   # "user" | "assistant"
+    text       = Column(Text, nullable=False)
+    created_at = Column(String, nullable=False)   # ISO UTC
+
+
 class AppLog(Base):
     __tablename__ = "app_logs"
     id        = Column(Integer, primary_key=True, autoincrement=True)

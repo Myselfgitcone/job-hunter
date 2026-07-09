@@ -203,6 +203,8 @@ export const api = {
   adminChatUsers:    () => req<any[]>("/api/admin/chat/users"),
   adminChatMessages: (uid: string) => req<any[]>(`/api/admin/chat/${uid}/messages`),
   adminChatSend:     (uid: string, text: string) => req(`/api/admin/chat/${uid}/send`, { method: "POST", body: JSON.stringify({ text }) }),
+  assistantMessages: () => req<{ messages: any[]; remaining: number }>("/api/assistant/messages"),
+  assistantAsk:      (text: string) => req<{ answer: string; remaining: number }>("/api/assistant/ask", { method: "POST", body: JSON.stringify({ text }) }),
 
   getAnalytics: (personal?: boolean) => req<any>(`/api/analytics${personal ? "?personal=1" : ""}`),
   adminUsersAnalytics: () => req<any[]>("/api/admin/users-analytics"),

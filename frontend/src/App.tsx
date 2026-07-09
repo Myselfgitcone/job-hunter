@@ -299,9 +299,9 @@ export default function App() {
     return () => document.removeEventListener("keydown", h);
   }, []);
 
-  const loadJobs = useCallback(async () => {
+  const loadJobs = useCallback(async (quiet: boolean = false) => {
     if (!isAuthenticated) return;
-    setLoading(true);
+    if (!quiet) setLoading(true);   // background refreshes don't flash the spinner
     const storedEmail = (() => { try { return JSON.parse(localStorage.getItem("jh_user") || "{}").email?.toLowerCase(); } catch { return ""; } })();
     const _adm = storedEmail === "jaggubhai8766@gmail.com";
     const params = _adm ? {} : { country: "USA" };
@@ -324,6 +324,30 @@ export default function App() {
   }, [isAuthenticated]);
 
   useEffect(() => { loadJobs(); }, [loadJobs]);
+
+  // Auto-refresh: the hourly scrape lands server-side without the window
+  // knowing. Poll the cheap public count every 5 min; when it changes, a
+  // scrape (or retention delete) touched the DB — quietly reload the list.
+  const _lastJobCount = useRef<number | null>(null);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const check = async () => {
+      try {
+        const d = await api.jobCount();
+        const count = d.count ?? null;
+        if (count == null) return;
+        if (_lastJobCount.current != null && count !== _lastJobCount.current) {
+          const diff = count - _lastJobCount.current;
+          await loadJobs(true);
+          if (diff > 0) toast(`${diff.toLocaleString()} new jobs loaded`, "success");
+        }
+        _lastJobCount.current = count;
+      } catch { /* transient — next tick retries */ }
+    };
+    check();
+    const t = setInterval(check, 5 * 60 * 1000);
+    return () => clearInterval(t);
+  }, [isAuthenticated, loadJobs]);
 
   const sourceCounts = useMemo(() => {
     const m: Record<string, number> = {};

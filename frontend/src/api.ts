@@ -208,6 +208,7 @@ export const api = {
   assistantMessages: () => req<{ messages: any[]; remaining: number }>("/api/assistant/messages"),
   assistantAsk:      (text: string) => req<{ answer: string; remaining: number }>("/api/assistant/ask", { method: "POST", body: JSON.stringify({ text }) }),
 
+  jobCount: () => req<{ count: number }>("/api/jobs/count"),
   getAnalytics: (personal?: boolean) => req<any>(`/api/analytics${personal ? "?personal=1" : ""}`),
   adminUsersAnalytics: () => req<any[]>("/api/admin/users-analytics"),
   getDailyUsage: () => req<{ used: number; limit: number; remaining: number }>("/api/usage/today"),

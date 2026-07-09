@@ -6,6 +6,7 @@ import { api } from "./api";
 import JobPreferencesModal, { ROLE_GROUPS } from './components/JobPreferencesModal';
 import PendingApproval from './components/PendingApproval';
 import ChatPanel from './components/ChatPanel';
+import AssistantPanel from './components/AssistantPanel';
 
 // Collapse a flat role list for display: when an entire family is selected,
 // show just the family name; partially-selected families show their children.
@@ -632,6 +633,7 @@ export default function App() {
   // Help & Chat — open state + unread badge + admin presence (all users).
   // The 15s unread poll doubles as the presence heartbeat server-side.
   const [chatOpen, setChatOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);   // separate AI panel
   const [chatUnread, setChatUnread] = useState(0);
   const [chatPeerActive, setChatPeerActive] = useState(false);
   const loadChatUnread = useCallback(
@@ -755,8 +757,14 @@ export default function App() {
               </a>
             );
           })}
+          {/* AI Assistant — resume-grounded Q&A; floating panel bottom-left */}
+          <a onClick={() => { setAssistantOpen(o => !o); setChatOpen(false); }} className={`nav-item${assistantOpen ? " active" : ""}`}
+            data-label="AI Assistant" style={{ cursor: "pointer" }}>
+            <Ic d={'<path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/><path d="M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8z"/>'} size={16} />
+            AI Assistant
+          </a>
           {/* Help & Chat — user↔admin thread; floating panel bottom-left */}
-          <a onClick={() => setChatOpen(o => !o)} className={`nav-item${chatOpen ? " active" : ""}`}
+          <a onClick={() => { setChatOpen(o => !o); setAssistantOpen(false); }} className={`nav-item${chatOpen ? " active" : ""}`}
             data-label="Help & Chat" style={{ cursor: "pointer" }}>
             <Ic d={'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'} size={16} />
             Help &amp; Chat
@@ -977,6 +985,7 @@ export default function App() {
       <Toasts toasts={toasts} />
 
       {chatOpen && <ChatPanel isAdmin={isAdmin} adminActive={chatPeerActive} onClose={() => setChatOpen(false)} onRead={loadChatUnread} />}
+      {assistantOpen && <AssistantPanel onClose={() => setAssistantOpen(false)} />}
 
       {/* Welcome modal removed */}
     </div>

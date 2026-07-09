@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import type { Job } from "../types";
-import { CompanyLogo, AtsLogo } from "./primitives";
+import { CompanyLogo, AtsLogo, Spinner } from "./primitives";
 import { api } from "../api";
 
 const EXP_TRAYS = ["0-2","2-4","4-5","5-6","6-7","7-8","8-10","10-13","13-15","15+"];
@@ -73,9 +73,10 @@ interface Props {
   onUpdate?: (id: string, patch: Partial<Job>) => void;
   mode?: "compact" | "cards";
   index?: number;
+  tailoring?: boolean;   // resume tailor in flight for this job — show spinner badge
 }
 
-export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "compact", index = 0 }: Props) {
+export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "compact", index = 0, tailoring = false }: Props) {
   const [editingExp, setEditingExp] = useState(false);
   const expRef = useRef<HTMLSelectElement>(null);
   const qr      = job.qualify_result as any;
@@ -107,6 +108,13 @@ export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "comp
         <div className="jc-title-row">
           <span className="jc-title">{job.title}</span>
           {isNew && <span className="badge-new">new</span>}
+          {tailoring && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10.5, fontWeight: 700,
+              padding: "1px 8px", borderRadius: 999, background: "rgba(124,58,237,0.12)", color: "#7c3aed",
+              border: "1px solid rgba(124,58,237,0.35)", whiteSpace: "nowrap", flexShrink: 0 }}>
+              <Spinner size={10} color="#7c3aed" /> Tailoring
+            </span>
+          )}
         </div>
         <div className="jc-sub">
           <span className="co">{job.company}</span>

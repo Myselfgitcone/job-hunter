@@ -978,6 +978,7 @@ export default function App() {
                         onQualifyUpdated={(id, r) => updateJob(id, { qualify_result: r })}
                         emptyState={allJobs.length === 0 ? "Click Scrape Now to fetch jobs" : "Try clearing filters"}
                         mode={listMode}
+                        tailorRuns={tailorRuns}
                       />
                     )}
                   </div>

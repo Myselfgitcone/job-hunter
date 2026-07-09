@@ -13,9 +13,10 @@ interface Props {
   onQualifyUpdated?: (id: string, r: QualifyResult) => void;
   emptyState?: string;
   mode?: "compact" | "cards";
+  tailorRuns?: Record<string, number>;   // jobId -> startedAt for in-flight tailors
 }
 
-export function JobList({ jobs, selectedId, onSelect, onSkip, onUpdate, onQualifyUpdated, emptyState, mode = "compact" }: Props) {
+export function JobList({ jobs, selectedId, onSelect, onSkip, onUpdate, onQualifyUpdated, emptyState, mode = "compact", tailorRuns = {} }: Props) {
   const [visible, setVisible] = useState(PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -68,6 +69,7 @@ export function JobList({ jobs, selectedId, onSelect, onSkip, onUpdate, onQualif
           index={i}
           selected={selectedId === job.id}
           mode={mode}
+          tailoring={!!tailorRuns[job.id]}
           onClick={() => onSelect(job.id)}
           onSkip={onSkip}
           onUpdate={onUpdate}

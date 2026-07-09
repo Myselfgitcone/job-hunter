@@ -1033,19 +1033,11 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
                 <button onClick={() => { navigator.clipboard.writeText(job.tailored_resume || ""); onToast("Resume copied", "success"); }}
                   title="Copy resume text"
                   style={{ padding: "0 11px", fontSize: 11.5, fontWeight: 600, cursor: "pointer", background: "transparent",
-                    color: "var(--tx-2)", border: "none", borderRight: "1px solid rgba(124,58,237,0.18)",
+                    color: "var(--tx-2)", border: "none",
                     display: "inline-flex", alignItems: "center", gap: 4 }}
                   onMouseOver={e => { e.currentTarget.style.background = "rgba(124,58,237,0.14)"; e.currentTarget.style.color = "#7c3aed"; }}
                   onMouseOut={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--tx-2)"; }}>
                   <Ic d={I.copy} size={13} /> Copy
-                </button>
-                <button onClick={() => downloadFile(api.jdUrl(job.id), "jd.txt").catch(e => onToast(e.message, "error"))}
-                  title="Download job description"
-                  style={{ padding: "0 11px", fontSize: 11.5, fontWeight: 600, cursor: "pointer", background: "transparent",
-                    color: "var(--tx-2)", border: "none" }}
-                  onMouseOver={e => { e.currentTarget.style.background = "rgba(124,58,237,0.14)"; e.currentTarget.style.color = "#7c3aed"; }}
-                  onMouseOut={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--tx-2)"; }}>
-                  JD
                 </button>
               </div>
             )}

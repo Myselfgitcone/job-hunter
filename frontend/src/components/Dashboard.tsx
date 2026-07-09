@@ -81,27 +81,16 @@ function MonthlyBars({ data }: { data: Array<{ m: string; scraped: number; appli
 
   const W = 1000, H = 240, TOP = 10;
   const n = Math.max(data.length, 1);
-  const y = (v: number) => H - Math.sqrt(v / globalMax) * (H - TOP);
 
-  // Gridline levels picked to be EVENLY SPACED on the sqrt axis (not uniform
-  // 1k steps, which bunch at the top and leave the bottom half empty).
-  // Each target height maps back to a value (p² × max) snapped to a nice
-  // number, so lines land at readable values spread across the full chart.
-  const _nice = (x: number) => {
-    if (x <= 0) return 0;
-    const mag = Math.pow(10, Math.floor(Math.log10(x)));
-    let best = mag, bd = Infinity;
-    for (const m of [1, 2, 2.5, 5, 10]) {
-      const c = m * mag;
-      if (Math.abs(c - x) < bd) { bd = Math.abs(c - x); best = c; }
-    }
-    return best;
-  };
-  const levels = Array.from(new Set(
-    [0.18, 0.38, 0.58, 0.78, 1.0]
-      .map(p => _nice(p * p * globalMax))
-      .filter(v => v > 0 && v <= globalMax * 1.02)
-  )).sort((a, b) => a - b);
+  // Linear scale with uniform nice steps (1k, 2k, 3k...) — per user. The
+  // axis top is the peak rounded UP to the next step, so the last gridline
+  // sits at/above the tallest bar (peak 5.3k → lines at 1k..6k).
+  const _mag = Math.pow(10, Math.floor(Math.log10(Math.max(globalMax / 8, 1))));
+  const step = [1, 2, 5, 10].map(m => m * _mag).find(s => globalMax / s <= 8) || _mag * 10;
+  const axisMax = Math.ceil(globalMax / step) * step;
+  const levels: number[] = [];
+  for (let v = step; v <= axisMax; v += step) levels.push(v);
+  const y = (v: number) => H - (v / axisMax) * (H - TOP);
   const fmtLvl = (v: number) => v >= 1000 ? (v % 1000 === 0 ? v / 1000 + "k" : (v / 1000).toFixed(1) + "k") : String(v);
 
   // Grouped bars: 3 per month, centered in the month's band

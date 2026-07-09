@@ -2330,18 +2330,8 @@ async def chat_send(body: dict, user_id: str = Depends(get_current_user_id)):
     if len(text_val) > 4000:
         raise HTTPException(400, "Message too long (4000 chars max)")
     async with SessionLocal() as db:
-        u = await db.get(User, user_id)
         db.add(ChatMessage(user_id=user_id, sender="user", text=text_val, created_at=_now_iso()))
         await db.commit()
-    # Ping admin on Telegram (best-effort, never blocks the send)
-    try:
-        import telegram_bot
-        if telegram_bot.is_ready():
-            who = (u.name or u.email) if u else "user"
-            preview = text_val[:200] + ("…" if len(text_val) > 200 else "")
-            await telegram_bot.send_message(f"💬 <b>New chat message</b> from {who}:\n{preview}")
-    except Exception:
-        pass
     return {"ok": True}
 
 

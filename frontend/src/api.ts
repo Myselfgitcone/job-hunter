@@ -195,6 +195,14 @@ export const api = {
   verifyJob: (id: string) =>
     req<{ alive: boolean | null; status_code: number | null; error?: string }>(`/api/jobs/${id}/verify`),
 
+  // Help & Chat
+  chatMessages:      () => req<any[]>("/api/chat/messages"),
+  chatUnread:        () => req<{ count: number }>("/api/chat/unread"),
+  chatSend:          (text: string) => req("/api/chat/send", { method: "POST", body: JSON.stringify({ text }) }),
+  adminChatThreads:  () => req<any[]>("/api/admin/chat/threads"),
+  adminChatMessages: (uid: string) => req<any[]>(`/api/admin/chat/${uid}/messages`),
+  adminChatSend:     (uid: string, text: string) => req(`/api/admin/chat/${uid}/send`, { method: "POST", body: JSON.stringify({ text }) }),
+
   getAnalytics: (personal?: boolean) => req<any>(`/api/analytics${personal ? "?personal=1" : ""}`),
   adminUsersAnalytics: () => req<any[]>("/api/admin/users-analytics"),
   getDailyUsage: () => req<{ used: number; limit: number; remaining: number }>("/api/usage/today"),

@@ -5,6 +5,7 @@ import { api } from "./api";
 
 import JobPreferencesModal, { ROLE_GROUPS } from './components/JobPreferencesModal';
 import PendingApproval from './components/PendingApproval';
+import ChatPanel from './components/ChatPanel';
 
 // Collapse a flat role list for display: when an entire family is selected,
 // show just the family name; partially-selected families show their children.
@@ -628,6 +629,18 @@ export default function App() {
     return () => clearInterval(t);
   }, [isAuthenticated, isAdmin]);
 
+  // Help & Chat — open state + unread badge (all users)
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatUnread, setChatUnread] = useState(0);
+  const loadChatUnread = useCallback(
+    () => api.chatUnread().then(d => setChatUnread(d.count || 0)).catch(() => {}), []);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    loadChatUnread();
+    const t = setInterval(loadChatUnread, 30000);
+    return () => clearInterval(t);
+  }, [isAuthenticated, loadChatUnread]);
+
   // Daily tailor usage
   const [dailyUsage, setDailyUsage] = useState<{ used: number; limit: number; remaining: number } | null>(null);
   useEffect(() => {
@@ -740,6 +753,18 @@ export default function App() {
               </a>
             );
           })}
+          {/* Help & Chat — user↔admin thread; floating panel bottom-left */}
+          <a onClick={() => setChatOpen(o => !o)} className={`nav-item${chatOpen ? " active" : ""}`}
+            data-label="Help & Chat" style={{ cursor: "pointer" }}>
+            <Ic d={'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'} size={16} />
+            Help &amp; Chat
+            {chatUnread > 0 && (
+              <span style={{ marginLeft: "auto", minWidth: 18, height: 18, borderRadius: 999, background: "#7c3aed",
+                color: "#fff", fontSize: 10.5, fontWeight: 700, display: "grid", placeItems: "center", padding: "0 5px" }}>
+                {chatUnread}
+              </span>
+            )}
+          </a>
         </nav>
 
         <div className="sidebar-spacer" />
@@ -948,6 +973,8 @@ export default function App() {
       </div>
 
       <Toasts toasts={toasts} />
+
+      {chatOpen && <ChatPanel isAdmin={isAdmin} onClose={() => setChatOpen(false)} onRead={loadChatUnread} />}
 
       {/* Welcome modal removed */}
     </div>

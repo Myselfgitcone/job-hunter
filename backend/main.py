@@ -22,7 +22,7 @@ load_dotenv()
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from database import init_db, SessionLocal, engine, Job, Setting, User, UserSettings, UserJob, Company, AppLog, QuickTailorHistory
+from database import init_db, SessionLocal, engine, Job, Setting, User, UserSettings, UserJob, Company, AppLog, QuickTailorHistory, ChatMessage
 from auth import get_current_user_id, get_optional_user_id, hash_password, verify_password, create_token
 from scrapers import run_all_scrapers, run_group_fast, run_group_greenhouse, run_group_hiringcafe, run_group_jobo, run_group_fantasticjobs
 from scrapers.jobspy_scraper import fetch as jobspy_fetch
@@ -2250,6 +2250,127 @@ async def admin_mark_logs_seen(user_id: str = Depends(get_current_user_id)):
     await _verify_admin(user_id)
     async with SessionLocal() as db:
         await db.execute(update(AppLog).where(AppLog.seen == False).values(seen=True))
+        await db.commit()
+    return {"ok": True}
+
+
+# ── Help & Chat — per-user thread with admin ─────────────────────────────────
+
+def _now_iso() -> str:
+    from datetime import timezone as _tz
+    return datetime.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+async def _is_admin_user(db, user_id: str) -> bool:
+    u = await db.get(User, user_id)
+    return bool(u and u.email.lower() == ADMIN_EMAIL.lower())
+
+
+def _msg_dict(m: ChatMessage) -> dict:
+    return {"id": m.id, "sender": m.sender, "text": m.text, "created_at": m.created_at}
+
+
+@app.get("/api/chat/messages")
+async def chat_messages(user_id: str = Depends(get_current_user_id)):
+    """Non-admin: own thread. Marks admin messages as read."""
+    async with SessionLocal() as db:
+        res = await db.execute(
+            select(ChatMessage).where(ChatMessage.user_id == user_id)
+            .order_by(ChatMessage.id.asc()).limit(500))
+        msgs = res.scalars().all()
+        await db.execute(update(ChatMessage).where(
+            ChatMessage.user_id == user_id, ChatMessage.sender == "admin",
+            ChatMessage.read_by_user == False).values(read_by_user=True))
+        await db.commit()
+    return [_msg_dict(m) for m in msgs]
+
+
+@app.get("/api/chat/unread")
+async def chat_unread(user_id: str = Depends(get_current_user_id)):
+    """Badge count — for admin: total unread user messages across all threads."""
+    async with SessionLocal() as db:
+        if await _is_admin_user(db, user_id):
+            r = await db.execute(select(func.count()).select_from(ChatMessage).where(
+                ChatMessage.sender == "user", ChatMessage.read_by_admin == False))
+        else:
+            r = await db.execute(select(func.count()).select_from(ChatMessage).where(
+                ChatMessage.user_id == user_id, ChatMessage.sender == "admin",
+                ChatMessage.read_by_user == False))
+        return {"count": r.scalar() or 0}
+
+
+@app.post("/api/chat/send")
+async def chat_send(body: dict, user_id: str = Depends(get_current_user_id)):
+    text_val = (body.get("text") or "").strip()
+    if not text_val:
+        raise HTTPException(400, "Empty message")
+    if len(text_val) > 4000:
+        raise HTTPException(400, "Message too long (4000 chars max)")
+    async with SessionLocal() as db:
+        u = await db.get(User, user_id)
+        db.add(ChatMessage(user_id=user_id, sender="user", text=text_val, created_at=_now_iso()))
+        await db.commit()
+    # Ping admin on Telegram (best-effort, never blocks the send)
+    try:
+        import telegram_bot
+        if telegram_bot.is_ready():
+            who = (u.name or u.email) if u else "user"
+            preview = text_val[:200] + ("…" if len(text_val) > 200 else "")
+            await telegram_bot.send_message(f"💬 <b>New chat message</b> from {who}:\n{preview}")
+    except Exception:
+        pass
+    return {"ok": True}
+
+
+@app.get("/api/admin/chat/threads")
+async def admin_chat_threads(user_id: str = Depends(get_current_user_id)):
+    """All user threads: latest message + unread count each."""
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        res = await db.execute(select(ChatMessage).order_by(ChatMessage.id.desc()).limit(2000))
+        msgs = res.scalars().all()
+        users_res = await db.execute(select(User))
+        users = {u.id: u for u in users_res.scalars().all()}
+    threads: dict = {}
+    for m in msgs:  # newest first — first hit per user is the latest message
+        t = threads.setdefault(m.user_id, {"user_id": m.user_id, "last": None, "unread": 0})
+        if t["last"] is None:
+            t["last"] = {"text": m.text[:80], "sender": m.sender, "created_at": m.created_at}
+        if m.sender == "user" and not m.read_by_admin:
+            t["unread"] += 1
+    out = []
+    for uid, t in threads.items():
+        u = users.get(uid)
+        out.append({**t, "name": (u.name or u.email) if u else uid, "email": u.email if u else ""})
+    out.sort(key=lambda x: x["last"]["created_at"] if x["last"] else "", reverse=True)
+    return out
+
+
+@app.get("/api/admin/chat/{thread_user_id}/messages")
+async def admin_chat_thread(thread_user_id: str, user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        res = await db.execute(
+            select(ChatMessage).where(ChatMessage.user_id == thread_user_id)
+            .order_by(ChatMessage.id.asc()).limit(500))
+        msgs = res.scalars().all()
+        await db.execute(update(ChatMessage).where(
+            ChatMessage.user_id == thread_user_id, ChatMessage.sender == "user",
+            ChatMessage.read_by_admin == False).values(read_by_admin=True))
+        await db.commit()
+    return [_msg_dict(m) for m in msgs]
+
+
+@app.post("/api/admin/chat/{thread_user_id}/send")
+async def admin_chat_send(thread_user_id: str, body: dict, user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    text_val = (body.get("text") or "").strip()
+    if not text_val:
+        raise HTTPException(400, "Empty message")
+    if len(text_val) > 4000:
+        raise HTTPException(400, "Message too long (4000 chars max)")
+    async with SessionLocal() as db:
+        db.add(ChatMessage(user_id=thread_user_id, sender="admin", text=text_val, created_at=_now_iso()))
         await db.commit()
     return {"ok": True}
 

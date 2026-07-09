@@ -200,6 +200,19 @@ class QuickTailorHistory(Base):
     created_at     = Column(String, default="")
 
 
+class ChatMessage(Base):
+    """Help & Chat — one thread per non-admin user, admin on the other side.
+    user_id = the non-admin party's id (thread key), sender = who wrote it."""
+    __tablename__ = "chat_messages"
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    user_id       = Column(String, nullable=False)   # thread owner (non-admin user)
+    sender        = Column(String, nullable=False)   # "user" | "admin"
+    text          = Column(Text, nullable=False)
+    created_at    = Column(String, nullable=False)   # ISO UTC
+    read_by_admin = Column(Boolean, default=False)
+    read_by_user  = Column(Boolean, default=False)
+
+
 class AppLog(Base):
     __tablename__ = "app_logs"
     id        = Column(Integer, primary_key=True, autoincrement=True)

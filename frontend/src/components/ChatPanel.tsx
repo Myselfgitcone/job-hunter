@@ -37,7 +37,7 @@ export default function ChatPanel({ isAdmin, onClose, onRead }: {
 
   useEffect(() => {
     load();
-    const t = setInterval(load, 12000); // poll every 12s while open
+    const t = setInterval(load, 3000); // poll every 3s while open — near-live feel
     return () => clearInterval(t);
   }, [load]);
 

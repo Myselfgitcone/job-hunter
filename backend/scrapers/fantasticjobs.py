@@ -75,6 +75,7 @@ _TERMS_COMMON = (
     "(data & engineer)"
     " | etl | 'data platform' | 'data warehouse'"
     " | 'data architect' | 'database engineer' | 'database developer' | 'sql developer'"
+    " | databricks | mlops"  # Databricks Engineer / MLOps Engineer — DE titles without the word "data"
     " | ('software engineer' & data)"  # both words in title: "SWE - Data Infrastructure"
     # DA net: any title containing both "data" + "analyst" — catches
     # Financial/Marketing/Healthcare Data Analyst, Data Science/Operations/

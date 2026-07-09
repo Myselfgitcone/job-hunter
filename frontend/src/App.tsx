@@ -396,8 +396,11 @@ export default function App() {
             const term = r.toLowerCase().trim();
             if (term === "bi")   return /\bbi\b/.test(title);
             if (term === "java") return /\bjava\b/.test(title);  // \b excludes "javascript"
-            // Wide nets mirroring the scraper's (word & word) queries
-            if (term === "data engineer") return /\bdata\b/.test(title) && /engineer/.test(title);
+            // Wide nets mirroring the scraper's (word & word) queries.
+            // DE net also covers DE-applicable titles without the word "data":
+            // Databricks Engineer, MLOps Engineer, Analytics Engineer.
+            if (term === "data engineer") return (/\bdata\b/.test(title) && /engineer/.test(title))
+              || title.includes("databricks") || /\bmlops\b/.test(title) || title.includes("analytics engineer");
             if (term === "data analyst")  return /\bdata\b/.test(title) && /analyst/.test(title);
             if (term === "software engineer (data)") return /software engineer/.test(title) && /\bdata\b/.test(title);
             return title.includes(term);
@@ -415,7 +418,8 @@ export default function App() {
             const term = r.toLowerCase().trim();
             if (term === "bi")   return /\bbi\b/.test(title);
             if (term === "java") return /\bjava\b/.test(title);
-            if (term === "data engineer") return /\bdata\b/.test(title) && /engineer/.test(title);
+            if (term === "data engineer") return (/\bdata\b/.test(title) && /engineer/.test(title))
+              || title.includes("databricks") || /\bmlops\b/.test(title) || title.includes("analytics engineer");
             if (term === "data analyst")  return /\bdata\b/.test(title) && /analyst/.test(title);
             if (term === "software engineer (data)") return /software engineer/.test(title) && /\bdata\b/.test(title);
             return title.includes(term);

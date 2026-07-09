@@ -1271,7 +1271,11 @@ def _title_matches_roles(title: str, roles: list) -> bool:
         elif term == "java":
             if _JAVA_WORD_RE.search(t): return True
         elif term == "data engineer":
+            # DE net also covers DE-applicable titles without the word "data":
+            # Databricks Engineer, MLOps Engineer, Analytics Engineer.
             if _DATA_WORD_RE.search(t) and "engineer" in t: return True
+            if "databricks" in t or "analytics engineer" in t: return True
+            if re.search(r"\bmlops\b", t): return True
         elif term == "data analyst":
             if _DATA_WORD_RE.search(t) and "analyst" in t: return True
         elif term == "software engineer (data)":

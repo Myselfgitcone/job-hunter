@@ -37,7 +37,9 @@ const ALL_ROLES = [
 // backend/scrapers/fantasticjobs.py. Clicking a family selects all its roles.
 export const ROLE_GROUPS: { group: string; items: string[] }[] = [
   // "Data Engineer" chip = wide net: any title with both data + engineer
-  { group: "Data Engineer",         items: ["Data Engineer", "ETL Developer", "Data Platform", "Data Warehouse", "Data Architect", "Database Engineer", "Database Developer", "SQL Developer", "Software Engineer (Data)"] },
+  // (Senior/Big/Cloud/Pipeline/Streaming Data Engineer all match), plus
+  // DE-applicable titles without the word "data" via matcher special cases.
+  { group: "Data Engineer",         items: ["Data Engineer", "ETL Developer", "Data Platform", "Data Warehouse", "Data Architect", "Database Engineer", "Database Developer", "SQL Developer", "Software Engineer (Data)", "Databricks Engineer", "MLOps Engineer", "Analytics Engineer"] },
   // "Data Analyst" chip = wide net: any title with both data + analyst
   { group: "Data Analyst",          items: ["Data Analyst", "Data Analytics", "Analytics Engineer", "Reporting Analyst", "Business Analyst"] },
   { group: "Business Intelligence", items: ["Business Intelligence", "BI Developer", "BI Analyst", "BI Engineer", "Power BI", "Tableau"] },

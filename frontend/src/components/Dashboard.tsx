@@ -192,8 +192,12 @@ function AreaChart({ scrape, applied, points }: { scrape: number[]; applied: num
       </div>
 
       {/* Chart body scrolls horizontally (Y axis stays pinned) — every day
-          keeps a readable width instead of squeezing; scrollbar at bottom. */}
-      <div style={{ flex: 1, minWidth: 0, overflowX: "auto", paddingBottom: 6 }}>
+          keeps a readable width instead of squeezing; scrollbar at bottom.
+          overflowY MUST be hidden: overflow-x:auto silently forces
+          overflow-y from visible to auto, so the hover tooltip's transient
+          vertical overflow popped a scrollbar in/out, shifting the chart
+          and making the hover jump. */}
+      <div style={{ flex: 1, minWidth: 0, overflowX: "auto", overflowY: "hidden", paddingBottom: 6 }}>
       <div style={{ minWidth: n * 34 }}>
         <div ref={wrapRef} style={{ position: "relative" }} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
           <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: 300, display: "block" }}>

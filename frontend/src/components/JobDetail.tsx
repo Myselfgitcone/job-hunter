@@ -989,6 +989,36 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
               title={Object.keys(tailorRuns).length ? `${Object.keys(tailorRuns).length} tailoring in parallel` : undefined}>
               {tailorRuns[job.id] ? <><Spinner size={13} /> Tailoring…</> : <><Ic d={I.sparkles} size={14} /> Tailor Resume</>}
             </button>
+            {/* Tailored-resume quick downloads — appear only once a resume exists */}
+            {job.tailored_resume && !tailorRuns[job.id] && (
+              <div style={{ display: "inline-flex", alignItems: "stretch", height: 32, borderRadius: 8, overflow: "hidden",
+                border: "1px solid rgba(124,58,237,0.35)", background: "rgba(124,58,237,0.07)" }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "0 10px", fontSize: 11,
+                  fontWeight: 700, color: "#7c3aed", borderRight: "1px solid rgba(124,58,237,0.25)" }}>
+                  <Ic d={I.download} size={12} color="#7c3aed" /> Resume
+                </span>
+                {([
+                  ["PDF",  () => downloadFile(api.pdfUrl(job.id), "resume.pdf").catch(e => onToast(e.message, "error"))],
+                  ["DOCX", () => downloadFile(api.docxUrl(job.id), "resume.docx").catch(e => onToast(e.message, "error"))],
+                ] as [string, () => void][]).map(([label, fn], i) => (
+                  <button key={label} onClick={fn}
+                    style={{ padding: "0 11px", fontSize: 11.5, fontWeight: 600, cursor: "pointer", background: "transparent",
+                      color: "var(--tx-2)", border: "none", borderRight: "1px solid rgba(124,58,237,0.18)" }}
+                    onMouseOver={e => { e.currentTarget.style.background = "rgba(124,58,237,0.14)"; e.currentTarget.style.color = "#7c3aed"; }}
+                    onMouseOut={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--tx-2)"; }}>
+                    {label}
+                  </button>
+                ))}
+                <button onClick={() => { navigator.clipboard.writeText(job.tailored_resume || ""); onToast("Resume copied", "success"); }}
+                  title="Copy resume text"
+                  style={{ padding: "0 11px", cursor: "pointer", background: "transparent", color: "var(--tx-2)", border: "none",
+                    display: "inline-flex", alignItems: "center" }}
+                  onMouseOver={e => { e.currentTarget.style.background = "rgba(124,58,237,0.14)"; e.currentTarget.style.color = "#7c3aed"; }}
+                  onMouseOut={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--tx-2)"; }}>
+                  <Ic d={I.copy} size={13} />
+                </button>
+              </div>
+            )}
             <button
               className="act"
               onClick={() => handleStatusChange(job.status === "applied" ? "new" : "applied")}

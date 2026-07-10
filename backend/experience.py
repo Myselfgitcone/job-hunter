@@ -116,9 +116,11 @@ def resolve_experience_level(current: str, description: str) -> str:
 
 
 async def infer_experience_ai(title: str, description: str,
-                              api_key: str, provider: str, model: str) -> str:
+                              api_key: str, provider: str, model: str,
+                              keys=None) -> str:
     """Ask the AI to estimate minimum required years from title + JD.
-    Returns a tray or "" on failure."""
+    Returns a tray or "" on failure. Pass keys (ModelKeys) so the call
+    routes to the direct provider API instead of OpenRouter (+5.5% fee)."""
     from ai.llm import chat
     text = _TAG_RE.sub(" ", description or "")[:6000]
     try:
@@ -130,6 +132,7 @@ async def infer_experience_ai(title: str, description: str,
                     "Reply with ONLY a single integer (0-20). No other text."),
             user=f"Title: {title}\n\nDescription:\n{text}",
             api_key=api_key, provider=provider, model=model, max_tokens=8,
+            keys=keys, pass_name="exp-sweep",
         )
         m = re.search(r"\d{1,2}", raw or "")
         if not m:

@@ -49,6 +49,7 @@ async def qualify_job(
     provider: str,
     model: str,
     candidate_roles: list | None = None,
+    keys=None,
 ) -> dict:
     # Determine the candidate's target roles:
     # 1. Prefer explicitly passed candidate_roles (from user settings job_roles)
@@ -99,6 +100,8 @@ Qualify this job. Return JSON only.""",
         provider=provider,
         model=model,
         max_tokens=600,
+        keys=keys,
+        pass_name="qualify",
     )
 
     # Parse JSON

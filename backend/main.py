@@ -497,14 +497,23 @@ async def _run_exp_ai_sweep(limit: int = 400):
             admin_s = await _get_admin_settings(db)
         api_key  = (admin_s.ai_api_key  or "") if admin_s else ""
         provider = (admin_s.ai_provider or "openrouter") if admin_s else "openrouter"
+        # Direct-API routing (avoids OpenRouter's 5.5% fee) — live OpenRouter
+        # billing showed this sweep's Gemini calls going through OpenRouter.
+        from ai.llm import ModelKeys as _MK
+        _mk = _MK(
+            anthropic=(getattr(admin_s, "anthropic_api_key", "") or "") if admin_s else "",
+            google=(getattr(admin_s, "google_api_key", "") or "") if admin_s else "",
+            openai=(getattr(admin_s, "openai_api_key", "") or "") if admin_s else "",
+            openrouter=api_key,
+        )
         # Use admin's configured qualify model (Gemini Flash by default).
         # DeepSeek R1 free was unreliable — caused 64 fallback Telegram alerts per sweep.
         model = (admin_s.ai_model_qualify or "google/gemini-2.5-flash") if admin_s else "google/gemini-2.5-flash"
         if not model:
             model = "google/gemini-2.5-flash"
-        if not api_key:
+        if not any([_mk.anthropic, _mk.google, _mk.openai, _mk.openrouter]):
             print("[ExpSweep] No API key — skipping AI experience inference")
-            await log_event("WARNING", "exp-tray", "Skipped — no OpenRouter API key configured")
+            await log_event("WARNING", "exp-tray", "Skipped — no API key configured")
             return
 
         async with SessionLocal() as db:
@@ -531,7 +540,7 @@ async def _run_exp_ai_sweep(limit: int = 400):
             async with sem:
                 try:
                     level = await asyncio.wait_for(
-                        infer_experience_ai(title or "", desc or "", api_key, provider, model),
+                        infer_experience_ai(title or "", desc or "", api_key, provider, model, keys=_mk),
                         timeout=120,  # 90s per attempt × fallback models = cap at 120s total
                     )
                     if level:
@@ -4334,6 +4343,15 @@ async def _run_qualify_all_inner(new_job_ids: list | None = None):
 
     api_key  = (admin_s.ai_api_key  or "") if admin_s else ""
     provider = (admin_s.ai_provider or "openrouter") if admin_s else "openrouter"
+    # Direct-API routing (avoids OpenRouter's 5.5% fee) — live OpenRouter
+    # billing showed this sweep's Gemini calls going through OpenRouter.
+    from ai.llm import ModelKeys as _MK
+    _qmk = _MK(
+        anthropic=(getattr(admin_s, "anthropic_api_key", "") or "") if admin_s else "",
+        google=(getattr(admin_s, "google_api_key", "") or "") if admin_s else "",
+        openai=(getattr(admin_s, "openai_api_key", "") or "") if admin_s else "",
+        openrouter=api_key,
+    )
     # Default to a cheap/free model — do NOT use gpt-5 for bulk qualify
     model    = (admin_s.ai_model_qualify or "google/gemini-2.5-flash-lite") if admin_s else "google/gemini-2.5-flash-lite"
     # Safety override: if the stored model is gpt-5 or o3 (very expensive), fall back
@@ -4342,7 +4360,7 @@ async def _run_qualify_all_inner(new_job_ids: list | None = None):
         print(f"[Qualify] Model '{model}' is expensive — overriding to google/gemini-2.5-flash-lite for auto-qualify")
         model = "google/gemini-2.5-flash-lite"
 
-    if not api_key or not profile:
+    if not any([_qmk.anthropic, _qmk.google, _qmk.openai, _qmk.openrouter]) or not profile:
         print(f"[Qualify] Skipping — admin_settings={'found' if admin_s else 'MISSING'} "
               f"api_key={'set' if api_key else 'MISSING'} profile={'set' if profile else 'MISSING'}")
         return
@@ -4380,6 +4398,7 @@ async def _run_qualify_all_inner(new_job_ids: list | None = None):
                 provider=provider,
                 model=model,
                 candidate_roles=admin_roles,
+                keys=_qmk,
             )
             async with SessionLocal() as db2:
                 j = await db2.get(Job, job.id)

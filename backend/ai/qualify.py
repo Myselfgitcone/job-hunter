@@ -4,8 +4,39 @@ Scores each job against the candidate's actual profile and target roles on 6 cri
 Works for any field: Data Engineering, Java/Backend, Cybersecurity, Finance, BI, Healthcare, etc.
 """
 from ai.llm import chat
+from datetime import datetime
 import json
 import re
+
+
+_DATE_FMTS = ("%b %Y", "%B %Y", "%m/%Y", "%Y")
+
+def _parse_month(s: str):
+    s = (s or "").strip()
+    if not s:
+        return None
+    if s.lower() in ("present", "current", "now"):
+        return datetime.now()
+    for f in _DATE_FMTS:
+        try:
+            return datetime.strptime(s, f)
+        except ValueError:
+            continue
+    return None
+
+
+def _derive_total_years(exp: list) -> float:
+    """Sum per-entry durations from start/end date strings. Live bug: admin
+    profile entries had years=0/missing, so every job was scored against
+    'Candidate has 0 years of experience' and 10k+ jobs auto-disqualified
+    on the experience/seniority criteria."""
+    total = 0.0
+    for e in exp:
+        a = _parse_month(e.get("start_date", ""))
+        b = _parse_month(e.get("end_date", ""))
+        if a and b and b > a:
+            total += (b - a).days / 365.25
+    return round(total, 1)
 
 _SYSTEM_PROMPT_TEMPLATE = """\
 You are a strict job qualification screener.
@@ -66,6 +97,9 @@ async def qualify_job(
     # Build compact profile summary
     exp = profile.get("experience", [])
     total_years = sum(float(e.get("years", 0)) for e in exp if e.get("years"))
+    if not total_years and exp:
+        total_years = _derive_total_years(exp)   # fallback: derive from dates
+    years_str = f"{total_years} years" if total_years else "not specified — judge from roles held, do NOT fail experience/seniority solely for this"
     roles = [e.get("role", "") for e in exp if e.get("role")]
     skills = profile.get("skills", [])
     certs = profile.get("certifications", [])
@@ -77,7 +111,7 @@ async def qualify_job(
 
     profile_summary = f"""Candidate Profile:
 - Target roles: {roles_str}
-- Total experience: {total_years} years
+- Total experience: {years_str}
 - Roles held: {', '.join(roles[:3])}
 - Skills: {', '.join(skills[:20])}
 - Certifications: {', '.join(certs)}

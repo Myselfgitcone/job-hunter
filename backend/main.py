@@ -637,6 +637,26 @@ async def startup():
     except Exception as e:
         print(f"[Startup] India purge skipped: {e}")
 
+    # One-time (guarded by Setting flag): reset auto-qualify scores. Live
+    # audit 2026-07-10 found 10,082 scored jobs with only 6 qualified —
+    # the profile fed to qualify_job had 0 experience years, so the model
+    # failed experience/seniority on everything. qualify_job now derives
+    # years from job dates; clearing the bad scores lets the hourly
+    # backfill sweep rescore honestly.
+    try:
+        async with engine.begin() as conn:
+            done = await conn.execute(text("SELECT value FROM settings WHERE key = 'qualify_reset_v2'"))
+            if not done.first():
+                res = await conn.execute(text(
+                    "UPDATE jobs SET qualify_result = NULL WHERE status != 'closed'"
+                ))
+                await conn.execute(text(
+                    "INSERT INTO settings (key, value) VALUES ('qualify_reset_v2', 'done')"
+                ))
+                print(f"[Startup] Qualify reset: cleared {getattr(res, 'rowcount', '?')} bad scores for rescoring")
+    except Exception as e:
+        print(f"[Startup] Qualify reset skipped: {e}")
+
     # One-time: utility model Gemini → Haiku (Google 503 storms disrupted
     # user-facing tailor passes; Haiku via Anthropic is reliable, Gemini
     # stays for background bulk passes like qualify/exp-sweep)
@@ -4312,7 +4332,7 @@ _qualify_running = False
 
 # Max jobs to qualify in a single auto-qualify run.
 # Prevents a single scrape cycle from hammering the AI API with 1000+ calls.
-QUALIFY_BATCH_CAP = 75
+QUALIFY_BATCH_CAP = 250   # was 75 — raised to clear the post-reset rescore backlog faster (~2 days)
 
 async def _run_qualify_all(new_job_ids: list | None = None):
     """Standalone qualify-all — usable from scheduler and endpoint.

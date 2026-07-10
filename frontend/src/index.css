@@ -1742,24 +1742,18 @@ html.light .tag-pill button:hover { background: rgba(124,58,237,.15); }
 }
 .jc-time { font-size: 10px; color: var(--tx-3); white-space: nowrap; }
 .score-badge {
-  font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 999px;
-  letter-spacing: 0.02em; color: #fff;
+  font-size: 11px; font-weight: 700; padding: 2.5px 9px; border-radius: 999px;
+  letter-spacing: 0.01em;
 }
-.score-badge.high {
-  background: linear-gradient(135deg, #10b981, #059669);
-  border: 1px solid rgba(5,150,105,0.5);
-  box-shadow: 0 2px 8px -1px rgba(16,185,129,0.45);
-}
-.score-badge.mid {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  border: 1px solid rgba(217,119,6,0.5);
-  box-shadow: 0 2px 8px -1px rgba(245,158,11,0.4);
-}
-.score-badge.low {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  border: 1px solid rgba(220,38,38,0.5);
-  box-shadow: 0 2px 8px -1px rgba(239,68,68,0.4);
-}
+/* Dark theme (default): muted tint + bright text — sits quietly on dark cards */
+.score-badge.high { background: rgba(16,185,129,0.16); color: #34d399; border: 1px solid rgba(16,185,129,0.35); }
+.score-badge.mid  { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.32); }
+.score-badge.low  { background: rgba(239,68,68,0.14);  color: #f87171; border: 1px solid rgba(239,68,68,0.30); }
+/* Light theme: soft pastel fill + deep text (GitHub-label style) — clearly
+   colored without shouting against the white cards */
+.light .score-badge.high { background: #d1fae5; color: #047857; border: 1px solid #a7f3d0; }
+.light .score-badge.mid  { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
+.light .score-badge.low  { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
 
 /* ============================================================
    DETAIL PANE

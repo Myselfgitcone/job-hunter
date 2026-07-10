@@ -1585,6 +1585,19 @@ def _is_junk_skill(s: str, jd: str = "") -> bool:
     if jd and s_.isalpha() and " " not in s_ and len(s_) >= 5:
         if not _has_skill_context(s_, jd):
             return True
+    # Prose-word gate: a single-word term whose JD occurrences are MOSTLY
+    # plain lowercase ("general ledger accounting", "search for homes",
+    # "best deals") is ordinary English used in sentences — not a tool name.
+    # Real tools keep their casing everywhere (Python, Tableau, Databricks).
+    # Live bug: finance/product JDs produced "General", "Center", "Orders",
+    # "Search", "Price", "Deals" as hard skills, and the injector then wrote
+    # resume bullets around them. Fully derivational — the JD's own usage is
+    # the evidence.
+    if jd and s_.isalpha() and " " not in s_ and len(s_) >= 4:
+        occs = re.findall(rf"\b{re.escape(s_)}\b", jd, re.IGNORECASE)
+        lower_n = sum(1 for o in occs if o.islower())
+        if lower_n > len(occs) - lower_n:   # strict lowercase majority
+            return True
     return False
 
 

@@ -1585,6 +1585,24 @@ def _is_junk_skill(s: str, jd: str = "") -> bool:
     if jd and s_.isalpha() and " " not in s_ and len(s_) >= 5:
         if not _has_skill_context(s_, jd):
             return True
+    # Ticker/acronym gate: short ALL-CAPS tokens (RKT, NYSE, BIE, DML) are
+    # extraction noise unless the JD uses them in tool context. Two checks:
+    #   a. Stock-ticker syntax anywhere in the JD ("NYSE: RKT", "(RKT)",
+    #      "NASDAQ: ABCD") — always junk, it's a listing reference.
+    #   b. 3-5 char ALL-CAPS acronym with NO skill-context wording near any
+    #      occurrence — junk. Real tool acronyms (SQL, AWS, ETL, OLAP, SAS)
+    #      appear next to "experience with / proficiency in / tools" phrasing
+    #      or inside requirement lists, which _has_skill_context matches.
+    if jd and s_.isalpha() and " " not in s_ and s.strip().isupper() and 2 <= len(s_) <= 5:
+        esc = re.escape(s.strip())
+        # Derived acronyms (initials the extractor built, e.g. "GCP" from
+        # "Google Cloud Platform") never appear literally in the JD — the
+        # occurrence-based checks below can't judge them, so skip.
+        if re.search(rf"\b{esc}\b", jd):
+            if re.search(rf"(?:NYSE|NASDAQ|ticker)\s*[:\-]?\s*{esc}\b|\(\s*{esc}\s*\)", jd):
+                return True
+            if len(s_) <= 4 and not _has_skill_context(s_, jd):
+                return True
     # Prose-word gate: a single-word term whose JD occurrences are MOSTLY
     # plain lowercase ("general ledger accounting", "search for homes",
     # "best deals") is ordinary English used in sentences — not a tool name.

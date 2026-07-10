@@ -368,7 +368,10 @@ async def inject_missing_skill_bullets(
         f"MISSING SKILLS:\n{', '.join(skills)}\n\n"
         f"JOBS IN TAILORED RESUME (1 = most recent):\n" + "\n\n".join(jobs_ctx) + "\n\n"
         f"JD EXCERPT:\n{jd[:800]}\n\n"
-        f"ORIGINAL RESUME (ground truth for tier judgment):\n{base_resume[:6000]}"
+        # FULL base resume — the [:6000] truncation cut older jobs and most of
+        # the skills section out of the tier judge's ground truth, so skills
+        # genuinely used at an earlier employer were misclassified as S/A.
+        f"ORIGINAL RESUME (ground truth for tier judgment):\n{base_resume}"
     )
 
     try:
@@ -3545,8 +3548,17 @@ async def tailor_resume(base_resume: str, job_description: str,
             _audit_done = True
             print("[TIER AUDIT] Merged with review call — no separate audit call")
 
-    # ── Post-review lint — log WARN only, no retry ───────────────────────────
-    post_issues = lint_resume(result, job_description, base_resume=base_resume, role_type=role_type)
+    # ── Post-review lint — auto-fix what's deterministic, WARN the rest ──────
+    # The reviewer is the LAST AI pass that can reintroduce issues; previously
+    # everything caught here was print-only and shipped anyway. Fixable classes
+    # (BANNED WORD, FABRICATED TOOL, JOB TOOL MISMATCH, SKILL SCATTER, METRIC
+    # RELOCATION) now get the same text-surgery repair the retry loop uses.
+    post_issues = _all_lint_issues(result)
+    if post_issues:
+        _pre_n = len(post_issues)
+        result, post_issues = _apply_deterministic_fixes(result, post_issues, base_resume)
+        if len(post_issues) < _pre_n:
+            print(f"[POST-REVIEW FIX] auto-repaired {_pre_n - len(post_issues)} issue(s) deterministically")
     if post_issues:
         print(f"[WARN] post-review lint ({len(post_issues)}):")
         for iss in post_issues:

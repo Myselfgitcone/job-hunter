@@ -83,7 +83,7 @@ _TERMS_COMMON = (
     " | (data & analyst) | 'data analytics' | 'analytics engineer' | 'reporting analyst'"
     " | 'business analyst'"
     " | 'business intelligence' | 'bi developer' | 'bi analyst' | 'bi engineer' | 'power bi' | tableau"
-    " | 'project manager'"
+    # 'project manager' removed 2026-07-10 per user — re-add here to re-enable
 )
 # Java family — USA only (India team doesn't hunt Java roles)
 _TERMS_JAVA = "(java & !javascript) | 'spring boot' | 'spring framework' | jakarta | hibernate | 'jvm engineer'"

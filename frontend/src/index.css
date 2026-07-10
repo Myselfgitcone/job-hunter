@@ -1742,11 +1742,24 @@ html.light .tag-pill button:hover { background: rgba(124,58,237,.15); }
 }
 .jc-time { font-size: 10px; color: var(--tx-3); white-space: nowrap; }
 .score-badge {
-  font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 999px;
+  letter-spacing: 0.02em; color: #fff;
 }
-.score-badge.high { background: rgba(52,211,153,0.12); color: #34d399; border: 1px solid rgba(52,211,153,0.25); }
-.score-badge.mid  { background: rgba(251,191,36,0.12);  color: #fbbf24; border: 1px solid rgba(251,191,36,0.25); }
-.score-badge.low  { background: rgba(248,113,113,0.10); color: #f87171; border: 1px solid rgba(248,113,113,0.2); }
+.score-badge.high {
+  background: linear-gradient(135deg, #10b981, #059669);
+  border: 1px solid rgba(5,150,105,0.5);
+  box-shadow: 0 2px 8px -1px rgba(16,185,129,0.45);
+}
+.score-badge.mid {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  border: 1px solid rgba(217,119,6,0.5);
+  box-shadow: 0 2px 8px -1px rgba(245,158,11,0.4);
+}
+.score-badge.low {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  border: 1px solid rgba(220,38,38,0.5);
+  box-shadow: 0 2px 8px -1px rgba(239,68,68,0.4);
+}
 
 /* ============================================================
    DETAIL PANE

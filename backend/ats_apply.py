@@ -65,6 +65,79 @@ def detect_ats(url: str) -> Optional[AtsRef]:
     return None
 
 
+# Company careers pages that EMBED a greenhouse board carry the job id in a
+# ?gh_jid= param (217 live jobs, e.g. samsara.com/...?gh_jid=8039914) but hide
+# the board token inside the page's embed markup. Token extraction is
+# structural — scan the page for greenhouse embed references, then VERIFY each
+# candidate against the public boards-api before trusting it.
+_GH_JID = re.compile(r"[?&]gh_jid=(\d+)")
+_GH_TOKEN_PATTERNS = [
+    re.compile(r"boards\.greenhouse\.io/embed/job_board(?:/js)?\?[^\"'\s]*for=([A-Za-z0-9_-]+)", re.I),
+    re.compile(r"(?:boards|job-boards)\.(?:eu\.)?greenhouse\.io/([A-Za-z0-9_-]+)/jobs", re.I),
+    re.compile(r"boards-api\.greenhouse\.io/v1/boards/([A-Za-z0-9_-]+)", re.I),
+    re.compile(r"greenhouse\.io/embed/job_app\?[^\"'\s]*for=([A-Za-z0-9_-]+)", re.I),
+]
+# host → verified board token, so repeated jobs from one company cost one fetch
+_gh_token_cache: dict[str, str] = {}
+
+
+async def resolve_ats(url: str, company: str = "") -> Optional[AtsRef]:
+    """detect_ats + embedded-board resolution. Async because embedded
+    detection may fetch the careers page once (cached per host)."""
+    ref = detect_ats(url)
+    if ref:
+        return ref
+    m = _GH_JID.search(url or "")
+    if not m:
+        return None
+    gh_jid = m.group(1)
+    host = re.sub(r"^https?://", "", url).split("/")[0].lower()
+
+    async def _verified(token: str) -> bool:
+        api = f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs/{gh_jid}"
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT, headers=_UA) as cli:
+                return (await cli.get(api)).status_code == 200
+        except Exception:
+            return False
+
+    cached = _gh_token_cache.get(host)
+    if cached and await _verified(cached):
+        return AtsRef(ats="greenhouse", board=cached, posting_id=gh_jid, url=url)
+
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT, headers=_UA,
+                                     follow_redirects=True) as cli:
+            page = (await cli.get(url)).text
+    except Exception:
+        return None
+
+    candidates: list[str] = []
+    for pat in _GH_TOKEN_PATTERNS:
+        candidates += pat.findall(page)
+    # Structural fallback for JS-rendered pages with no embed URL in the raw
+    # HTML: the board token is almost always the company's own slug. Guessing
+    # is safe because every candidate is VERIFIED against boards-api — a wrong
+    # guess just 404s and is discarded.
+    sld = host.split(":")[0].split(".")[-2] if "." in host else ""
+    if sld:
+        candidates.append(sld)
+    comp = re.sub(r"[^a-z0-9]", "", (company or "").lower())
+    if comp:
+        candidates.append(comp)
+    # de-dup, keep order; "embed" is a path segment, never a board token
+    seen = set()
+    for token in candidates:
+        t = token.lower()
+        if t in seen or t == "embed":
+            continue
+        seen.add(t)
+        if await _verified(t):
+            _gh_token_cache[host] = t
+            return AtsRef(ats="greenhouse", board=t, posting_id=gh_jid, url=url)
+    return None
+
+
 # ── Normalized form schema ────────────────────────────────────────────────────
 # Every ATS's questions are normalized to:
 #   {key, label, type, required, options?}   type ∈ text | textarea | select |

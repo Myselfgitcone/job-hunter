@@ -2955,7 +2955,7 @@ async def get_apply_form(job_id: str, user_id: str = Depends(get_current_user_id
             raise HTTPException(404, "Job not found")
         profile = await _load_profile(db, user_id)
 
-    ref = ats_apply.detect_ats(job.url)
+    ref = await ats_apply.resolve_ats(job.url, job.company or "")
     if not ref:
         return {"supported": False, "apply_url": job.url,
                 "reason": "Job URL is not a direct Greenhouse/Lever/Ashby posting"}
@@ -3008,7 +3008,7 @@ async def submit_application(job_id: str, body: ApplyBody,
             select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id))
         uj = uj_res.scalar_one_or_none()
 
-    ref = ats_apply.detect_ats(job.url)
+    ref = await ats_apply.resolve_ats(job.url, job.company or "")
     if not ref:
         raise HTTPException(400, "Job is not on a supported ATS")
 

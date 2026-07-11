@@ -162,6 +162,10 @@ class UserSettings(Base):
     # Auto-apply: dry-run guard — True builds+validates the payload but never
     # sends. Must be flipped off explicitly in Settings before live submits.
     apply_dry_run        = Column(Boolean, default=True)
+    # Auto-apply: one-time application answers (JSON) + learned per-question
+    # answer memory (JSON: normalized question label → answer)
+    apply_profile        = Column(Text, default=None)
+    apply_answers        = Column(Text, default=None)
 
 
 

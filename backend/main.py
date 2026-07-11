@@ -616,6 +616,9 @@ async def startup():
         ("user_settings", "apply_dry_run",       "BOOLEAN DEFAULT TRUE"),
         ("user_jobs",     "apply_method",        "VARCHAR"),
         ("user_jobs",     "apply_result",        "TEXT"),
+        # Auto-apply: one-time application answers + per-question answer memory
+        ("user_settings", "apply_profile",       "TEXT"),
+        ("user_settings", "apply_answers",       "TEXT"),
     ]
     try:
         for table, col, typedef in new_columns:
@@ -2945,6 +2948,87 @@ def _apply_profile(profile: dict, settings: dict) -> dict:
     }
 
 
+async def _load_apply_data(user_id: str) -> tuple[dict, dict]:
+    """(apply_profile, answer_memory) JSON columns; {} when unset."""
+    async with SessionLocal() as db:
+        res = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+        s = res.scalar_one_or_none()
+    def _j(v):
+        try:
+            return json.loads(v) if v else {}
+        except Exception:
+            return {}
+    return (_j(getattr(s, "apply_profile", None)) if s else {},
+            _j(getattr(s, "apply_answers", None)) if s else {})
+
+
+def _derive_apply_defaults(profile: dict, settings: dict) -> dict:
+    """Defaults derivable from data we already hold — shown in the
+    Application Answers form as pre-filled suggestions the user can edit."""
+    visa = (profile.get("visa_status") or settings.get("profile_visa") or "").upper()
+    needs_sponsor = ""
+    if visa:
+        # F1/OPT/CPT/H1B → will need sponsorship now or in future; citizens/
+        # green card holders don't. Anything unrecognized stays blank.
+        if any(t in visa for t in ("F1", "F-1", "OPT", "CPT", "H1", "H-1", "STEM")):
+            needs_sponsor = "Yes"
+        elif any(t in visa for t in ("CITIZEN", "GREEN", "GC", "PERMANENT")):
+            needs_sponsor = "No"
+    years = ""
+    try:
+        from ai.qualify import _derive_total_years
+        y = _derive_total_years(profile.get("experience", []))
+        if y:
+            years = str(round(y, 1))
+    except Exception:
+        pass
+    zip_m = re.search(r"\b(\d{5})(?:-\d{4})?\b", profile.get("address", "") or "")
+    first, last = ats_apply._split_name(profile.get("name", ""))
+    return {
+        "work_authorized": "Yes" if visa else "",
+        "need_sponsorship": needs_sponsor,
+        "relocation": "",
+        "salary": "Open / Negotiable",
+        "zip": zip_m.group(1) if zip_m else "",
+        "degree": "Yes" if profile.get("education") else "",
+        "years_experience": years,
+        "how_heard": "",
+        "previously_worked": "No",
+        "preferred_first": first,
+        "preferred_last": last,
+        "pronouns": "",
+        "demo_gender": "", "demo_race": "", "demo_veteran": "", "demo_disability": "",
+    }
+
+
+@app.get("/api/apply-profile")
+async def get_apply_profile(user_id: str = Depends(get_current_user_id)):
+    """Application Answers form: saved values merged over derived defaults,
+    plus the learned answer memory for display/management."""
+    async with SessionLocal() as db:
+        profile = await _load_profile(db, user_id)
+    settings = await _get_user_settings(user_id)
+    saved, memory = await _load_apply_data(user_id)
+    values = {**_derive_apply_defaults(profile, settings), **saved}
+    return {"values": values, "saved": bool(saved), "memory": memory}
+
+
+@app.put("/api/apply-profile")
+async def save_apply_profile(body: dict, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        res = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+        s = res.scalar_one_or_none()
+        if not s:
+            s = UserSettings(user_id=user_id)
+            db.add(s)
+        if "values" in body:
+            s.apply_profile = json.dumps(body["values"])
+        if "memory" in body:   # allows deleting/correcting remembered answers
+            s.apply_answers = json.dumps(body["memory"])
+        await db.commit()
+    return {"ok": True}
+
+
 @app.get("/api/jobs/{job_id}/apply-form")
 async def get_apply_form(job_id: str, user_id: str = Depends(get_current_user_id)):
     """Detect the job's ATS, fetch its public form schema, and prefill
@@ -2970,7 +3054,10 @@ async def get_apply_form(job_id: str, user_id: str = Depends(get_current_user_id
                 "reason": f"Form fetch failed: {e}"}
 
     settings = await _get_user_settings(user_id)
-    answers = ats_apply.prefill(form["fields"], _apply_profile(profile, settings))
+    saved_ap, memory = await _load_apply_data(user_id)
+    ap = {**_derive_apply_defaults(profile, settings), **saved_ap}
+    answers = ats_apply.prefill(form["fields"], _apply_profile(profile, settings),
+                                apply_profile=ap, memory=memory)
     # Ashby has no third-party submit path — prefill-assisted manual only
     method = "manual" if ref.ats == "ashby" else "auto"
     return {
@@ -3049,6 +3136,28 @@ async def submit_application(job_id: str, body: ApplyBody,
         elif result["status"] == "manual":
             uj.apply_method = "manual"
         await db.commit()
+
+    # Answer memory: remember what the user answered (dry-run included) so
+    # each unique question is ever answered once. Stored as option LABELS,
+    # portable across companies. Failure here never breaks the apply flow.
+    try:
+        form = await ats_apply.fetch_form(ref)
+        learned = ats_apply.extract_memory(form["fields"], body.answers)
+        if learned:
+            async with SessionLocal() as db:
+                res = await db.execute(
+                    select(UserSettings).where(UserSettings.user_id == user_id))
+                s = res.scalar_one_or_none()
+                if s:
+                    try:
+                        mem = json.loads(s.apply_answers) if s.apply_answers else {}
+                    except Exception:
+                        mem = {}
+                    mem.update(learned)
+                    s.apply_answers = json.dumps(mem)
+                    await db.commit()
+    except Exception as e:
+        print(f"[APPLY MEMORY] skipped: {e}")
 
     return result
 

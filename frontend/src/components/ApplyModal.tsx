@@ -187,6 +187,10 @@ export default function ApplyModal({ job, onClose, onToast, onUpdate }: {
                   onChange={e => setUseTailored(e.target.checked)} />
                 Attach tailored resume {job.tailored_resume ? "(recommended)" : "— none yet, base resume will be used"}
               </label>
+              <p style={{ fontSize: 11.5, color: "var(--tx-3)", margin: "10px 0 0", lineHeight: 1.5 }}>
+                Answers you type here are remembered and pre-filled the next time any company asks the
+                same question. Standard answers (visa, relocation, salary…) come from Profile → Application Answers.
+              </p>
             </>
           )}
         </div>

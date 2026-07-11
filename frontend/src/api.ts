@@ -143,6 +143,12 @@ export const api = {
     meta?: { title: string; location: string }; dry_run?: boolean;
   }>(`/api/jobs/${id}/apply-form`),
 
+  getApplyProfile: () =>
+    req<{ values: Record<string, string>; saved: boolean; memory: Record<string, string> }>("/api/apply-profile"),
+
+  saveApplyProfile: (body: { values?: Record<string, string>; memory?: Record<string, string> }) =>
+    req<{ ok: boolean }>("/api/apply-profile", { method: "PUT", body: JSON.stringify(body) }),
+
   submitApplication: (id: string, answers: Record<string, string>, use_tailored: boolean) =>
     req<{ status: "submitted" | "dry_run" | "manual" | "error"; detail?: unknown; apply_url?: string }>(
       `/api/jobs/${id}/apply`, {

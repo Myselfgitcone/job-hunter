@@ -138,6 +138,114 @@ function TagInput({ tags, setTags, placeholder, suggestions }: {
 
 const VISA_OPTIONS = ["US Citizen", "Green Card", "H1B", "OPT / CPT", "TN Visa", "Need Sponsorship"];
 
+// ── Application Answers (auto-apply) ─────────────────────────────────────────
+// One-time form: standard screening answers reused on every Auto-Apply.
+const AA_FIELDS: Array<{ key: string; label: string; options?: string[]; hint?: string }> = [
+  { key: "work_authorized",  label: "Legally authorized to work in the US?", options: ["Yes", "No"] },
+  { key: "need_sponsorship", label: "Will you need visa sponsorship (now or in future)?", options: ["Yes", "No"] },
+  { key: "relocation",       label: "Open to relocation?", options: ["Yes", "No"] },
+  { key: "salary",           label: "Expected salary", hint: "\"Open / Negotiable\" recommended" },
+  { key: "zip",              label: "Zip code" },
+  { key: "degree",           label: "Bachelor's degree or higher?", options: ["Yes", "No"] },
+  { key: "years_experience", label: "Total years of experience", hint: "auto-derived from your resume dates — edit if wrong" },
+  { key: "how_heard",        label: "Default \"How did you hear about us?\"", hint: "e.g. LinkedIn, Company careers site" },
+  { key: "previously_worked", label: "Previously worked at the company? (default)", options: ["No", "Yes"] },
+  { key: "preferred_first",  label: "Preferred first name" },
+  { key: "preferred_last",   label: "Preferred last name" },
+  { key: "pronouns",         label: "Pronouns (optional)", hint: "e.g. he/him — left blank = not filled" },
+  { key: "demo_gender",      label: "Gender identity (optional survey)", hint: "exact answer text, e.g. \"Man\"" },
+  { key: "demo_race",        label: "Race / ethnicity (optional survey)", hint: "e.g. \"South Asian\"" },
+  { key: "demo_veteran",     label: "Veteran status (optional survey)", hint: "e.g. \"I am not a protected veteran\"" },
+  { key: "demo_disability",  label: "Disability status (optional survey)", hint: "e.g. \"No, I do not have a disability\"" },
+];
+
+function ApplicationAnswers() {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [memory, setMemory] = useState<Record<string, string>>({});
+  const [loaded, setLoaded] = useState(false);
+  const [saveState, setSaveState] = useState<"" | "saving" | "saved" | "error">("");
+  const [showMemory, setShowMemory] = useState(false);
+
+  useEffect(() => {
+    api.getApplyProfile()
+      .then(r => { setValues(r.values || {}); setMemory(r.memory || {}); })
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, []);
+
+  const save = async (nextMemory?: Record<string, string>) => {
+    setSaveState("saving");
+    try {
+      await api.saveApplyProfile({ values, ...(nextMemory ? { memory: nextMemory } : {}) });
+      setSaveState("saved");
+      setTimeout(() => setSaveState(""), 2500);
+    } catch { setSaveState("error"); }
+  };
+
+  const forgetAnswer = (k: string) => {
+    const next = { ...memory };
+    delete next[k];
+    setMemory(next);
+    api.saveApplyProfile({ memory: next }).catch(() => {});
+  };
+
+  if (!loaded) return null;
+  return (
+    <section className="form-section">
+      <div className="section-label"><Ic d={I.check} size={16} /> Application Answers (Auto-Apply)</div>
+      <p style={{ fontSize: 12.5, color: "var(--tx-3)", margin: "0 0 14px", lineHeight: 1.5 }}>
+        Fill once — every Auto-Apply pre-fills these on any company's form (sponsorship, relocation,
+        salary, years of experience…). Odd questions you answer in the Auto-Apply popup are remembered
+        automatically and reused next time.
+      </p>
+      <div className="field-grid">
+        {AA_FIELDS.map(f => (
+          <label key={f.key} className="field">
+            <span className="field-label">{f.label}</span>
+            {f.options ? (
+              <select value={values[f.key] || ""} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}>
+                <option value="">— not set —</option>
+                {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            ) : (
+              <input value={values[f.key] || ""} placeholder={f.hint || ""}
+                onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} />
+            )}
+          </label>
+        ))}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12 }}>
+        <button className="act ai" onClick={() => save()} disabled={saveState === "saving"}>
+          {saveState === "saving" ? "Saving…" : "Save Application Answers"}
+        </button>
+        {saveState === "saved" && <span style={{ fontSize: 12.5, color: "#10b981", fontWeight: 600 }}>Saved ✓</span>}
+        {saveState === "error" && <span style={{ fontSize: 12.5, color: "#f87171", fontWeight: 600 }}>Save failed</span>}
+        {Object.keys(memory).length > 0 && (
+          <button onClick={() => setShowMemory(s => !s)}
+            style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: 12.5, color: "var(--tx-2)", fontWeight: 600 }}>
+            {showMemory ? "Hide" : "Show"} remembered answers ({Object.keys(memory).length})
+          </button>
+        )}
+      </div>
+      {showMemory && (
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+          {Object.entries(memory).map(([q, a]) => (
+            <div key={q} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, padding: "6px 10px",
+              background: "var(--bg-main)", border: "1px solid var(--line)", borderRadius: 8 }}>
+              <span style={{ color: "var(--tx-3)", flex: 1 }}>{q}</span>
+              <b style={{ color: "var(--tx-1)" }}>{a}</b>
+              <button onClick={() => forgetAnswer(q)} title="Forget this answer"
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--tx-3)" }}>
+                <Ic d={I.x} size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function Profile() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -508,6 +616,9 @@ export function Profile() {
             />
           </div>
         </section>
+
+        {/* Application Answers — one-time form reused by Auto-Apply */}
+        <ApplicationAnswers />
 
         {/* Professional Summary */}
         <section className="form-section">

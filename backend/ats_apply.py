@@ -214,9 +214,19 @@ async def _greenhouse_form(ref: AtsRef) -> dict:
             key=f0.get("name", ""), label=q.get("label", ""),
             type=ftype, required=bool(q.get("required")), options=opts,
         ))
-    # Demographic/EEOC block ([Optional] per its own header) is deliberately
-    # NOT included — confidential survey answers are not something a tool
-    # should submit on the user's behalf.
+    # Demographic/EEOC block — included per explicit user decision
+    # (2026-07-10): answers come only from the user's own saved application
+    # profile, are always rendered optional, and the user reviews before any
+    # submit. Never auto-invented.
+    demo = (data.get("demographic_questions") or {}).get("questions", [])
+    for q in demo:
+        opts = [{"label": o.get("label", ""), "value": str(o.get("id", ""))}
+                for o in (q.get("answer_options") or [])]
+        fields.append(FormField(
+            key=f"demographic_answers[{q.get('id')}]",
+            label="[Optional] " + (q.get("label") or ""),
+            type="select" if opts else "text", required=False, options=opts,
+        ))
 
     return {
         "fields": [f.as_dict() for f in fields],
@@ -309,13 +319,157 @@ def _split_name(full: str) -> tuple[str, str]:
     return parts[0], " ".join(parts[1:]) or parts[0]
 
 
-def prefill(fields: list[dict], profile: dict) -> dict:
+def _norm_label(label: str) -> str:
+    """Normalize a question label so the same question matches across
+    companies despite punctuation/spacing/casing differences."""
+    s = re.sub(r"[^a-z0-9 ]+", " ", (label or "").lower())
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _pick_option(options: list[dict], want: str) -> str:
+    """Match a stored answer (an option LABEL from some earlier form) to this
+    form's options. Exact normalized match first, containment either way
+    second. Returns the option VALUE, or '' when nothing matches."""
+    if not want:
+        return ""
+    w = _norm_label(want)
+    for o in options:
+        if _norm_label(o["label"]) == w:
+            return o["value"]
+    for o in options:
+        ol = _norm_label(o["label"])
+        if w and ol and (w in ol or ol in w):
+            return o["value"]
+    return ""
+
+
+def _pick_yes_no(options: list[dict], yes: bool) -> str:
+    want = "yes" if yes else "no"
+    for o in options:
+        head = _norm_label(o["label"]).split(",")[0].split()[:1]
+        if head and head[0] == want:
+            return o["value"]
+    return _pick_option(options, want)
+
+
+_RANGE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(?:-|–|to)\s*(\d+(?:\.\d+)?)")
+_PLUS_RE = re.compile(r"(\d+(?:\.\d+)?)\s*\+|more than\s*(\d+)|(\d+)\s*or more", re.I)
+
+
+def _pick_years_bucket(options: list[dict], years: float) -> str:
+    """Pick the option whose numeric bucket contains `years`. Works on any
+    company's ranges ('0-4 years', '5–10', '8+ years') — no fixed lists."""
+    plus_best: tuple[float, str] | None = None
+    for o in options:
+        lab = o["label"]
+        m = _RANGE_RE.search(lab)
+        if m and float(m.group(1)) <= years <= float(m.group(2)):
+            return o["value"]
+        p = _PLUS_RE.search(lab)
+        if p:
+            floor = float(next(g for g in p.groups() if g))
+            if years >= floor and (plus_best is None or floor > plus_best[0]):
+                plus_best = (floor, o["value"])
+    return plus_best[1] if plus_best else ""
+
+
+# Question classes: (label pattern, apply_profile key, kind).
+# kind: "yesno" (map Yes/No to options), "option" (containment-match stored
+# label), "text" (free text), "years" (numeric bucket).
+# Order matters — first match wins, so put the more specific patterns first.
+_CLASS_RULES: list[tuple[re.Pattern, str, str]] = [
+    (re.compile(r"sponsor|immigration case|visa\b", re.I), "need_sponsorship", "yesno"),
+    (re.compile(r"authoriz\w* to work|legally.{0,30}work|work authorization|eligible to work", re.I),
+     "work_authorized", "yesno"),
+    (re.compile(r"relocat", re.I), "relocation", "yesno"),
+    (re.compile(r"salary|compensation|pay expectation", re.I), "salary", "text"),
+    (re.compile(r"\bzip\b|postal code", re.I), "zip", "text"),
+    (re.compile(r"bachelor|higher education|degree\b", re.I), "degree", "yesno"),
+    (re.compile(r"(how many|years of).{0,60}experience|experience.{0,30}years", re.I),
+     "years_experience", "years"),
+    (re.compile(r"how did you (hear|learn)|where.{0,30}(hear|learn)\w* about", re.I),
+     "how_heard", "option"),
+    (re.compile(r"previously (worked|employed)|ever worked (at|for)|worked .{0,25} before", re.I),
+     "previously_worked", "yesno"),
+    (re.compile(r"preferred first name", re.I), "preferred_first", "text"),
+    (re.compile(r"preferred last name", re.I), "preferred_last", "text"),
+    (re.compile(r"pronoun", re.I), "pronouns", "text"),
+    (re.compile(r"gender identity|identify.{0,20}gender", re.I), "demo_gender", "option"),
+    (re.compile(r"race|ethnicit", re.I), "demo_race", "option"),
+    (re.compile(r"veteran", re.I), "demo_veteran", "option"),
+    (re.compile(r"disabilit|impairment", re.I), "demo_disability", "option"),
+]
+
+# Consent/acknowledgement questions (privacy notice, AI policy, T&C read).
+# Auto-picked ONLY as a prefill the user still reviews in the modal before
+# any submit — clicking submit is the actual act of consent.
+_CONSENT_LABEL = re.compile(
+    r"consent|acknowledge|agree|policy|privacy|terms|personal data", re.I)
+_CONSENT_OPTION = re.compile(r"acknowledge|confirm|agree|yes", re.I)
+
+# Conditional follow-ups ("If you selected 'Other'…") depend on another
+# answer — never auto-filled from class rules.
+_CONDITIONAL_LABEL = re.compile(r"if you (selected|answered|chose)|if other", re.I)
+
+
+def _class_answer(label: str, ftype: str, options: list[dict],
+                  ap: dict) -> str:
+    """Answer one question from the saved application profile. '' = no match."""
+    if _CONDITIONAL_LABEL.search(label):
+        return ""
+    for pat, key, kind in _CLASS_RULES:
+        if not pat.search(label):
+            continue
+        stored = ap.get(key)
+        if stored in (None, ""):
+            return ""
+        if kind == "years" and options:
+            try:
+                return _pick_years_bucket(options, float(stored))
+            except (TypeError, ValueError):
+                return ""
+        if kind == "yesno" and options:
+            s = str(stored).strip().lower()
+            if s in ("yes", "no", "true", "false"):
+                return _pick_yes_no(options, s in ("yes", "true"))
+            return _pick_option(options, str(stored))
+        if kind == "option":
+            if not options:
+                return ""   # option-kind answers never fill free-text fields
+            picked = _pick_option(options, str(stored))
+            if not picked:
+                # Phrasing drift ("do not" vs "don't"): when the stored answer
+                # leads with a yes/no word, fall back to that.
+                lead = _norm_label(str(stored)).split(",")[0].split()[:1]
+                if lead and lead[0] in ("yes", "no"):
+                    picked = _pick_yes_no(options, lead[0] == "yes")
+            return picked
+        if not options:   # free-text field
+            return str(stored)
+        return _pick_option(options, str(stored))
+    if _CONSENT_LABEL.search(label) and options:
+        for o in options:
+            if _CONSENT_OPTION.search(o["label"]):
+                return o["value"]
+    return ""
+
+
+def prefill(fields: list[dict], profile: dict,
+            apply_profile: dict | None = None,
+            memory: dict | None = None) -> dict:
     """
-    Deterministically map profile values onto form fields by key/label.
-    profile keys: name, email, phone, address, linkedin, github, website,
-    visa, current_company. Unknown questions stay blank for the user to fill —
-    NOTHING is invented (same zero-fabrication rule as the resume pipeline).
+    Deterministically map saved values onto form fields. Priority per field:
+      1. exact key map (contact basics)
+      2. answer memory — the user's own past answer to this exact question
+      3. class rules — the one-time application profile (sponsorship,
+         relocation, salary, years, demographics…)
+      4. label rules — free-text contact fallbacks
+    Unknown questions stay blank for the user; NOTHING is invented. Answers
+    the user types get remembered server-side, so each unique question is
+    answered once ever.
     """
+    ap = apply_profile or {}
+    mem = memory or {}
     first, last = _split_name(profile.get("name", ""))
     by_key = {
         "first_name": first, "last_name": last,
@@ -344,11 +498,23 @@ def prefill(fields: list[dict], profile: dict) -> dict:
     answers: dict[str, Any] = {}
     for f0 in fields:
         key, label, ftype = f0["key"], f0["label"], f0["type"]
+        opts = f0.get("options") or []
         if ftype == "file":
             continue    # resume/cover handled separately server-side
+
         val = by_key.get(key, "")
-        # Label-rule fallback fills FREE-TEXT fields only. Booleans/selects
-        # (visa, relocation, consent…) are decisions — the user answers them.
+
+        # Answer memory: stored as option LABEL (portable across companies
+        # whose option ids differ) or raw text for free-text questions.
+        if not val:
+            remembered = mem.get(_norm_label(label))
+            if remembered:
+                val = _pick_option(opts, remembered) if opts else remembered
+
+        if not val:
+            val = _class_answer(label or "", ftype, opts, ap)
+
+        # Label-rule fallback fills FREE-TEXT fields only.
         if not val and ftype in ("text", "textarea"):
             for pat, candidate in _label_rules:
                 if candidate and pat.search(label or ""):
@@ -357,6 +523,28 @@ def prefill(fields: list[dict], profile: dict) -> dict:
         if val:
             answers[key] = val
     return answers
+
+
+def extract_memory(fields: list[dict], answers: dict) -> dict:
+    """Turn one submission's answers into memory entries: normalized question
+    label → option LABEL (selects) or raw text. Option labels — not values —
+    so the memory transfers to other companies' forms."""
+    out: dict[str, str] = {}
+    for f0 in fields:
+        key, label, ftype = f0["key"], f0["label"], f0["type"]
+        if ftype == "file":
+            continue
+        val = str(answers.get(key, "") or "").strip()
+        if not val:
+            continue
+        opts = f0.get("options") or []
+        if opts:
+            match = next((o["label"] for o in opts if str(o["value"]) == val), "")
+            if match:
+                out[_norm_label(label)] = match
+        else:
+            out[_norm_label(label)] = val
+    return out
 
 
 # ── Submit ────────────────────────────────────────────────────────────────────

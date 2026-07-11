@@ -195,8 +195,14 @@ async def _greenhouse_form(ref: AtsRef) -> dict:
     data = r.json()
 
     fields: list[FormField] = []
-    for q in data.get("questions", []):
+    # location_questions is a SEPARATE section with the same field shape —
+    # skipping it hid a required "Location (City)" on Samsara-style boards and
+    # dry-run passed forms that live submission would reject. Hidden
+    # lat/long helper fields are not user questions — skipped.
+    for q in list(data.get("questions", [])) + list(data.get("location_questions", [])):
         f0 = (q.get("fields") or [{}])[0]
+        if f0.get("type") == "input_hidden":
+            continue
         ftype = _GH_TYPE.get(f0.get("type", ""), "unsupported")
         opts = [{"label": v.get("label", ""), "value": str(v.get("value", ""))}
                 for v in (f0.get("values") or [])]
@@ -208,6 +214,9 @@ async def _greenhouse_form(ref: AtsRef) -> dict:
             key=f0.get("name", ""), label=q.get("label", ""),
             type=ftype, required=bool(q.get("required")), options=opts,
         ))
+    # Demographic/EEOC block ([Optional] per its own header) is deliberately
+    # NOT included — confidential survey answers are not something a tool
+    # should submit on the user's behalf.
 
     return {
         "fields": [f.as_dict() for f in fields],
@@ -312,6 +321,7 @@ def prefill(fields: list[dict], profile: dict) -> dict:
         "first_name": first, "last_name": last,
         "email": profile.get("email", ""), "phone": profile.get("phone", ""),
         "name": profile.get("name", ""),
+        "location": profile.get("location", ""),
         "org": profile.get("current_company", ""),
         "urls[LinkedIn]": profile.get("linkedin", ""),
         "urls[GitHub]": profile.get("github", ""),
@@ -321,6 +331,7 @@ def prefill(fields: list[dict], profile: dict) -> dict:
         "_systemfield_phone": profile.get("phone", ""),
     }
     _label_rules = [
+        (re.compile(r"\blocation\b|\bcity\b", re.I), profile.get("location", "")),
         (re.compile(r"\blinkedin\b", re.I), profile.get("linkedin", "")),
         (re.compile(r"\bgithub\b", re.I), profile.get("github", "")),
         (re.compile(r"\b(website|portfolio)\b", re.I), profile.get("website", "")),
@@ -368,7 +379,9 @@ def _looks_captcha(text_: str) -> bool:
 
 
 async def submit(ref: AtsRef, answers: dict, resume_bytes: bytes,
-                 resume_filename: str, dry_run: bool = True) -> dict:
+                 resume_filename: str, dry_run: bool = True,
+                 cover_bytes: bytes | None = None,
+                 cover_filename: str = "cover_letter.pdf") -> dict:
     """
     Submit one application through the same public endpoint the hosted
     board's own Apply form posts to. Returns
@@ -379,7 +392,8 @@ async def submit(ref: AtsRef, answers: dict, resume_bytes: bytes,
     """
     if ref.ats == "greenhouse":
         return await _greenhouse_submit(ref, answers, resume_bytes,
-                                        resume_filename, dry_run)
+                                        resume_filename, dry_run,
+                                        cover_bytes, cover_filename)
     if ref.ats == "lever":
         return await _lever_submit(ref, answers, resume_bytes,
                                    resume_filename, dry_run)
@@ -390,19 +404,39 @@ async def submit(ref: AtsRef, answers: dict, resume_bytes: bytes,
 
 
 async def _greenhouse_submit(ref: AtsRef, answers: dict, resume: bytes,
-                             fname: str, dry_run: bool) -> dict:
+                             fname: str, dry_run: bool,
+                             cover: bytes | None = None,
+                             cover_fname: str = "cover_letter.pdf") -> dict:
     # The embedded job board posts multipart form-data to the board host.
     post_url = f"https://boards.greenhouse.io/{ref.board}/jobs/{ref.posting_id}"
     data = {str(k): str(v) for k, v in answers.items() if v not in (None, "")}
-    for req_f in ("first_name", "last_name", "email"):
-        if not data.get(req_f):
-            raise ManualApplyRequired(f"Missing required field: {req_f}")
+
+    # Validate against the job's FULL schema, not just name/email — a
+    # required question the UI never rendered (e.g. location_questions
+    # before that section was merged) must fail the dry run, not the live
+    # submit. Schema fetch failing shouldn't block: fall back to basics.
+    missing: list[str] = []
+    try:
+        form = await _greenhouse_form(ref)
+        missing = [f["label"] for f in form["fields"]
+                   if f["required"] and f["type"] != "file"
+                   and not data.get(f["key"], "").strip()]
+    except Exception:
+        missing = [k for k in ("first_name", "last_name", "email")
+                   if not data.get(k)]
+    if missing:
+        raise ManualApplyRequired("Missing required field(s): " + ", ".join(missing))
+
     files = {"resume": (fname, resume, "application/pdf")}
+    if cover:
+        files["cover_letter"] = (cover_fname, cover, "application/pdf")
 
     if dry_run:
         return {"status": "dry_run",
                 "detail": {"post_url": post_url, "fields": sorted(data),
-                           "resume": fname, "bytes": len(resume)}}
+                           "resume": fname, "bytes": len(resume),
+                           "cover_letter": cover_fname if cover else None,
+                           "all_required_answered": True}}
 
     async with httpx.AsyncClient(timeout=_TIMEOUT, headers=_UA,
                                  follow_redirects=True) as cli:

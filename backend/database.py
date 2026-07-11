@@ -159,6 +159,9 @@ class UserSettings(Base):
     telegram_chat_id     = Column(String, default="")
     # Role request: user-submitted request for additional roles (JSON array, cleared on grant)
     role_request         = Column(Text, default="")
+    # Auto-apply: dry-run guard — True builds+validates the payload but never
+    # sends. Must be flipped off explicitly in Settings before live submits.
+    apply_dry_run        = Column(Boolean, default=True)
 
 
 
@@ -188,6 +191,9 @@ class UserJob(Base):
     needs_review         = Column(Boolean, default=False)
     review_reasons       = Column(Text, default=None)   # JSON list — BLOCKING issues only
     review_notes         = Column(Text, default=None)   # JSON list — advisory/cosmetic, never blocking
+    # Auto-apply (Phase 1)
+    apply_method         = Column(String, default=None)  # "auto:greenhouse" / "auto:lever" / "manual"
+    apply_result         = Column(Text, default=None)    # JSON — last submit/dry-run summary
 
 
 class QuickTailorHistory(Base):

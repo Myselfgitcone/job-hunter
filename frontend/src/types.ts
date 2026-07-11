@@ -115,6 +115,7 @@ export interface UserSettings {
   countries: string[];
   visa_filter: boolean;
   level_filter: boolean;
+  apply_dry_run?: boolean;
   ai_provider: string;
   ai_api_key: string;
   ai_model: string;

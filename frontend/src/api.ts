@@ -135,6 +135,21 @@ export const api = {
 
   tailor: (id: string, signal?: AbortSignal) => req<TailorResult>(`/api/jobs/${id}/tailor`, { method: "POST", signal }),
 
+  // ── Auto-apply (Phase 1: Greenhouse / Lever / Ashby) ─────────────────────
+  getApplyForm: (id: string) => req<{
+    supported: boolean; ats?: string; method?: "auto" | "manual";
+    fields?: Array<{ key: string; label: string; type: string; required: boolean; options?: Array<{ label: string; value: string }> }>;
+    answers?: Record<string, string>; apply_url: string; reason?: string;
+    meta?: { title: string; location: string }; dry_run?: boolean;
+  }>(`/api/jobs/${id}/apply-form`),
+
+  submitApplication: (id: string, answers: Record<string, string>, use_tailored: boolean) =>
+    req<{ status: "submitted" | "dry_run" | "manual" | "error"; detail?: unknown; apply_url?: string }>(
+      `/api/jobs/${id}/apply`, {
+        method: "POST",
+        body: JSON.stringify({ answers, confirm: true, use_tailored }),
+      }),
+
   generateCoverLetter: (id: string) =>
     req<{ cover_letter: string }>(`/api/jobs/${id}/cover-letter`, { method: "POST" }),
 

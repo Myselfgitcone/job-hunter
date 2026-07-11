@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import type { Job, JobStatus } from "../types";
 import { api, downloadFile } from "../api";
 import { ATSBar, Spinner, CompanyLogo, AtsLogo } from "./primitives";
+import ApplyModal from "./ApplyModal";
 
 const DISQUALIFIER_PATTERNS: { label: string; re: RegExp }[] = [
   { label: "Requires security clearance",  re: /\b(TS\/SCI|top\s+secret|secret\s+clearance|security\s+clearance|clearance\s+required|active\s+(in-scope\s+)?clearance|polygraph|poly\b)/i },
@@ -908,6 +909,7 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
   busy: string | null; busyJobId: string | null; busyStartedAt?: number | null;
   tailorRuns: Record<string, number>; runAction: (a: string) => void; onCancel: (jobId?: string) => void;
 }) {
+  const [showApply, setShowApply] = useState(false);
   if (!job) {
     return (
       <div className="detail-pane">
@@ -985,6 +987,11 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
             <a href={job.url} target="_blank" rel="noreferrer" className="act primary" style={{ textDecoration: "none" }}>
               <Ic d={I.link} size={14} /> Apply
             </a>
+            <button onClick={() => setShowApply(true)} className="act"
+              title="Auto-fill the application from your profile — you review and confirm before anything is sent"
+              style={{ background: "rgba(16,185,129,0.10)", borderColor: "rgba(16,185,129,0.4)", color: "#10b981" }}>
+              <Ic d={I.zap} size={14} /> Auto-Apply
+            </button>
             <button onClick={() => runAction("resume")} disabled={!!tailorRuns[job.id]} className="act ai"
               title={Object.keys(tailorRuns).length ? `${Object.keys(tailorRuns).length} tailoring in parallel` : undefined}>
               {tailorRuns[job.id] ? <><Spinner size={13} /> Tailoring…</> : <><Ic d={I.sparkles} size={14} /> Tailor Resume</>}
@@ -1091,6 +1098,9 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
         </div>
 
       </div>
+      {showApply && (
+        <ApplyModal job={job} onClose={() => setShowApply(false)} onToast={onToast} onUpdate={onUpdate} />
+      )}
     </div>
   );
 }

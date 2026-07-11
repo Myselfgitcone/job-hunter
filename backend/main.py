@@ -35,6 +35,7 @@ from pdf_gen import generate_pdf
 from docx_gen import generate_docx
 from jd_docx_gen import generate_jd_docx
 from jd_fetcher import fetch_full_jd
+import ats_apply
 from experience import extract_experience_level, resolve_experience_level, infer_experience_ai, TRAYS as EXP_TRAYS
 
 app = FastAPI(title="Job Hunter API")
@@ -611,6 +612,10 @@ async def startup():
         ("user_settings", "anthropic_api_key",  "VARCHAR"),
         ("user_settings", "google_api_key",      "VARCHAR"),
         ("user_settings", "openai_api_key",      "VARCHAR"),
+        # Auto-apply Phase 1
+        ("user_settings", "apply_dry_run",       "BOOLEAN DEFAULT TRUE"),
+        ("user_jobs",     "apply_method",        "VARCHAR"),
+        ("user_jobs",     "apply_result",        "TEXT"),
     ]
     try:
         for table, col, typedef in new_columns:
@@ -1463,6 +1468,7 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
             "countries": json.loads(s.countries or '["USA","Remote"]'),
             "visa_filter": bool(s.visa_filter),
             "level_filter": bool(s.level_filter),
+            "apply_dry_run": True if getattr(s, "apply_dry_run", None) is None else bool(s.apply_dry_run),
             "ai_provider": s.ai_provider or "openrouter",
             "ai_api_key": s.ai_api_key or "",
             # Direct provider keys — masked for display, never sent plaintext
@@ -1617,6 +1623,8 @@ async def update_settings(body: dict = Body(...), user_id: str = Depends(get_cur
             s.visa_filter = bool(body["visa_filter"])
         if "level_filter" in body:
             s.level_filter = bool(body["level_filter"])
+        if "apply_dry_run" in body:
+            s.apply_dry_run = bool(body["apply_dry_run"])
         await db.commit()
         saved_token   = s.telegram_bot_token or ""
         saved_chat_id = s.telegram_chat_id or ""
@@ -2912,6 +2920,137 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
         "review_reasons": review["reasons"],
         "review_notes": review["notes"],
     }
+
+
+# ── Auto-apply Phase 1 (Greenhouse / Lever / Ashby) ──────────────────────────
+
+def _apply_profile(profile: dict, settings: dict) -> dict:
+    """Flatten the JSON profile into the prefill shape ats_apply expects."""
+    current_company = ""
+    for e in profile.get("experience", []):
+        end = (e.get("end_date") or "").strip().lower()
+        if not end or "present" in end or "current" in end:
+            current_company = e.get("company", "")
+            break
+    return {
+        "name": profile.get("name", "") or settings.get("profile_name", ""),
+        "email": profile.get("email", ""),
+        "phone": profile.get("phone", ""),
+        "address": profile.get("address", ""),
+        "linkedin": profile.get("linkedin", ""),
+        "github": profile.get("github", ""),
+        "website": profile.get("website", ""),
+        "visa": profile.get("visa_status", ""),
+        "current_company": current_company,
+    }
+
+
+@app.get("/api/jobs/{job_id}/apply-form")
+async def get_apply_form(job_id: str, user_id: str = Depends(get_current_user_id)):
+    """Detect the job's ATS, fetch its public form schema, and prefill
+    answers from the user's profile. Read-only — nothing is submitted."""
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        profile = await _load_profile(db, user_id)
+
+    ref = ats_apply.detect_ats(job.url)
+    if not ref:
+        return {"supported": False, "apply_url": job.url,
+                "reason": "Job URL is not a direct Greenhouse/Lever/Ashby posting"}
+
+    try:
+        form = await ats_apply.fetch_form(ref)
+    except ValueError as e:
+        return {"supported": False, "apply_url": job.url, "ats": ref.ats,
+                "reason": str(e)}
+    except Exception as e:
+        return {"supported": False, "apply_url": job.url, "ats": ref.ats,
+                "reason": f"Form fetch failed: {e}"}
+
+    settings = await _get_user_settings(user_id)
+    answers = ats_apply.prefill(form["fields"], _apply_profile(profile, settings))
+    # Ashby has no third-party submit path — prefill-assisted manual only
+    method = "manual" if ref.ats == "ashby" else "auto"
+    return {
+        "supported": True,
+        "ats": ref.ats,
+        "method": method,
+        "fields": form["fields"],
+        "answers": answers,
+        "apply_url": form["apply_url"],
+        "meta": form["meta"],
+        "dry_run": bool(settings.get("apply_dry_run", True)),
+    }
+
+
+class ApplyBody(BaseModel):
+    answers: dict = {}
+    confirm: bool = False
+    use_tailored: bool = True
+
+
+@app.post("/api/jobs/{job_id}/apply")
+async def submit_application(job_id: str, body: ApplyBody,
+                             user_id: str = Depends(get_current_user_id)):
+    """Submit ONE application, only after the user reviewed the pre-filled
+    form and clicked confirm. Honors the per-user dry-run guard. Captcha or
+    any rejection degrades to a manual-apply response — never an error."""
+    if not body.confirm:
+        raise HTTPException(400, "Submission requires confirm=true after reviewing the form")
+
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        uj_res = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id))
+        uj = uj_res.scalar_one_or_none()
+
+    ref = ats_apply.detect_ats(job.url)
+    if not ref:
+        raise HTTPException(400, "Job is not on a supported ATS")
+
+    settings = await _get_user_settings(user_id)
+    dry_run = bool(settings.get("apply_dry_run", True))
+
+    resume_text = (uj.tailored_resume if (uj and body.use_tailored and uj.tailored_resume)
+                   else settings.get("resume", ""))
+    if not resume_text.strip():
+        raise HTTPException(400, "No resume available — tailor one or upload a base resume first")
+    resume_bytes = generate_pdf(resume_text, job.title, job.company)
+    fname = f"{(settings.get('profile_name') or 'resume').replace(' ', '_')}_Resume.pdf"
+
+    now_iso = datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        result = await ats_apply.submit(ref, body.answers, resume_bytes, fname,
+                                        dry_run=dry_run)
+    except ats_apply.CaptchaRequired as e:
+        result = {"status": "manual", "detail": str(e), "apply_url": job.url}
+    except ats_apply.ManualApplyRequired as e:
+        result = {"status": "manual", "detail": str(e), "apply_url": job.url}
+    except Exception as e:
+        result = {"status": "error", "detail": str(e)[:300]}
+
+    async with SessionLocal() as db:
+        uj_res = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id))
+        uj = uj_res.scalar_one_or_none()
+        if not uj:
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id,
+                         saved_at=now_iso)
+            db.add(uj)
+        uj.apply_result = json.dumps({**result, "at": now_iso})
+        if result["status"] == "submitted":
+            uj.status = "applied"
+            uj.applied_at = now_iso
+            uj.apply_method = f"auto:{ref.ats}"
+        elif result["status"] == "manual":
+            uj.apply_method = "manual"
+        await db.commit()
+
+    return result
 
 
 # ————————————————————————————————————————————————————————————————————————————————

@@ -253,6 +253,7 @@ const I = {
   skip:     '<path d="M5 4l10 8-10 8z"/><path d="M19 5v14"/>',
   eye:      '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   eyeOff:   '<path d="M17.9 17.9A10 10 0 0 1 2 12 10 10 0 0 1 12 2"/><path d="M3 3l18 18"/><path d="M9.9 4.2A10 10 0 0 1 22 12a10 10 0 0 1-1.2 4.8"/>',
+  zap:      '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
 };
 
 // ── Toggle ────────────────────────────────────────────────────────────────────
@@ -555,6 +556,7 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
 
 
   const [visaFilter, setVisaFilter] = useState(false);
+  const [applyDryRun, setApplyDryRun] = useState(true);
   const [expFilter, setExpFilter]   = useState(false);
   const [openAI, setOpenAI]           = useState(() => localStorage.getItem('settings_open_ai') !== 'false');
   const [openTelegram, setOpenTelegram] = useState(() => localStorage.getItem('settings_open_telegram') !== 'false');
@@ -595,6 +597,7 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
       if (!s) return;
       setVisaFilter(!!s.visa_filter);
       setExpFilter(!!s.level_filter);
+      setApplyDryRun(s.apply_dry_run !== false);
       setProvider(s.ai_provider || "OpenRouter");
       setModelParse(s.ai_model_parse || "google/gemini-2.5-flash-lite");
       setModelTailor(s.ai_model_tailor || "anthropic/claude-sonnet-4.6");
@@ -618,6 +621,7 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
     try {
       await api.saveSettings({
         visa_filter: visaFilter, level_filter: expFilter,
+        apply_dry_run: applyDryRun,
         ai_provider: provider, ai_api_key: apiKey,
         anthropic_api_key: anthropicKey,
         google_api_key: googleKey,
@@ -864,6 +868,25 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
             {testState === "fail" && <span className="test-res fail"><Ic d={I.x} size={13} /> Failed</span>}
           </div>
           </>}
+        </section>
+
+        {/* Auto-Apply */}
+        <section className="form-section">
+          <div className="section-label">
+            <Ic d={I.zap} size={16} /> Auto-Apply
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <Toggle on={applyDryRun} onClick={() => setApplyDryRun(v => !v)} />
+            <div style={{ fontSize: 13, color: "var(--tx-2)", lineHeight: 1.5 }}>
+              <b style={{ color: "var(--tx-1)" }}>Dry-run mode {applyDryRun ? "ON" : "OFF"}</b><br />
+              {applyDryRun
+                ? "Submitting from the Auto-Apply panel validates the payload but sends nothing to the employer."
+                : "⚠ Live mode — confirming in the Auto-Apply panel sends a real application to the employer."}
+            </div>
+            <button className="act" style={{ marginLeft: "auto" }} onClick={saveSettings}>
+              <Ic d={I.check} size={14} /> Save
+            </button>
+          </div>
         </section>
 
         {/* Scheduler */}

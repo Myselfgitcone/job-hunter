@@ -246,7 +246,36 @@ function YesNoPill({ value, options, onChange }: {
   );
 }
 
-type CustomQA = { group: string; q: string; a: string };
+type CustomQA = { id?: string; group: string; q: string; a: string };
+
+// Lookup tables so any field key resolves to its definition + default group
+const AA_FIELD_BY_KEY: Record<string, AAField & { group: string }> = {};
+AA_GROUPS.forEach(g => g.fields.forEach(f => { AA_FIELD_BY_KEY[f.key] = { ...f, group: g.title }; }));
+
+// The user-arranged layout: group title → ordered ids (built-in keys and
+// custom row ids). Saved layouts are reconciled — unknown ids dropped, new
+// fields appended to their default group — so app updates never break it.
+function buildLayout(saved: Record<string, string[]> | undefined, customs: CustomQA[]): Record<string, string[]> {
+  const valid = new Set([...Object.keys(AA_FIELD_BY_KEY), ...customs.map(c => c.id!)]);
+  const placed = new Set<string>();
+  const layout: Record<string, string[]> = {};
+  for (const g of AA_GROUPS) {
+    layout[g.title] = (saved?.[g.title] || []).filter(id => valid.has(id) && !placed.has(id));
+    layout[g.title].forEach(id => placed.add(id));
+  }
+  for (const g of AA_GROUPS) {
+    for (const f of g.fields) {
+      if (!placed.has(f.key)) { layout[g.title].push(f.key); placed.add(f.key); }
+    }
+  }
+  for (const c of customs) {
+    if (!placed.has(c.id!)) {
+      (layout[c.group] ?? layout[AA_GROUPS[0].title]).push(c.id!);
+      placed.add(c.id!);
+    }
+  }
+  return layout;
+}
 
 function ApplicationAnswers() {
   const [values, setValues] = useState<Record<string, any>>({});
@@ -257,7 +286,15 @@ function ApplicationAnswers() {
 
   useEffect(() => {
     api.getApplyProfile()
-      .then(r => { setValues(r.values || {}); setMemory(r.memory || {}); })
+      .then(r => {
+        const v = r.values || {};
+        // older custom rows have no id — assign stable ones once
+        if (Array.isArray(v.custom)) {
+          v.custom = v.custom.map((c: CustomQA, i: number) =>
+            c.id ? c : { ...c, id: `cq_${Date.now()}_${i}` });
+        }
+        setValues(v); setMemory(r.memory || {});
+      })
       .catch(() => {})
       .finally(() => setLoaded(true));
   }, []);
@@ -265,21 +302,39 @@ function ApplicationAnswers() {
   const setVal = (k: string, v: string) => { setValues(s => ({ ...s, [k]: v })); setDirty(true); };
 
   const customs: CustomQA[] = Array.isArray(values.custom) ? values.custom : [];
-  const setCustoms = (next: CustomQA[]) => { setValues(s => ({ ...s, custom: next })); setDirty(true); };
-  const addCustom = (group: string) => setCustoms([...customs, { group, q: "", a: "" }]);
-  const editCustom = (idx: number, patch: Partial<CustomQA>) =>
-    setCustoms(customs.map((c, i) => i === idx ? { ...c, ...patch } : c));
-  const removeCustom = (idx: number) => setCustoms(customs.filter((_, i) => i !== idx));
-  const moveCustom = (idx: number, dir: -1 | 1) => {
-    // swap with the neighboring entry OF THE SAME GROUP — other groups'
-    // rows are invisible here, jumping past them would look like a no-op
-    const sameGroup = customs.map((c, i) => ({ c, i })).filter(x => x.c.group === customs[idx].group);
-    const pos = sameGroup.findIndex(x => x.i === idx);
-    const target = sameGroup[pos + dir];
-    if (!target) return;
-    const next = [...customs];
-    [next[idx], next[target.i]] = [next[target.i], next[idx]];
-    setCustoms(next);
+  const layout = buildLayout(values._layout, customs);
+  const commit = (patch: Record<string, any>) => { setValues(s => ({ ...s, ...patch })); setDirty(true); };
+
+  const addCustom = (group: string) => {
+    const id = `cq_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+    commit({
+      custom: [...customs, { id, group, q: "", a: "" }],
+      _layout: { ...layout, [group]: [...layout[group], id] },
+    });
+  };
+  const editCustom = (id: string, patch: Partial<CustomQA>) =>
+    commit({ custom: customs.map(c => c.id === id ? { ...c, ...patch } : c) });
+  const removeCustom = (id: string) =>
+    commit({
+      custom: customs.filter(c => c.id !== id),
+      _layout: Object.fromEntries(Object.entries(layout).map(([g, ids]) => [g, ids.filter(x => x !== id)])),
+    });
+  const moveEntry = (group: string, idx: number, dir: -1 | 1) => {
+    const arr = [...layout[group]];
+    const t = idx + dir;
+    if (t < 0 || t >= arr.length) return;
+    [arr[idx], arr[t]] = [arr[t], arr[idx]];
+    commit({ _layout: { ...layout, [group]: arr } });
+  };
+  const moveToGroup = (id: string, from: string, to: string) => {
+    if (from === to) return;
+    const patch: Record<string, any> = {
+      _layout: { ...layout, [from]: layout[from].filter(x => x !== id), [to]: [...layout[to], id] },
+    };
+    if (id.startsWith("cq_")) {
+      patch.custom = customs.map(c => c.id === id ? { ...c, group: to } : c);
+    }
+    commit(patch);
   };
 
   const save = async () => {
@@ -350,64 +405,79 @@ function ApplicationAnswers() {
             </div>
           </div>
           <div className="field-grid">
-            {g.fields.map(f => (
-              <label key={f.key} className="field">
-                <span className="field-label">{f.label}</span>
-                {f.options && f.options.length <= 2 ? (
-                  <YesNoPill value={values[f.key] || ""} options={f.options} onChange={v => setVal(f.key, v)} />
-                ) : f.options ? (
-                  <select value={values[f.key] || ""} onChange={e => setVal(f.key, e.target.value)}
-                    style={{ color: values[f.key] ? undefined : "var(--tx-3)" }}>
-                    <option value="">— select —</option>
-                    {f.options.map(o => <option key={o} value={o}>{o}</option>)}
-                    {/* keep a saved custom value visible even if not in the list */}
-                    {values[f.key] && !f.options.includes(values[f.key]) && (
-                      <option value={values[f.key]}>{values[f.key]}</option>
-                    )}
-                  </select>
-                ) : (
-                  <input value={values[f.key] || ""} placeholder={f.hint || ""}
-                    onChange={e => setVal(f.key, e.target.value)} />
-                )}
-              </label>
-            ))}
-
-            {/* User-added Q&A — rendered as normal grid cells: editable
-                question sits where the label sits, answer box below */}
-            {customs.map((c, idx) => c.group !== g.title ? null : (
-              <div key={`c${idx}`} className="field">
-                <span className="field-label" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <input value={c.q} placeholder="Type the question…"
-                    onChange={e => editCustom(idx, { q: e.target.value })}
-                    style={{ flex: 1, background: "none", border: "none", outline: "none",
-                      borderRadius: 0, height: "auto", padding: "1px 0",
-                      fontSize: 12, fontWeight: 600, color: "var(--tx-2)" }} />
-                  <select value={c.group} title="Move to another section"
-                    onChange={e => editCustom(idx, { group: e.target.value })}
+            {(layout[g.title] || []).map((id, idx) => {
+              const builtin = AA_FIELD_BY_KEY[id];
+              const custom = builtin ? undefined : customs.find(c => c.id === id);
+              if (!builtin && !custom) return null;
+              const arr = layout[g.title];
+              const ctlBtn: React.CSSProperties = { background: "none", border: "none",
+                cursor: "pointer", color: "var(--tx-3)", flexShrink: 0, padding: 0, display: "flex" };
+              const controls = (
+                <>
+                  <select value={g.title} title="Move to another section"
+                    onChange={e => moveToGroup(id, g.title, e.target.value)}
                     style={{ width: 22, height: 18, fontSize: 11, background: "none",
                       border: "none", color: "var(--tx-3)", cursor: "pointer", padding: 0 }}>
                     {AA_GROUPS.map(gr => <option key={gr.title} value={gr.title}>{gr.title}</option>)}
                   </select>
-                  <button onClick={() => moveCustom(idx, -1)} title="Move up"
-                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--tx-3)",
-                      flexShrink: 0, padding: 0, display: "flex" }}>
+                  <button onClick={() => moveEntry(g.title, idx, -1)} title="Move up"
+                    style={{ ...ctlBtn, opacity: idx === 0 ? 0.3 : 1 }}>
                     <Ic d={I.chevronUp} size={13} />
                   </button>
-                  <button onClick={() => moveCustom(idx, 1)} title="Move down"
-                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--tx-3)",
-                      flexShrink: 0, padding: 0, display: "flex" }}>
+                  <button onClick={() => moveEntry(g.title, idx, 1)} title="Move down"
+                    style={{ ...ctlBtn, opacity: idx === arr.length - 1 ? 0.3 : 1 }}>
                     <Ic d={I.chevronDown} size={13} />
                   </button>
-                  <button onClick={() => removeCustom(idx)} title="Remove"
-                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--tx-3)",
-                      flexShrink: 0, padding: 0, display: "flex" }}>
-                    <Ic d={I.x} size={13} />
-                  </button>
-                </span>
-                <input value={c.a} placeholder="Your answer"
-                  onChange={e => editCustom(idx, { a: e.target.value })} />
-              </div>
-            ))}
+                  {custom && (
+                    <button onClick={() => removeCustom(id)} title="Remove" style={ctlBtn}>
+                      <Ic d={I.x} size={13} />
+                    </button>
+                  )}
+                </>
+              );
+
+              if (builtin) {
+                const f = builtin;
+                return (
+                  <label key={id} className="field">
+                    <span className="field-label" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ flex: 1 }}>{f.label}</span>
+                      {controls}
+                    </span>
+                    {f.options && f.options.length <= 2 ? (
+                      <YesNoPill value={values[f.key] || ""} options={f.options} onChange={v => setVal(f.key, v)} />
+                    ) : f.options ? (
+                      <select value={values[f.key] || ""} onChange={e => setVal(f.key, e.target.value)}
+                        style={{ color: values[f.key] ? undefined : "var(--tx-3)" }}>
+                        <option value="">— select —</option>
+                        {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+                        {values[f.key] && !f.options.includes(values[f.key]) && (
+                          <option value={values[f.key]}>{values[f.key]}</option>
+                        )}
+                      </select>
+                    ) : (
+                      <input value={values[f.key] || ""} placeholder={f.hint || ""}
+                        onChange={e => setVal(f.key, e.target.value)} />
+                    )}
+                  </label>
+                );
+              }
+              const c = custom!;
+              return (
+                <div key={id} className="field">
+                  <span className="field-label" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input value={c.q} placeholder="Type the question…"
+                      onChange={e => editCustom(id, { q: e.target.value })}
+                      style={{ flex: 1, background: "none", border: "none", outline: "none",
+                        borderRadius: 0, height: "auto", padding: "1px 0",
+                        fontSize: 12, fontWeight: 600, color: "var(--tx-2)" }} />
+                    {controls}
+                  </span>
+                  <input value={c.a} placeholder="Your answer"
+                    onChange={e => editCustom(id, { a: e.target.value })} />
+                </div>
+              );
+            })}
           </div>
 
           <button onClick={() => addCustom(g.title)}

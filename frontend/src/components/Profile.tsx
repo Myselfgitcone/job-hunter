@@ -287,8 +287,12 @@ function ApplicationAnswers() {
     api.saveApplyProfile({ memory: next }).catch(() => {});
   };
 
+  // Counter covers built-in fields AND user-added rows; recomputed every
+  // render so it moves the moment any answer changes.
   const allFields = AA_GROUPS.flatMap(g => g.fields);
-  const filledCount = allFields.filter(f => (values[f.key] || "").trim()).length;
+  const customsComplete = customs.filter(c => c.q.trim() && c.a.trim()).length;
+  const totalCount = allFields.length + customs.length;
+  const filledCount = allFields.filter(f => (values[f.key] || "").trim()).length + customsComplete;
 
   if (!loaded) return null;
   return (
@@ -306,8 +310,8 @@ function ApplicationAnswers() {
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontFamily: "var(--f-mono)", fontSize: 20, fontWeight: 700,
-            color: filledCount === allFields.length ? "#10b981" : "var(--violet)" }}>
-            {filledCount}<span style={{ fontSize: 12, color: "var(--tx-3)" }}>/{allFields.length}</span>
+            color: filledCount === totalCount ? "#10b981" : "var(--violet)" }}>
+            {filledCount}<span style={{ fontSize: 12, color: "var(--tx-3)" }}>/{totalCount}</span>
           </div>
           <div style={{ fontSize: 10.5, color: "var(--tx-3)", textTransform: "uppercase", letterSpacing: ".06em" }}>answered</div>
         </div>
@@ -365,8 +369,8 @@ function ApplicationAnswers() {
                   <input value={c.q} placeholder="Type the question…"
                     onChange={e => editCustom(idx, { q: e.target.value })}
                     style={{ flex: 1, background: "none", border: "none", outline: "none",
-                      borderBottom: `1px dashed ${g.color}55`, borderRadius: 0, height: "auto",
-                      padding: "1px 0", fontSize: 12, fontWeight: 600, color: "var(--tx-2)" }} />
+                      borderRadius: 0, height: "auto", padding: "1px 0",
+                      fontSize: 12, fontWeight: 600, color: "var(--tx-2)" }} />
                   <button onClick={() => removeCustom(idx)} title="Remove"
                     style={{ background: "none", border: "none", cursor: "pointer", color: "var(--tx-3)",
                       flexShrink: 0, padding: 0, display: "flex" }}>

@@ -443,8 +443,50 @@ def _split_name(full: str) -> tuple[str, str]:
 def _norm_label(label: str) -> str:
     """Normalize a question label so the same question matches across
     companies despite punctuation/spacing/casing differences."""
-    s = re.sub(r"[^a-z0-9 ]+", " ", (label or "").lower())
+    # fold hyphenated words first ("on-site" == "onsite"), then punctuation
+    s = re.sub(r"(?<=\w)-(?=\w)", "", (label or "").lower())
+    s = re.sub(r"[^a-z0-9 ]+", " ", s)
     return re.sub(r"\s+", " ", s).strip()
+
+
+# Filler words carrying no meaning for question identity. Universal English
+# function words only — never domain terms (same minimal-skip-list rule as the
+# JD extractor).
+_QSTOP = frozenset(
+    "a an the are is was were be been am do does did you your we our us i me "
+    "my to of in on at for with and or if will would can could should shall "
+    "have has had this that these those it its there here please any what "
+    "which when how many much old currently".split())
+
+
+def _content_tokens(label: str) -> frozenset:
+    """Distinctive tokens of a question: normalized words minus filler and
+    bare numbers ('3 days/week' and 'days/week' are the same ask)."""
+    return frozenset(t for t in _norm_label(label).split()
+                     if t not in _QSTOP and not t.isdigit())
+
+
+def _memory_lookup(label: str, memory: dict) -> str:
+    """Find a stored answer for this question. Exact normalized match first;
+    then fuzzy: if one question's content-token set contains the other's
+    ('willing to work onsite' ⊆ 'willing to work onsite 3 days week'), they
+    are the same ask worded differently. Distinct content words ('onsite' vs
+    'weekends') never match. Ties go to the largest overlap."""
+    k = _norm_label(label)
+    if k in memory:
+        return memory[k]
+    mine = _content_tokens(label)
+    if not mine:
+        return ""
+    best, best_overlap = "", 0
+    for stored_q, ans in memory.items():
+        theirs = _content_tokens(stored_q)
+        if not theirs:
+            continue
+        small, big = (mine, theirs) if len(mine) <= len(theirs) else (theirs, mine)
+        if small <= big and len(small) > best_overlap:
+            best, best_overlap = ans, len(small)
+    return best
 
 
 def _pick_option(options: list[dict], want: str) -> str:
@@ -646,8 +688,9 @@ def prefill(fields: list[dict], profile: dict,
 
         # Answer memory: stored as option LABEL (portable across companies
         # whose option ids differ) or raw text for free-text questions.
+        # Lookup is fuzzy — rewordings of the same ask match (see _memory_lookup).
         if not val:
-            remembered = mem.get(_norm_label(label))
+            remembered = _memory_lookup(label, mem)
             if remembered:
                 val = _pick_option(opts, remembered) if opts else remembered
 

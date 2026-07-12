@@ -256,6 +256,9 @@ function ApplicationAnswers() {
 
 export function Profile() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  // Sub-page: "resume" = the resume profile, "answers" = Application Answers.
+  // Resume sections stay mounted (display:none) so unsaved edits survive tab flips.
+  const [profileTab, setProfileTab] = useState<"resume" | "answers">("resume");
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Role access state
@@ -535,7 +538,7 @@ export function Profile() {
             <h1 className="dash-title">My Profile</h1>
             <p className="dash-sub">The source your AI tailoring and scoring pull from</p>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+          <div style={{ display: profileTab === "resume" ? "flex" : "none", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
             <div style={{ display: "flex", gap: 8 }}>
               <button className="act primary" onClick={handleUploadClick} disabled={parsing} style={{ height: 38, padding: "0 16px" }}>
                 {parsing ? (
@@ -569,6 +572,22 @@ export function Profile() {
             )}
           </div>
         </div>
+
+        {/* Sub-page tabs */}
+        <div style={{ display: "flex", gap: 4, marginBottom: 22, borderBottom: "1px solid var(--line)" }}>
+          {([["resume", "Resume Profile"], ["answers", "Application Answers"]] as const).map(([id, label]) => (
+            <button key={id} onClick={() => setProfileTab(id)}
+              style={{ padding: "9px 16px", fontSize: 13.5, fontWeight: 600, cursor: "pointer",
+                background: "none", border: "none", borderBottom: profileTab === id ? "2px solid #7c3aed" : "2px solid transparent",
+                color: profileTab === id ? "#7c3aed" : "var(--tx-2)", marginBottom: -1 }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {profileTab === "answers" && <ApplicationAnswers />}
+
+        <div style={{ display: profileTab === "resume" ? undefined : "none" }}>
 
         {/* Personal Info */}
         <section className="form-section">
@@ -624,9 +643,6 @@ export function Profile() {
             />
           </div>
         </section>
-
-        {/* Application Answers — one-time form reused by Auto-Apply */}
-        <ApplicationAnswers />
 
         {/* Professional Summary */}
         <section className="form-section">
@@ -862,6 +878,7 @@ export function Profile() {
             </button>
           </div>
         </div>
+        </div>{/* end resume-tab container */}
       </div>
 
       {showDeleteModal && (

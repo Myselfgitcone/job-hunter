@@ -270,6 +270,17 @@ function ApplicationAnswers() {
   const editCustom = (idx: number, patch: Partial<CustomQA>) =>
     setCustoms(customs.map((c, i) => i === idx ? { ...c, ...patch } : c));
   const removeCustom = (idx: number) => setCustoms(customs.filter((_, i) => i !== idx));
+  const moveCustom = (idx: number, dir: -1 | 1) => {
+    // swap with the neighboring entry OF THE SAME GROUP — other groups'
+    // rows are invisible here, jumping past them would look like a no-op
+    const sameGroup = customs.map((c, i) => ({ c, i })).filter(x => x.c.group === customs[idx].group);
+    const pos = sameGroup.findIndex(x => x.i === idx);
+    const target = sameGroup[pos + dir];
+    if (!target) return;
+    const next = [...customs];
+    [next[idx], next[target.i]] = [next[target.i], next[idx]];
+    setCustoms(next);
+  };
 
   const save = async () => {
     setSaveState("saving");
@@ -371,6 +382,22 @@ function ApplicationAnswers() {
                     style={{ flex: 1, background: "none", border: "none", outline: "none",
                       borderRadius: 0, height: "auto", padding: "1px 0",
                       fontSize: 12, fontWeight: 600, color: "var(--tx-2)" }} />
+                  <select value={c.group} title="Move to another section"
+                    onChange={e => editCustom(idx, { group: e.target.value })}
+                    style={{ width: 22, height: 18, fontSize: 11, background: "none",
+                      border: "none", color: "var(--tx-3)", cursor: "pointer", padding: 0 }}>
+                    {AA_GROUPS.map(gr => <option key={gr.title} value={gr.title}>{gr.title}</option>)}
+                  </select>
+                  <button onClick={() => moveCustom(idx, -1)} title="Move up"
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--tx-3)",
+                      flexShrink: 0, padding: 0, display: "flex" }}>
+                    <Ic d={I.chevronUp} size={13} />
+                  </button>
+                  <button onClick={() => moveCustom(idx, 1)} title="Move down"
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--tx-3)",
+                      flexShrink: 0, padding: 0, display: "flex" }}>
+                    <Ic d={I.chevronDown} size={13} />
+                  </button>
                   <button onClick={() => removeCustom(idx)} title="Remove"
                     style={{ background: "none", border: "none", cursor: "pointer", color: "var(--tx-3)",
                       flexShrink: 0, padding: 0, display: "flex" }}>

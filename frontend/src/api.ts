@@ -144,9 +144,9 @@ export const api = {
   }>(`/api/jobs/${id}/apply-form`),
 
   getApplyProfile: () =>
-    req<{ values: Record<string, any>; saved: boolean; memory: Record<string, string> }>("/api/apply-profile"),
+    req<{ values: Record<string, string>; saved: boolean; memory: Record<string, string> }>("/api/apply-profile"),
 
-  saveApplyProfile: (body: { values?: Record<string, any>; memory?: Record<string, string> }) =>
+  saveApplyProfile: (body: { values?: Record<string, string>; memory?: Record<string, string> }) =>
     req<{ ok: boolean }>("/api/apply-profile", { method: "PUT", body: JSON.stringify(body) }),
 
   draftAiAnswers: (id: string, questions: Array<{ key: string; label: string; type: string; options?: string[] }>) =>

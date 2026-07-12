@@ -149,6 +149,11 @@ export const api = {
   saveApplyProfile: (body: { values?: Record<string, string>; memory?: Record<string, string> }) =>
     req<{ ok: boolean }>("/api/apply-profile", { method: "PUT", body: JSON.stringify(body) }),
 
+  draftAiAnswers: (id: string, questions: Array<{ key: string; label: string; type: string; options?: string[] }>) =>
+    req<{ answers: Record<string, string> }>(`/api/jobs/${id}/ai-answers`, {
+      method: "POST", body: JSON.stringify({ questions }),
+    }),
+
   submitApplication: (id: string, answers: Record<string, string>, use_tailored: boolean) =>
     req<{ status: "submitted" | "dry_run" | "manual" | "error"; detail?: unknown; apply_url?: string }>(
       `/api/jobs/${id}/apply`, {

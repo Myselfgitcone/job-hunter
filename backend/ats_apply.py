@@ -228,6 +228,21 @@ async def _greenhouse_form(ref: AtsRef) -> dict:
             type="select" if opts else "text", required=False, options=opts,
         ))
 
+    # Federal EEOC self-identification ("compliance") — a FIFTH schema
+    # section, present on 39 of 59 boards sampled 2026-07-11. Same question
+    # shape; labels are CamelCase codes (DisabilityStatus) → spaced for
+    # display. Voluntary self-ID → always optional.
+    for block in (data.get("compliance") or []):
+        for q in block.get("questions", []):
+            f0 = (q.get("fields") or [{}])[0]
+            opts = [{"label": v.get("label", ""), "value": str(v.get("value", ""))}
+                    for v in (f0.get("values") or [])]
+            nice = re.sub(r"(?<!^)(?=[A-Z])", " ", q.get("label") or "")
+            fields.append(FormField(
+                key=f0.get("name", ""), label=f"[Optional] {nice}",
+                type="select" if opts else "text", required=False, options=opts,
+            ))
+
     return {
         "fields": [f.as_dict() for f in fields],
         "apply_url": data.get("absolute_url") or ref.url,
@@ -237,10 +252,13 @@ async def _greenhouse_form(ref: AtsRef) -> dict:
 
 
 # ── Lever ─────────────────────────────────────────────────────────────────────
-# Docs: https://github.com/lever/postings-api — GET posting JSON is public.
-# Custom questions are NOT exposed publicly; standard fields only. If the
-# hosted apply page carries extra required cards or a captcha we can't see,
-# submit() detects that and degrades to manual.
+# The postings API (github.com/lever/postings-api) exposes the posting but NOT
+# its custom questions. The hosted apply page, however, is server-rendered:
+# custom question "cards" sit in hidden inputs named cards[UUID][baseTemplate]
+# whose value is HTML-escaped JSON ({fields: [{text, required, options…}]}),
+# and the answer inputs are cards[UUID][fieldN]. EEO selects (eeo[gender] etc.)
+# and location/pronouns are plain form fields. We parse that page for the FULL
+# schema and fall back to the standard fields when the fetch fails.
 
 _LEVER_STANDARD = [
     ("name",     "Full name",        "text",     True),
@@ -254,6 +272,67 @@ _LEVER_STANDARD = [
     ("resume",   "Resume",           "file",     True),
 ]
 
+_LEVER_CARD_TYPE = {
+    "multiple-choice": "select", "dropdown": "select",
+    "multiple-select": "multiselect", "checkboxes": "multiselect",
+    "textarea": "textarea", "text": "text",
+}
+_LEVER_CARD_RE = re.compile(
+    r'name="cards\[([0-9a-f-]+)\]\[baseTemplate\]"|'
+    r'value="([^"]*)"[^>]+name="cards\[([0-9a-f-]+)\]\[baseTemplate\]"', re.I)
+
+
+def _parse_lever_cards(html_text: str) -> list[FormField]:
+    """Custom question cards from the server-rendered apply page."""
+    import html as _html
+    out: list[FormField] = []
+    # hidden input: value=<escaped card JSON> name="cards[UUID][baseTemplate]"
+    for m in re.finditer(
+            r'<input[^>]+value="([^"]+)"[^>]+name="cards\[([0-9a-f-]+)\]\[baseTemplate\]"',
+            html_text, re.I):
+        raw, card_id = m.group(1), m.group(2)
+        try:
+            card = json.loads(_html.unescape(raw))
+        except Exception:
+            continue
+        for i, f in enumerate(card.get("fields", [])):
+            ftype = _LEVER_CARD_TYPE.get(f.get("type", ""), "text")
+            opts = [{"label": o.get("text", ""), "value": o.get("text", "")}
+                    for o in (f.get("options") or [])]
+            if ftype == "select" and len(opts) == 2 and \
+                    {o["label"].strip().lower() for o in opts} == {"yes", "no"}:
+                ftype = "boolean"
+            out.append(FormField(
+                key=f"cards[{card_id}][field{i}]",
+                label=f.get("text", ""), type=ftype,
+                required=bool(f.get("required")), options=opts))
+    return out
+
+
+def _parse_lever_extras(html_text: str) -> list[FormField]:
+    """EEO selects, location, pronouns — present only on some boards."""
+    out: list[FormField] = []
+    if 'name="location"' in html_text:
+        out.append(FormField(key="location", label="Current location",
+                             type="text", required=True))
+    if 'name="pronouns"' in html_text:
+        out.append(FormField(key="pronouns", label="Pronouns", type="text", required=False))
+    for eeo_key, eeo_label in (("eeo[gender]", "[Optional] Gender (EEO survey)"),
+                               ("eeo[race]", "[Optional] Race/Ethnicity (EEO survey)"),
+                               ("eeo[veteran]", "[Optional] Veteran status (EEO survey)"),
+                               ("eeo[disability]", "[Optional] Disability status (EEO survey)")):
+        sel = re.search(
+            rf'<select[^>]+name="{re.escape(eeo_key)}"[^>]*>(.*?)</select>',
+            html_text, re.S | re.I)
+        if not sel:
+            continue
+        opts = [{"label": re.sub(r"<[^>]+>", "", o).strip(), "value": v}
+                for v, o in re.findall(r'<option[^>]+value="([^"]+)"[^>]*>(.*?)</option>',
+                                       sel.group(1), re.S) if v]
+        out.append(FormField(key=eeo_key, label=eeo_label, type="select",
+                             required=False, options=opts))
+    return out
+
 
 async def _lever_form(ref: AtsRef) -> dict:
     api = f"https://api.lever.co/v0/postings/{ref.board}/{ref.posting_id}"
@@ -264,10 +343,20 @@ async def _lever_form(ref: AtsRef) -> dict:
     r.raise_for_status()
     data = r.json()
 
-    fields = [FormField(key=k, label=l, type=t, required=req).as_dict()
+    fields = [FormField(key=k, label=l, type=t, required=req)
               for k, l, t, req in _LEVER_STANDARD]
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=True,
+                                     headers={**_UA, "User-Agent": "Mozilla/5.0"}) as cli:
+            page = await cli.get(f"https://jobs.lever.co/{ref.board}/{ref.posting_id}/apply")
+        if page.status_code == 200:
+            fields += _parse_lever_extras(page.text)
+            fields += _parse_lever_cards(page.text)
+    except Exception as e:
+        print(f"[LEVER FORM] page parse skipped, standard fields only: {e}")
+
     return {
-        "fields": fields,
+        "fields": [f.as_dict() for f in fields],
         "apply_url": data.get("applyUrl") or f"{data.get('hostedUrl', ref.url)}/apply",
         "meta": {"title": data.get("text", ""), "location":
                  (data.get("categories") or {}).get("location", "")},
@@ -288,25 +377,57 @@ _ASHBY_STANDARD = [
     ("_systemfield_resume", "Resume",   "file", True),
 ]
 
+# The hosted board's own (unauthenticated) GraphQL endpoint returns the FULL
+# per-posting application form — custom questions included — which the
+# posting-api hides. `field` is a JSON scalar in their schema.
+_ASHBY_GQL = (
+    "query ApiJobPosting($organizationHostedJobsPageName: String!, "
+    "$jobPostingId: String!) { jobPosting(organizationHostedJobsPageName: "
+    "$organizationHostedJobsPageName, jobPostingId: $jobPostingId) { id title "
+    "locationName applicationForm { sections { title fieldEntries "
+    "{ field isRequired } } } } }"
+)
+
+_ASHBY_TYPE = {
+    "String": "text", "Email": "text", "Phone": "text", "Number": "text",
+    "Location": "text", "Date": "text", "LongText": "textarea",
+    "File": "file", "Boolean": "boolean",
+    "ValueSelect": "select", "MultiValueSelect": "multiselect",
+}
+
 
 async def _ashby_form(ref: AtsRef) -> dict:
-    api = f"https://api.ashbyhq.com/posting-api/job-board/{ref.board}"
-    async with httpx.AsyncClient(timeout=_TIMEOUT, headers=_UA) as cli:
-        r = await cli.get(api)
-    if r.status_code == 404:
-        raise ValueError("Ashby board not found")
-    r.raise_for_status()
-    jobs = (r.json() or {}).get("jobs", [])
-    job = next((j for j in jobs if j.get("id") == ref.posting_id), None)
-    if not job:
-        raise ValueError("Ashby posting not found on board (expired)")
+    async with httpx.AsyncClient(timeout=_TIMEOUT,
+                                 headers={**_UA, "User-Agent": "Mozilla/5.0"}) as cli:
+        r = await cli.post("https://jobs.ashbyhq.com/api/non-user-graphql", json={
+            "operationName": "ApiJobPosting",
+            "variables": {"organizationHostedJobsPageName": ref.board,
+                          "jobPostingId": ref.posting_id},
+            "query": _ASHBY_GQL})
+    jp = ((r.json().get("data") or {}).get("jobPosting")
+          if r.status_code == 200 else None)
+    if not jp:
+        raise ValueError("Ashby posting not found (expired or board renamed)")
 
-    fields = [FormField(key=k, label=l, type=t, required=req).as_dict()
-              for k, l, t, req in _ASHBY_STANDARD]
+    fields: list[FormField] = []
+    for sec in (jp.get("applicationForm") or {}).get("sections", []):
+        for fe in sec.get("fieldEntries", []):
+            f = fe.get("field") or {}
+            ftype = _ASHBY_TYPE.get(f.get("type", ""), "text")
+            opts = [{"label": o.get("label", ""), "value": str(o.get("value", ""))}
+                    for o in (f.get("selectableValues") or [])]
+            fields.append(FormField(
+                key=f.get("path") or f.get("id", ""),
+                label=(f.get("title") or "").replace(" ", " ").strip(),
+                type=ftype, required=bool(fe.get("isRequired")), options=opts))
+    if not fields:
+        fields = [FormField(key=k, label=l, type=t, required=req)
+                  for k, l, t, req in _ASHBY_STANDARD]
+
     return {
-        "fields": fields,
-        "apply_url": job.get("jobUrl") or ref.url,
-        "meta": {"title": job.get("title", ""), "location": job.get("location", "")},
+        "fields": [f.as_dict() for f in fields],
+        "apply_url": f"https://jobs.ashbyhq.com/{ref.board}/{ref.posting_id}/application",
+        "meta": {"title": jp.get("title", ""), "location": jp.get("locationName") or ""},
     }
 
 
@@ -394,7 +515,17 @@ _CLASS_RULES: list[tuple[re.Pattern, str, str]] = [
     (re.compile(r"preferred first name", re.I), "preferred_first", "text"),
     (re.compile(r"preferred last name", re.I), "preferred_last", "text"),
     (re.compile(r"pronoun", re.I), "pronouns", "text"),
-    (re.compile(r"gender identity|identify.{0,20}gender", re.I), "demo_gender", "option"),
+    (re.compile(r"18 years|at least 18|age of 18", re.I), "age_18", "yesno"),
+    (re.compile(r"(which|what).{0,25}state.{0,30}(locat|resid|based)|state of residence", re.I),
+     "state", "text"),
+    (re.compile(r"currently employed", re.I), "currently_employed", "yesno"),
+    (re.compile(r"citizenship status", re.I), "citizenship", "option"),
+    (re.compile(r"security clearance", re.I), "clearance", "option"),
+    (re.compile(r"when.{0,30}(start|join)|notice period|earliest.{0,20}start|available to start", re.I),
+     "start_date", "text"),
+    (re.compile(r"non.?compet|non.?solicit", re.I), "noncompete", "yesno"),
+    (re.compile(r"referred by.{0,30}employee|referral", re.I), "referral", "text"),
+    (re.compile(r"gender identity|identify.{0,20}gender|\bgender\b", re.I), "demo_gender", "option"),
     (re.compile(r"race|ethnicit", re.I), "demo_race", "option"),
     (re.compile(r"veteran", re.I), "demo_veteran", "option"),
     (re.compile(r"disabilit|impairment", re.I), "demo_disability", "option"),
@@ -404,7 +535,8 @@ _CLASS_RULES: list[tuple[re.Pattern, str, str]] = [
 # Auto-picked ONLY as a prefill the user still reviews in the modal before
 # any submit — clicking submit is the actual act of consent.
 _CONSENT_LABEL = re.compile(
-    r"consent|acknowledge|agree|policy|privacy|terms|personal data", re.I)
+    r"consent|acknowledge|agree|policy|privacy|terms|personal data|"
+    r"do you confirm|confirm that", re.I)
 _CONSENT_OPTION = re.compile(r"acknowledge|confirm|agree|yes", re.I)
 
 # Conditional follow-ups ("If you selected 'Other'…") depend on another
@@ -423,11 +555,19 @@ def _class_answer(label: str, ftype: str, options: list[dict],
         stored = ap.get(key)
         if stored in (None, ""):
             return ""
-        if kind == "years" and options:
-            try:
-                return _pick_years_bucket(options, float(stored))
-            except (TypeError, ValueError):
-                return ""
+        if kind == "years":
+            # Bucket-pick when the question offers ranges; plain number only
+            # into FREE-TEXT fields. Never into yes/no ("Do you have 5+ years
+            # of PHP?") — that's a skill claim only the resume can answer, so
+            # it's left for the AI draft, which is resume-grounded.
+            if options:
+                try:
+                    return _pick_years_bucket(options, float(stored))
+                except (TypeError, ValueError):
+                    return ""
+            if ftype in ("text", "textarea"):
+                return str(stored)
+            return ""
         if kind == "yesno" and options:
             s = str(stored).strip().lower()
             if s in ("yes", "no", "true", "false"):

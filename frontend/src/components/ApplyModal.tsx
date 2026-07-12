@@ -46,6 +46,8 @@ export default function ApplyModal({ job, onClose, onToast, onUpdate }: {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [useTailored, setUseTailored] = useState(!!job.tailored_resume);
+  const [drafting, setDrafting] = useState(false);
+  const [aiKeys, setAiKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let alive = true;
@@ -83,6 +85,44 @@ export default function ApplyModal({ job, onClose, onToast, onUpdate }: {
       onToast(e.message, "error");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const unanswered = (form?.fields || []).filter(f =>
+    f.type !== "file" && !(answers[f.key] || "").trim() && !f.label.startsWith("[Optional]"));
+
+  const draftWithAi = async () => {
+    if (!unanswered.length) return;
+    setDrafting(true);
+    try {
+      const qs = unanswered.map(f => ({
+        key: f.key, label: f.label, type: f.type,
+        options: f.options?.map(o => o.label),
+      }));
+      const res = await api.draftAiAnswers(job.id, qs);
+      const merged: Record<string, string> = {};
+      const marked = new Set(aiKeys);
+      for (const [k, v] of Object.entries(res.answers)) {
+        const field = form?.fields?.find(f => f.key === k);
+        if (field?.options?.length) {
+          // model answers with an option LABEL — map to this form's value
+          const opt = field.options.find(o => o.label.trim().toLowerCase() === v.trim().toLowerCase());
+          if (opt) { merged[k] = opt.value; marked.add(k); }
+        } else {
+          merged[k] = v; marked.add(k);
+        }
+      }
+      if (Object.keys(merged).length) {
+        setAnswers(a => ({ ...a, ...merged }));
+        setAiKeys(marked);
+        onToast(`AI drafted ${Object.keys(merged).length} answer(s) — review before submitting`, "success");
+      } else {
+        onToast("AI couldn't confidently answer these from your resume — fill them manually", "error");
+      }
+    } catch (e: any) {
+      onToast(e.message, "error");
+    } finally {
+      setDrafting(false);
     }
   };
 
@@ -163,6 +203,10 @@ export default function ApplyModal({ job, onClose, onToast, onUpdate }: {
                   <label key={f.key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     <span style={{ fontSize: 12, fontWeight: 600, color: "var(--tx-2)" }}>
                       {f.label}{f.required && <span style={{ color: "#f87171" }}> *</span>}
+                      {aiKeys.has(f.key) && !!(answers[f.key] || "").trim() && (
+                        <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 8,
+                          background: "rgba(124,58,237,0.12)", color: "#7c3aed" }}>AI DRAFT — review</span>
+                      )}
                     </span>
                     {f.type === "textarea" ? (
                       <textarea rows={3} style={{ ...inputStyle, resize: "vertical" }}
@@ -206,6 +250,15 @@ export default function ApplyModal({ job, onClose, onToast, onUpdate }: {
               background: "none", border: "1px solid var(--line)", borderRadius: 8, padding: "6px 12px", cursor: "pointer", color: "var(--tx-2)" }}>
               <Ic d={I.copy} size={13} /> Copy answers
             </button>
+            {unanswered.length > 0 && (
+              <button onClick={draftWithAi} disabled={drafting}
+                title="Drafts answers for the remaining questions from your resume + this JD. You review every draft before submitting."
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700,
+                  background: "rgba(124,58,237,0.10)", border: "1px solid rgba(124,58,237,0.4)", borderRadius: 8,
+                  padding: "6px 12px", cursor: "pointer", color: "#7c3aed", opacity: drafting ? 0.6 : 1 }}>
+                {drafting ? <Spinner size={13} /> : "✨"} AI draft {unanswered.length} unanswered
+              </button>
+            )}
             {form.method === "auto" && (
               <button onClick={submit} disabled={submitting}
                 style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 700,

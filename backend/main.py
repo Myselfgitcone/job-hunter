@@ -2962,6 +2962,33 @@ async def _load_apply_data(user_id: str) -> tuple[dict, dict]:
             _j(getattr(s, "apply_answers", None)) if s else {})
 
 
+_US_STATES = {
+    "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas", "CA": "California",
+    "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware", "FL": "Florida", "GA": "Georgia",
+    "HI": "Hawaii", "ID": "Idaho", "IL": "Illinois", "IN": "Indiana", "IA": "Iowa",
+    "KS": "Kansas", "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine", "MD": "Maryland",
+    "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota", "MS": "Mississippi",
+    "MO": "Missouri", "MT": "Montana", "NE": "Nebraska", "NV": "Nevada", "NH": "New Hampshire",
+    "NJ": "New Jersey", "NM": "New Mexico", "NY": "New York", "NC": "North Carolina",
+    "ND": "North Dakota", "OH": "Ohio", "OK": "Oklahoma", "OR": "Oregon", "PA": "Pennsylvania",
+    "RI": "Rhode Island", "SC": "South Carolina", "SD": "South Dakota", "TN": "Tennessee",
+    "TX": "Texas", "UT": "Utah", "VT": "Vermont", "VA": "Virginia", "WA": "Washington",
+    "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming", "DC": "District of Columbia",
+}
+
+
+def _us_state_from(loc: str) -> str:
+    """'Maryland Heights, MO' → 'Missouri'. Abbreviations win over name
+    substrings — 'Maryland Heights' is a Missouri city, not Maryland."""
+    for abbr, name in _US_STATES.items():
+        if re.search(rf"\b{abbr}\b", loc or ""):
+            return name
+    for name in _US_STATES.values():
+        if name.lower() in (loc or "").lower():
+            return name
+    return ""
+
+
 def _derive_apply_defaults(profile: dict, settings: dict) -> dict:
     """Defaults derivable from data we already hold — shown in the
     Application Answers form as pre-filled suggestions the user can edit."""
@@ -2997,6 +3024,14 @@ def _derive_apply_defaults(profile: dict, settings: dict) -> dict:
         "preferred_first": first,
         "preferred_last": last,
         "pronouns": "",
+        "age_18": "Yes",
+        "state": _us_state_from(profile.get("location", "") or profile.get("address", "")),
+        "currently_employed": "Yes",
+        "citizenship": "",
+        "clearance": "",
+        "start_date": "",
+        "noncompete": "No",
+        "referral": "",
         "demo_gender": "", "demo_race": "", "demo_veteran": "", "demo_disability": "",
     }
 
@@ -3070,6 +3105,78 @@ async def get_apply_form(job_id: str, user_id: str = Depends(get_current_user_id
         "meta": form["meta"],
         "dry_run": bool(settings.get("apply_dry_run", True)),
     }
+
+
+class AiAnswersBody(BaseModel):
+    questions: list = []   # [{key, label, type, options?: [labels]}]
+
+
+@app.post("/api/jobs/{job_id}/ai-answers")
+async def draft_ai_answers(job_id: str, body: AiAnswersBody,
+                           user_id: str = Depends(get_current_user_id)):
+    """Draft answers for open-ended / screening questions the profile and
+    answer-memory can't fill. Grounded on the user's resume + this JD via the
+    cheap utility model; drafts are shown in the modal for review — nothing
+    submits without the user's explicit click."""
+    if not body.questions:
+        return {"answers": {}}
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        uj_res = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id))
+        uj = uj_res.scalar_one_or_none()
+
+    user_cfg = await _get_user_settings(user_id)
+    from ai.llm import ModelKeys as _MK, chat as _chat
+    mk = _MK(anthropic=user_cfg.get("anthropic_api_key", "") or "",
+             google=user_cfg.get("google_api_key", "") or "",
+             openai=user_cfg.get("openai_api_key", "") or "",
+             openrouter=user_cfg.get("ai_api_key", "") or "")
+    if not any([mk.anthropic, mk.google, mk.openai, mk.openrouter]):
+        raise HTTPException(400, "No AI API key set. Add one in Settings.")
+
+    resume = ((uj.tailored_resume if uj else "") or user_cfg.get("resume", "")).strip()
+    if not resume:
+        raise HTTPException(400, "No resume on file — upload one in Profile first")
+
+    q_lines = []
+    for i, q in enumerate(body.questions[:15]):
+        opts = q.get("options") or []
+        opt_s = f" (must answer with EXACTLY one of: {' | '.join(o[:60] for o in opts[:12])})" if opts else ""
+        q_lines.append(f"{i+1}. [{q.get('key','')}] {q.get('label','')}{opt_s}")
+
+    system = (
+        "You draft job-application answers for a candidate. STRICT RULES:\n"
+        "- Ground every claim in the RESUME below. Never invent employers, tools, "
+        "metrics, or years the resume does not support.\n"
+        "- Experience/years questions: derive from the resume's job dates.\n"
+        "- Option questions: reply with exactly one allowed option string; when the "
+        "resume can't justify a confident choice, reply with an empty string.\n"
+        "- Free-text 'why us / describe a project' questions: 2-4 sentences, first "
+        "person, specific to the resume and the job description, no clichés.\n"
+        "- If a question can't be answered from the resume (e.g. asks about the "
+        "candidate's private circumstances), reply with an empty string.\n"
+        'Return ONLY a JSON object: {"<key>": "<answer>", ...} for every question key.'
+    )
+    user_msg = (f"JOB: {job.title} @ {job.company}\n\nJOB DESCRIPTION (excerpt):\n"
+                f"{(job.description or '')[:3000]}\n\nRESUME:\n{resume[:9000]}\n\n"
+                f"QUESTIONS:\n" + "\n".join(q_lines))
+
+    model = user_cfg.get("ai_model_secondary") or "anthropic/claude-haiku-4-5"
+    raw = await _chat(system, user_msg, user_cfg.get("ai_api_key", ""),
+                      user_cfg.get("ai_provider", "openrouter"), model,
+                      max_tokens=2000, pass_name="ai-answers", keys=mk)
+    m = re.search(r"\{.*\}", raw, re.S)
+    try:
+        answers = json.loads(m.group(0)) if m else {}
+    except Exception:
+        answers = {}
+    valid_keys = {q.get("key") for q in body.questions}
+    answers = {k: str(v).strip() for k, v in answers.items()
+               if k in valid_keys and str(v).strip()}
+    return {"answers": answers}
 
 
 class ApplyBody(BaseModel):

@@ -142,6 +142,8 @@ const VISA_OPTIONS = ["US Citizen", "Green Card", "H1B", "OPT / CPT", "TN Visa",
 // One-time form: standard screening answers reused on every Auto-Apply.
 type AAField = { key: string; label: string; options?: string[]; hint?: string };
 
+const US_STATES = ["Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut","Delaware","District of Columbia","Florida","Georgia","Hawaii","Idaho","Illinois","Indiana","Iowa","Kansas","Kentucky","Louisiana","Maine","Maryland","Massachusetts","Michigan","Minnesota","Mississippi","Missouri","Montana","Nebraska","Nevada","New Hampshire","New Jersey","New Mexico","New York","North Carolina","North Dakota","Ohio","Oklahoma","Oregon","Pennsylvania","Rhode Island","South Carolina","South Dakota","Tennessee","Texas","Utah","Vermont","Virginia","Washington","West Virginia","Wisconsin","Wyoming"];
+
 const AA_GROUPS: Array<{ title: string; icon: string; color: string; desc: string; fields: AAField[] }> = [
   {
     title: "Work Eligibility", icon: "shieldCheck", color: "#3b82f6",
@@ -150,8 +152,12 @@ const AA_GROUPS: Array<{ title: string; icon: string; color: string; desc: strin
       { key: "work_authorized",  label: "Legally authorized to work in the US?", options: ["Yes", "No"] },
       { key: "need_sponsorship", label: "Need visa sponsorship (now or future)?", options: ["Yes", "No"] },
       { key: "age_18",           label: "18 years or older?", options: ["Yes", "No"] },
-      { key: "citizenship",      label: "Citizenship status", hint: "e.g. Non-US citizen authorized to work" },
-      { key: "clearance",        label: "Security clearance", hint: "e.g. None" },
+      { key: "citizenship",      label: "Citizenship status", options: [
+        "U.S. Citizen", "U.S. Permanent Resident (Green Card)",
+        "Non-U.S. citizen authorized to work in the U.S.",
+        "Non-U.S. citizen requiring sponsorship"] },
+      { key: "clearance",        label: "Security clearance", options: [
+        "None", "Confidential", "Secret", "Top Secret", "TS/SCI"] },
     ],
   },
   {
@@ -161,12 +167,13 @@ const AA_GROUPS: Array<{ title: string; icon: string; color: string; desc: strin
       { key: "salary",           label: "Expected salary", hint: "\"Open / Negotiable\" recommended" },
       { key: "relocation",       label: "Open to relocation?", options: ["Yes", "No"] },
       { key: "start_date",       label: "When can you start?", hint: "e.g. 2 weeks notice" },
-      { key: "state",            label: "US State of residence", hint: "e.g. Missouri" },
+      { key: "state",            label: "US State of residence", options: US_STATES },
       { key: "zip",              label: "Zip code" },
       { key: "currently_employed", label: "Currently employed?", options: ["Yes", "No"] },
       { key: "degree",           label: "Bachelor's degree or higher?", options: ["Yes", "No"] },
       { key: "years_experience", label: "Total years of experience", hint: "auto-derived from resume dates" },
-      { key: "how_heard",        label: "\"How did you hear about us?\"", hint: "e.g. LinkedIn" },
+      { key: "how_heard",        label: "\"How did you hear about us?\"", options: [
+        "LinkedIn", "Indeed", "Company careers site", "Google search", "Referral", "Other"] },
       { key: "previously_worked", label: "Previously worked at company?", options: ["No", "Yes"] },
       { key: "noncompete",       label: "Bound by a non-compete?", options: ["No", "Yes"] },
       { key: "referral",         label: "Referral name", hint: "usually blank" },
@@ -178,17 +185,29 @@ const AA_GROUPS: Array<{ title: string; icon: string; color: string; desc: strin
     fields: [
       { key: "preferred_first",  label: "Preferred first name" },
       { key: "preferred_last",   label: "Preferred last name" },
-      { key: "pronouns",         label: "Pronouns", hint: "e.g. he/him — blank = not filled" },
+      { key: "pronouns",         label: "Pronouns", options: [
+        "he/him", "she/her", "they/them", "Prefer not to say"] },
     ],
   },
   {
     title: "Voluntary Self-Identification", icon: "heart", color: "#8b5cf6",
     desc: "The optional diversity survey at the bottom of applications. Companies state these are confidential and don't affect hiring. Leave any blank to skip.",
     fields: [
-      { key: "demo_gender",      label: "Gender identity", hint: "e.g. Man" },
-      { key: "demo_race",        label: "Race / ethnicity", hint: "e.g. South Asian" },
-      { key: "demo_veteran",     label: "Veteran status", hint: "e.g. I am not a protected veteran" },
-      { key: "demo_disability",  label: "Disability status", hint: "e.g. No, I do not have a disability" },
+      { key: "demo_gender",      label: "Gender identity", options: [
+        "Man", "Woman", "Non-binary", "Decline to self-identify"] },
+      { key: "demo_race",        label: "Race / ethnicity", options: [
+        "South Asian", "East Asian", "Asian", "Black or African American",
+        "Hispanic or Latino", "White", "American Indian or Alaska Native",
+        "Native Hawaiian or Other Pacific Islander", "Two or More Races",
+        "Decline to self-identify"] },
+      { key: "demo_veteran",     label: "Veteran status", options: [
+        "I am not a protected veteran",
+        "I identify as one or more of the classifications of a protected veteran",
+        "I don't wish to answer"] },
+      { key: "demo_disability",  label: "Disability status", options: [
+        "No, I do not have a disability and have not had one in the past",
+        "Yes, I have a disability, or have had one in the past",
+        "I do not want to answer"] },
     ],
   },
 ];
@@ -310,8 +329,18 @@ function ApplicationAnswers() {
             {g.fields.map(f => (
               <label key={f.key} className="field">
                 <span className="field-label">{f.label}</span>
-                {f.options ? (
+                {f.options && f.options.length <= 2 ? (
                   <YesNoPill value={values[f.key] || ""} options={f.options} onChange={v => setVal(f.key, v)} />
+                ) : f.options ? (
+                  <select value={values[f.key] || ""} onChange={e => setVal(f.key, e.target.value)}
+                    style={{ color: values[f.key] ? undefined : "var(--tx-3)" }}>
+                    <option value="">— select —</option>
+                    {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+                    {/* keep a saved custom value visible even if not in the list */}
+                    {values[f.key] && !f.options.includes(values[f.key]) && (
+                      <option value={values[f.key]}>{values[f.key]}</option>
+                    )}
+                  </select>
                 ) : (
                   <input value={values[f.key] || ""} placeholder={f.hint || ""}
                     onChange={e => setVal(f.key, e.target.value)} />

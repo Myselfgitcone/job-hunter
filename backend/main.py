@@ -2935,11 +2935,22 @@ def _apply_profile(profile: dict, settings: dict) -> dict:
         if not end or "present" in end or "current" in end:
             current_company = e.get("company", "")
             break
+    # Location fallback: profile.location is often empty while address is
+    # full ("12359 Lakepoint Dr, Maryland Heights, Missouri 63043") — derive
+    # "City, State" by dropping the street segment and trailing zip.
+    location = (profile.get("location") or "").strip()
+    if not location:
+        parts = [p.strip() for p in (profile.get("address") or "").split(",") if p.strip()]
+        if len(parts) >= 2:
+            city = parts[-2]
+            state = re.sub(r"\s*\d{5}(?:-\d{4})?\s*$", "", parts[-1]).strip()
+            location = f"{city}, {state}" if state else city
     return {
         "name": profile.get("name", "") or settings.get("profile_name", ""),
         "email": profile.get("email", ""),
         "phone": profile.get("phone", ""),
         "address": profile.get("address", ""),
+        "location": location,
         "linkedin": profile.get("linkedin", ""),
         "github": profile.get("github", ""),
         "website": profile.get("website", ""),

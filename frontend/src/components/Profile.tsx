@@ -246,8 +246,10 @@ function YesNoPill({ value, options, onChange }: {
   );
 }
 
+type CustomQA = { group: string; q: string; a: string };
+
 function ApplicationAnswers() {
-  const [values, setValues] = useState<Record<string, string>>({});
+  const [values, setValues] = useState<Record<string, any>>({});
   const [memory, setMemory] = useState<Record<string, string>>({});
   const [loaded, setLoaded] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -261,6 +263,13 @@ function ApplicationAnswers() {
   }, []);
 
   const setVal = (k: string, v: string) => { setValues(s => ({ ...s, [k]: v })); setDirty(true); };
+
+  const customs: CustomQA[] = Array.isArray(values.custom) ? values.custom : [];
+  const setCustoms = (next: CustomQA[]) => { setValues(s => ({ ...s, custom: next })); setDirty(true); };
+  const addCustom = (group: string) => setCustoms([...customs, { group, q: "", a: "" }]);
+  const editCustom = (idx: number, patch: Partial<CustomQA>) =>
+    setCustoms(customs.map((c, i) => i === idx ? { ...c, ...patch } : c));
+  const removeCustom = (idx: number) => setCustoms(customs.filter((_, i) => i !== idx));
 
   const save = async () => {
     setSaveState("saving");
@@ -348,6 +357,26 @@ function ApplicationAnswers() {
               </label>
             ))}
           </div>
+
+          {/* User-added Q&A rows for this group */}
+          {customs.map((c, idx) => c.group !== g.title ? null : (
+            <div key={idx} style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12 }}>
+              <input value={c.q} placeholder="Question — e.g. Are you willing to work onsite 3 days/week?"
+                onChange={e => editCustom(idx, { q: e.target.value })} style={{ flex: 1.4 }} />
+              <input value={c.a} placeholder="Your answer"
+                onChange={e => editCustom(idx, { a: e.target.value })} style={{ flex: 1 }} />
+              <button onClick={() => removeCustom(idx)} title="Remove"
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--tx-3)", flexShrink: 0 }}>
+                <Ic d={I.x} size={14} />
+              </button>
+            </div>
+          ))}
+          <button onClick={() => addCustom(g.title)}
+            style={{ marginTop: 12, display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5,
+              fontWeight: 600, cursor: "pointer", color: g.color, background: `${g.color}12`,
+              border: `1px dashed ${g.color}55`, borderRadius: 9, padding: "7px 14px" }}>
+            ＋ Add more
+          </button>
         </div>
       ))}
 

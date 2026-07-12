@@ -3036,6 +3036,17 @@ def _derive_apply_defaults(profile: dict, settings: dict) -> dict:
     }
 
 
+def _merged_memory(ap: dict, memory: dict) -> dict:
+    """Learned answers + the user's own hand-added Q&A rows (values.custom).
+    Hand-added entries win — they're explicit intent."""
+    merged = dict(memory)
+    for c in ap.get("custom", []) or []:
+        q, a = (c.get("q") or "").strip(), (c.get("a") or "").strip()
+        if q and a:
+            merged[ats_apply._norm_label(q)] = a
+    return merged
+
+
 @app.get("/api/apply-profile")
 async def get_apply_profile(user_id: str = Depends(get_current_user_id)):
     """Application Answers form: saved values merged over derived defaults,
@@ -3092,7 +3103,7 @@ async def get_apply_form(job_id: str, user_id: str = Depends(get_current_user_id
     saved_ap, memory = await _load_apply_data(user_id)
     ap = {**_derive_apply_defaults(profile, settings), **saved_ap}
     answers = ats_apply.prefill(form["fields"], _apply_profile(profile, settings),
-                                apply_profile=ap, memory=memory)
+                                apply_profile=ap, memory=_merged_memory(ap, memory))
     # Ashby has no third-party submit path — prefill-assisted manual only
     method = "manual" if ref.ats == "ashby" else "auto"
     return {
@@ -3257,8 +3268,10 @@ async def submit_application(job_id: str, body: ApplyBody,
             profile = await _load_profile(db, user_id)
         saved_ap, _mem = await _load_apply_data(user_id)
         ap = {**_derive_apply_defaults(profile, settings), **saved_ap}
+        # include custom+learned memory: an answer any saved source already
+        # produces is not novel and must not be re-learned
         auto = ats_apply.prefill(form["fields"], _apply_profile(profile, settings),
-                                 apply_profile=ap, memory={})
+                                 apply_profile=ap, memory=_merged_memory(ap, _mem))
         novel = {k: v for k, v in body.answers.items()
                  if str(v).strip() and str(auto.get(k, "")).strip() != str(v).strip()}
         learned = ats_apply.extract_memory(form["fields"], novel)

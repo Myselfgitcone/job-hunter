@@ -140,39 +140,99 @@ const VISA_OPTIONS = ["US Citizen", "Green Card", "H1B", "OPT / CPT", "TN Visa",
 
 // ── Application Answers (auto-apply) ─────────────────────────────────────────
 // One-time form: standard screening answers reused on every Auto-Apply.
-const AA_FIELDS: Array<{ key: string; label: string; options?: string[]; hint?: string }> = [
-  { key: "work_authorized",  label: "Legally authorized to work in the US?", options: ["Yes", "No"] },
-  { key: "need_sponsorship", label: "Will you need visa sponsorship (now or in future)?", options: ["Yes", "No"] },
-  { key: "relocation",       label: "Open to relocation?", options: ["Yes", "No"] },
-  { key: "salary",           label: "Expected salary", hint: "\"Open / Negotiable\" recommended" },
-  { key: "zip",              label: "Zip code" },
-  { key: "degree",           label: "Bachelor's degree or higher?", options: ["Yes", "No"] },
-  { key: "years_experience", label: "Total years of experience", hint: "auto-derived from your resume dates — edit if wrong" },
-  { key: "how_heard",        label: "Default \"How did you hear about us?\"", hint: "e.g. LinkedIn, Company careers site" },
-  { key: "previously_worked", label: "Previously worked at the company? (default)", options: ["No", "Yes"] },
-  { key: "preferred_first",  label: "Preferred first name" },
-  { key: "preferred_last",   label: "Preferred last name" },
-  { key: "pronouns",         label: "Pronouns (optional)", hint: "e.g. he/him — left blank = not filled" },
-  { key: "age_18",           label: "18 years or older?", options: ["Yes", "No"] },
-  { key: "state",            label: "US State of residence", hint: "e.g. Missouri" },
-  { key: "currently_employed", label: "Currently employed?", options: ["Yes", "No"] },
-  { key: "citizenship",      label: "Citizenship status", hint: "exact answer text, e.g. \"Non-US citizen authorized to work\"" },
-  { key: "clearance",        label: "Security clearance", hint: "e.g. \"None\"" },
-  { key: "start_date",       label: "When can you start?", hint: "e.g. \"2 weeks notice\" or \"Immediately\"" },
-  { key: "noncompete",       label: "Bound by a non-compete?", options: ["No", "Yes"] },
-  { key: "referral",         label: "Referral name (default)", hint: "usually blank" },
-  { key: "demo_gender",      label: "Gender identity (optional survey)", hint: "exact answer text, e.g. \"Man\"" },
-  { key: "demo_race",        label: "Race / ethnicity (optional survey)", hint: "e.g. \"South Asian\"" },
-  { key: "demo_veteran",     label: "Veteran status (optional survey)", hint: "e.g. \"I am not a protected veteran\"" },
-  { key: "demo_disability",  label: "Disability status (optional survey)", hint: "e.g. \"No, I do not have a disability\"" },
+type AAField = { key: string; label: string; options?: string[]; hint?: string };
+
+const AA_GROUPS: Array<{ title: string; icon: string; color: string; desc: string; fields: AAField[] }> = [
+  {
+    title: "Work Eligibility", icon: "shieldCheck", color: "#3b82f6",
+    desc: "The visa and authorization questions on almost every application.",
+    fields: [
+      { key: "work_authorized",  label: "Legally authorized to work in the US?", options: ["Yes", "No"] },
+      { key: "need_sponsorship", label: "Need visa sponsorship (now or future)?", options: ["Yes", "No"] },
+      { key: "age_18",           label: "18 years or older?", options: ["Yes", "No"] },
+      { key: "citizenship",      label: "Citizenship status", hint: "e.g. Non-US citizen authorized to work" },
+      { key: "clearance",        label: "Security clearance", hint: "e.g. None" },
+    ],
+  },
+  {
+    title: "Preferences & Logistics", icon: "sliders", color: "#10b981",
+    desc: "Salary, location, availability — filled into matching questions on any form.",
+    fields: [
+      { key: "salary",           label: "Expected salary", hint: "\"Open / Negotiable\" recommended" },
+      { key: "relocation",       label: "Open to relocation?", options: ["Yes", "No"] },
+      { key: "start_date",       label: "When can you start?", hint: "e.g. 2 weeks notice" },
+      { key: "state",            label: "US State of residence", hint: "e.g. Missouri" },
+      { key: "zip",              label: "Zip code" },
+      { key: "currently_employed", label: "Currently employed?", options: ["Yes", "No"] },
+      { key: "degree",           label: "Bachelor's degree or higher?", options: ["Yes", "No"] },
+      { key: "years_experience", label: "Total years of experience", hint: "auto-derived from resume dates" },
+      { key: "how_heard",        label: "\"How did you hear about us?\"", hint: "e.g. LinkedIn" },
+      { key: "previously_worked", label: "Previously worked at company?", options: ["No", "Yes"] },
+      { key: "noncompete",       label: "Bound by a non-compete?", options: ["No", "Yes"] },
+      { key: "referral",         label: "Referral name", hint: "usually blank" },
+    ],
+  },
+  {
+    title: "Identity", icon: "user", color: "#d97706",
+    desc: "Preferred name and pronouns, when a form asks.",
+    fields: [
+      { key: "preferred_first",  label: "Preferred first name" },
+      { key: "preferred_last",   label: "Preferred last name" },
+      { key: "pronouns",         label: "Pronouns", hint: "e.g. he/him — blank = not filled" },
+    ],
+  },
+  {
+    title: "Voluntary Self-Identification", icon: "heart", color: "#8b5cf6",
+    desc: "The optional diversity survey at the bottom of applications. Companies state these are confidential and don't affect hiring. Leave any blank to skip.",
+    fields: [
+      { key: "demo_gender",      label: "Gender identity", hint: "e.g. Man" },
+      { key: "demo_race",        label: "Race / ethnicity", hint: "e.g. South Asian" },
+      { key: "demo_veteran",     label: "Veteran status", hint: "e.g. I am not a protected veteran" },
+      { key: "demo_disability",  label: "Disability status", hint: "e.g. No, I do not have a disability" },
+    ],
+  },
 ];
+
+const AA_ICONS: Record<string, string> = {
+  shieldCheck: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1 1 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+  sliders: '<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0 1 14 0v1"/>',
+  heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
+  brain: '<path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/>',
+};
+
+function YesNoPill({ value, options, onChange }: {
+  value: string; options: string[]; onChange: (v: string) => void;
+}) {
+  return (
+    <div style={{ display: "inline-flex", gap: 0, borderRadius: 9, overflow: "hidden",
+      border: "1px solid var(--line)", height: 36, width: "fit-content" }}>
+      {options.map(o => {
+        const on = value === o;
+        return (
+          <button key={o} onClick={() => onChange(on ? "" : o)} type="button"
+            style={{ padding: "0 18px", fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none",
+              background: on ? (o === "Yes" ? "rgba(16,185,129,0.16)" : "rgba(239,68,64,0.13)") : "transparent",
+              color: on ? (o === "Yes" ? "#10b981" : "#f87171") : "var(--tx-3)",
+              borderRight: "1px solid var(--line)", transition: "all .12s" }}>
+            {o}
+          </button>
+        );
+      })}
+      <span style={{ display: "inline-flex", alignItems: "center", padding: "0 10px", fontSize: 11,
+        color: value ? "var(--tx-3)" : "#d97706", fontWeight: 500 }}>
+        {value ? "" : "not set"}
+      </span>
+    </div>
+  );
+}
 
 function ApplicationAnswers() {
   const [values, setValues] = useState<Record<string, string>>({});
   const [memory, setMemory] = useState<Record<string, string>>({});
   const [loaded, setLoaded] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const [saveState, setSaveState] = useState<"" | "saving" | "saved" | "error">("");
-  const [showMemory, setShowMemory] = useState(false);
 
   useEffect(() => {
     api.getApplyProfile()
@@ -181,11 +241,13 @@ function ApplicationAnswers() {
       .finally(() => setLoaded(true));
   }, []);
 
-  const save = async (nextMemory?: Record<string, string>) => {
+  const setVal = (k: string, v: string) => { setValues(s => ({ ...s, [k]: v })); setDirty(true); };
+
+  const save = async () => {
     setSaveState("saving");
     try {
-      await api.saveApplyProfile({ values, ...(nextMemory ? { memory: nextMemory } : {}) });
-      setSaveState("saved");
+      await api.saveApplyProfile({ values });
+      setSaveState("saved"); setDirty(false);
       setTimeout(() => setSaveState(""), 2500);
     } catch { setSaveState("error"); }
   };
@@ -197,60 +259,103 @@ function ApplicationAnswers() {
     api.saveApplyProfile({ memory: next }).catch(() => {});
   };
 
+  const allFields = AA_GROUPS.flatMap(g => g.fields);
+  const filledCount = allFields.filter(f => (values[f.key] || "").trim()).length;
+
   if (!loaded) return null;
   return (
-    <section className="form-section">
-      <div className="section-label"><Ic d={I.check} size={16} /> Application Answers (Auto-Apply)</div>
-      <p style={{ fontSize: 12.5, color: "var(--tx-3)", margin: "0 0 14px", lineHeight: 1.5 }}>
-        Fill once — every Auto-Apply pre-fills these on any company's form (sponsorship, relocation,
-        salary, years of experience…). Odd questions you answer in the Auto-Apply popup are remembered
-        automatically and reused next time.
-      </p>
-      <div className="field-grid">
-        {AA_FIELDS.map(f => (
-          <label key={f.key} className="field">
-            <span className="field-label">{f.label}</span>
-            {f.options ? (
-              <select value={values[f.key] || ""} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}>
-                <option value="">— not set —</option>
-                {f.options.map(o => <option key={o} value={o}>{o}</option>)}
-              </select>
-            ) : (
-              <input value={values[f.key] || ""} placeholder={f.hint || ""}
-                onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} />
-            )}
-          </label>
-        ))}
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12 }}>
-        <button className="act ai" onClick={() => save()} disabled={saveState === "saving"}>
-          {saveState === "saving" ? "Saving…" : "Save Application Answers"}
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, animation: "cardIn 240ms var(--ease)" }}>
+      {/* Hero / save bar */}
+      <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 20px",
+        borderRadius: "var(--r-lg)", background: "var(--glass)", border: "1px solid var(--glass-border)" }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontFamily: "var(--f-display)", fontSize: 16, fontWeight: 700, color: "var(--tx-1)" }}>
+            Fill once, applied everywhere
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--tx-3)", marginTop: 3, lineHeight: 1.5 }}>
+            Auto-Apply matches these answers onto any company's questions — however they word them.
+          </div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontFamily: "var(--f-mono)", fontSize: 20, fontWeight: 700,
+            color: filledCount === allFields.length ? "#10b981" : "var(--violet)" }}>
+            {filledCount}<span style={{ fontSize: 12, color: "var(--tx-3)" }}>/{allFields.length}</span>
+          </div>
+          <div style={{ fontSize: 10.5, color: "var(--tx-3)", textTransform: "uppercase", letterSpacing: ".06em" }}>answered</div>
+        </div>
+        <button className="act ai" onClick={save} disabled={saveState === "saving" || !dirty}
+          style={{ height: 38, padding: "0 18px", opacity: dirty || saveState === "saving" ? 1 : 0.55 }}>
+          {saveState === "saving" ? "Saving…" : saveState === "saved" && !dirty ? "✓ Saved" : "Save Answers"}
         </button>
-        {saveState === "saved" && <span style={{ fontSize: 12.5, color: "#10b981", fontWeight: 600 }}>Saved ✓</span>}
-        {saveState === "error" && <span style={{ fontSize: 12.5, color: "#f87171", fontWeight: 600 }}>Save failed</span>}
+      </div>
+      {saveState === "error" && (
+        <div style={{ fontSize: 12.5, color: "#f87171", fontWeight: 600, padding: "0 4px" }}>Save failed — try again</div>
+      )}
+
+      {/* Grouped cards */}
+      {AA_GROUPS.map(g => (
+        <div key={g.title} style={{ borderRadius: "var(--r-lg)", background: "var(--glass)",
+          border: "1px solid var(--glass-border)", padding: "18px 20px" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 16 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center",
+              justifyContent: "center", background: `${g.color}1a`, color: g.color }}>
+              <Ic d={AA_ICONS[g.icon]} size={17} color={g.color} />
+            </div>
+            <div>
+              <div style={{ fontFamily: "var(--f-display)", fontSize: 14.5, fontWeight: 600, color: "var(--tx-1)" }}>{g.title}</div>
+              <div style={{ fontSize: 12, color: "var(--tx-3)", marginTop: 2, lineHeight: 1.45 }}>{g.desc}</div>
+            </div>
+          </div>
+          <div className="field-grid">
+            {g.fields.map(f => (
+              <label key={f.key} className="field">
+                <span className="field-label">{f.label}</span>
+                {f.options ? (
+                  <YesNoPill value={values[f.key] || ""} options={f.options} onChange={v => setVal(f.key, v)} />
+                ) : (
+                  <input value={values[f.key] || ""} placeholder={f.hint || ""}
+                    onChange={e => setVal(f.key, e.target.value)} />
+                )}
+              </label>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {/* Learned answers */}
+      <div style={{ borderRadius: "var(--r-lg)", background: "var(--glass)",
+        border: "1px solid var(--glass-border)", padding: "18px 20px" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: Object.keys(memory).length ? 14 : 0 }}>
+          <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center",
+            justifyContent: "center", background: "rgba(34,211,238,0.10)", color: "var(--cyan)" }}>
+            <Ic d={AA_ICONS.brain} size={17} color="#22d3ee" />
+          </div>
+          <div>
+            <div style={{ fontFamily: "var(--f-display)", fontSize: 14.5, fontWeight: 600, color: "var(--tx-1)" }}>
+              Learned Answers <span style={{ fontFamily: "var(--f-mono)", fontSize: 12, color: "var(--cyan)" }}>({Object.keys(memory).length})</span>
+            </div>
+            <div style={{ fontSize: 12, color: "var(--tx-3)", marginTop: 2, lineHeight: 1.45 }}>
+              Unusual questions you answer in the Auto-Apply popup land here automatically and refill on the next form that asks the same thing.
+            </div>
+          </div>
+        </div>
         {Object.keys(memory).length > 0 && (
-          <button onClick={() => setShowMemory(s => !s)}
-            style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: 12.5, color: "var(--tx-2)", fontWeight: 600 }}>
-            {showMemory ? "Hide" : "Show"} remembered answers ({Object.keys(memory).length})
-          </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {Object.entries(memory).map(([q, a]) => (
+              <div key={q} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, padding: "8px 12px",
+                background: "rgba(0,0,0,0.18)", border: "1px solid var(--line)", borderRadius: 9 }}>
+                <span style={{ color: "var(--tx-3)", flex: 1, lineHeight: 1.4 }}>{q}</span>
+                <b style={{ color: "var(--tx-1)", whiteSpace: "nowrap", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>{a}</b>
+                <button onClick={() => forgetAnswer(q)} title="Forget this answer"
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--tx-3)", flexShrink: 0 }}>
+                  <Ic d={I.x} size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
         )}
       </div>
-      {showMemory && (
-        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-          {Object.entries(memory).map(([q, a]) => (
-            <div key={q} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, padding: "6px 10px",
-              background: "var(--bg-main)", border: "1px solid var(--line)", borderRadius: 8 }}>
-              <span style={{ color: "var(--tx-3)", flex: 1 }}>{q}</span>
-              <b style={{ color: "var(--tx-1)" }}>{a}</b>
-              <button onClick={() => forgetAnswer(q)} title="Forget this answer"
-                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--tx-3)" }}>
-                <Ic d={I.x} size={13} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
+    </div>
   );
 }
 
@@ -573,16 +678,23 @@ export function Profile() {
           </div>
         </div>
 
-        {/* Sub-page tabs */}
-        <div style={{ display: "flex", gap: 4, marginBottom: 22, borderBottom: "1px solid var(--line)" }}>
-          {([["resume", "Resume Profile"], ["answers", "Application Answers"]] as const).map(([id, label]) => (
-            <button key={id} onClick={() => setProfileTab(id)}
-              style={{ padding: "9px 16px", fontSize: 13.5, fontWeight: 600, cursor: "pointer",
-                background: "none", border: "none", borderBottom: profileTab === id ? "2px solid #7c3aed" : "2px solid transparent",
-                color: profileTab === id ? "#7c3aed" : "var(--tx-2)", marginBottom: -1 }}>
-              {label}
-            </button>
-          ))}
+        {/* Sub-page tabs — segmented control */}
+        <div style={{ display: "inline-flex", gap: 4, marginBottom: 24, padding: 4,
+          borderRadius: 12, background: "var(--glass)", border: "1px solid var(--glass-border)" }}>
+          {([["resume", I.doc, "Resume Profile"], ["answers", I.bolt, "Application Answers"]] as const).map(([id, icon, label]) => {
+            const on = profileTab === id;
+            return (
+              <button key={id} onClick={() => setProfileTab(id)}
+                style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 18px",
+                  fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", borderRadius: 9,
+                  background: on ? "var(--grad)" : "transparent",
+                  color: on ? "#fff" : "var(--tx-2)",
+                  boxShadow: on ? "0 2px 10px rgba(124,58,237,0.35)" : "none",
+                  transition: "all .15s" }}>
+                <Ic d={icon} size={14} color={on ? "#fff" : undefined} /> {label}
+              </button>
+            );
+          })}
         </div>
 
         {profileTab === "answers" && <ApplicationAnswers />}

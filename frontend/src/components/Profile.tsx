@@ -319,20 +319,23 @@ function ApplicationAnswers() {
       custom: customs.filter(c => c.id !== id),
       _layout: Object.fromEntries(Object.entries(layout).map(([g, ids]) => [g, ids.filter(x => x !== id)])),
     });
-  const moveEntry = (group: string, idx: number, dir: -1 | 1) => {
-    const arr = [...layout[group]];
-    const t = idx + dir;
-    if (t < 0 || t >= arr.length) return;
-    [arr[idx], arr[t]] = [arr[t], arr[idx]];
-    commit({ _layout: { ...layout, [group]: arr } });
-  };
-  const moveToGroup = (id: string, from: string, to: string) => {
-    if (from === to) return;
-    const patch: Record<string, any> = {
-      _layout: { ...layout, [from]: layout[from].filter(x => x !== id), [to]: [...layout[to], id] },
-    };
+  // Drag & drop: drag a field's grip onto another field (insert before it)
+  // or onto a card's empty space (append to that card).
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const dropField = (toGroup: string, beforeId: string | null) => {
+    const id = dragId;
+    setDragId(null); setOverId(null);
+    if (!id || id === beforeId) return;
+    const next: Record<string, string[]> = Object.fromEntries(
+      Object.entries(layout).map(([g, ids]) => [g, ids.filter(x => x !== id)]));
+    const arr = next[toGroup] || [];
+    const at = beforeId ? arr.indexOf(beforeId) : -1;
+    if (at >= 0) arr.splice(at, 0, id); else arr.push(id);
+    next[toGroup] = arr;
+    const patch: Record<string, any> = { _layout: next };
     if (id.startsWith("cq_")) {
-      patch.custom = customs.map(c => c.id === id ? { ...c, group: to } : c);
+      patch.custom = customs.map(c => c.id === id ? { ...c, group: toGroup } : c);
     }
     commit(patch);
   };
@@ -392,8 +395,12 @@ function ApplicationAnswers() {
 
       {/* Grouped cards */}
       {AA_GROUPS.map(g => (
-        <div key={g.title} style={{ borderRadius: "var(--r-lg)", background: "var(--glass)",
-          border: "1px solid var(--glass-border)", padding: "18px 20px" }}>
+        <div key={g.title}
+          onDragOver={e => e.preventDefault()}
+          onDrop={e => { e.preventDefault(); dropField(g.title, null); }}
+          style={{ borderRadius: "var(--r-lg)", background: "var(--glass)",
+            border: "1px solid var(--glass-border)", padding: "18px 20px",
+            outline: dragId && overId === null ? "1px dashed rgba(139,92,246,0.25)" : "none" }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 16 }}>
             <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center",
               justifyContent: "center", background: `${g.color}1a`, color: g.color }}>
@@ -405,44 +412,39 @@ function ApplicationAnswers() {
             </div>
           </div>
           <div className="field-grid">
-            {(layout[g.title] || []).map((id, idx) => {
+            {(layout[g.title] || []).map(id => {
               const builtin = AA_FIELD_BY_KEY[id];
               const custom = builtin ? undefined : customs.find(c => c.id === id);
               if (!builtin && !custom) return null;
-              const arr = layout[g.title];
+              const cellProps = {
+                onDragOver: (e: React.DragEvent) => { e.preventDefault(); if (dragId && dragId !== id) setOverId(id); },
+                onDragLeave: () => { if (overId === id) setOverId(null); },
+                onDrop: (e: React.DragEvent) => { e.preventDefault(); dropField(g.title, id); },
+                style: {
+                  opacity: dragId === id ? 0.35 : 1,
+                  outline: overId === id && dragId !== id ? "2px dashed var(--violet)" : "none",
+                  outlineOffset: 3, borderRadius: 6, transition: "opacity .12s",
+                } as React.CSSProperties,
+              };
+              const grip = (
+                <span draggable title="Drag to move"
+                  onDragStart={e => { e.dataTransfer.effectAllowed = "move"; setDragId(id); }}
+                  onDragEnd={() => { setDragId(null); setOverId(null); }}
+                  style={{ cursor: "grab", color: "var(--tx-faint)", fontSize: 11, letterSpacing: 1,
+                    userSelect: "none", flexShrink: 0, lineHeight: 1 }}>
+                  ⠿
+                </span>
+              );
               const ctlBtn: React.CSSProperties = { background: "none", border: "none",
                 cursor: "pointer", color: "var(--tx-3)", flexShrink: 0, padding: 0, display: "flex" };
-              const controls = (
-                <>
-                  <select value={g.title} title="Move to another section"
-                    onChange={e => moveToGroup(id, g.title, e.target.value)}
-                    style={{ width: 22, height: 18, fontSize: 11, background: "none",
-                      border: "none", color: "var(--tx-3)", cursor: "pointer", padding: 0 }}>
-                    {AA_GROUPS.map(gr => <option key={gr.title} value={gr.title}>{gr.title}</option>)}
-                  </select>
-                  <button onClick={() => moveEntry(g.title, idx, -1)} title="Move up"
-                    style={{ ...ctlBtn, opacity: idx === 0 ? 0.3 : 1 }}>
-                    <Ic d={I.chevronUp} size={13} />
-                  </button>
-                  <button onClick={() => moveEntry(g.title, idx, 1)} title="Move down"
-                    style={{ ...ctlBtn, opacity: idx === arr.length - 1 ? 0.3 : 1 }}>
-                    <Ic d={I.chevronDown} size={13} />
-                  </button>
-                  {custom && (
-                    <button onClick={() => removeCustom(id)} title="Remove" style={ctlBtn}>
-                      <Ic d={I.x} size={13} />
-                    </button>
-                  )}
-                </>
-              );
 
               if (builtin) {
                 const f = builtin;
                 return (
-                  <label key={id} className="field">
-                    <span className="field-label" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <label key={id} className="field" {...cellProps}>
+                    <span className="field-label" style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                      {grip}
                       <span style={{ flex: 1 }}>{f.label}</span>
-                      {controls}
                     </span>
                     {f.options && f.options.length <= 2 ? (
                       <YesNoPill value={values[f.key] || ""} options={f.options} onChange={v => setVal(f.key, v)} />
@@ -464,14 +466,17 @@ function ApplicationAnswers() {
               }
               const c = custom!;
               return (
-                <div key={id} className="field">
-                  <span className="field-label" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div key={id} className="field" {...cellProps}>
+                  <span className="field-label" style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                    {grip}
                     <input value={c.q} placeholder="Type the question…"
                       onChange={e => editCustom(id, { q: e.target.value })}
                       style={{ flex: 1, background: "none", border: "none", outline: "none",
                         borderRadius: 0, height: "auto", padding: "1px 0",
                         fontSize: 12, fontWeight: 600, color: "var(--tx-2)" }} />
-                    {controls}
+                    <button onClick={() => removeCustom(id)} title="Remove" style={ctlBtn}>
+                      <Ic d={I.x} size={13} />
+                    </button>
                   </span>
                   <input value={c.a} placeholder="Your answer"
                     onChange={e => editCustom(id, { a: e.target.value })} />

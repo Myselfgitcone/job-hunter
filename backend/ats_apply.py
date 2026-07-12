@@ -792,6 +792,25 @@ async def _greenhouse_submit(ref: AtsRef, answers: dict, resume: bytes,
         missing = [f["label"] for f in form["fields"]
                    if f["required"] and f["type"] != "file"
                    and not data.get(f["key"], "").strip()]
+        # Required FILE fields: resume is always attached; a required cover
+        # letter blocks with a clear message when none was generated; any
+        # other required upload (portfolio, transcript…) we can't produce.
+        for f in form["fields"]:
+            if f["type"] != "file" or not f["required"]:
+                continue
+            lab = (f["label"] or f["key"]).lower()
+            if "resume" in lab or "cv" in lab:
+                continue
+            if "cover" in lab and cover is None:
+                raise ManualApplyRequired(
+                    "This job REQUIRES a cover letter — generate one on the "
+                    "Cover Letter tab first, then apply")
+            if "cover" not in lab:
+                raise ManualApplyRequired(
+                    f"This job requires an upload we can't provide ({f['label']}) "
+                    "— finish on the ATS page")
+    except ManualApplyRequired:
+        raise
     except Exception:
         missing = [k for k in ("first_name", "last_name", "email")
                    if not data.get(k)]

@@ -3236,12 +3236,26 @@ async def submit_application(job_id: str, body: ApplyBody,
     if not resume_text.strip():
         raise HTTPException(400, "No resume available — tailor one or upload a base resume first")
     resume_bytes = generate_pdf(resume_text, job.title, job.company)
-    fname = f"{(settings.get('profile_name') or 'resume').replace(' ', '_')}_Resume.pdf"
+    cand = (settings.get("profile_name") or "resume").replace(" ", "_")
+    fname = f"{cand}_Resume.pdf"
+
+    # Cover letter: attach whenever one was generated for this job — some
+    # boards mark it required, and submit() blocks those when it's missing.
+    cover_bytes, cover_fname = None, f"{cand}_Cover_Letter.pdf"
+    if uj and (uj.cover_letter or "").strip():
+        try:
+            from cover_gen import generate_cover_pdf
+            cover_bytes = generate_cover_pdf(uj.cover_letter,
+                                             settings.get("profile_name", ""))
+        except Exception as e:
+            print(f"[APPLY] cover PDF generation failed, submitting without: {e}")
 
     now_iso = datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
         result = await ats_apply.submit(ref, body.answers, resume_bytes, fname,
-                                        dry_run=dry_run)
+                                        dry_run=dry_run,
+                                        cover_bytes=cover_bytes,
+                                        cover_filename=cover_fname)
     except ats_apply.CaptchaRequired as e:
         result = {"status": "manual", "detail": str(e), "apply_url": job.url}
     except ats_apply.ManualApplyRequired as e:

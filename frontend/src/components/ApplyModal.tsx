@@ -368,19 +368,44 @@ export default function ApplyModal({ job, onClose, onToast, onUpdate }: {
                 </Section>
               )}
 
-              {/* Resume attachment */}
-              <Section icon={I.doc} color="#d97706" title="Resume Attachment"
-                sub={job.tailored_resume ? "Tailored resume recommended — built for this JD" : "No tailored resume yet — the base resume will be attached"}>
-                <label style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 12.5,
-                  color: "var(--tx-2)", cursor: job.tailored_resume ? "pointer" : "default" }}>
-                  <input type="checkbox" checked={useTailored} disabled={!job.tailored_resume}
-                    onChange={e => setUseTailored(e.target.checked)} />
-                  Attach the tailored resume PDF
-                </label>
-                <p style={{ fontSize: 11, color: "var(--tx-3)", margin: "8px 0 0", lineHeight: 1.5 }}>
-                  New answers you type here are remembered and pre-filled next time any company asks the same question.
-                </p>
-              </Section>
+              {/* Attachments — status follows the job's own required flags */}
+              {(() => {
+                const fileFields = (form.fields || []).filter(f => f.type === "file");
+                const coverField = fileFields.find(f => /cover/i.test(f.label));
+                const hasCover = !!(job.cover_letter || "").trim();
+                const row = (ok: boolean, warn: boolean, text: string) => (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5,
+                    color: warn ? "#fbbf24" : "var(--tx-2)" }}>
+                    <span style={{ width: 16, textAlign: "center" }}>{ok ? "✓" : warn ? "⚠" : "—"}</span>
+                    <span style={{ color: ok ? "#10b981" : undefined, flex: 1 }}>{text}</span>
+                  </div>
+                );
+                return (
+                  <Section icon={I.doc} color="#d97706" title="Attachments"
+                    sub="What gets uploaded with this application">
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {row(true, false, useTailored && job.tailored_resume
+                        ? "Resume — tailored PDF for this JD"
+                        : "Resume — base resume PDF")}
+                      {coverField && row(hasCover, coverField.required && !hasCover,
+                        hasCover
+                          ? "Cover letter — generated PDF attached"
+                          : coverField.required
+                            ? "Cover letter REQUIRED by this job — generate one on the Cover Letter tab first"
+                            : "Cover letter — none generated (optional here)")}
+                    </div>
+                    <label style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 12.5, marginTop: 10,
+                      color: "var(--tx-2)", cursor: job.tailored_resume ? "pointer" : "default" }}>
+                      <input type="checkbox" checked={useTailored} disabled={!job.tailored_resume}
+                        onChange={e => setUseTailored(e.target.checked)} />
+                      Use the tailored resume {job.tailored_resume ? "" : "(none yet)"}
+                    </label>
+                    <p style={{ fontSize: 11, color: "var(--tx-3)", margin: "8px 0 0", lineHeight: 1.5 }}>
+                      New answers you type here are remembered and pre-filled next time any company asks the same question.
+                    </p>
+                  </Section>
+                );
+              })()}
             </>
           )}
         </div>

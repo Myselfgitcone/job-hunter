@@ -3245,11 +3245,23 @@ async def submit_application(job_id: str, body: ApplyBody,
         await db.commit()
 
     # Answer memory: remember what the user answered (dry-run included) so
-    # each unique question is ever answered once. Stored as option LABELS,
-    # portable across companies. Failure here never breaks the apply flow.
+    # each unique question is ever answered once. ONLY answers the prefill
+    # engine could NOT produce itself get stored — standard fields (name,
+    # email, sponsorship…) already come from the profile every time, and
+    # remembering them would fill the Learned Answers list with noise.
+    # Stored as option LABELS, portable across companies. Failure here never
+    # breaks the apply flow.
     try:
         form = await ats_apply.fetch_form(ref)
-        learned = ats_apply.extract_memory(form["fields"], body.answers)
+        async with SessionLocal() as db:
+            profile = await _load_profile(db, user_id)
+        saved_ap, _mem = await _load_apply_data(user_id)
+        ap = {**_derive_apply_defaults(profile, settings), **saved_ap}
+        auto = ats_apply.prefill(form["fields"], _apply_profile(profile, settings),
+                                 apply_profile=ap, memory={})
+        novel = {k: v for k, v in body.answers.items()
+                 if str(v).strip() and str(auto.get(k, "")).strip() != str(v).strip()}
+        learned = ats_apply.extract_memory(form["fields"], novel)
         if learned:
             async with SessionLocal() as db:
                 res = await db.execute(

@@ -356,21 +356,29 @@ function ApplicationAnswers() {
                 )}
               </label>
             ))}
+
+            {/* User-added Q&A — rendered as normal grid cells: editable
+                question sits where the label sits, answer box below */}
+            {customs.map((c, idx) => c.group !== g.title ? null : (
+              <div key={`c${idx}`} className="field">
+                <span className="field-label" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <input value={c.q} placeholder="Type the question…"
+                    onChange={e => editCustom(idx, { q: e.target.value })}
+                    style={{ flex: 1, background: "none", border: "none", outline: "none",
+                      borderBottom: `1px dashed ${g.color}55`, borderRadius: 0, height: "auto",
+                      padding: "1px 0", fontSize: 12, fontWeight: 600, color: "var(--tx-2)" }} />
+                  <button onClick={() => removeCustom(idx)} title="Remove"
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--tx-3)",
+                      flexShrink: 0, padding: 0, display: "flex" }}>
+                    <Ic d={I.x} size={13} />
+                  </button>
+                </span>
+                <input value={c.a} placeholder="Your answer"
+                  onChange={e => editCustom(idx, { a: e.target.value })} />
+              </div>
+            ))}
           </div>
 
-          {/* User-added Q&A rows for this group */}
-          {customs.map((c, idx) => c.group !== g.title ? null : (
-            <div key={idx} style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12 }}>
-              <input value={c.q} placeholder="Question — e.g. Are you willing to work onsite 3 days/week?"
-                onChange={e => editCustom(idx, { q: e.target.value })} style={{ flex: 1.4 }} />
-              <input value={c.a} placeholder="Your answer"
-                onChange={e => editCustom(idx, { a: e.target.value })} style={{ flex: 1 }} />
-              <button onClick={() => removeCustom(idx)} title="Remove"
-                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--tx-3)", flexShrink: 0 }}>
-                <Ic d={I.x} size={14} />
-              </button>
-            </div>
-          ))}
           <button onClick={() => addCustom(g.title)}
             style={{ marginTop: 12, display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5,
               fontWeight: 600, cursor: "pointer", color: g.color, background: `${g.color}12`,

@@ -200,12 +200,18 @@
 
   // ── Floating button ──────────────────────────────────────────────────────────
   function looksLikeApplication() {
-    const inputs = document.querySelectorAll("input:not([type=hidden]), textarea, select").length;
-    const kw = /apply|application|candidate|resume|cover letter/i.test(document.body?.innerText?.slice(0, 5000) || "");
-    return inputs >= 4 && kw;
+    // Count meaningful fillable fields (skip hidden/submit/search).
+    const fields = [...document.querySelectorAll("input, textarea, select")].filter((el) => {
+      const t = (el.type || "").toLowerCase();
+      return el.tagName !== "INPUT" || !SKIP_TYPES.has(t);
+    });
+    return fields.length >= 3;
   }
 
   function mountButton() {
+    // Mount in whatever frame holds the form (top page OR an embedded ATS
+    // iframe). Each frame checks its own fields; the one with the form shows
+    // the button.
     if (document.getElementById("jh-fab") || !looksLikeApplication()) return;
     const fab = document.createElement("button");
     fab.id = "jh-fab";
@@ -233,13 +239,15 @@
     setTimeout(() => { t.classList.remove("jh-show"); setTimeout(() => t.remove(), 300); }, 5000);
   }
 
-  // popup can trigger a fill in the active tab
+  // Popup fills the active tab. sendMessage reaches every frame, so only the
+  // frame that actually has the form responds — frames without fields stay
+  // silent, letting the form frame's answer win.
   chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
     if (msg?.type === "fillPage") {
+      if (!looksLikeApplication()) return false; // not this frame — stay silent
       runFill((s) => sendResponse(s));
       return true;
     }
-    if (msg?.type === "ping") { sendResponse({ ok: true, application: looksLikeApplication() }); return true; }
   });
 
   const obs = new MutationObserver(() => mountButton());

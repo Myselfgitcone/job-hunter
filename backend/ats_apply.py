@@ -608,6 +608,43 @@ _CONSENT_OPTION = re.compile(r"acknowledge|confirm|agree|yes", re.I)
 # answer — never auto-filled from class rules.
 _CONDITIONAL_LABEL = re.compile(r"if you (selected|answered|chose)|if other", re.I)
 
+# ── Years-of-experience question shapes ──────────────────────────────────────
+# A "years" class match is one of three shapes; treat them very differently.
+# Universal generic-experience words (not a specific tool/domain) — a minimal
+# always-true list, per the no-hardcoding rule.
+_GENERIC_EXP_WORDS = frozenset(
+    "experience work working professional relevant overall total related "
+    "industry field role a an the your our paid full similar equivalent "
+    "combined cumulative hands on".split())
+
+# threshold: "at least 6 years", "6+ years", "minimum of 4 years", "6 or more"
+_THRESHOLD_RE = re.compile(
+    r"(?:at least|minimum of|min\.?|no less than)\s+(\d+(?:\.\d+)?)|"
+    r"(\d+(?:\.\d+)?)\s*\+|(\d+(?:\.\d+)?)\s+or more", re.I)
+
+
+def _years_threshold(label: str):
+    m = _THRESHOLD_RE.search(label or "")
+    if not m:
+        return None
+    return float(next(g for g in m.groups() if g))
+
+
+def _years_is_specific(label: str) -> bool:
+    """True when the years question is about a SPECIFIC tool/skill/domain
+    ('years with Salesforce', 'years of Looker'), not generic total
+    experience ('years of experience in analytics'). Specific questions are
+    left blank for the resume-grounded AI draft — the profile's total-years
+    number must never be claimed as tool-specific experience."""
+    for m in re.finditer(r"years?\s+(?:of|with|in|using)\s+([a-z]+)", label or "", re.I):
+        if m.group(1).lower() not in _GENERIC_EXP_WORDS:
+            return True
+    # "experience with/using X" where X isn't a generic word
+    for m in re.finditer(r"experience\s+(?:with|using|in)\s+([a-z]+)", label or "", re.I):
+        if m.group(1).lower() not in _GENERIC_EXP_WORDS:
+            return True
+    return False
+
 
 def _class_answer(label: str, ftype: str, options: list[dict],
                   ap: dict) -> str:
@@ -628,15 +665,26 @@ def _class_answer(label: str, ftype: str, options: list[dict],
         if stored in (None, ""):
             return ""
         if kind == "years":
-            # Bucket-pick when the question offers ranges; plain number only
-            # into FREE-TEXT fields. Never into yes/no ("Do you have 5+ years
-            # of PHP?") — that's a skill claim only the resume can answer, so
-            # it's left for the AI draft, which is resume-grounded.
+            try:
+                yrs = float(stored)
+            except (TypeError, ValueError):
+                return ""
+            # Skill/tool-specific ("years with Salesforce", "years of Looker")
+            # → never fill from the profile's TOTAL years; the AI draft answers
+            # it truthfully from the resume.
+            if _years_is_specific(label):
+                return ""
+            thr = _years_threshold(label)
+            if thr is not None:
+                # "Do you have at least N years…?" is a yes/no gate, not a
+                # number field. Compare total years to the threshold.
+                meets = yrs >= thr
+                if options:
+                    return _pick_yes_no(options, meets)
+                return "Yes" if meets else "No"
+            # Generic "how many years of experience" → range bucket or number.
             if options:
-                try:
-                    return _pick_years_bucket(options, float(stored))
-                except (TypeError, ValueError):
-                    return ""
+                return _pick_years_bucket(options, yrs)
             if ftype in ("text", "textarea"):
                 return str(stored)
             return ""

@@ -2488,10 +2488,17 @@ _FRAG_IRREGULAR_VERBS = frozenset(
     "sped shrank rose".split())
 
 
-def is_fragment_bullet(text: str) -> bool:
+def is_fragment_bullet(text: str, context: str = "") -> bool:
     """True when an experience bullet looks cut off / mutilated:
     ends in a preposition or connective, has no verb, has unbalanced
-    parens/quotes, or is a sub-8-word stub."""
+    parens/quotes, or is a sub-8-word stub.
+
+    `context` (JD and/or base resume text) enables one extra vocabulary-
+    grounded check: a bullet ending in a bare gerund ("…Kafka Connect
+    ingesting") is a fragment UNLESS its final two-word phrase exists in the
+    context — which keeps legitimate endings like "Spark Structured
+    Streaming" or "demand forecasting" from false-positiving. Without
+    context the gerund check is skipped (conservative)."""
     t = text.strip().lstrip("•").strip()
     if not t:
         return False
@@ -2500,6 +2507,14 @@ def is_fragment_bullet(text: str) -> bool:
         return True
     if _FRAG_TRAILING.search(t.rstrip(".")):
         return True
+    # Trailing bare gerund, vocabulary-grounded (live miss: "…and Kafka
+    # Connect ingesting" — no comma, verb present, so nothing else fired).
+    if context:
+        last = words[-1].strip(",;:()").lower()
+        if last.endswith("ing") and len(last) > 5:
+            bigram = f"{words[-2].strip(',;:()').lower()} {last}"
+            if bigram not in context.lower():
+                return True
     # Dangling digit-free participle tail: ", bringing MTTR" — a gerund
     # clause whose object got cut. A digit-bearing tail ("cutting runtime
     # 40%") is a completed outcome and passes.
@@ -2516,9 +2531,11 @@ def is_fragment_bullet(text: str) -> bool:
     return False
 
 
-def find_fragment_bullets(resume_text: str) -> list[str]:
+def find_fragment_bullets(resume_text: str, context: str = "") -> list[str]:
     """All experience-section bullets in the resume that read as fragments.
-    Summary bullets are excluded — they are sentence fragments by design."""
+    Summary bullets are excluded — they are sentence fragments by design.
+    Pass the JD (and/or base resume) as `context` to enable the trailing-
+    gerund check — see is_fragment_bullet."""
     out: list[str] = []
     in_summary = False
     for line in (resume_text or "").split("\n"):
@@ -2528,7 +2545,7 @@ def find_fragment_bullets(resume_text: str) -> list[str]:
             continue
         if in_summary or not s.startswith("•"):
             continue
-        if is_fragment_bullet(s):
+        if is_fragment_bullet(s, context):
             out.append(s.lstrip("• ").strip())
     return out
 

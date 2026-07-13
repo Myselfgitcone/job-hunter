@@ -90,7 +90,7 @@ def score_ats(resume_text: str, job_description: str) -> dict:
     # vice versa). Score stays pure keyword coverage; fragments are a
     # parallel signal the UI warns about.
     try:
-        fragments = find_fragment_bullets(resume_text)
+        fragments = find_fragment_bullets(resume_text, context=job_description)
     except Exception:
         fragments = []
     return {

@@ -2888,6 +2888,8 @@ async def tailor_job(job_id: str, user_id: str = Depends(get_current_user_id)):
         profile_skills=profile_skills,
         secondary_model=user_cfg.get("ai_model_secondary") or "anthropic/claude-haiku-4-5",
         user_job_roles=user_cfg.get("job_roles") or [],
+        profile_projects=(profile_data or {}).get("projects") or [],
+        company=job.company or "",
         keys=_mk,
     )
     ats_after = score_ats(tailored_text, jd)
@@ -3605,10 +3607,14 @@ async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_curr
         raise HTTPException(400, "No base resume found. Add it in Settings.")
 
     profile_skills = await _load_profile_skills(user_id)
+    async with SessionLocal() as _pdb:
+        _qt_profile = await _load_profile(_pdb, user_id)
     tailored, review = await tailor_resume(base_resume, body.jd, api_key, provider, model,
                                    profile_skills=profile_skills,
                                    secondary_model=user_cfg.get("ai_model_secondary") or "anthropic/claude-haiku-4-5",
                                    user_job_roles=user_cfg.get("job_roles") or [],
+                                   profile_projects=(_qt_profile or {}).get("projects") or [],
+                                   company=body.company or "",
                                    keys=_mk)
 
     async with SessionLocal() as db:

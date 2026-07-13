@@ -438,12 +438,9 @@ BULLET_TEXT rules:
   - 14-22 words. At most one metric, and only if the job's bullets carry metrics.
   - W/A tier: write it as real production work at that employer. Concrete,
     specific, integrated with that job's actual domain and stack.
-  - S tier: output JOB_NUMBER as exactly  PROJ  — the bullet goes to a
-    PROJECTS section, NOT a job block. Write it full-strength as a standalone
-    technical project: strong verbs fine (Designed/Built/Implemented), name
-    the skill plus 2-3 supporting technologies, describe what it does. No
-    employer, no company metrics. Example: "Designed Snowflake warehouse with
-    dbt models, clustering keys, and CI-driven deployments for analytics workloads".
+  - S tier: output exactly:  SKILL_NAME | S | SKIP | SKIP  — the skill gets
+    skills-section visibility only. NEVER write a project bullet for it:
+    invented projects are unexplainable in interviews.
   - H tier: output exactly:  SKILL_NAME | H | SKIP | SKIP
 
 Do not invent employers, titles, or dates. Do not restate existing bullets.
@@ -537,17 +534,14 @@ async def inject_missing_skill_bullets(
         if tier not in ("W", "A", "S"):
             continue
 
-        # S tier → PROJECTS section: full-strength standalone project bullet,
-        # no employer attached. Honest AND strong — audit-proof by design.
+        # S tier → skills-row visibility ONLY. Policy change 2026-07-13
+        # (user decision, reversing the earlier keep): invented project
+        # bullets are unexplainable in interviews — "walk me through your
+        # Bloomberg integration" with nothing behind it ends the interview.
+        # Projects may only come from the candidate's DECLARED profile
+        # projects, which ride the main prompt; the injector never invents.
         if job_s.upper() == "PROJ" or tier == "S":
-            if not re.search(_dynamic_coverage_pattern(skill), bullet.lower()):
-                print(f"[SKILL INJECT] '{skill}' — project bullet missing skill, dropped")
-                continue
-            wc = len(bullet.split())
-            if wc < 8 or wc > 30:
-                print(f"[SKILL INJECT] '{skill}' — project bullet {wc} words, dropped")
-                continue
-            project_new.append(bullet.lstrip("•").strip())
+            print(f"[SKILL INJECT] '{skill}' tier=S — skills-row only (no invented project bullets)")
             continue
 
         m = re.match(r"(\d+)", job_s)
@@ -608,12 +602,8 @@ async def inject_missing_skill_bullets(
                 resume = resume.replace(tech_line, new_tech, 1)
                 print(f"[SKILL INJECT] job #{job_idx + 1} tech line += {', '.join(additions)}")
 
-    # ── PROJECTS section — S-tier landing zone ───────────────────────────
-    if project_new:
-        resume = _insert_project_bullets(resume, project_new)
-        injected_total += len(project_new)
-        print(f"[SKILL INJECT] PROJECTS: +{len(project_new)} project bullet(s)")
-
+    # (S-tier project invention removed 2026-07-13 — project_new stays empty;
+    # _insert_project_bullets retained for declared-project use only.)
     if injected_total:
         print(f"[SKILL INJECT] Total: {injected_total} dedicated skill bullet(s) added")
     return resume
@@ -1521,7 +1511,11 @@ For every JD hard skill not present in the base resume, execute this decision in
     NO  → STEP 3.
 
   STEP 3 — Is this a self-learnable tool a competent professional in this role could implement independently?
-    YES → tier 3 (SELF-IMPLEMENTABLE). Add to Skills section. Optional project/prototype bullet.
+    YES → tier 3 (SELF-IMPLEMENTABLE). Add to Skills section ONLY. NEVER invent a PROJECTS
+           section or project bullet for it — a PROJECTS section may contain ONLY the
+           candidate's DECLARED PROJECTS (provided below when they exist) or projects
+           already present in the original resume. An invented project is unexplainable
+           in an interview and worse than the gap it hides.
     NO  → tier 4 (HIGH-RISK). Add to Skills section only if JD treats it as genuinely required.
            Never write an employer production bullet at tier 4.
 
@@ -3325,6 +3319,7 @@ async def _compress_flagged_bullets(resume: str, base_resume: str,
     Whole-pass failure (no key, API error) is non-fatal — resume ships as-is.
     """
     from resume_lint import is_fragment_bullet, WORD_LIMIT as _WL
+    _frag_ctx = base_resume + "\n" + job_description
 
     # Collect flagged experience bullets (summary excluded — its bullets are
     # fragments by design).
@@ -3339,7 +3334,7 @@ async def _compress_flagged_bullets(resume: str, base_resume: str,
         if in_summary or not s.startswith("•"):
             continue
         body = s.lstrip("• ").strip()
-        if len(body.split()) > _WL + 3 or is_fragment_bullet(body):
+        if len(body.split()) > _WL + 3 or is_fragment_bullet(body, _frag_ctx):
             flagged[str(len(flagged))] = i
     if not flagged:
         return resume
@@ -3390,7 +3385,7 @@ async def _compress_flagged_bullets(resume: str, base_resume: str,
         """'' when valid, else a short rejection reason (for the log)."""
         if not new or len(new.split()) > _WL + 3:
             return "too long"
-        if is_fragment_bullet(new):
+        if is_fragment_bullet(new, _frag_ctx):
             return "still a fragment"
         # metric preservation: every digit-bearing token of orig survives
         for tok in re.findall(r"\d[\w.,%+→/-]*", orig):
@@ -3522,11 +3517,167 @@ def _trim_long_bullets(resume: str, word_limit: int) -> str:
     return '\n'.join(out)
 
 
+_DATE_RANGE_RE = re.compile(
+    r"((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4})"
+    r"\s*[–—-]\s*"
+    r"((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|Present|Current)",
+    re.IGNORECASE)
+
+
+def _revert_job_dates(result: str, base_resume: str) -> str:
+    """Deterministic date guard that works with the base's TAB-format headers
+    (the pipe-format guard in _enforce_job_integrity never fires on them —
+    audit finding #4; a changed Cargill start date shipped twice). Matches
+    jobs by company name: any header line in the result whose company appears
+    in a base header gets its date range hard-reverted to the base's."""
+    base_dates: dict[str, str] = {}
+    for line in base_resume.split("\n"):
+        if "@" not in line:
+            continue
+        m = _DATE_RANGE_RE.search(line)
+        if not m:
+            continue
+        comp = re.split(r"[|\t]|\s{2,}", line.split("@", 1)[1].strip())[0].strip()
+        if comp:
+            base_dates[comp.lower()] = m.group(0)
+
+    if not base_dates:
+        return result
+
+    out = []
+    for line in result.split("\n"):
+        if "@" in line:
+            m = _DATE_RANGE_RE.search(line)
+            if m:
+                after_at = line.split("@", 1)[1].lower()
+                for comp, dates in base_dates.items():
+                    if comp in after_at and m.group(0) != dates:
+                        print(f"[DATE GUARD] {comp.title()}: '{m.group(0)}' → '{dates}' (reverted to base)")
+                        line = line[:m.start()] + dates + line[m.end():]
+                        break
+        out.append(line)
+    return "\n".join(out)
+
+
+def _revert_years_claim(result: str, base_resume: str) -> str:
+    """The summary's years-of-experience claim always matches the base
+    resume's. [YEARS MISMATCH] lint existed but had no deterministic fix —
+    a deflated '5+ years' (base said 6+) survived retries and shipped."""
+    _YRS = re.compile(r"\d+\s*\+?\s*years?", re.IGNORECASE)
+
+    def _summary_lines(text: str):
+        onl, out = False, []
+        for i, l in enumerate(text.split("\n")):
+            s = l.strip()
+            if s and s.rstrip(":").isupper() and len(s) < 60:
+                onl = "SUMMARY" in s.upper()
+                continue
+            if onl and s.startswith("•"):
+                out.append((i, l))
+        return out
+
+    base_claim = None
+    for _, l in _summary_lines(base_resume):
+        m = _YRS.search(l)
+        if m:
+            base_claim = m.group(0)
+            break
+    if not base_claim:
+        return result
+
+    lines = result.split("\n")
+    for i, l in _summary_lines(result):
+        m = _YRS.search(l)
+        if m and m.group(0).replace(" ", "") != base_claim.replace(" ", ""):
+            print(f"[YEARS GUARD] summary '{m.group(0)}' → '{base_claim}' (reverted to base)")
+            lines[i] = l[:m.start()] + base_claim + l[m.end():]
+            break
+    return "\n".join(lines)
+
+
+def _enforce_projects_integrity(result: str, base_resume: str,
+                                declared_projects: list[dict] | None) -> str:
+    """A PROJECTS section may only contain entries grounded in the base
+    resume's own PROJECTS section or the candidate's declared profile
+    projects. Everything else is invented (Bloomberg/Markit-style vendor
+    integrations shipped live) — dropped; an emptied section is removed."""
+    lines = result.split("\n")
+    start = next((i for i, l in enumerate(lines)
+                  if l.strip().upper().rstrip(":") == "PROJECTS"), None)
+    if start is None:
+        return result
+    end = next((j for j in range(start + 1, len(lines))
+                if (s := lines[j].strip()) and s.rstrip(":").isupper()
+                and len(s) < 60 and not s.startswith("•")), len(lines))
+
+    allowed = ""
+    bm = re.search(r"^PROJECTS:?\s*$(.*?)(?=^[A-Z][A-Z &/]+:?\s*$|\Z)",
+                   base_resume, re.MULTILINE | re.DOTALL | re.IGNORECASE)
+    if bm:
+        allowed += bm.group(1)
+    for p in declared_projects or []:
+        allowed += f"\n{p.get('name', '')} {p.get('description', '')}"
+    allowed_words = set(re.findall(r"[a-z][\w+#.-]{3,}", allowed.lower()))
+
+    kept, dropped = [], 0
+    for l in lines[start + 1:end]:
+        s = l.strip()
+        if not s.startswith("•"):
+            kept.append(l)
+            continue
+        words = set(re.findall(r"[a-z][\w+#.-]{3,}", s.lower()))
+        overlap = len(words & allowed_words) / max(len(words), 1)
+        if allowed_words and overlap >= 0.35:
+            kept.append(l)
+        else:
+            dropped += 1
+    if dropped:
+        print(f"[PROJECTS GUARD] dropped {dropped} ungrounded project bullet(s)")
+    if not any(k.strip().startswith("•") for k in kept):
+        # nothing legitimate left — remove the section header too
+        print("[PROJECTS GUARD] removed empty/invented PROJECTS section")
+        del lines[start:end]
+        return "\n".join(lines)
+    lines[start + 1:end] = kept
+    return "\n".join(lines)
+
+
+def _strip_company_leak(result: str, company: str, base_resume: str) -> str:
+    """The target company's name must not appear in the resume body unless
+    the candidate actually worked there (present in base). Live case:
+    'at Walmart-scale org complexity' in a summary bullet — echo checks are
+    advisory-only, so it shipped."""
+    comp = (company or "").strip()
+    if len(comp) < 3:
+        return result
+    if re.search(_kw_pat(comp), base_resume, re.IGNORECASE):
+        return result  # real past employer — leave it alone
+    # "<Company>-scale" reads fine as "enterprise-scale"; a bare mention is
+    # removed with its immediate preposition ("at Walmart" → "").
+    out, hits = [], 0
+    for line in result.split("\n"):
+        if line.strip().startswith("•"):
+            new = re.sub(_kw_pat(comp) + r"-scale", "enterprise-scale", line, flags=re.IGNORECASE)
+            new = re.sub(r"\s+(?:at|for|with)\s+" + _kw_pat(comp), "", new, flags=re.IGNORECASE)
+            new = re.sub(_kw_pat(comp), "", new, flags=re.IGNORECASE)
+            if new != line:
+                hits += 1
+                new = re.sub(r"\s{2,}", " ", new).rstrip(" ,;")
+            out.append(new)
+        else:
+            out.append(line)
+    if hits:
+        print(f"[COMPANY LEAK] stripped '{comp}' from {hits} bullet(s)")
+    return "\n".join(out)
+
+
 async def tailor_resume(base_resume: str, job_description: str,
                         api_key: str, provider: str, model: str,
                         profile_skills: list[str] | None = None,
                         secondary_model: str = "",
                         user_job_roles: list[str] | None = None,
+                        profile_projects: list[dict] | None = None,
+                        company: str = "",
                         keys=None) -> str:
     # secondary_model: cheaper model for reviewer, tier audit, correction, retries.
     # Falls back to main model if not set.
@@ -3597,6 +3748,22 @@ async def tailor_resume(base_resume: str, job_description: str,
             + " This list is a reference pool — not a mandate to include everything.\n"
         )
 
+    # Declared projects are the ONLY permitted source for a PROJECTS section.
+    # No declared projects (and none in the base) → the resume must not have
+    # one; a deterministic pass enforces this after all AI passes.
+    projects_section = ""
+    _declared_projects = [p for p in (profile_projects or [])
+                          if (p.get("name") or p.get("description"))]
+    if _declared_projects:
+        _plines = "\n".join(
+            f"- {p.get('name', '')}: {p.get('description', '')}".strip(" :")
+            for p in _declared_projects)
+        projects_section = (
+            "\n=== CANDIDATE'S DECLARED PROJECTS (the ONLY projects allowed on this resume) ===\n"
+            + _plines +
+            "\nA PROJECTS section may rephrase these for JD relevance but NEVER invent new ones.\n"
+        )
+
     # Build per-job bullet requirement string — RANGES, not exact counts.
     # Exact counts force filler bullets on thin jobs; ranges let the model
     # stop when real content runs out. Lint enforces min and max separately.
@@ -3614,6 +3781,7 @@ async def tailor_resume(base_resume: str, job_description: str,
         f"Hard total cap: {hard_total}. Lint FAILS below any minimum or above any maximum. "
         f"Output: plain text resume only.\n"
         f"{declared_section}"
+        f"{projects_section}"
         f"{jd_skills_section}\n"
         "STEP 1 — Open a <plan> block with exactly 5 lines:\n"
         "  1. ROLE: [role type] | STAGE: [startup/enterprise] | TITLE: [clean JD role title — strip tech-stack/location/req-ID suffixes after dash, pipe, colon, or parenthesis]\n"
@@ -4081,6 +4249,27 @@ async def tailor_resume(base_resume: str, job_description: str,
     #     result = _sync_header_location(result, job_description)
     # except Exception as e:
     #     print(f"[HEADER LOCATION] Sync failed: {e}")
+
+    # ── Honesty guards — deterministic, run after every AI pass ───────────
+    # Dates and years always match the base resume; a PROJECTS section may
+    # only contain declared/base-grounded projects; the target company's
+    # name never leaks into bullets.
+    try:
+        result = _revert_job_dates(result, base_resume)
+    except Exception as e:
+        print(f"[DATE GUARD] Failed: {e}")
+    try:
+        result = _revert_years_claim(result, base_resume)
+    except Exception as e:
+        print(f"[YEARS GUARD] Failed: {e}")
+    try:
+        result = _enforce_projects_integrity(result, base_resume, _declared_projects)
+    except Exception as e:
+        print(f"[PROJECTS GUARD] Failed: {e}")
+    try:
+        result = _strip_company_leak(result, company, base_resume)
+    except Exception as e:
+        print(f"[COMPANY LEAK] Failed: {e}")
 
     # ── Format normalizer — no blank lines inside a section's row block ────
     try:

@@ -541,6 +541,13 @@ def _pick_years_bucket(options: list[dict], years: float) -> str:
 # label), "text" (free text), "years" (numeric bucket).
 # Order matters — first match wins, so put the more specific patterns first.
 _CLASS_RULES: list[tuple[re.Pattern, str, str]] = [
+    # Inverted sponsorship phrasing ("authorized to work WITHOUT requiring
+    # sponsorship?") — the truthful answer is the OPPOSITE of
+    # need_sponsorship. Must sit BEFORE the plain sponsor rule, which would
+    # otherwise fill the un-inverted value ("Yes" = "I never need
+    # sponsorship" — a misrepresentation for visa holders).
+    (re.compile(r"without\s+(requiring|needing)?\s*(visa\s+)?sponsor", re.I),
+     "need_sponsorship_inverted", "yesno"),
     (re.compile(r"sponsor|immigration case|visa\b", re.I), "need_sponsorship", "yesno"),
     (re.compile(r"authoriz\w* to work|legally.{0,30}work|work authorization|eligible to work", re.I),
      "work_authorized", "yesno"),
@@ -594,7 +601,14 @@ def _class_answer(label: str, ftype: str, options: list[dict],
     for pat, key, kind in _CLASS_RULES:
         if not pat.search(label):
             continue
-        stored = ap.get(key)
+        if key == "need_sponsorship_inverted":
+            # derived, not stored: flip the saved need_sponsorship answer
+            base = str(ap.get("need_sponsorship") or "").strip().lower()
+            if base not in ("yes", "no"):
+                return ""
+            stored = "No" if base == "yes" else "Yes"
+        else:
+            stored = ap.get(key)
         if stored in (None, ""):
             return ""
         if kind == "years":

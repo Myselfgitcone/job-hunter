@@ -491,28 +491,44 @@ def _memory_lookup(label: str, memory: dict) -> str:
 
 def _pick_option(options: list[dict], want: str) -> str:
     """Match a stored answer (an option LABEL from some earlier form) to this
-    form's options. Exact normalized match first, containment either way
-    second. Returns the option VALUE, or '' when nothing matches."""
+    form's options. Exact normalized match first, then WORD-level containment
+    (one label's token set inside the other's). Never raw substring — 'no'
+    must not match the 'no' inside 'another'. Returns the option VALUE, or ''
+    when nothing matches."""
     if not want:
         return ""
     w = _norm_label(want)
     for o in options:
         if _norm_label(o["label"]) == w:
             return o["value"]
+    wt = frozenset(w.split())
     for o in options:
-        ol = _norm_label(o["label"])
-        if w and ol and (w in ol or ol in w):
+        ot = frozenset(_norm_label(o["label"]).split())
+        if wt and ot and (wt <= ot or ot <= wt):
             return o["value"]
     return ""
 
 
+_NEG_HEADS = ("no", "none", "never")
+
+
 def _pick_yes_no(options: list[dict], yes: bool) -> str:
+    """Yes/No onto option lists. Head-word match first; for 'No', options
+    phrased as denials ('I have never worked at…', 'None of the above') are
+    accepted when exactly one option reads as a denial. No fuzzy fallback —
+    a blank the user fills beats a confidently wrong claim."""
     want = "yes" if yes else "no"
     for o in options:
-        head = _norm_label(o["label"]).split(",")[0].split()[:1]
+        head = _norm_label(o["label"]).split()[:1]
         if head and head[0] == want:
             return o["value"]
-    return _pick_option(options, want)
+    if not yes:
+        denials = [o for o in options
+                   if any(t in _NEG_HEADS or t == "not"
+                          for t in _norm_label(o["label"]).split()[:4])]
+        if len(denials) == 1:
+            return denials[0]["value"]
+    return ""
 
 
 _RANGE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(?:-|–|to)\s*(\d+(?:\.\d+)?)")

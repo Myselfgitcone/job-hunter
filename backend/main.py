@@ -5007,6 +5007,52 @@ async def extension_answer(body: ExtAnswerBody, user_id: str = Depends(get_curre
     return {"answers": answers, "ai_keys": ai_keys, "resume_source": src}
 
 
+class ExtLearnBody(BaseModel):
+    fields: list[ExtField] = []            # the page's fields (with options)
+    values: dict = {}                      # {field_key: current value on the page}
+
+
+@app.post("/api/extension/learn")
+async def extension_learn(body: ExtLearnBody, user_id: str = Depends(get_current_user_id)):
+    """Save what the user actually left in the form — but only answers the
+    deterministic engine could NOT have produced itself (genuinely novel
+    questions and deliberate overrides). Same novelty filter as the in-app
+    submit path, so name/email/standard answers never pollute the memory."""
+    if not body.fields or not body.values:
+        return {"learned": 0}
+
+    async with SessionLocal() as db:
+        profile = await _load_profile(db, user_id)
+    settings = await _get_user_settings(user_id)
+    saved_ap, memory = await _load_apply_data(user_id)
+    ap = {**_derive_apply_defaults(profile, settings), **saved_ap}
+
+    fields = [{"key": f.key, "label": f.label, "type": f.type,
+               "options": [dict(o) for o in f.options]} for f in body.fields]
+
+    auto = ats_apply.prefill(fields, _apply_profile(profile, settings),
+                             apply_profile=ap, memory=_merged_memory(ap, memory))
+    novel = {k: v for k, v in body.values.items()
+             if str(v).strip() and str(auto.get(k, "")).strip() != str(v).strip()}
+    learned = ats_apply.extract_memory(fields, novel)
+    if not learned:
+        return {"learned": 0}
+
+    async with SessionLocal() as db:
+        res = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+        s = res.scalar_one_or_none()
+        if not s:
+            return {"learned": 0}
+        try:
+            mem = json.loads(s.apply_answers) if s.apply_answers else {}
+        except Exception:
+            mem = {}
+        mem.update(learned)
+        s.apply_answers = json.dumps(mem)
+        await db.commit()
+    return {"learned": len(learned)}
+
+
 # ── Admin: per-user analytics ─────────────────────────────────────────────────
 @app.get("/api/admin/users-analytics")
 async def admin_users_analytics(user_id: str = Depends(get_current_user_id)):

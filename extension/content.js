@@ -161,6 +161,45 @@
     }
   }
 
+  // Read the CURRENT value the user has left in each field — used to learn
+  // manual answers when they submit.
+  function readValue(entry) {
+    if (entry.isGroup) {
+      const checked = entry.el.filter((i) => i.checked);
+      if (!checked.length) return "";
+      const labels = checked.map((i) => norm(labelFor(i)) || i.value);
+      return entry.groupType === "radio" ? labels[0] : labels;
+    }
+    if (entry.field.type === "select") {
+      const o = entry.el.selectedOptions?.[0];
+      return o ? norm(o.textContent) : "";
+    }
+    return norm(entry.el.value || "");
+  }
+
+  // After a fill, remember the entries so a later submit can read final values.
+  let lastEntries = null;
+  async function learnFromPage() {
+    if (!lastEntries) return;
+    const values = {};
+    for (const e of lastEntries) {
+      const v = readValue(e);
+      if (v !== "" && !(Array.isArray(v) && !v.length)) values[e.key] = v;
+    }
+    if (!Object.keys(values).length) return;
+    try {
+      await send("learn", { fields: lastEntries.map((e) => e.field), values });
+    } catch { /* non-blocking */ }
+  }
+
+  // Fire learn when the user clicks a real submit control (their final
+  // answers). Capture-phase so it runs before navigation; never blocks it.
+  document.addEventListener("click", (ev) => {
+    const t = ev.target.closest?.(
+      "button[type=submit], input[type=submit], [class*='submit'], [id*='submit']");
+    if (t && lastEntries) learnFromPage();
+  }, true);
+
   function pageMeta() {
     const h1 = norm(document.querySelector("h1")?.textContent || document.title);
     return { url: location.href, title: h1.slice(0, 120), company: norm(location.hostname.replace(/^www\./, "")) };
@@ -170,6 +209,7 @@
   async function runFill(onStatus) {
     const entries = scanFields();
     if (!entries.length) { onStatus({ error: "No application form fields found on this page." }); return; }
+    lastEntries = entries; // remembered so a later submit can learn manual edits
     onStatus({ scanning: entries.length });
     let data;
     try {

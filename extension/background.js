@@ -78,6 +78,9 @@ const handlers = {
   answer(payload) {
     return api("/api/extension/answer", { method: "POST", body: payload });
   },
+  learn(payload) {
+    return api("/api/extension/learn", { method: "POST", body: payload });
+  },
 };
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {

@@ -73,6 +73,96 @@ def _clean_header_title(result: str) -> str:
     return '\n'.join(lines)
 
 
+# US state name -> USPS abbreviation. Full names AND abbreviations both appear
+# in JDs ('Sunnyvale, California' vs 'Mountain View, CA').
+_US_STATES = {
+    'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR',
+    'california': 'CA', 'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE',
+    'florida': 'FL', 'georgia': 'GA', 'hawaii': 'HI', 'idaho': 'ID',
+    'illinois': 'IL', 'indiana': 'IN', 'iowa': 'IA', 'kansas': 'KS',
+    'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME', 'maryland': 'MD',
+    'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN',
+    'mississippi': 'MS', 'missouri': 'MO', 'montana': 'MT', 'nebraska': 'NE',
+    'nevada': 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ',
+    'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC',
+    'north dakota': 'ND', 'ohio': 'OH', 'oklahoma': 'OK', 'oregon': 'OR',
+    'pennsylvania': 'PA', 'rhode island': 'RI', 'south carolina': 'SC',
+    'south dakota': 'SD', 'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT',
+    'vermont': 'VT', 'virginia': 'VA', 'washington': 'WA',
+    'west virginia': 'WV', 'wisconsin': 'WI', 'wyoming': 'WY',
+}
+_US_STATE_ABBR = set(_US_STATES.values()) | {'DC'}
+# State alternation: abbreviations + full names (longest-first so 'new york'
+# wins over 'new'). City = 1-2 Capitalized words with NO newline between city
+# and state (prevents a JD title line above the address bleeding into the match,
+# e.g. 'Data Engineer\nRichmond, VA' must NOT capture 'Engineer, VA').
+_ST_ALT = "|".join(sorted(_US_STATE_ABBR)) + "|" + "|".join(
+    sorted((re.escape(s) for s in _US_STATES), key=len, reverse=True))
+_JD_LOC_RE = re.compile(
+    r'\b([A-Z][a-z]+(?:[ \t][A-Z][a-z]+)?),[ \t]*(' + _ST_ALT + r')\b', re.IGNORECASE)
+
+# JD tokens that mean "location doesn't matter" — don't rewrite the header then.
+_REMOTE_SIGNALS = ("remote", "anywhere", "work from home", "wfh", "distributed team")
+
+
+def _norm_jd_location(m: "re.Match") -> str:
+    """Normalize a _JD_LOC_RE match to 'City, ST' (USPS abbreviation)."""
+    city, st = m.group(1), m.group(2)
+    st_abbr = st.upper() if st.upper() in _US_STATE_ABBR \
+        else _US_STATES.get(st.lower(), st.upper())
+    return f"{city}, {st_abbr}"
+
+
+def _extract_jd_location(job_description: str) -> str:
+    """Best-effort primary work location from a JD, as 'City, ST'. '' if unclear."""
+    if not job_description:
+        return ""
+    head = job_description[:2500]  # location almost always sits near the top
+    m = _JD_LOC_RE.search(head)
+    return _norm_jd_location(m) if m else ""
+
+
+def _sync_header_location(result: str, job_description: str) -> str:
+    """
+    Deterministic: align the header's city to the JD's stated work location.
+    Recruiters and many ATS filters down-rank an out-of-market address; the
+    candidate's real city living in the base resume is a pure own-goal when the
+    JD names a specific onsite location. If the JD is remote, leave as-is.
+    Only rewrites the location half of the header — never touches name/title.
+    """
+    if not job_description:
+        return result
+    jd_lo = job_description.lower()
+    if any(sig in jd_lo for sig in _REMOTE_SIGNALS):
+        return result  # location-agnostic role — don't force a city
+    jd_city = _extract_jd_location(job_description)
+    if not jd_city:
+        return result
+
+    lines = result.splitlines()
+    # Header contact/location line is within the first 3 lines and carries the
+    # phone or email; the location is usually the last '|'-separated field.
+    for idx in range(min(3, len(lines))):
+        line = lines[idx]
+        if not (_HDR_PHONE_RE.search(line) or _HDR_EMAIL_RE.search(line)):
+            continue
+        existing = _JD_LOC_RE.search(line)
+        if existing and _norm_jd_location(existing) == jd_city:
+            return result  # already aligned
+        target = f"{jd_city} / Remote"
+        if existing:
+            new_line = line[:existing.start()] + target + line[existing.end():]
+        else:
+            # No location field present — append one.
+            new_line = line.rstrip() + f" | {target}"
+        if new_line != line:
+            print(f"[HEADER LOCATION] Synced to JD: "
+                  f"'{existing.group(0) if existing else '(none)'}' -> '{target}'")
+            lines[idx] = new_line
+        return '\n'.join(lines)
+    return result
+
+
 def _ensure_header(result: str, base_resume: str) -> str:
     """
     Deterministic safety net: if AI dropped the name/contact header, restore it.
@@ -1897,8 +1987,15 @@ def _inject_missing_keywords(resume: str, missing: list[str]) -> str:
     other_queue:      list[str] = []
 
     for kw in missing:
-        # 1. Already present
-        if re.search(r'\b' + re.escape(kw) + r'\b', resume, re.IGNORECASE):
+        # 1. Already present. NOTE: \b boundaries fail on symbol-tailed skills
+        # (C#, C++, .NET, F#) because '#'/'+'/'.' are non-word chars, so
+        # r'\bC#\b' never matches an existing 'C#' and the term gets injected
+        # on every pass -> the 'C#, C#, C#' duplication bug. Use alnum-only
+        # look-around so boundaries only apply on the sides that are word chars.
+        _kw = re.escape(kw)
+        _lb = r'(?<![A-Za-z0-9])' if kw[:1].isalnum() else r''
+        _rb = r'(?![A-Za-z0-9])'  if kw[-1:].isalnum() else r''
+        if re.search(_lb + _kw + _rb, resume, re.IGNORECASE):
             continue
 
         # 2. Not a technical skill — skip entirely
@@ -2171,7 +2268,10 @@ def _enforce_metric_density(resume: str, role_type: str) -> str:
     Only touches bullets whose pre-clause text is digit-free, so stripping
     actually makes the bullet metric-free and never mangles mid-sentence.
     """
-    ceiling = 0.45 if role_type == CONSULTING else 0.50
+    # TECH/data-eng resumes are expected to be metric-dense by recruiters;
+    # a 0.50 ceiling miscalibrated for this family and stripped defensible
+    # numbers. Raised to 0.75 for TECH. CONSULTING keeps its lower target.
+    ceiling = 0.45 if role_type == CONSULTING else (0.75 if role_type == TECH else 0.50)
 
     lines = resume.splitlines()
     # Bound the experience section
@@ -2210,6 +2310,18 @@ def _enforce_metric_density(resume: str, role_type: str) -> str:
     # aren't permanently unstrippable.
     _CLAUSE_COMMA = re.compile(r',\s+[a-z][^,•\n]*\d[^•\n]*$', re.IGNORECASE)
 
+    # A clause that states HOW a metric was measured is the credibility layer —
+    # 'reduced X 40% measured via Datadog', '...confirmed in CloudWatch',
+    # '...validated on a 500K-record sample'. Never strip these: the methodology
+    # is exactly what makes the number defensible in an interview.
+    _METHOD = re.compile(
+        r'\b(measured|tracked|confirmed|validated|verified|calculated|'
+        r'per|via|according to)\b', re.IGNORECASE)
+    # A head that ends on a preposition/conjunction/dangling list would become a
+    # sentence fragment if we appended a period. Refuse to strip in that case.
+    _DANGLING = re.compile(
+        r'\b(for|to|across|with|using|and|of|in|on|from|by)\s*$', re.IGNORECASE)
+
     def _strippable(i: int, pattern=None):
         """Return (head, clause) if bullet i has a strippable trailing clause."""
         line = lines[i]
@@ -2217,11 +2329,16 @@ def _enforce_metric_density(resume: str, role_type: str) -> str:
         if not m:
             return None
         head = line[:m.start()]
+        clause = line[m.start():]
+        if _METHOD.search(clause):
+            return None  # methodology-backed metric — never strip
         if re.search(r'(?<![A-Za-z])\d', head):
             return None  # stripping wouldn't make it metric-free
         if len(head.split()) < 8:
             return None  # don't gut the bullet down to a stub
-        return head, line[m.start():]
+        if _DANGLING.search(head.rstrip().rstrip(',')):
+            return None  # would leave a sentence fragment
+        return head, clause
 
     def _finish(head: str) -> str:
         head = head.rstrip().rstrip(',;')
@@ -3745,6 +3862,12 @@ async def tailor_resume(base_resume: str, job_description: str,
     except Exception as e:
         print(f"[HEADER TITLE] Cleanup failed: {e}")
 
+    # ── Header location sync — align city to JD's onsite location (skip remote) ─
+    try:
+        result = _sync_header_location(result, job_description)
+    except Exception as e:
+        print(f"[HEADER LOCATION] Sync failed: {e}")
+
     # ── Format normalizer — no blank lines inside a section's row block ────
     try:
         result = _normalize_section_spacing(result)
@@ -3830,6 +3953,16 @@ def _guarantee_full_coverage(resume: str, job_description: str, role_type: str) 
             return resume
 
         resume = _inject_missing_keywords(resume, missing)
+        # This is the LAST injection in the pipeline — it runs after the
+        # mid-pipeline _enforce_skills_line_limit and _merge_cont_rows passes,
+        # so anything it just added would otherwise ship as an over-length row
+        # or an orphan 'Label (cont.):' row. Re-normalize here so the final
+        # skills block is always clean regardless of which pass injected last.
+        try:
+            resume = _enforce_skills_line_limit(resume, max_items=6)
+            resume = _merge_cont_rows(resume)
+        except Exception as e:
+            print(f"[COVERAGE GUARANTEE] Post-inject normalize failed: {e}")
 
         cov2 = skill_coverage_report(resume, job_description, role_type=role_type)
         still_missing = cov2.get("missing", [])

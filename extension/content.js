@@ -246,12 +246,24 @@
 
   // ── Floating button ──────────────────────────────────────────────────────────
   function looksLikeApplication() {
-    // Count meaningful fillable fields (skip hidden/submit/search).
+    // A real application form — not a job-alert / newsletter signup that also
+    // has a few inputs. Require an application signal: a resume/CV file upload,
+    // or a name + email pair, or a large form.
     const fields = [...document.querySelectorAll("input, textarea, select")].filter((el) => {
       const t = (el.type || "").toLowerCase();
-      return el.tagName !== "INPUT" || !SKIP_TYPES.has(t);
+      if (el.tagName === "INPUT" && SKIP_TYPES.has(t)) return false;
+      return el.offsetParent !== null && !el.disabled;
     });
-    return fields.length >= 3;
+    if (fields.length < 3) return false;
+    const hasFile = !!document.querySelector("input[type=file]");
+    const blob = fields
+      .map((e) => `${labelFor(e)} ${e.name || ""} ${e.getAttribute("aria-label") || ""}`.toLowerCase())
+      .join(" | ");
+    const hasResume = hasFile || /resume|cv\b|curriculum/.test(blob);
+    const hasName = /first name|last name|full name|\bname\b|given name|surname/.test(blob);
+    const hasEmail = /e-?mail/.test(blob);
+    const strong = hasResume || (hasName && hasEmail);
+    return strong || fields.length >= 8;
   }
 
   const isTop = window.top === window;
@@ -282,11 +294,18 @@
     const here = looksLikeApplication();
     if (!here && !childHasForm) return; // no form yet — wait for render
     autofillDone = true;
-    send("disarmTab", {}).catch(() => {}); // one-shot — don't refill on later loads
     toast("Auto-filling from Job Hunter…");
     const handle = (s) => {
-      if (!s || s.error) toast((s && s.error) || "No form fields found — sign in to the extension?", true);
-      else if (s.done) toast(`Filled ${s.filled}/${s.total}${s.ai ? ` · ${s.ai} by AI` : ""} — review before submitting`);
+      if (s && s.done && s.filled > 0) {
+        // A real fill happened — consume the one-shot.
+        send("disarmTab", {}).catch(() => {});
+        toast(`Filled ${s.filled}/${s.total}${s.ai ? ` · ${s.ai} by AI` : ""} — review before submitting`);
+      } else {
+        // Nothing filled (wrong/empty form, or a later form is the real one).
+        // Stay armed and allow another attempt when a form is next detected.
+        autofillDone = false;
+        if (s && s.error) toast(s.error, true);
+      }
     };
     if (here) await runFill(handle);
     else handle(await send("relayFill", {}));

@@ -984,13 +984,19 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
 
           {/* Actions */}
           <div className="actions">
-            <a href={job.url} target="_blank" rel="noreferrer" className="act primary" style={{ textDecoration: "none" }}>
-              <Ic d={I.link} size={14} /> Apply
+            <a href={job.url + (job.url.includes("#") ? "&" : "#") + "jh=1"} target="_blank" rel="noreferrer"
+              className="act primary" style={{ textDecoration: "none" }}
+              title="Open the application — the Job Hunter extension auto-fills it on load. Review, then submit.">
+              <Ic d={I.zap} size={14} /> Fill &amp; Apply
+            </a>
+            <a href={job.url} target="_blank" rel="noreferrer" className="act" style={{ textDecoration: "none" }}
+              title="Open the application page without auto-fill">
+              <Ic d={I.link} size={14} /> Open
             </a>
             <button onClick={() => setShowApply(true)} className="act"
-              title="Auto-fill the application from your profile — you review and confirm before anything is sent"
+              title="Review & fill inside the app (Greenhouse/Lever/Ashby)"
               style={{ background: "rgba(16,185,129,0.10)", borderColor: "rgba(16,185,129,0.4)", color: "#10b981" }}>
-              <Ic d={I.zap} size={14} /> Auto-Apply
+              <Ic d={I.zap} size={14} /> In-app
             </button>
             <button onClick={() => runAction("resume")} disabled={!!tailorRuns[job.id]} className="act ai"
               title={Object.keys(tailorRuns).length ? `${Object.keys(tailorRuns).length} tailoring in parallel` : undefined}>

@@ -250,6 +250,34 @@
 
   const isTop = window.top === window;
 
+  // Auto-fill trigger: the app opens the ATS page with a #jh=1 hash. Strip it
+  // immediately so a refresh doesn't refill, and arm a one-shot auto-fill for
+  // when the form becomes available.
+  let armAutofill = false;
+  let autofillDone = false;
+  let childHasForm = false;
+  if (isTop && /(?:^|[#&])jh=1(?:&|$)/.test(location.hash || "")) {
+    armAutofill = true;
+    try {
+      const cleaned = location.href.replace(/([#&])jh=1(&|$)/, (_m, p, s) => (s === "&" ? p : "")).replace(/#$/, "");
+      history.replaceState(null, "", cleaned);
+    } catch { /* ignore */ }
+  }
+
+  async function maybeAutofill() {
+    if (!isTop || !armAutofill || autofillDone) return;
+    const here = looksLikeApplication();
+    if (!here && !childHasForm) return; // no form yet — wait for render
+    autofillDone = true;
+    toast("Auto-filling from Job Hunter…");
+    const handle = (s) => {
+      if (!s || s.error) toast((s && s.error) || "No form fields found — sign in to the extension?", true);
+      else if (s.done) toast(`Filled ${s.filled}/${s.total}${s.ai ? ` · ${s.ai} by AI` : ""} — review before submitting`);
+    };
+    if (here) await runFill(handle);
+    else handle(await send("relayFill", {}));
+  }
+
   // The button is ALWAYS hosted in the top frame (fixed to the real window,
   // so it never scrolls away). A form in a child iframe registers with the
   // background, which tells the top frame to show the button; the click is
@@ -308,7 +336,11 @@
     // Background asks the top frame to show/hide the button (a child frame
     // has/lost a form).
     if (msg?.type === "showButton") {
-      if (isTop) { if (msg.show) mountButton(); else if (!looksLikeApplication()) unmountButton(); }
+      if (isTop) {
+        childHasForm = !!msg.show;
+        if (msg.show) { mountButton(); maybeAutofill(); }
+        else if (!looksLikeApplication()) unmountButton();
+      }
       sendResponse({ ok: true });
       return true;
     }
@@ -327,10 +359,10 @@
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => {
       reportForm();
-      if (isTop && looksLikeApplication()) mountButton();
+      if (isTop && looksLikeApplication()) { mountButton(); maybeAutofill(); }
     });
   });
   obs.observe(document.documentElement, { childList: true, subtree: true });
   reportForm();
-  if (isTop && looksLikeApplication()) mountButton();
+  if (isTop && looksLikeApplication()) { mountButton(); maybeAutofill(); }
 })();

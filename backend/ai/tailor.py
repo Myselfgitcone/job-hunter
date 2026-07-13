@@ -92,14 +92,32 @@ _US_STATES = {
     'west virginia': 'WV', 'wisconsin': 'WI', 'wyoming': 'WY',
 }
 _US_STATE_ABBR = set(_US_STATES.values()) | {'DC'}
-# State alternation: abbreviations + full names (longest-first so 'new york'
-# wins over 'new'). City = 1-2 Capitalized words with NO newline between city
-# and state (prevents a JD title line above the address bleeding into the match,
-# e.g. 'Data Engineer\nRichmond, VA' must NOT capture 'Engineer, VA').
-_ST_ALT = "|".join(sorted(_US_STATE_ABBR)) + "|" + "|".join(
-    sorted((re.escape(s) for s in _US_STATES), key=len, reverse=True))
+
+# Capitalized words that pattern-match 'City' but never are one — cloud/vendor/
+# tech nouns and common JD headings. Without this, 'Snowflake, Azure, or Google
+# BigQuery' yields a phantom 'Azure, OR' (Oregon) location.
+_NOT_CITY = {
+    'azure', 'oracle', 'snowflake', 'python', 'java', 'google', 'amazon',
+    'apache', 'databricks', 'kafka', 'spark', 'data', 'cloud', 'role',
+    'summary', 'senior', 'junior', 'staff', 'primary', 'location', 'remote',
+    'experience', 'preferred', 'minimum', 'qualifications', 'about', 'team',
+    'what', 'position', 'responsibilities', 'requirements', 'benefits',
+}
+
+# City = 1-2 TitleCase words. State comes in two flavors handled separately:
+#   • Abbreviations MUST be matched case-SENSITIVELY — otherwise the English
+#     word 'or' matches the OR (Oregon) abbreviation ('Azure, or ...').
+#   • Full state names are matched case-insensitively ('Sunnyvale, California').
+_CITY_RE = r'([A-Z][a-z]+(?:[ \t][A-Z][a-z]+)?)'
+_abbr_alt = "|".join(sorted(_US_STATE_ABBR))
+_name_alt = "|".join(sorted(_US_STATES, key=len, reverse=True))
+_RX_ABBR = re.compile(_CITY_RE + r',[ \t]*(' + _abbr_alt + r')\b')            # case-sensitive
+_RX_NAME = re.compile(_CITY_RE + r',[ \t]*(' + _name_alt + r')\b', re.IGNORECASE)
+# Back-compat: some callers still reference _JD_LOC_RE for a simple "is there a
+# location on this header line" test. Keep a permissive one for THAT use only
+# (header lines are candidate-authored and won't contain 'Azure, or').
 _JD_LOC_RE = re.compile(
-    r'\b([A-Z][a-z]+(?:[ \t][A-Z][a-z]+)?),[ \t]*(' + _ST_ALT + r')\b', re.IGNORECASE)
+    _CITY_RE + r',[ \t]*(' + _abbr_alt + '|' + _name_alt + r')\b', re.IGNORECASE)
 
 # JD tokens that mean "location doesn't matter" — don't rewrite the header then.
 _REMOTE_SIGNALS = ("remote", "anywhere", "work from home", "wfh", "distributed team")
@@ -114,12 +132,28 @@ def _norm_jd_location(m: "re.Match") -> str:
 
 
 def _extract_jd_location(job_description: str) -> str:
-    """Best-effort primary work location from a JD, as 'City, ST'. '' if unclear."""
+    """
+    Best-effort primary work location from a JD, as 'City, ST'. '' if unclear.
+    Collects every 'City, ST' candidate in the JD head, drops tech/vendor false
+    positives, then picks the city that appears MOST often — the real work
+    location repeats (address line + salary-band line + 'Primary Location'),
+    while a phantom hit ('Azure, OR') appears once. Ties break to earliest.
+    """
     if not job_description:
         return ""
     head = job_description[:2500]  # location almost always sits near the top
-    m = _JD_LOC_RE.search(head)
-    return _norm_jd_location(m) if m else ""
+    cands: list[tuple[int, str, str]] = []
+    for m in _RX_ABBR.finditer(head):
+        cands.append((m.start(), m.group(1), m.group(2).upper()))
+    for m in _RX_NAME.finditer(head):
+        cands.append((m.start(), m.group(1), _US_STATES[m.group(2).lower()]))
+    cands = [c for c in cands if c[1].lower() not in _NOT_CITY]
+    if not cands:
+        return ""
+    from collections import Counter
+    freq = Counter((c[1], c[2]) for c in cands)
+    best = max(cands, key=lambda c: (freq[(c[1], c[2])], -c[0]))
+    return f"{best[1]}, {best[2]}"
 
 
 def _sync_header_location(result: str, job_description: str) -> str:
@@ -3862,11 +3896,13 @@ async def tailor_resume(base_resume: str, job_description: str,
     except Exception as e:
         print(f"[HEADER TITLE] Cleanup failed: {e}")
 
-    # ── Header location sync — align city to JD's onsite location (skip remote) ─
-    try:
-        result = _sync_header_location(result, job_description)
-    except Exception as e:
-        print(f"[HEADER LOCATION] Sync failed: {e}")
+    # ── Header location sync — DISABLED by user request (2026-07-13) ─────────
+    # Helper (_sync_header_location) kept below for future use; uncomment to
+    # re-enable rewriting the header city to the JD's onsite location.
+    # try:
+    #     result = _sync_header_location(result, job_description)
+    # except Exception as e:
+    #     print(f"[HEADER LOCATION] Sync failed: {e}")
 
     # ── Format normalizer — no blank lines inside a section's row block ────
     try:

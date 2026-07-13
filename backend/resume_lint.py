@@ -92,7 +92,11 @@ def user_roles_to_role_type(job_roles: list[str]) -> str | None:
 # a live tailor run when lint's JD-auto-detected role_type (CONSULTING) diverged
 # from the role_type the AI was actually told to write against (TECH).
 # (most_recent, second, third, fourth_plus, summary, hard_total)
-_UNIFIED_BUDGET = (11, 8, 7, 6, 6, 38)
+# Summary = 5 (synced 2026-07-13: SYSTEM_PROMPT said 5, this said 6, and the
+# two RETRY_RULES copies disagreed — every run burned an augmenter call adding
+# a 6th summary bullet the prompt forbade). hard_total drops with it so the
+# experience budget stays 32.
+_UNIFIED_BUDGET = (11, 8, 7, 6, 5, 37)
 BULLET_BUDGETS: dict[str, tuple[int, int, int, int, int, int]] = {
     rt: _UNIFIED_BUDGET for rt in (TECH, IB, FINANCE, CYBER, HEALTHCARE, CONSULTING, GENERAL)
 }
@@ -106,7 +110,7 @@ BULLET_MINIMUMS: dict[str, tuple[int, int, int, int]] = {
     rt: _UNIFIED_MINIMUMS for rt in (TECH, IB, FINANCE, CYBER, HEALTHCARE, CONSULTING, GENERAL)
 }
 
-SUMMARY_EXACT = 6
+SUMMARY_EXACT = 5
 WORD_LIMIT    = 25
 WORD_TARGET   = 20
 

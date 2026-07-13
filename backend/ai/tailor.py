@@ -3211,7 +3211,7 @@ _RETRY_RULES = {
     "[METRIC NARRATION]":      "Delete the measurement-methodology clause ('measured by...', 'tracked via...', 'confirmed by...'). Keep only the action and outcome. Resumes assert results; they never present evidence.",
     "[MULTI-IDEA]":            "One accomplishment per bullet. CUT the weaker half — never split into two bullets (splitting overflows the bullet budget and triggers [BULLET OVERFLOW]).",
     "[SAME VERB]":             "No two consecutive experience bullets may open with the same verb — vary them.",
-    "[SUMMARY]":               "PROFESSIONAL SUMMARY must have exactly 6 bullet lines — not 5, not 7. Count your bullets and add or remove to hit exactly 6.",
+    "[SUMMARY]":               "PROFESSIONAL SUMMARY must have exactly 5 bullet lines — not 4, not 6. Count your bullets and add or remove to hit exactly 5.",
     "[TOO FEW BULLETS]":       "A job block has fewer bullets than its minimum. Add more specific, metric-backed bullets until the minimum is met — quality over padding. Do NOT cut other sections — add only to the flagged job.",
     "[BULLET OVERFLOW]":       "Total bullets exceed the limit for this role type. Cut lowest-relevance bullets first.",
     "[MISSING SECTION]":       "A required section is missing — check for output truncation and regenerate the full resume.",
@@ -3367,37 +3367,62 @@ async def _compress_flagged_bullets(resume: str, base_resume: str,
         print(f"[COMPRESS] pass skipped ({e}) — keeping scissored bullets")
         return resume
 
-    vocab = (base_resume + "\n" + job_description).lower()
     _IDENT = re.compile(r"[A-Za-z][\w+#.]*")
 
-    def _valid(new: str, orig: str) -> bool:
+    def _stem(w: str) -> str:
+        # Same suffix-fold family the JD-echo check uses — 'Dockerized'
+        # folds toward 'Docker' so an inflected identifier doesn't fail
+        # the vocabulary gate.
+        w = w.lower()
+        for suf in ("ing", "ized", "ised", "ed", "es", "s"):
+            if w.endswith(suf) and len(w) - len(suf) >= 3:
+                w = w[: -len(suf)]
+                break
+        return w[:-1] if w.endswith("e") and len(w) > 4 else w
+
+    # Allowed vocabulary as a token set (exact lowers + stems), built once.
+    _vocab_tokens: set[str] = set()
+    for tok in _IDENT.findall(base_resume + "\n" + job_description):
+        _vocab_tokens.add(tok.lower())
+        _vocab_tokens.add(_stem(tok))
+
+    def _valid(new: str, orig: str) -> str:
+        """'' when valid, else a short rejection reason (for the log)."""
         if not new or len(new.split()) > _WL + 3:
-            return False
+            return "too long"
         if is_fragment_bullet(new):
-            return False
+            return "still a fragment"
         # metric preservation: every digit-bearing token of orig survives
         for tok in re.findall(r"\d[\w.,%+→/-]*", orig):
             if tok.rstrip(".,;") not in new:
-                return False
-        # vocabulary: identifier-looking tokens must exist in base+JD+orig
-        allowed = vocab + orig.lower()
+                return f"lost metric '{tok}'"
+        # vocabulary: identifier-looking tokens must exist in base+JD+orig —
+        # exact lower OR stem-folded, so inflections don't false-positive.
+        allowed = _vocab_tokens | {t.lower() for t in _IDENT.findall(orig)} \
+            | {_stem(t) for t in _IDENT.findall(orig)}
         for tok in _IDENT.findall(new):
             if (any(c.isupper() for c in tok[1:]) or any(c in "#+." for c in tok)) \
-                    and tok.lower() not in allowed:
-                return False
-        return True
+                    and tok.lower() not in allowed and _stem(tok) not in allowed:
+                return f"new token '{tok}'"
+        return ""
 
-    fixed = 0
+    fixed, rejects = 0, []
     for fid, idx in flagged.items():
         new = str(rewrites.get(fid, "")).strip().lstrip("• ").strip()
         orig = payload[fid]
-        if new and new != orig and _valid(new, orig):
-            indent = lines[idx][:len(lines[idx]) - len(lines[idx].lstrip())]
-            lines[idx] = f"{indent}• {new.rstrip('.')}." if not new.endswith(".") else f"{indent}• {new}"
-            fixed += 1
-    if fixed:
+        if not new or new == orig:
+            continue
+        why = _valid(new, orig)
+        if why:
+            rejects.append(why)
+            continue
+        indent = lines[idx][:len(lines[idx]) - len(lines[idx].lstrip())]
+        lines[idx] = f"{indent}• {new.rstrip('.')}." if not new.endswith(".") else f"{indent}• {new}"
+        fixed += 1
+    if fixed or rejects:
         print(f"[COMPRESS] AI-repaired {fixed}/{len(flagged)} damaged bullet(s); "
-              f"{len(flagged) - fixed} kept scissored fallback")
+              f"{len(flagged) - fixed} kept scissored fallback"
+              + (f" — rejected: {'; '.join(rejects[:5])}" if rejects else ""))
     return "\n".join(lines)
 
 

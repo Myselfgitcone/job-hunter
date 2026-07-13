@@ -3517,6 +3517,201 @@ def _trim_long_bullets(resume: str, word_limit: int) -> str:
     return '\n'.join(out)
 
 
+_METRIC_UNIT_WORDS = frozenset(
+    "hours hour hrs minutes mins min seconds days weeks months "
+    "users records rows documents members events transactions".split())
+_NUM_TOK = re.compile(
+    r"(?<![A-Za-z0-9])[$€£]?\d[\d,.]*\s*(?:%|[KMB](?![a-z])|TB|GB|PB)?",
+    re.IGNORECASE)
+
+
+def _metric_keys(text: str) -> set:
+    """Normalized number+unit keys ('65|%', '6|hours', '2|TB') for metric
+    provenance comparison. Unit comes from an attached symbol or the
+    immediately following unit word."""
+    keys = set()
+    for m in _NUM_TOK.finditer(text):
+        tok = m.group(0)
+        core = re.sub(r"[^\d.]", "", tok).rstrip(".")
+        if not core:
+            continue
+        sym = re.search(r"(%|K|M|B|TB|GB|PB)\s*$", tok, re.IGNORECASE)
+        unit = sym.group(1).upper() if sym else ""
+        if not unit:
+            after = text[m.end():m.end() + 14].lstrip().split()
+            if after and after[0].strip(",;.()").lower() in _METRIC_UNIT_WORDS:
+                unit = after[0].strip(",;.()").lower()
+        keys.add(f"{core}|{unit}")
+    return keys
+
+
+def _company_chunks(text: str) -> list[tuple[str, str]]:
+    """[(company_lower, chunk_text)] — split on '@' header lines. Works with
+    both pipe- and tab-format headers."""
+    chunks, cur, buf = [], None, []
+    for line in text.split("\n"):
+        if "@" in line and not line.strip().startswith("•"):
+            if cur:
+                chunks.append((cur, "\n".join(buf)))
+            cur = re.split(r"[|\t]|\s{2,}", line.split("@", 1)[1].strip())[0].strip().lower()
+            buf = []
+        elif cur is not None:
+            s = line.strip()
+            if s and s.rstrip(":").isupper() and len(s) < 60 and "@" not in s:
+                chunks.append((cur, "\n".join(buf)))
+                cur, buf = None, []
+            else:
+                buf.append(line)
+    if cur:
+        chunks.append((cur, "\n".join(buf)))
+    return chunks
+
+
+def _enforce_metric_provenance(result: str, base_resume: str) -> str:
+    """Every number in an output experience bullet must exist in the SAME
+    job's base block (matched as number+unit). Live case: base said 45%
+    query-latency cut at JPMC, one run shipped 65% — no pass validated
+    numeric provenance. Violating numbers are excised (with their connector,
+    'by 65%' → ''); the fragment detector + compression pass downstream
+    repair any resulting stump."""
+    base_by_co = {co: _metric_keys(chunk) for co, chunk in _company_chunks(base_resume)}
+    if not base_by_co:
+        return result
+
+    lines = result.split("\n")
+    cur_keys, removed = None, []
+    for i, line in enumerate(lines):
+        if "@" in line and not line.strip().startswith("•"):
+            after_at = line.split("@", 1)[1].lower()
+            cur_keys = next((ks for co, ks in base_by_co.items() if co and co in after_at), None)
+            continue
+        if cur_keys is None or not line.strip().startswith("•"):
+            continue
+        new = line
+        # iterate matches on the CURRENT text right-to-left so spans stay valid
+        for m in reversed(list(_NUM_TOK.finditer(new))):
+            tok = m.group(0)
+            core = re.sub(r"[^\d.]", "", tok).rstrip(".")
+            if not core:
+                continue
+            sym = re.search(r"(%|K|M|B|TB|GB|PB)\s*$", tok, re.IGNORECASE)
+            unit = sym.group(1).upper() if sym else ""
+            tail = new[m.end():m.end() + 14].lstrip().split()
+            if not unit and tail and tail[0].strip(",;.()").lower() in _METRIC_UNIT_WORDS:
+                unit = tail[0].strip(",;.()").lower()
+            if f"{core}|{unit}" in cur_keys:
+                continue
+            # excise: optional left connector + token + optional unit word + '+'
+            start = m.start()
+            left = new[:start]
+            lm = re.search(r"(?:\s+(?:by|to|of|from|over|under|up to|~|approximately|about|at))\s*$",
+                           left, re.IGNORECASE)
+            if lm:
+                start = lm.start()
+            end = m.end()
+            rest = new[end:]
+            um = re.match(r"\s*\+|\s+(" + "|".join(_METRIC_UNIT_WORDS) + r")\b", rest, re.IGNORECASE)
+            if um:
+                end += um.end()
+            removed.append(new[start:end].strip())
+            new = (new[:start] + new[end:])
+        if new != line:
+            new = re.sub(r"\s{2,}", " ", new)
+            new = re.sub(r"\s+([,;.])", r"\1", new)
+            new = re.sub(r"[,;]\s*([,;.])", r"\1", new)
+            new = new.rstrip(" ,;—–")
+            if not new.rstrip().endswith("."):
+                new = new.rstrip() + "."
+            lines[i] = new
+    if removed:
+        print(f"[METRIC GUARD] excised {len(removed)} number(s) with no basis in the "
+              f"same job's base bullets: {', '.join(removed[:6])}")
+    return "\n".join(lines)
+
+
+def _enforce_jd_tool_containment(result: str, base_resume: str,
+                                 gap_skills: list[str]) -> str:
+    """JD-sourced tools with no base work evidence (the gap list) are
+    contained: NEVER in a summary 'expertise' claim, and at most ONE
+    experience placement (the user-approved ADJACENT-STRETCH allowance) —
+    extra bullets lose the token or are dropped, and other jobs' Technologies
+    Used lines are scrubbed. Closes the loophole where 'Java' (JD-only)
+    reached 'Deep expertise in Python, Java...' because the fabrication gate
+    allows any token present in base OR JD."""
+    if not gap_skills:
+        return result
+    from resume_lint import _dynamic_coverage_pattern
+    lines = result.split("\n")
+
+    # classify lines: summary bullets / experience bullets per job / tech lines
+    section, job_idx = "", -1
+    kinds: list[tuple[str, int]] = []          # (kind, job_idx) per line
+    for line in lines:
+        s = line.strip()
+        if s and s.rstrip(":").isupper() and len(s) < 60 and "@" not in s:
+            section = s.upper()
+            kinds.append(("header", -1))
+            continue
+        if "@" in line and not s.startswith("•"):
+            job_idx += 1
+            kinds.append(("jobhdr", job_idx))
+            continue
+        if "SUMMARY" in section and s.startswith("•"):
+            kinds.append(("summary", -1))
+        elif s.lower().startswith(("technologies used", "technologies & platforms")):
+            kinds.append(("tech", job_idx))
+        elif s.startswith("•") and job_idx >= 0 and "SKILL" not in section \
+                and "EDUCATION" not in section and "PROJECT" not in section:
+            kinds.append(("exp", job_idx))
+        else:
+            kinds.append(("other", job_idx))
+
+    def _strip_token(text: str, skill: str) -> str:
+        out = re.sub(r",?\s*(?:and\s+)?" + _kw_pat(skill), "", text, flags=re.IGNORECASE)
+        out = re.sub(r"\s{2,}", " ", out)
+        out = re.sub(r"\s+([,;.)])", r"\1", out)
+        out = re.sub(r"\(\s*,", "(", out)
+        out = re.sub(r",\s*,", ",", out)
+        return out.rstrip(" ,;")
+
+    changed = 0
+    for skill in gap_skills:
+        pat = re.compile(_dynamic_coverage_pattern(skill), re.IGNORECASE)
+        hits = [i for i, (k, _) in enumerate(kinds)
+                if k in ("summary", "exp", "tech") and pat.search(lines[i])]
+        if not hits:
+            continue
+        # summary: always stripped — a gap skill can't be 'deep expertise'
+        for i in [h for h in hits if kinds[h][0] == "summary"]:
+            new = _strip_token(lines[i], skill)
+            if new != lines[i]:
+                lines[i] = new
+                changed += 1
+        # experience: keep the FIRST bullet placement only
+        exp_hits = [h for h in hits if kinds[h][0] == "exp"]
+        keeper_job = kinds[exp_hits[0]][1] if exp_hits else None
+        for i in exp_hits[1:]:
+            new = _strip_token(lines[i], skill)
+            if pat.search(new):
+                lines[i] = ""   # strip failed — the extra placement is dropped whole
+            else:
+                lines[i] = new
+            changed += 1
+        # tech lines: only the keeper job may list it
+        for i in [h for h in hits if kinds[h][0] == "tech"]:
+            if kinds[i][1] != keeper_job:
+                new = _strip_token(lines[i], skill)
+                if new != lines[i]:
+                    lines[i] = new
+                    changed += 1
+    if changed:
+        print(f"[JD TOOL GUARD] contained {changed} gap-skill placement(s) "
+              f"(summary/extra-bullet/tech-line)")
+    out = "\n".join(l for k, l in zip(kinds, lines)
+                    if not (l == "" and k[0] == "exp"))
+    return re.sub(r"\n{3,}", "\n\n", out)
+
+
 _DATE_RANGE_RE = re.compile(
     r"((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4})"
     r"\s*[–—-]\s*"
@@ -4179,6 +4374,13 @@ async def tailor_resume(base_resume: str, job_description: str,
     except Exception as e:
         print(f"[METRIC DENSITY] Enforcement failed: {e}")
 
+    # ── Metric provenance — numbers must exist in the same job's base ─────
+    # Runs BEFORE compression so any stump left by an excision gets repaired.
+    try:
+        result = _enforce_metric_provenance(result, base_resume)
+    except Exception as e:
+        print(f"[METRIC GUARD] Failed: {e}")
+
     # ── Bullet repair — AI compression of scissor-damaged bullets ─────────
     # Runs AFTER every pass that cuts bullet text (trim, narration-strip,
     # density-strip): only flagged bullets (fragment or over-limit) go to the
@@ -4262,6 +4464,11 @@ async def tailor_resume(base_resume: str, job_description: str,
         result = _revert_years_claim(result, base_resume)
     except Exception as e:
         print(f"[YEARS GUARD] Failed: {e}")
+    try:
+        result = _enforce_jd_tool_containment(result, base_resume,
+                                              skills_missing_from_original)
+    except Exception as e:
+        print(f"[JD TOOL GUARD] Failed: {e}")
     try:
         result = _enforce_projects_integrity(result, base_resume, _declared_projects)
     except Exception as e:

@@ -1,0 +1,30 @@
+/* Job Hunter Autofill — injected UI. Scoped with jh- prefixes. */
+
+#jh-fab {
+  position: fixed; right: 20px; bottom: 20px; z-index: 2147483647;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 16px; border: none; border-radius: 999px; cursor: pointer;
+  font: 600 13.5px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #fff; background: linear-gradient(120deg, #7c3aed 0%, #06b6d4 100%);
+  box-shadow: 0 6px 22px -6px rgba(124, 58, 237, 0.6);
+  transition: transform .12s ease, box-shadow .12s ease; }
+#jh-fab:hover { transform: translateY(-1px); box-shadow: 0 10px 28px -6px rgba(124, 58, 237, 0.7); }
+#jh-fab:active { transform: translateY(0); }
+#jh-fab .jh-fab-ico { font-size: 15px; }
+#jh-fab.jh-loading { opacity: .75; pointer-events: none; }
+#jh-fab.jh-loading .jh-fab-ico { animation: jh-spin 0.9s linear infinite; }
+@keyframes jh-spin { to { transform: rotate(360deg); } }
+
+.jh-toast {
+  position: fixed; right: 20px; bottom: 74px; z-index: 2147483647;
+  max-width: 340px; padding: 11px 15px; border-radius: 12px;
+  font: 500 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #fff; background: #10b981; box-shadow: 0 8px 26px -8px rgba(0, 0, 0, .5);
+  opacity: 0; transform: translateY(8px); transition: opacity .3s ease, transform .3s ease; }
+.jh-toast.jh-toast-err { background: #ef4444; }
+.jh-toast.jh-show { opacity: 1; transform: translateY(0); }
+
+.jh-filled { outline: 2px solid rgba(16, 185, 129, .8) !important; outline-offset: 2px; border-radius: 4px;
+  transition: outline-color 2s ease; }
+.jh-filled-ai { outline: 2px solid rgba(124, 58, 237, .85) !important; outline-offset: 2px; border-radius: 4px;
+  transition: outline-color 2s ease; }

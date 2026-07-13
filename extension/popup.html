@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="hdr">
+    <div class="logo">⚡</div>
+    <div class="hdr-txt">
+      <div class="hdr-title">Job Hunter</div>
+      <div class="hdr-sub">Autofill</div>
+    </div>
+    <button id="logout" class="logout" hidden title="Sign out">Sign out</button>
+  </div>
+
+  <!-- Login view -->
+  <div id="view-login" class="view" hidden>
+    <p class="lead">Sign in with your Job Hunter account to fill applications from your saved profile.</p>
+    <label class="fld"><span>Email</span><input id="email" type="email" autocomplete="username" placeholder="you@email.com" /></label>
+    <label class="fld"><span>Password</span><input id="password" type="password" autocomplete="current-password" placeholder="••••••••" /></label>
+    <button id="login" class="btn primary">Sign in</button>
+    <div id="login-err" class="err" hidden></div>
+  </div>
+
+  <!-- Main view -->
+  <div id="view-main" class="view" hidden>
+    <div class="user"><span class="dot"></span><span id="user-email"></span></div>
+    <button id="fill" class="btn primary big">⚡ Fill this application</button>
+    <p class="hint">Answers come from your Profile → Application Answers, learned answers, and AI drafts. Review everything before you submit.</p>
+    <div id="status" class="status" hidden></div>
+    <a id="open-app" class="link" href="https://job-hunter-production-927d.up.railway.app" target="_blank">Open Job Hunter ↗</a>
+  </div>
+
+  <div id="view-loading" class="view center"><div class="spin"></div></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

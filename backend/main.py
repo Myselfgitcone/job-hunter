@@ -4888,208 +4888,123 @@ async def clean_html_descriptions(user_id: str = Depends(get_current_user_id)):
 
 
 
-# ── Extension: batch autofill ────────────────────────────────────────────────
+# ── Extension: page autofill (unified answer engine) ─────────────────────────
+# One endpoint reusing the same matcher the in-app Auto-Apply modal uses
+# (ats_apply.prefill + class rules + answer memory), plus AI drafts for
+# open-ended questions. Replaces the old /batch-answer + /generate-answer.
 
-import re as _ext_re
-
-def _extract_job_key(url: str) -> str:
-    """Extract unique job ID from ATS URL for DB matching."""
-    # Greenhouse: /jobs/12345
-    m = _ext_re.search(r'/jobs/(\d+)', url)
+def _ext_job_key(url: str) -> str:
+    m = re.search(r'/jobs/(\d+)', url or '')
     if m: return m.group(1)
-    # Lever / Ashby: UUID
-    m = _ext_re.search(r'([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', url)
+    m = re.search(r'([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', url or '')
     if m: return m.group(1)
-    # Generic: last path segment
-    return url.rstrip('/').split('/')[-1][:60]
+    return (url or '').rstrip('/').split('/')[-1][:60]
 
-async def _find_tailored_resume_for_url(user_id: str, apply_url: str) -> str | None:
-    if not apply_url:
-        return None
-    job_key = _extract_job_key(apply_url)
-    if not job_key or len(job_key) < 4:
+
+async def _ext_tailored_resume(user_id: str, apply_url: str) -> str | None:
+    key = _ext_job_key(apply_url)
+    if not key or len(key) < 4:
         return None
     async with SessionLocal() as db:
-        result = await db.execute(
+        res = await db.execute(
             select(UserJob.tailored_resume)
             .join(Job, UserJob.job_id == Job.id)
             .where(UserJob.user_id == user_id)
             .where(UserJob.tailored_resume.isnot(None))
-            .where(Job.url.contains(job_key))
-            .order_by(UserJob.tailored_at.desc())
-            .limit(1)
-        )
-        return result.scalar_one_or_none()
+            .where(Job.url.contains(key))
+            .order_by(UserJob.tailored_at.desc()).limit(1))
+        return res.scalar_one_or_none()
 
 
-@app.post("/api/extension/batch-answer")
-async def extension_batch_answer(body: dict = Body(...), user_id: str = Depends(get_current_user_id)):
-    """
-    Batch answer all screening questions using the tailored resume.
-    Tier 2 (checkbox/dropdown) → Gemini 2.5 Flash
-    Tier 3 (textarea/open text) → Claude Haiku 4.5
-    """
-    apply_url      = body.get("apply_url", "")
-    tier2_questions = body.get("tier2_questions", [])  # [{question, type, options}]
-    tier3_questions = body.get("tier3_questions", [])  # [{question, type}]
-
-    if not tier2_questions and not tier3_questions:
-        return {"answers": {}}
-
-    cfg = await _get_user_settings(user_id)
-    if not (cfg.get("anthropic_api_key") or cfg.get("google_api_key") or cfg.get("openai_api_key")):
-        raise HTTPException(400, "No AI API key in Settings")
-
-    # Find tailored resume for this job URL → fallback to base resume
-    resume = await _find_tailored_resume_for_url(user_id, apply_url)
-    if not resume:
-        resume = cfg.get("resume", "")
-    if not resume:
-        raise HTTPException(400, "No resume found. Upload in Profile first.")
-
-    # ── Build indexed question list — filter garbage labels ──────────────────
-    # Assign numeric IDs so Claude uses short keys (0,1,2) not full question
-    # text. Eliminates all key-mismatch "no answer for:" failures.
-    # Filter: skip labels < 10 chars, pure placeholders, or branding text.
-    def _is_real_question(label: str) -> bool:
-        l = label.strip()
-        if len(l) < 10: return False
-        if l.lower().startswith("powered by"): return False
-        if l.lower() in ("select...", "select", "choose...", "choose"): return False
-        return True
-
-    indexed: list[dict] = []
-    id_to_label: dict[str, str] = {}
-
-    for q in tier2_questions:
-        if not _is_real_question(q.get("question", "")): continue
-        idx = str(len(indexed))
-        id_to_label[idx] = q["question"]
-        indexed.append({"id": idx, "question": q["question"],
-                         "type": q["type"], "options": q.get("options", [])})
-
-    for q in tier3_questions:
-        if not _is_real_question(q.get("question", "")): continue
-        idx = str(len(indexed))
-        id_to_label[idx] = q["question"]
-        indexed.append({"id": idx, "question": q["question"], "type": q["type"]})
-
-    if not indexed:
-        return {"answers": {}, "resume_source": "base"}
-
-    print(f"[Extension] {len(indexed)} real questions (filtered from {len(tier2_questions)+len(tier3_questions)} total)")
-
-    # ── Single Claude Haiku call — indexed keys, no text-matching failures ────
-    system = (
-        f"You are filling a job application for this candidate:\n\n{resume}\n\n"
-        "Answer every question using ONLY information from the resume above.\n"
-        "Return ONLY valid JSON — no markdown, no extra text:\n"
-        "{\"answers\": {\"0\": \"answer\", \"1\": [\"opt1\",\"opt2\"], ...}}\n\n"
-        "CRITICAL RULES BY QUESTION TYPE:\n"
-        "- type=checkbox (select all that apply): array of strings from the given options\n"
-        "- type=select/radio (dropdown with options): ONE SHORT string (1-5 words) matching an option exactly\n"
-        "- type=textarea or type=text (open text box): 3-5 sentences, first-person, specific\n\n"
-        "SPECIAL SHORT-ANSWER RULES (applies even if type=text):\n"
-        "- 'Do you have...?' / 'Have you...?' / 'Are you...?' / 'Will you...?' → answer ONLY 'Yes' or 'No'\n"
-        "- 'How many years...' → answer ONLY the number or range (e.g. '6' or '6-8')\n"
-        "- 'What is your desired pay/salary' → '$130k - $150k'\n"
-        "- EEO (gender/race/ethnicity/veteran/disability) → 'Prefer not to say'\n"
-        "- Referral / relative / former employee → 'No'\n"
-        "- Consent / policy / agreement → 'Yes'\n"
-        "- If you were referred → 'N/A'\n"
-        "NEVER write a full sentence for a yes/no or years-of-experience question.\n"
-        "NEVER leave a question unanswered. Answer all " + str(len(indexed)) + " questions."
-    )
-    user_msg = json.dumps(indexed, indent=2)
-
-    answers: dict = {}
-    try:
-        from ai.llm import chat as _chat, ModelKeys
-        _ext_mk = ModelKeys(
-            anthropic=cfg.get("anthropic_api_key", ""),
-            google=cfg.get("google_api_key", ""),
-            openai=cfg.get("openai_api_key", ""),
-        )
-        raw = await _chat(
-            system=system, user=user_msg,
-            model="anthropic/claude-haiku-4-5",
-            max_tokens=3000, pass_name="ext-batch",
-            keys=_ext_mk,
-        )
-        print(f"[Extension] raw response (first 500): {raw[:500]}")
-        m = re.search(r'\{.*\}', raw, re.DOTALL)
-        if m:
-            parsed = json.loads(m.group())
-            indexed_answers = parsed.get("answers", {})
-            # Map numeric index back to original question label
-            for idx, answer in indexed_answers.items():
-                label = id_to_label.get(str(idx))
-                if label:
-                    answers[label] = answer
-            print(f"[Extension] answered {len(answers)}/{len(indexed)} questions")
-        else:
-            print(f"[Extension] no JSON found in response")
-    except Exception as e:
-        print(f"[Extension/Batch] error: {e}")
-
-    is_tailored = bool(await _find_tailored_resume_for_url(user_id, apply_url))
-    return {"answers": answers, "resume_source": "tailored" if is_tailored else "base"}
+class ExtField(BaseModel):
+    key: str
+    label: str
+    type: str = "text"
+    options: list = []
 
 
-# ── Extension: single-question answer (legacy — old extension build) ──────────
-@app.post("/api/extension/generate-answer")
-async def extension_generate_answer(body: dict = Body(...), user_id: str = Depends(get_current_user_id)):
-    """
-    Single-question answer used by the current extension build.
-    Answers using the user's tailored resume (matched by job URL if available)
-    falling back to base resume. Uses Claude Haiku for cost efficiency.
-    """
-    question       = body.get("question", "").strip()
-    job_description = body.get("jobDescription", "").strip()
-    apply_url      = body.get("applyUrl", "").strip()
+class ExtAnswerBody(BaseModel):
+    url: str = ""
+    title: str = ""
+    company: str = ""
+    fields: list[ExtField] = []
+    ai_fill: bool = True
 
-    if not question:
-        raise HTTPException(400, "question is required")
 
-    cfg = await _get_user_settings(user_id)
-    if not (cfg.get("anthropic_api_key") or cfg.get("google_api_key") or cfg.get("openai_api_key")):
-        raise HTTPException(400, "No AI API key in Settings")
+@app.post("/api/extension/answer")
+async def extension_answer(body: ExtAnswerBody, user_id: str = Depends(get_current_user_id)):
+    """Answer a page's application fields with the same engine the in-app
+    Auto-Apply modal uses, plus optional AI drafts for open-ended questions."""
+    if not body.fields:
+        return {"answers": {}, "ai_keys": [], "resume_source": "none"}
 
-    # Find tailored resume for this job → fallback to base
-    resume = await _find_tailored_resume_for_url(user_id, apply_url or job_description[:100])
-    if not resume:
-        resume = cfg.get("resume", "")
-    if not resume:
-        raise HTTPException(400, "No resume found. Upload in Profile first.")
+    async with SessionLocal() as db:
+        profile = await _load_profile(db, user_id)
+    settings = await _get_user_settings(user_id)
+    saved_ap, memory = await _load_apply_data(user_id)
+    ap = {**_derive_apply_defaults(profile, settings), **saved_ap}
 
-    system = (
-        f"You are filling a job application for this candidate:\n\n{resume[:4000]}\n\n"
-        "Write a professional, specific, first-person answer using ONLY information from the resume above.\n"
-        "Answer length: 2-4 sentences. Be concrete — reference real experience, tools, and results.\n"
-        "Do not mention the company name unless the question specifically asks why you want to join.\n"
-        "Return ONLY the answer text, nothing else."
-    )
+    fields = [{"key": f.key, "label": f.label, "type": f.type,
+               "options": [dict(o) for o in f.options]} for f in body.fields]
 
-    context = f"Question: {question}"
-    if job_description:
-        context += f"\n\nJob context: {job_description[:500]}"
+    answers = ats_apply.prefill(fields, _apply_profile(profile, settings),
+                                apply_profile=ap, memory=_merged_memory(ap, memory))
 
-    try:
-        from ai.llm import chat as _chat, ModelKeys
-        _ext_mk = ModelKeys(
-            anthropic=cfg.get("anthropic_api_key", ""),
-            google=cfg.get("google_api_key", ""),
-            openai=cfg.get("openai_api_key", ""),
-        )
-        answer = await _chat(
-            system=system, user=context,
-            model="anthropic/claude-haiku-4-5",
-            max_tokens=400, pass_name="ext-single",
-            keys=_ext_mk,
-        )
-        return {"answer": answer.strip()}
-    except Exception as e:
-        raise HTTPException(500, f"AI error: {e}")
+    ai_keys: list[str] = []
+    if body.ai_fill:
+        unanswered = [f for f in fields
+                      if not str(answers.get(f["key"], "")).strip()
+                      and not f["label"].startswith("[Optional]")]
+        if unanswered:
+            resume = (await _ext_tailored_resume(user_id, body.url)) or settings.get("resume", "")
+            if resume.strip():
+                from ai.llm import ModelKeys as _MK, chat as _chat
+                mk = _MK(anthropic=settings.get("anthropic_api_key", "") or "",
+                         google=settings.get("google_api_key", "") or "",
+                         openai=settings.get("openai_api_key", "") or "",
+                         openrouter=settings.get("ai_api_key", "") or "")
+                if any([mk.anthropic, mk.google, mk.openai, mk.openrouter]):
+                    q_lines = []
+                    for i, f in enumerate(unanswered[:15]):
+                        opts = [o["label"] for o in f["options"]][:12]
+                        opt_s = f" (answer EXACTLY one of: {' | '.join(opts)})" if opts else ""
+                        q_lines.append(f"{i+1}. [{f['key']}] {f['label']}{opt_s}")
+                    system = (
+                        "You draft job-application answers for a candidate. RULES:\n"
+                        "- Ground every claim in the RESUME. Never invent employers, tools, "
+                        "metrics, or years it doesn't support.\n"
+                        "- Yes/No or option questions: reply with exactly one allowed option "
+                        "(or 'Yes'/'No'); empty string if the resume can't justify a confident pick.\n"
+                        "- Free-text 'why us / describe a project': 2-4 first-person sentences, specific.\n"
+                        "- Can't answer from the resume: empty string.\n"
+                        'Return ONLY JSON: {"<key>": "<answer>", ...} for every key.')
+                    user_msg = (f"JOB: {body.title} @ {body.company}\n\nRESUME:\n"
+                                f"{resume[:9000]}\n\nQUESTIONS:\n" + "\n".join(q_lines))
+                    model = settings.get("ai_model_secondary") or "anthropic/claude-haiku-4-5"
+                    try:
+                        raw = await _chat(system, user_msg, settings.get("ai_api_key", ""),
+                                          settings.get("ai_provider", "openrouter"), model,
+                                          max_tokens=2000, pass_name="ext-answer", keys=mk)
+                        m = re.search(r"\{.*\}", raw, re.S)
+                        drafted = json.loads(m.group(0)) if m else {}
+                        valid = {f["key"] for f in unanswered}
+                        by_key = {f["key"]: f for f in unanswered}
+                        for k, v in drafted.items():
+                            v = str(v).strip()
+                            if k not in valid or not v:
+                                continue
+                            fld = by_key[k]
+                            if fld["options"]:
+                                picked = ats_apply._pick_option(fld["options"], v)
+                                if picked:
+                                    answers[k] = picked; ai_keys.append(k)
+                            else:
+                                answers[k] = v; ai_keys.append(k)
+                    except Exception as e:
+                        print(f"[EXT ANSWER] AI draft skipped: {e}")
+
+    src = "tailored" if await _ext_tailored_resume(user_id, body.url) else "base"
+    return {"answers": answers, "ai_keys": ai_keys, "resume_source": src}
 
 
 # ── Admin: per-user analytics ─────────────────────────────────────────────────

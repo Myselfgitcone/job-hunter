@@ -696,13 +696,22 @@ def prefill(fields: list[dict], profile: dict,
         "_systemfield_email": profile.get("email", ""),
         "_systemfield_phone": profile.get("phone", ""),
     }
+    # Label rules also cover name fields, so generic-keyed callers (the
+    # browser extension, which keys fields f0/f1/… not first_name) still get
+    # contact basics filled by matching the visible label. Order matters:
+    # "preferred first name" is handled by class rules, so the plain-name
+    # rules below deliberately exclude "preferred".
     _label_rules = [
+        (re.compile(r"(?<!preferred )\bfirst name\b|\bgiven name\b|\bfore.?name\b", re.I), first),
+        (re.compile(r"(?<!preferred )\blast name\b|\bsurname\b|\bfamily name\b", re.I), last),
+        (re.compile(r"\bfull name\b|^name$|\byour name\b|\blegal name\b", re.I), profile.get("name", "")),
         (re.compile(r"\blocation\b|\bcity\b", re.I), profile.get("location", "")),
+        (re.compile(r"\bmailing\b|\bstreet\b|\baddress\b", re.I), profile.get("address", "")),
         (re.compile(r"\blinkedin\b", re.I), profile.get("linkedin", "")),
         (re.compile(r"\bgithub\b", re.I), profile.get("github", "")),
         (re.compile(r"\b(website|portfolio)\b", re.I), profile.get("website", "")),
-        (re.compile(r"\bphone\b", re.I), profile.get("phone", "")),
-        (re.compile(r"\bemail\b", re.I), profile.get("email", "")),
+        (re.compile(r"\bphone\b|\bmobile\b|\bcell\b", re.I), profile.get("phone", "")),
+        (re.compile(r"\bemail\b|\be-?mail\b", re.I), profile.get("email", "")),
         (re.compile(r"(current|present).{0,20}(company|employer)", re.I),
          profile.get("current_company", "")),
     ]

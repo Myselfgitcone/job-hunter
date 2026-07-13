@@ -775,6 +775,13 @@ function ResumeTab({ job, tailoring, startedAt, onTailor, onCancel, onToast, onU
             <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 4 }}>pts</span>
           </div>
         </div>
+        {(job.ats_quality?.count ?? 0) > 0 && (
+          <div title={(job.ats_quality?.fragments || []).map(f => `• ${f}`).join("\n")}
+            style={{ marginTop: 10, padding: "9px 12px", borderRadius: 10, fontSize: 12, lineHeight: 1.45,
+              background: "rgba(245,158,11,0.09)", border: "1px solid rgba(245,158,11,0.3)", color: "#d97706", fontWeight: 600 }}>
+            ⚠ {job.ats_quality!.count} bullet{job.ats_quality!.count > 1 ? "s" : ""} look cut off — hover to see, edit before applying
+          </div>
+        )}
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
           <button className="btn btn-ghost" onClick={() => downloadFile(api.pdfUrl(job.id), "resume.pdf").catch(e => onToast(e.message, "error"))}><Ic d={I.download} size={14} /> PDF</button>
           <button className="btn btn-ghost" onClick={() => downloadFile(api.docxUrl(job.id), "resume.docx").catch(e => onToast(e.message, "error"))}><Ic d={I.download} size={14} /> DOCX</button>

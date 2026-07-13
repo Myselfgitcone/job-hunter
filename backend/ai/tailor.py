@@ -1,4 +1,5 @@
 import re
+import json
 from ai.llm import chat
 from resume_lint import lint_resume, detect_role_type, detect_domain_leak, BULLET_BUDGETS, BULLET_MINIMUMS, SUMMARY_EXACT
 from resume_lint import detect_skill_scatter, detect_cross_job_metric_theft
@@ -1987,6 +1988,18 @@ def _row_item_count(row_line: str) -> int:
     return len([x for x in content.split(',') if x.strip()])
 
 
+def _kw_pat(kw: str) -> str:
+    """Whole-token pattern for keyword presence checks. \\b fails on symbols:
+    r'\\bC#\\b' can't match 'C#' (no word boundary after '#'), so C#/C++/.NET
+    were re-injected as duplicates every run. Alnum look-arounds treat any
+    non-alphanumeric neighbor as a boundary — applied only on sides whose
+    edge char is alnum, so '.NET' still matches inside 'ASP.NET' (the leading
+    '.' side needs no boundary)."""
+    lb = r'(?<![A-Za-z0-9])' if kw[:1].isalnum() else r''
+    rb = r'(?![A-Za-z0-9])' if kw[-1:].isalnum() else r''
+    return lb + re.escape(kw) + rb
+
+
 def _inject_missing_keywords(resume: str, missing: list[str]) -> str:
     """
     Mechanical post-generation keyword injection.
@@ -2021,15 +2034,8 @@ def _inject_missing_keywords(resume: str, missing: list[str]) -> str:
     other_queue:      list[str] = []
 
     for kw in missing:
-        # 1. Already present. NOTE: \b boundaries fail on symbol-tailed skills
-        # (C#, C++, .NET, F#) because '#'/'+'/'.' are non-word chars, so
-        # r'\bC#\b' never matches an existing 'C#' and the term gets injected
-        # on every pass -> the 'C#, C#, C#' duplication bug. Use alnum-only
-        # look-around so boundaries only apply on the sides that are word chars.
-        _kw = re.escape(kw)
-        _lb = r'(?<![A-Za-z0-9])' if kw[:1].isalnum() else r''
-        _rb = r'(?![A-Za-z0-9])'  if kw[-1:].isalnum() else r''
-        if re.search(_lb + _kw + _rb, resume, re.IGNORECASE):
+        # 1. Already present (alnum-aware boundaries — see _kw_pat)
+        if re.search(_kw_pat(kw), resume, re.IGNORECASE):
             continue
 
         # 2. Not a technical skill — skip entirely
@@ -3236,14 +3242,46 @@ def _strip_metric_narration(resume: str) -> str:
     before/after)'). Resumes assert outcomes; they never present evidence.
     Deterministic, runs after all AI passes.
     """
+    # \b anchors + optional linking-verb consumption: the old
+    # `(?:as\s+)?(?:measured|...)` matched INSIDE words ("was" → "w" + "as
+    # measured...") and shipped fragments like "ad-hoc data requests w."
     _NARR = re.compile(
-        r"[;,]?\s*(?:as\s+)?(?:measured|confirmed|calculated|tracked|validated|"
+        r"[;,—–]?\s*(?:\b(?:was|were|is|are)\s+)?(?:\bas\s+)?"
+        r"\b(?:measured|confirmed|calculated|tracked|validated|"
         r"verified|logged|quantified|benchmarked)\s+"
         r"(?:by|via|in|through|against|using|across|over)\b[^•\n]*",
         re.IGNORECASE)
     _PAREN_EVIDENCE = re.compile(
         r"\s*\((?:[^()]*(?:before/after|dashboards?|history|pre/post|"
         r"per\s+billing)[^()]*)\)", re.IGNORECASE)
+
+    # Outcome salvage: methodology dies, quantified OUTCOMES inside the doomed
+    # clause survive ("tracked via Jira, from 3 days to under 6 hours" — the
+    # delta is result data, not evidence). Checked in order of specificity.
+    _DELTAS = (
+        re.compile(r"\d[^\s,;]*\s*(?:→|->)\s*[^\s,;]+"),                          # 4h → 45min
+        re.compile(r"from\s+\d[^,;]*?\s+to\s+(?:under\s+|over\s+|~)?[^\s,;]+",
+                   re.IGNORECASE),                                                # from 3 days to 6 hours
+        re.compile(r"[$€£]\s?[\d,.]+[KMB]?(?:/(?:year|yr|month|mo))?", re.IGNORECASE),  # $1.2M/year
+        re.compile(r"\d[\d,.]*\s*%"),                                             # 45%
+    )
+
+    def _salvage(clause: str, kept: str) -> str:
+        """Best quantified outcome in the doomed clause, if the kept part of
+        the bullet doesn't already carry it. '' when nothing to save."""
+        for pat in _DELTAS:
+            m = pat.search(clause)
+            if m and m.group(0).strip() not in kept:
+                return m.group(0).strip(" .,;")
+        return ""
+
+    def _narr_sub_line(line: str) -> str:
+        m = _NARR.search(line)
+        if not m:
+            return line
+        kept = line[:m.start()]
+        tail = _salvage(m.group(0), kept)
+        return kept.rstrip(" ,;") + (f" — {tail}" if tail else "")
 
     def _paren_sub(m: re.Match) -> str:
         # Evidence paren may wrap a real money metric — keep the figure.
@@ -3254,7 +3292,7 @@ def _strip_metric_narration(resume: str) -> str:
     out, stripped = [], 0
     for line in resume.split('\n'):
         if line.strip().startswith('•'):
-            new = _NARR.sub('', line)
+            new = _narr_sub_line(line)
             new = _PAREN_EVIDENCE.sub(_paren_sub, new)
             if new != line:
                 new = new.rstrip().rstrip(',;')
@@ -3267,6 +3305,100 @@ def _strip_metric_narration(resume: str) -> str:
     if stripped:
         print(f"[NARRATION] Stripped evidence clauses from {stripped} bullet(s)")
     return '\n'.join(out)
+
+
+async def _compress_flagged_bullets(resume: str, base_resume: str,
+                                    job_description: str,
+                                    api_key: str, provider: str, model: str,
+                                    keys=None) -> str:
+    """
+    END-OF-PIPELINE bullet repair. The scissor passes (trim, narration-strip,
+    density-strip) cut mid-phrase and nothing re-checks their output — this
+    pass sends ONLY the damaged bullets (fragments or over-limit) to the
+    cheap model for a ≤25-word complete-sentence rewrite, then validates each
+    result deterministically. AI writes, code verifies:
+      • word count within limit(+grace)
+      • every digit-bearing token of the original preserved
+      • no identifier-looking token absent from base+JD+original vocabulary
+      • not itself a fragment
+    Any violation → that bullet falls back to its current (scissored) text.
+    Whole-pass failure (no key, API error) is non-fatal — resume ships as-is.
+    """
+    from resume_lint import is_fragment_bullet, WORD_LIMIT as _WL
+
+    # Collect flagged experience bullets (summary excluded — its bullets are
+    # fragments by design).
+    lines = resume.split("\n")
+    flagged: dict[str, int] = {}   # id -> line index
+    in_summary = False
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if s and s.rstrip(":").isupper() and len(s) < 60:
+            in_summary = "SUMMARY" in s.upper()
+            continue
+        if in_summary or not s.startswith("•"):
+            continue
+        body = s.lstrip("• ").strip()
+        if len(body.split()) > _WL + 3 or is_fragment_bullet(body):
+            flagged[str(len(flagged))] = i
+    if not flagged:
+        return resume
+
+    payload = {fid: lines[idx].strip().lstrip("• ").strip()
+               for fid, idx in flagged.items()}
+    system = (
+        "You repair damaged resume bullets. Each input bullet was mechanically "
+        "truncated and may end mid-phrase. Rewrite each as ONE complete sentence:\n"
+        f"- ≤{_WL} words, past-tense action verb first\n"
+        "- keep every number, percentage, and metric exactly\n"
+        "- use ONLY tools/terms already present in the bullet — never add new ones\n"
+        "- no 'measured by/tracked via' evidence clauses\n"
+        'Return ONLY JSON: {"<id>": "<rewritten bullet>", ...} for every id.'
+    )
+    try:
+        raw = await chat(
+            system=system, user=json.dumps(payload, indent=1),
+            api_key=api_key, provider=provider, model=model,
+            max_tokens=2000, pass_name="bullet-compress", keys=keys,
+        )
+        m = re.search(r"\{.*\}", raw, re.DOTALL)
+        rewrites = json.loads(m.group(0)) if m else {}
+    except Exception as e:
+        print(f"[COMPRESS] pass skipped ({e}) — keeping scissored bullets")
+        return resume
+
+    vocab = (base_resume + "\n" + job_description).lower()
+    _IDENT = re.compile(r"[A-Za-z][\w+#.]*")
+
+    def _valid(new: str, orig: str) -> bool:
+        if not new or len(new.split()) > _WL + 3:
+            return False
+        if is_fragment_bullet(new):
+            return False
+        # metric preservation: every digit-bearing token of orig survives
+        for tok in re.findall(r"\d[\w.,%+→/-]*", orig):
+            if tok.rstrip(".,;") not in new:
+                return False
+        # vocabulary: identifier-looking tokens must exist in base+JD+orig
+        allowed = vocab + orig.lower()
+        for tok in _IDENT.findall(new):
+            if (any(c.isupper() for c in tok[1:]) or any(c in "#+." for c in tok)) \
+                    and tok.lower() not in allowed:
+                return False
+        return True
+
+    fixed = 0
+    for fid, idx in flagged.items():
+        new = str(rewrites.get(fid, "")).strip().lstrip("• ").strip()
+        orig = payload[fid]
+        if new and new != orig and _valid(new, orig):
+            indent = lines[idx][:len(lines[idx]) - len(lines[idx].lstrip())]
+            lines[idx] = f"{indent}• {new.rstrip('.')}." if not new.endswith(".") else f"{indent}• {new}"
+            fixed += 1
+    if fixed:
+        print(f"[COMPRESS] AI-repaired {fixed}/{len(flagged)} damaged bullet(s); "
+              f"{len(flagged) - fixed} kept scissored fallback")
+    return "\n".join(lines)
 
 
 def _trim_long_bullets(resume: str, word_limit: int) -> str:
@@ -3286,6 +3418,12 @@ def _trim_long_bullets(resume: str, word_limit: int) -> str:
         m = re.search(r"\s+from\s+[^,;—–]*$", t)
         if m and " to " not in t[m.start():]:
             t = t[:m.start()]
+        # Dangling participle tail (", bringing MTTR") — a cut mid-gerund
+        # clause. Strip it when it carries no digits; a digit-bearing tail is
+        # a real outcome ("cutting runtime 40%") and stays.
+        m = re.search(r",\s+\w+ing\b[^,;]*$", t)
+        if m and not re.search(r"\d", t[m.start():]):
+            t = t[:m.start()]
         # Trailing connectives/prepositions left by a mid-phrase cut
         t = re.sub(r"(?:\s+(?:and|or|with|from|to|of|in|on|for|by|via|"
                    r"across|per|than|the|a|an|using|into))+$", "", t,
@@ -3294,7 +3432,9 @@ def _trim_long_bullets(resume: str, word_limit: int) -> str:
 
     def trim_bullet(text: str) -> str:
         words = text.split()
-        if len(words) <= word_limit:
+        # Grace margin: a 26-28-word bullet reads fine; cutting it risks a
+        # fragment for negligible gain. Only bullets past limit+3 get trimmed.
+        if len(words) <= word_limit + 3:
             return text
 
         had_metric = bool(re.search(r"(?<![A-Za-z])\d", text))
@@ -3800,7 +3940,7 @@ async def tailor_resume(base_resume: str, job_description: str,
                 result = _inject_missing_keywords(result, still_gone)
                 # Confirm injection worked
                 injected = [k for k in still_gone
-                            if re.search(r'\b' + re.escape(k) + r'\b', result, re.IGNORECASE)]
+                            if re.search(_kw_pat(k), result, re.IGNORECASE)]
                 if injected:
                     print(f"[KEYWORD INJECT] Injected into skills section: {', '.join(injected)}")
                 skipped = [k for k in still_gone if k not in injected]
@@ -3845,6 +3985,19 @@ async def tailor_resume(base_resume: str, job_description: str,
         result = _enforce_metric_density(result, role_type)
     except Exception as e:
         print(f"[METRIC DENSITY] Enforcement failed: {e}")
+
+    # ── Bullet repair — AI compression of scissor-damaged bullets ─────────
+    # Runs AFTER every pass that cuts bullet text (trim, narration-strip,
+    # density-strip): only flagged bullets (fragment or over-limit) go to the
+    # cheap model; each rewrite is validated deterministically and falls back
+    # to the scissored text on any violation. Clean runs send nothing.
+    try:
+        result = await _compress_flagged_bullets(
+            result, base_resume, job_description,
+            api_key, provider, _sec, keys=keys,
+        )
+    except Exception as e:
+        print(f"[COMPRESS] Failed: {e}")
 
     # ── Singleton skills rows — deterministic min-2-items enforcement ─────
     try:

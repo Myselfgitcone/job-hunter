@@ -624,8 +624,11 @@ export default function App() {
           needs_review: r.needs_review ?? false,
           review_reasons: r.review_reasons ?? [],
           generation_seconds: genSeconds,
+          ats_quality: r.ats_after?.quality,
         });
-        toast(`Resume tailored — ${job.company}`, "success");
+        const fragN = r.ats_after?.quality?.count ?? 0;
+        if (fragN > 0) toast(`Resume tailored — ${job.company} · ⚠ ${fragN} bullet(s) look cut off`, "error");
+        else toast(`Resume tailored — ${job.company}`, "success");
         await refreshJob(job.id);
       } catch (e: any) {
         if (e?.name !== "AbortError") toast(`${job.company}: ${e.message || "Tailor failed"}`, "error");

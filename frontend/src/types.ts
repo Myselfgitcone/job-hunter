@@ -83,6 +83,9 @@ export interface Job {
   // Not persisted server-side; survives refreshJob() because that merge
   // only overwrites keys present in the server response.
   generation_seconds?: number;
+  // Client-side only — readability signal from the last tailor run
+  // (score_ats quality field). Same persistence model as generation_seconds.
+  ats_quality?: AtsQuality;
   // FJ enrichment
   visa_sponsorship: boolean | null;
   experience_level: string;
@@ -135,9 +138,11 @@ export interface Company {
   source: string;
 }
 
+export interface AtsQuality { fragments: string[]; count: number }
+
 export interface TailorResult {
-  ats_before: { score: number; matched: string[]; missing: string[]; total: number };
-  ats_after: { score: number; matched: string[]; missing: string[]; total: number };
+  ats_before: { score: number; matched: string[]; missing: string[]; total: number; quality?: AtsQuality };
+  ats_after: { score: number; matched: string[]; missing: string[]; total: number; quality?: AtsQuality };
   tailored_resume: string;
   fit_analysis: string;
   interview_tips: string[];

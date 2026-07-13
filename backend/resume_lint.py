@@ -2133,9 +2133,11 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
             else:
                 prev_verb = None
 
-            # Word count
+            # Word count — same +3 grace as the deterministic trimmer: a
+            # 26-28-word bullet reads fine, and flagging it would send it to
+            # a retry that re-cuts what the trimmer deliberately spared.
             wc = _words(body)
-            if wc > WORD_LIMIT:
+            if wc > WORD_LIMIT + 3:
                 long_bullets.append((wc, body))
 
             # Multi-idea check
@@ -2463,6 +2465,68 @@ RETRY_RULES: dict[str, str] = {
     "[JOB TOOL MISMATCH]":    "Move the flagged tool to the job where the candidate actually used it (per the original resume), or delete it from this job entirely. Never let a real tool from one employer bleed into a different employer's bullets or Technologies Used line.",
     "[PROFILE SKILL DROPPED]":   "These skills exist in the candidate's original resume — they are WORK-SUPPORTED. Add each back: write a real bullet in the most relevant job, add to that job's Technologies Used, add to Technical Skills. Do not omit them because the JD listed them as 'or' alternatives.",
 }
+
+
+# ── Fragment detection ────────────────────────────────────────────────────────
+# Deterministic "does this bullet read as cut off?" check. Shared by score_ats
+# (quality surfacing) and the tailor's end-of-pipeline compression trigger —
+# the post-loop scissor passes (trim / narration-strip / density-strip) can
+# amputate mid-phrase, and nothing else inspects their output.
+
+_FRAG_TRAILING = re.compile(
+    r"\b(?:and|or|with|from|to|of|in|on|for|by|via|across|per|than|the|a|an|"
+    r"using|into|at|as|but|while|which|that|w)[\.\s]*$", re.IGNORECASE)
+
+# Common irregular past-tense resume verbs that don't end in 'ed'
+_FRAG_IRREGULAR_VERBS = frozenset(
+    "built led ran cut drove oversaw wrote set kept held met won made grew "
+    "took chose brought taught sold found rebuilt reran co-led spearhead "
+    "sped shrank rose".split())
+
+
+def is_fragment_bullet(text: str) -> bool:
+    """True when an experience bullet looks cut off / mutilated:
+    ends in a preposition or connective, has no verb, has unbalanced
+    parens/quotes, or is a sub-8-word stub."""
+    t = text.strip().lstrip("•").strip()
+    if not t:
+        return False
+    words = t.rstrip(".").split()
+    if len(words) < 8:
+        return True
+    if _FRAG_TRAILING.search(t.rstrip(".")):
+        return True
+    # Dangling digit-free participle tail: ", bringing MTTR" — a gerund
+    # clause whose object got cut. A digit-bearing tail ("cutting runtime
+    # 40%") is a completed outcome and passes.
+    m = re.search(r",\s+\w+ing\b([^,;]*)$", t.rstrip("."))
+    if m and not re.search(r"\d", m.group(0)) and len(m.group(1).split()) <= 2:
+        return True
+    if t.count("(") != t.count(")") or t.count('"') % 2 == 1:
+        return True
+    lower = {w.strip(",;:().").lower() for w in words}
+    has_verb = any(w.endswith("ed") and len(w) > 3 for w in lower) or \
+        bool(lower & _FRAG_IRREGULAR_VERBS)
+    if not has_verb:
+        return True
+    return False
+
+
+def find_fragment_bullets(resume_text: str) -> list[str]:
+    """All experience-section bullets in the resume that read as fragments.
+    Summary bullets are excluded — they are sentence fragments by design."""
+    out: list[str] = []
+    in_summary = False
+    for line in (resume_text or "").split("\n"):
+        s = line.strip()
+        if s and s.rstrip(":").isupper() and len(s) < 60:
+            in_summary = "SUMMARY" in s.upper()
+            continue
+        if in_summary or not s.startswith("•"):
+            continue
+        if is_fragment_bullet(s):
+            out.append(s.lstrip("• ").strip())
+    return out
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────

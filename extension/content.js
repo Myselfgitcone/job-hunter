@@ -250,18 +250,25 @@
 
   const isTop = window.top === window;
 
-  // Auto-fill trigger: the app opens the ATS page with a #jh=1 hash. Strip it
-  // immediately so a refresh doesn't refill, and arm a one-shot auto-fill for
-  // when the form becomes available.
+  // Auto-fill trigger: the app opens the ATS with a #jh=1 hash. That arms the
+  // whole TAB in the background (via send('armTab')) so the trigger survives
+  // the posting→form navigation, where the hash would be lost. Every top-frame
+  // load asks the background whether its tab is armed, then auto-fills once the
+  // form appears and disarms.
   let armAutofill = false;
   let autofillDone = false;
   let childHasForm = false;
-  if (isTop && /(?:^|[#&])jh=1(?:&|$)/.test(location.hash || "")) {
-    armAutofill = true;
-    try {
-      const cleaned = location.href.replace(/([#&])jh=1(&|$)/, (_m, p, s) => (s === "&" ? p : "")).replace(/#$/, "");
-      history.replaceState(null, "", cleaned);
-    } catch { /* ignore */ }
+  if (isTop) {
+    if (/(?:^|[#&])jh=1(?:&|$)/.test(location.hash || "")) {
+      try {
+        const cleaned = location.href.replace(/([#&])jh=1(&|$)/, (_m, p, s) => (s === "&" ? p : "")).replace(/#$/, "");
+        history.replaceState(null, "", cleaned);
+      } catch { /* ignore */ }
+      send("armTab", {}).catch(() => {});
+      armAutofill = true;
+    }
+    // Also consult the background: a prior navigation in this tab may have armed it.
+    send("isArmed", {}).then((r) => { if (r?.armed) { armAutofill = true; maybeAutofill(); } }).catch(() => {});
   }
 
   async function maybeAutofill() {
@@ -269,6 +276,7 @@
     const here = looksLikeApplication();
     if (!here && !childHasForm) return; // no form yet — wait for render
     autofillDone = true;
+    send("disarmTab", {}).catch(() => {}); // one-shot — don't refill on later loads
     toast("Auto-filling from Job Hunter…");
     const handle = (s) => {
       if (!s || s.error) toast((s && s.error) || "No form fields found — sign in to the extension?", true);

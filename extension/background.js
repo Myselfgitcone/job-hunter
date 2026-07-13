@@ -30,6 +30,12 @@ async function api(path, { method = "GET", body } = {}) {
 // can host the button and relay "fill" to whichever frame holds the form.
 const formFrames = new Map(); // tabId -> Set(frameId)
 
+// Tabs armed for one-shot auto-fill (opened via the app's "Fill & Apply").
+// Keyed by tabId so it survives navigations within the tab (posting → form
+// page), where the #jh=1 hash would otherwise be lost.
+const armedTabs = new Map(); // tabId -> timestamp
+const ARM_TTL = 10 * 60 * 1000;
+
 const handlers = {
   // A content frame reports it has a form (or no longer does).
   registerForm({ has }, sender) {
@@ -42,6 +48,18 @@ const handlers = {
     // Tell the top frame to show/hide the button.
     chrome.tabs.sendMessage(tabId, { type: "showButton", show: set.size > 0 }, { frameId: 0 })
       .catch(() => {});
+    return { ok: true };
+  },
+  armTab(_p, sender) {
+    if (sender?.tab?.id != null) armedTabs.set(sender.tab.id, Date.now());
+    return { ok: true };
+  },
+  isArmed(_p, sender) {
+    const t = armedTabs.get(sender?.tab?.id);
+    return { armed: !!(t && Date.now() - t < ARM_TTL) };
+  },
+  disarmTab(_p, sender) {
+    armedTabs.delete(sender?.tab?.id);
     return { ok: true };
   },
   // Top frame's button was clicked → relay a fill to the first form frame.
@@ -92,4 +110,4 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return true; // async
 });
 
-chrome.tabs.onRemoved.addListener((tabId) => formFrames.delete(tabId));
+chrome.tabs.onRemoved.addListener((tabId) => { formFrames.delete(tabId); armedTabs.delete(tabId); });

@@ -208,26 +208,51 @@
     return fields.length >= 3;
   }
 
+  const isTop = window.top === window;
+
+  // The button is ALWAYS hosted in the top frame (fixed to the real window,
+  // so it never scrolls away). A form in a child iframe registers with the
+  // background, which tells the top frame to show the button; the click is
+  // relayed back to the form frame.
   function mountButton() {
-    // Mount in whatever frame holds the form (top page OR an embedded ATS
-    // iframe). Each frame checks its own fields; the one with the form shows
-    // the button.
-    if (document.getElementById("jh-fab") || !looksLikeApplication()) return;
+    if (!isTop) return;
+    if (document.getElementById("jh-fab")) return;
     const fab = document.createElement("button");
     fab.id = "jh-fab";
     fab.title = "Fill this application with Job Hunter";
     fab.innerHTML = `<span class="jh-fab-ico">⚡</span><span class="jh-fab-txt">Fill with Job Hunter</span>`;
+    const busy = (on) => {
+      fab.classList.toggle("jh-loading", on);
+      fab.querySelector(".jh-fab-txt").textContent = on ? "Filling…" : "Fill with Job Hunter";
+    };
     fab.addEventListener("click", async () => {
-      fab.classList.add("jh-loading");
-      fab.querySelector(".jh-fab-txt").textContent = "Filling…";
-      await runFill((s) => {
-        if (s.error) toast(s.error, true);
+      busy(true);
+      const handle = (s) => {
+        if (!s || s.error) toast((s && s.error) || "No form fields found on this page.", true);
         else if (s.done) toast(`Filled ${s.filled}/${s.total}${s.ai ? ` · ${s.ai} by AI` : ""} — review before submitting`);
-      });
-      fab.classList.remove("jh-loading");
-      fab.querySelector(".jh-fab-txt").textContent = "Fill with Job Hunter";
+      };
+      if (looksLikeApplication()) {
+        await runFill(handle);           // form is in this (top) frame
+      } else {
+        const s = await send("relayFill", {}); // form is in a child frame
+        handle(s);
+      }
+      busy(false);
     });
     document.body.appendChild(fab);
+  }
+
+  function unmountButton() {
+    document.getElementById("jh-fab")?.remove();
+  }
+
+  // Report to the background whether THIS frame currently has a form.
+  let lastHas = null;
+  function reportForm() {
+    const has = looksLikeApplication();
+    if (has === lastHas) return;
+    lastHas = has;
+    send("registerForm", { has }).catch(() => {});
   }
 
   function toast(msg, err) {
@@ -239,18 +264,33 @@
     setTimeout(() => { t.classList.remove("jh-show"); setTimeout(() => t.remove(), 300); }, 5000);
   }
 
-  // Popup fills the active tab. sendMessage reaches every frame, so only the
-  // frame that actually has the form responds — frames without fields stay
-  // silent, letting the form frame's answer win.
   chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
+    // Background asks the top frame to show/hide the button (a child frame
+    // has/lost a form).
+    if (msg?.type === "showButton") {
+      if (isTop) { if (msg.show) mountButton(); else if (!looksLikeApplication()) unmountButton(); }
+      sendResponse({ ok: true });
+      return true;
+    }
+    // Direct fill request (popup, or background relay to the form frame).
     if (msg?.type === "fillPage") {
-      if (!looksLikeApplication()) return false; // not this frame — stay silent
+      if (!looksLikeApplication()) return false; // not the form frame — stay silent
       runFill((s) => sendResponse(s));
       return true;
     }
   });
 
-  const obs = new MutationObserver(() => mountButton());
+  // React to dynamically-loaded ATS forms: re-check this frame, and if the
+  // top frame itself has the form, mount directly.
+  let raf = 0;
+  const obs = new MutationObserver(() => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      reportForm();
+      if (isTop && looksLikeApplication()) mountButton();
+    });
+  });
   obs.observe(document.documentElement, { childList: true, subtree: true });
-  mountButton();
+  reportForm();
+  if (isTop && looksLikeApplication()) mountButton();
 })();

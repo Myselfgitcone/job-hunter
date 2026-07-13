@@ -1,7 +1,8 @@
 /* Job Hunter Autofill — injected UI. Scoped with jh- prefixes. */
 
 #jh-fab {
-  position: fixed; right: 20px; bottom: 20px; z-index: 2147483647;
+  position: fixed !important; right: 20px !important; bottom: 20px !important; top: auto !important; left: auto !important;
+  z-index: 2147483647 !important; margin: 0 !important; float: none !important; transform: none !important;
   display: inline-flex; align-items: center; gap: 8px;
   padding: 11px 16px; border: none; border-radius: 999px; cursor: pointer;
   font: 600 13.5px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;

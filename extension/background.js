@@ -26,7 +26,35 @@ async function api(path, { method = "GET", body } = {}) {
   return data;
 }
 
+// Per-tab map of frameIds that contain an application form, so the top frame
+// can host the button and relay "fill" to whichever frame holds the form.
+const formFrames = new Map(); // tabId -> Set(frameId)
+
 const handlers = {
+  // A content frame reports it has a form (or no longer does).
+  registerForm({ has }, sender) {
+    const tabId = sender?.tab?.id;
+    const frameId = sender?.frameId ?? 0;
+    if (tabId == null) return { ok: false };
+    let set = formFrames.get(tabId);
+    if (!set) { set = new Set(); formFrames.set(tabId, set); }
+    if (has) set.add(frameId); else set.delete(frameId);
+    // Tell the top frame to show/hide the button.
+    chrome.tabs.sendMessage(tabId, { type: "showButton", show: set.size > 0 }, { frameId: 0 })
+      .catch(() => {});
+    return { ok: true };
+  },
+  // Top frame's button was clicked → relay a fill to the first form frame.
+  async relayFill(_p, sender) {
+    const tabId = sender?.tab?.id;
+    const set = formFrames.get(tabId);
+    const frameId = set && set.size ? [...set][0] : 0;
+    try {
+      return await chrome.tabs.sendMessage(tabId, { type: "fillPage" }, { frameId });
+    } catch (e) {
+      return { error: "Could not reach the form frame — reload the page and retry." };
+    }
+  },
   async login({ email, password }) {
     const r = await api("/api/auth/login", { method: "POST", body: { email, password } });
     await chrome.storage.local.set({ jh_token: r.token, jh_user: r.user });
@@ -52,11 +80,13 @@ const handlers = {
   },
 };
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const fn = handlers[msg?.type];
   if (!fn) { sendResponse({ error: "unknown message" }); return false; }
-  Promise.resolve(fn(msg.payload || {}))
+  Promise.resolve(fn(msg.payload || {}, sender))
     .then((data) => sendResponse({ data }))
     .catch((e) => sendResponse({ error: e.message || String(e) }));
   return true; // async
 });
+
+chrome.tabs.onRemoved.addListener((tabId) => formFrames.delete(tabId));

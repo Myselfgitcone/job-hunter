@@ -224,15 +224,21 @@
     }
     const answers = data.answers || {};
     const aiKeys = new Set(data.ai_keys || []);
-    let filled = 0, ai = 0;
+    let filled = 0, ai = 0, firstFilled = null;
     for (const entry of entries) {
       const v = answers[entry.key];
       if (fillField(entry, v)) {
         filled++;
+        if (!firstFilled) firstFilled = entry.isGroup ? entry.el[0] : entry.el;
         const isAi = aiKeys.has(entry.key);
         if (isAi) ai++;
         outline(entry, isAi);
       }
+    }
+    // Bring the filled form into view — on many ATS pages it sits far below
+    // the job description, so the user wouldn't otherwise see it happened.
+    if (firstFilled) {
+      try { firstFilled.scrollIntoView({ behavior: "smooth", block: "center" }); } catch { /* ignore */ }
     }
     onStatus({ done: true, total: entries.length, filled, ai, resume: data.resume_source });
   }

@@ -3830,6 +3830,28 @@ def _revert_job_dates(result: str, base_resume: str) -> str:
     return "\n".join(out)
 
 
+def _trim_summary_count(result: str) -> str:
+    """Deterministic summary-count ceiling. The augmenter only ADDS bullets
+    (deficit > 0); a 6-bullet summary flagged '[SUMMARY] … Trim.' looped
+    through three no-op attempts and shipped twice. Extras are dropped from
+    the END — the first bullets carry title/years/core skills; trailing ones
+    are the generic overflow."""
+    lines = result.split("\n")
+    idxs, in_summary = [], False
+    for i, l in enumerate(lines):
+        s = l.strip()
+        if s and s.rstrip(":").isupper() and len(s) < 60:
+            in_summary = "SUMMARY" in s.upper()
+            continue
+        if in_summary and s.startswith("•"):
+            idxs.append(i)
+    if len(idxs) > SUMMARY_EXACT:
+        drop = idxs[SUMMARY_EXACT:]
+        _plog(f"[SUMMARY TRIM] {len(idxs)} bullets → {SUMMARY_EXACT} (dropped last {len(drop)})")
+        lines = [l for i, l in enumerate(lines) if i not in set(drop)]
+    return "\n".join(lines)
+
+
 def _revert_years_claim(result: str, base_resume: str) -> str:
     """The summary's years-of-experience claim always matches the base
     resume's. [YEARS MISMATCH] lint existed but had no deterministic fix —
@@ -4474,6 +4496,10 @@ async def tailor_resume(base_resume: str, job_description: str,
         result = _revert_years_claim(result, base_resume)
     except Exception as e:
         _plog(f"[YEARS GUARD] Failed: {e}")
+    try:
+        result = _trim_summary_count(result)
+    except Exception as e:
+        _plog(f"[SUMMARY TRIM] Failed: {e}")
     try:
         result = _enforce_jd_tool_containment(result, base_resume,
                                               skills_missing_from_original)

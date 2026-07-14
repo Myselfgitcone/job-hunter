@@ -623,6 +623,7 @@ export default function App() {
           ats_keywords_missing: r.ats_after?.missing ?? [],
           needs_review: r.needs_review ?? false,
           review_reasons: r.review_reasons ?? [],
+          review_notes: r.review_notes ?? [],
           generation_seconds: genSeconds,
           ats_quality: r.ats_after?.quality,
         });

@@ -2528,6 +2528,27 @@ def is_fragment_bullet(text: str, context: str = "") -> bool:
         bool(lower & _FRAG_IRREGULAR_VERBS)
     if not has_verb:
         return True
+    # A semicolon joins two independent clauses — each needs its own verb.
+    # 'Implemented X; the 45% drop in Y.' has a verb ('Implemented') in the
+    # first clause, satisfying the whole-bullet check above, while the
+    # second clause is a bare noun phrase with no verb of its own (live
+    # miss: a trim/rewrite pass leaves a dangling appositive after ';').
+    if ";" in t:
+        for clause in t.rstrip(".").split(";")[1:]:
+            c_words = {w.strip(",;:().").lower() for w in clause.split()}
+            if not c_words:
+                continue
+            # -ing included: a gerund-led outcome clause ('reducing costs
+            # by 40%') is a legitimate, common independent-clause shape in
+            # these bullets. Plural nouns ('requests', 'reports') are
+            # deliberately NOT treated as verbs here — that ambiguity is
+            # exactly what let 'the 45% drop in ad-hoc data requests'
+            # through in the first place.
+            c_has_verb = any(w.endswith("ed") and len(w) > 3 for w in c_words) or \
+                bool(c_words & _FRAG_IRREGULAR_VERBS) or \
+                any(w.endswith("ing") and len(w) > 4 for w in c_words)
+            if not c_has_verb:
+                return True
     return False
 
 

@@ -3457,7 +3457,29 @@ async def _compress_flagged_bullets(resume: str, base_resume: str,
                 return f"new token '{tok}'"
         return ""
 
-    fixed, rejects = 0, []
+    def _shrink_until_clean(text: str) -> str:
+        """Last-resort deterministic backup when the AI's rewrite gets
+        rejected — the pre-repair scissored text can itself still be a
+        fragment (live case: a hard word-count cut lands on a bare
+        trailing gerund with no comma to back up to). Repeatedly drops
+        back to the last comma/semicolon boundary, or the last word if
+        none exists, until it reads clean or hits an 8-word floor —
+        never ships a rejected repair with a visibly cut-off tail."""
+        t = text
+        for _ in range(6):
+            if not is_fragment_bullet(t, _frag_ctx) or len(t.split()) <= 8:
+                break
+            last_break = max(t.rfind(","), t.rfind(";"))
+            if last_break > 0 and len(t[:last_break].split()) >= 8:
+                t = t[:last_break].rstrip()
+            else:
+                words = t.split()
+                if len(words) <= 8:
+                    break
+                t = " ".join(words[:-1])
+        return t.rstrip(" ,;—–.")
+
+    fixed, salvaged, rejects = 0, 0, []
     for fid, idx in flagged.items():
         new = str(rewrites.get(fid, "")).strip().lstrip("• ").strip()
         orig = payload[fid]
@@ -3466,6 +3488,12 @@ async def _compress_flagged_bullets(resume: str, base_resume: str,
         why = _valid(new, orig, is_summary=fid in summary_ids)
         if why:
             rejects.append(why)
+            if fid not in summary_ids and is_fragment_bullet(orig, _frag_ctx):
+                salvage = _shrink_until_clean(orig)
+                if salvage != orig and not is_fragment_bullet(salvage, _frag_ctx):
+                    indent = lines[idx][:len(lines[idx]) - len(lines[idx].lstrip())]
+                    lines[idx] = f"{indent}• {salvage.rstrip('.')}."
+                    salvaged += 1
             continue
         indent = lines[idx][:len(lines[idx]) - len(lines[idx].lstrip())]
         lines[idx] = f"{indent}• {new.rstrip('.')}." if not new.endswith(".") else f"{indent}• {new}"
@@ -3473,6 +3501,7 @@ async def _compress_flagged_bullets(resume: str, base_resume: str,
     if fixed or rejects:
         _plog(f"[COMPRESS] AI-repaired {fixed}/{len(flagged)} damaged bullet(s); "
               f"{len(flagged) - fixed} kept scissored fallback"
+              + (f" ({salvaged} salvaged via deterministic backup)" if salvaged else "")
               + (f" — rejected: {'; '.join(rejects[:5])}" if rejects else ""))
     return "\n".join(lines)
 

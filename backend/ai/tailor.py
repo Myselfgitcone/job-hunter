@@ -3545,12 +3545,27 @@ def _metric_keys(text: str) -> set:
     return keys
 
 
+_EMAIL_RE = re.compile(r"\S+@\S+\.\S+")
+
+
+def _is_job_at_line(line: str) -> bool:
+    """'@' line that is a JOB header, not a contact line. The email address
+    in 'phone | name@gmail.com' matched the naive check and made the metric
+    guard treat the whole summary as an empty-metric 'gmail.com' job — every
+    summary number got excised as unproven (live: '6+ years' → 'years',
+    'SOC 2' → 'SOC')."""
+    if "@" not in line or line.strip().startswith("•"):
+        return False
+    return not _EMAIL_RE.search(line)
+
+
 def _company_chunks(text: str) -> list[tuple[str, str]]:
-    """[(company_lower, chunk_text)] — split on '@' header lines. Works with
-    both pipe- and tab-format headers."""
+    """[(company_lower, chunk_text)] — split on '@' JOB header lines (contact
+    lines with an email are excluded). Works with pipe- and tab-format
+    headers."""
     chunks, cur, buf = [], None, []
     for line in text.split("\n"):
-        if "@" in line and not line.strip().startswith("•"):
+        if _is_job_at_line(line):
             if cur:
                 chunks.append((cur, "\n".join(buf)))
             cur = re.split(r"[|\t]|\s{2,}", line.split("@", 1)[1].strip())[0].strip().lower()
@@ -3581,11 +3596,17 @@ def _enforce_metric_provenance(result: str, base_resume: str) -> str:
     lines = result.split("\n")
     cur_keys, removed = None, []
     for i, line in enumerate(lines):
-        if "@" in line and not line.strip().startswith("•"):
+        s = line.strip()
+        # Section headers end the current job scope — without this, a stray
+        # match could leak the last job's keys into SKILLS/EDUCATION.
+        if s and s.rstrip(":").isupper() and len(s) < 60 and "@" not in s:
+            cur_keys = None
+            continue
+        if _is_job_at_line(line):
             after_at = line.split("@", 1)[1].lower()
             cur_keys = next((ks for co, ks in base_by_co.items() if co and co in after_at), None)
             continue
-        if cur_keys is None or not line.strip().startswith("•"):
+        if cur_keys is None or not s.startswith("•"):
             continue
         new = line
         # iterate matches on the CURRENT text right-to-left so spans stay valid
@@ -3652,7 +3673,7 @@ def _enforce_jd_tool_containment(result: str, base_resume: str,
             section = s.upper()
             kinds.append(("header", -1))
             continue
-        if "@" in line and not s.startswith("•"):
+        if _is_job_at_line(line):
             job_idx += 1
             kinds.append(("jobhdr", job_idx))
             continue
@@ -3667,11 +3688,29 @@ def _enforce_jd_tool_containment(result: str, base_resume: str,
             kinds.append(("other", job_idx))
 
     def _strip_token(text: str, skill: str) -> str:
-        out = re.sub(r",?\s*(?:and\s+)?" + _kw_pat(skill), "", text, flags=re.IGNORECASE)
+        """Remove the skill AND exactly one neighboring connector, so list
+        grammar survives. Order matters: mid-list first, then trailing pair
+        ('X and TOKEN'), then leading pair ('TOKEN and X' — the live bug:
+        stripping 'data governance' from 'Implements data governance and
+        quality frameworks' left 'Implements and quality frameworks')."""
+        kw = _kw_pat(skill)
+        for pat in (r",\s*(?:and\s+)?" + kw,          # ", TOKEN" / ", and TOKEN"
+                    r"\s+and\s+" + kw,                # "X and TOKEN"
+                    kw + r"\s*,\s*(?=\S)",            # "TOKEN, X…"
+                    kw + r"\s+and\s+(?=\S)",          # "TOKEN and X…"
+                    r"\s*" + kw):                     # bare
+            out, n = re.subn(pat, "", text, count=1, flags=re.IGNORECASE)
+            if n:
+                break
+        else:
+            return text
         out = re.sub(r"\s{2,}", " ", out)
         out = re.sub(r"\s+([,;.)])", r"\1", out)
         out = re.sub(r"\(\s*,", "(", out)
         out = re.sub(r",\s*,", ",", out)
+        # connector residue: "to and X", "in and X", "and and"
+        out = re.sub(r"\b(to|in|for|with|of|across|and)\s+and\b", r"\1", out)
+        out = re.sub(r"•\s*and\b", "• ", out)
         return out.rstrip(" ,;")
 
     changed = 0

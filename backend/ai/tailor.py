@@ -3334,6 +3334,67 @@ def _strip_metric_narration(resume: str) -> str:
     return '\n'.join(out)
 
 
+def _salvage_fragment(text: str, ctx: str) -> str:
+    """Deterministically cut a fragment's broken tail until it reads clean.
+    Backs up to the last comma/semicolon boundary (or drops the last word
+    if none), stopping at an 8-word floor. Shared by the compress-pass
+    rejection branch and the final display-parity sweep."""
+    from resume_lint import is_fragment_bullet
+    t = text
+    for _ in range(6):
+        if not is_fragment_bullet(t, ctx) or len(t.split()) <= 8:
+            break
+        last_break = max(t.rfind(","), t.rfind(";"))
+        if last_break > 0 and len(t[:last_break].split()) >= 8:
+            t = t[:last_break].rstrip()
+        else:
+            words = t.split()
+            if len(words) <= 8:
+                break
+            t = " ".join(words[:-1])
+    return t.rstrip(" ,;—–.")
+
+
+def _final_fragment_sweep(resume: str, job_description: str) -> str:
+    """TRUE-LAST fragment gate — runs the EXACT detector that powers the
+    in-app 'N bullets look cut off' hover warning (find_fragment_bullets
+    with context=job_description only, matching score_ats), then salvages
+    each flagged experience bullet in place. Closes the display-parity
+    hole: the warning used a different context than the pipeline's repair
+    pass, so it fired on bullets the repair had passed. If the app is
+    confident enough to warn, it's confident enough to cut the bad tail —
+    the user should never see a flag for something we could fix ourselves."""
+    try:
+        from resume_lint import find_fragment_bullets, is_fragment_bullet
+    except Exception:
+        return resume
+    frags = set(find_fragment_bullets(resume, context=job_description or ""))
+    if not frags:
+        return resume
+    lines = resume.split("\n")
+    in_summary = False
+    fixed = 0
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if s and s.rstrip(":").isupper() and len(s) < 60:
+            in_summary = "SUMMARY" in s.upper()
+            continue
+        if in_summary or not s.startswith("•"):
+            continue
+        body = s.lstrip("• ").strip()
+        if body not in frags:
+            continue
+        salvage = _salvage_fragment(body, job_description or "")
+        if salvage != body and not is_fragment_bullet(salvage, job_description or ""):
+            indent = line[:len(line) - len(line.lstrip())]
+            lines[i] = f"{indent}• {salvage.rstrip('.')}."
+            fixed += 1
+    if fixed:
+        _plog(f"[FRAGMENT SWEEP] auto-salvaged {fixed} bullet(s) that would have "
+              f"tripped the hover warning")
+    return "\n".join(lines)
+
+
 async def _compress_flagged_bullets(resume: str, base_resume: str,
                                     job_description: str,
                                     api_key: str, provider: str, model: str,
@@ -3457,28 +3518,6 @@ async def _compress_flagged_bullets(resume: str, base_resume: str,
                 return f"new token '{tok}'"
         return ""
 
-    def _shrink_until_clean(text: str) -> str:
-        """Last-resort deterministic backup when the AI's rewrite gets
-        rejected — the pre-repair scissored text can itself still be a
-        fragment (live case: a hard word-count cut lands on a bare
-        trailing gerund with no comma to back up to). Repeatedly drops
-        back to the last comma/semicolon boundary, or the last word if
-        none exists, until it reads clean or hits an 8-word floor —
-        never ships a rejected repair with a visibly cut-off tail."""
-        t = text
-        for _ in range(6):
-            if not is_fragment_bullet(t, _frag_ctx) or len(t.split()) <= 8:
-                break
-            last_break = max(t.rfind(","), t.rfind(";"))
-            if last_break > 0 and len(t[:last_break].split()) >= 8:
-                t = t[:last_break].rstrip()
-            else:
-                words = t.split()
-                if len(words) <= 8:
-                    break
-                t = " ".join(words[:-1])
-        return t.rstrip(" ,;—–.")
-
     fixed, salvaged, rejects = 0, 0, []
     for fid, idx in flagged.items():
         new = str(rewrites.get(fid, "")).strip().lstrip("• ").strip()
@@ -3488,8 +3527,12 @@ async def _compress_flagged_bullets(resume: str, base_resume: str,
         why = _valid(new, orig, is_summary=fid in summary_ids)
         if why:
             rejects.append(why)
+            # Rejected rewrite — the pre-repair scissored text can itself
+            # still be a fragment. Deterministic backup: cut its broken
+            # tail rather than ship it (never for summary — those are
+            # verbless by design).
             if fid not in summary_ids and is_fragment_bullet(orig, _frag_ctx):
-                salvage = _shrink_until_clean(orig)
+                salvage = _salvage_fragment(orig, _frag_ctx)
                 if salvage != orig and not is_fragment_bullet(salvage, _frag_ctx):
                     indent = lines[idx][:len(lines[idx]) - len(lines[idx].lstrip())]
                     lines[idx] = f"{indent}• {salvage.rstrip('.')}."
@@ -4678,6 +4721,16 @@ async def tailor_resume(base_resume: str, job_description: str,
         result = _merge_cont_rows(result)
     except Exception as e:
         print(f"[COVERAGE GUARANTEE] Failed: {e}")
+
+    # ── Final fragment sweep — TRUE LAST pass, display parity ──────────────
+    # Runs the exact detector behind the in-app hover warning and salvages
+    # anything it flags, so the user never sees a "cut off" flag for a
+    # bullet we could trim ourselves. Must be dead last — any earlier pass
+    # can reintroduce a fragment.
+    try:
+        result = _final_fragment_sweep(result, job_description)
+    except Exception as e:
+        _plog(f"[FRAGMENT SWEEP] Failed: {e}")
 
     # ── REVIEW GATE — DISABLED by user request (2026-07-06) ────────────────
     # Green/red banner turned off. Function signature kept as (result, review)

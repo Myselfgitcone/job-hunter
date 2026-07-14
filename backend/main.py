@@ -2817,6 +2817,7 @@ async def fetch_jd(job_id: str, user_id: str = Depends(get_current_user_id)):
 
 
 DAILY_TAILOR_LIMIT = 45
+DAILY_APPLY_LIMIT  = 35
 
 async def _get_daily_tailor_count(user_id: str, db) -> int:
     """Count job tailors + quick tailors this user has run today (UTC)."""
@@ -2833,12 +2834,30 @@ async def _get_daily_tailor_count(user_id: str, db) -> int:
     return job_count + quick_count
 
 
+async def _get_daily_applied_count(user_id: str, db) -> int:
+    """Count jobs this user marked 'applied' today (UTC) — keyed off
+    applied_at, the timestamp set whenever status flips to 'applied'
+    (manual status change or successful auto-apply)."""
+    today = datetime.now(_UTC.utc).strftime("%Y-%m-%d")
+    return (await db.execute(
+        select(func.count()).select_from(UserJob)
+        .where(UserJob.user_id == user_id, UserJob.status == "applied",
+               UserJob.applied_at.like(f"{today}%"))
+    )).scalar() or 0
+
+
 @app.get("/api/usage/today")
 async def get_daily_usage(user_id: str = Depends(get_current_user_id)):
-    """How many tailoring runs the user has done today vs their daily limit."""
+    """How many tailoring runs and applications the user has done today vs
+    their daily limits."""
     async with SessionLocal() as db:
         used = await _get_daily_tailor_count(user_id, db)
-    return {"used": used, "limit": DAILY_TAILOR_LIMIT, "remaining": max(0, DAILY_TAILOR_LIMIT - used)}
+        applied_used = await _get_daily_applied_count(user_id, db)
+    return {
+        "used": used, "limit": DAILY_TAILOR_LIMIT, "remaining": max(0, DAILY_TAILOR_LIMIT - used),
+        "applied_used": applied_used, "applied_limit": DAILY_APPLY_LIMIT,
+        "applied_remaining": max(0, DAILY_APPLY_LIMIT - applied_used),
+    }
 
 
 # ————————————————————————————————————————————————————————————————————————————————

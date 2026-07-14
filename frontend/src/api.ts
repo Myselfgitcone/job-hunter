@@ -237,7 +237,10 @@ export const api = {
   jobCount: () => req<{ count: number }>("/api/jobs/count"),
   getAnalytics: (personal?: boolean) => req<any>(`/api/analytics${personal ? "?personal=1" : ""}`),
   adminUsersAnalytics: () => req<any[]>("/api/admin/users-analytics"),
-  getDailyUsage: () => req<{ used: number; limit: number; remaining: number }>("/api/usage/today"),
+  getDailyUsage: () => req<{
+    used: number; limit: number; remaining: number;
+    applied_used: number; applied_limit: number; applied_remaining: number;
+  }>("/api/usage/today"),
 
   getSettings: () => req<Settings>("/api/settings"),
   getAiStatus: () => req<any>("/api/settings/ai-status"),

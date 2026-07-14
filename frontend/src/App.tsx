@@ -703,7 +703,10 @@ export default function App() {
   }, [isAuthenticated, loadChatUnread]);
 
   // Daily tailor usage
-  const [dailyUsage, setDailyUsage] = useState<{ used: number; limit: number; remaining: number } | null>(null);
+  const [dailyUsage, setDailyUsage] = useState<{
+    used: number; limit: number; remaining: number;
+    applied_used: number; applied_limit: number; applied_remaining: number;
+  } | null>(null);
   useEffect(() => {
     if (!isAuthenticated) return;
     const load = () => api.getDailyUsage().then(setDailyUsage).catch(() => {});
@@ -857,6 +860,26 @@ export default function App() {
             )}
             {dailyUsage.remaining > 0 && dailyUsage.remaining < 10 && (
               <div style={{ fontSize: 10, color: "#f59e0b", marginTop: 4 }}>{dailyUsage.remaining} remaining today</div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "10px 0 6px" }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--tx-2)" }}>Applied today</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: dailyUsage.applied_remaining === 0 ? "#ef4444" : dailyUsage.applied_remaining < 10 ? "#f59e0b" : "var(--tx-2)" }}>
+                {dailyUsage.applied_used} / {dailyUsage.applied_limit}
+              </span>
+            </div>
+            <div style={{ height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}>
+              <div style={{
+                height: "100%", borderRadius: 2, transition: "width 0.3s",
+                width: `${Math.min(100, (dailyUsage.applied_used / dailyUsage.applied_limit) * 100)}%`,
+                background: dailyUsage.applied_remaining === 0 ? "#ef4444" : dailyUsage.applied_remaining < 10 ? "#f59e0b" : "#8b5cf6"
+              }} />
+            </div>
+            {dailyUsage.applied_remaining === 0 && (
+              <div style={{ fontSize: 10, color: "#ef4444", marginTop: 4 }}>Limit reached — resets midnight UTC</div>
+            )}
+            {dailyUsage.applied_remaining > 0 && dailyUsage.applied_remaining < 10 && (
+              <div style={{ fontSize: 10, color: "#f59e0b", marginTop: 4 }}>{dailyUsage.applied_remaining} remaining today</div>
             )}
           </div>
         )}

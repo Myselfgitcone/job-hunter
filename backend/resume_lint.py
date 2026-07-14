@@ -2535,18 +2535,25 @@ def is_fragment_bullet(text: str, context: str = "") -> bool:
     # miss: a trim/rewrite pass leaves a dangling appositive after ';').
     if ";" in t:
         for clause in t.rstrip(".").split(";")[1:]:
-            c_words = {w.strip(",;:().").lower() for w in clause.split()}
+            cw = [w.strip(",;:().").lower() for w in clause.split()]
+            c_words = {w for w in cw if w}
             if not c_words:
                 continue
-            # -ing included: a gerund-led outcome clause ('reducing costs
-            # by 40%') is a legitimate, common independent-clause shape in
-            # these bullets. Plural nouns ('requests', 'reports') are
-            # deliberately NOT treated as verbs here — that ambiguity is
-            # exactly what let 'the 45% drop in ad-hoc data requests'
-            # through in the first place.
+            # A gerund counts as this clause's verb ONLY when it's not the
+            # object of a preposition. 'reducing costs by 40%' — gerund-led,
+            # a real independent-clause shape → verb. 'in provisioning time'
+            # — 'provisioning' follows 'in', so it's a gerund-as-noun, NOT a
+            # verb (live miss: 'the 50% reduction in provisioning time' has
+            # no verb but 'provisioning' faked one). Plural nouns
+            # ('requests', 'reports') are likewise never treated as verbs.
+            _PREP = {"in", "of", "for", "with", "to", "on", "at", "by", "from"}
+            gerund_verb = any(
+                w.endswith("ing") and len(w) > 4 and
+                (idx == 0 or cw[idx - 1] not in _PREP)
+                for idx, w in enumerate(cw) if w
+            )
             c_has_verb = any(w.endswith("ed") and len(w) > 3 for w in c_words) or \
-                bool(c_words & _FRAG_IRREGULAR_VERBS) or \
-                any(w.endswith("ing") and len(w) > 4 for w in c_words)
+                bool(c_words & _FRAG_IRREGULAR_VERBS) or gerund_verb
             if not c_has_verb:
                 return True
     return False

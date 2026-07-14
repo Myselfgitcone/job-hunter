@@ -3369,8 +3369,6 @@ def _final_fragment_sweep(resume: str, job_description: str) -> str:
     except Exception:
         return resume
     frags = set(find_fragment_bullets(resume, context=job_description or ""))
-    if not frags:
-        return resume
     lines = resume.split("\n")
     in_summary = False
     fixed = 0
@@ -3379,9 +3377,25 @@ def _final_fragment_sweep(resume: str, job_description: str) -> str:
         if s and s.rstrip(":").isupper() and len(s) < 60:
             in_summary = "SUMMARY" in s.upper()
             continue
-        if in_summary or not s.startswith("•"):
+        if not s.startswith("•"):
             continue
         body = s.lstrip("• ").strip()
+
+        # Summary bullets are exempt from verb/phrase heuristics (they are
+        # verbless by design), but STRUCTURAL breakage is not a design
+        # choice — an unbalanced paren means the text was cut mid-list
+        # ('Azure (ADF, ADLS Gen2, Synapse Analytics' shipped live). Trim
+        # back to before the dangling '(' so it reads clean.
+        if in_summary:
+            if body.count("(") > body.count(")"):
+                cut = body.rfind("(")
+                salvage = body[:cut].rstrip(" ,;—–")
+                if len(salvage.split()) >= 6:
+                    indent = line[:len(line) - len(line.lstrip())]
+                    lines[i] = f"{indent}• {salvage.rstrip('.')}."
+                    fixed += 1
+            continue
+
         if body not in frags:
             continue
         salvage = _salvage_fragment(body, job_description or "")

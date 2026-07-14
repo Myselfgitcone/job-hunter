@@ -3438,12 +3438,21 @@ async def _compress_flagged_bullets(resume: str, base_resume: str,
         baseline = {l.strip().lstrip("• ").strip()
                     for l in forced_from.split("\n") if l.strip().startswith("•")}
 
-    # Collect flagged bullets. Heuristics apply to experience bullets only
-    # (summary bullets are fragments by design); guard-forced bullets are
-    # included wherever they live, summary included.
+    # Send EVERY experience bullet to the same call — not just regex-flagged
+    # ones. The regex pre-filter (word-count / is_fragment_bullet) misses
+    # short truncated-compound fragments ('...analytics and regulatory.')
+    # that are well under the word limit and don't match any known-shape
+    # pattern. The AI is a better grammar judge than any regex; the
+    # existing per-bullet validator (word count, metric preservation,
+    # vocabulary containment) already guards against fabrication, so
+    # widening the input is safe. `heur_flagged` tracks which bullets the
+    # regex actually flagged — those get full-rewrite trust; bullets sent
+    # only as part of the wider batch get an extra tail-only-edit
+    # guardrail below, since they weren't confirmed broken.
     lines = resume.split("\n")
     flagged: dict[str, int] = {}      # id -> line index
     summary_ids: set[str] = set()     # ids whose bullet lives in the summary
+    heur_flagged: set[str] = set()    # ids the regex actually flagged
     in_summary = False
     for i, line in enumerate(lines):
         s = line.strip()
@@ -3456,28 +3465,36 @@ async def _compress_flagged_bullets(resume: str, base_resume: str,
         forced = bool(baseline) and body not in baseline
         heur = (not in_summary) and (
             len(body.split()) > _WL + 3 or is_fragment_bullet(body, _frag_ctx))
-        if forced or heur:
+        send = forced or heur or not in_summary
+        if send:
             fid = str(len(flagged))
             flagged[fid] = i
             if in_summary:
                 summary_ids.add(fid)
+            if forced or heur:
+                heur_flagged.add(fid)
     if not flagged:
         return resume
 
     payload = {fid: lines[idx].strip().lstrip("• ").strip()
                for fid, idx in flagged.items()}
     system = (
-        "You repair damaged resume bullets. Each input bullet was mechanically "
-        "edited and may end mid-phrase or have a hole mid-sentence (a removed "
-        "word leaving 'Implements and quality frameworks'). Rewrite each as ONE "
-        "grammatically complete line:\n"
+        "You proofread resume bullets after a mechanical editing pass. MOST "
+        "bullets are already fine — for those, return them completely "
+        "UNCHANGED, character for character. Only touch a bullet whose "
+        "ENDING is grammatically incomplete — cut off mid-phrase, a dangling "
+        "preposition/connective, or a hole mid-sentence left by a removed "
+        "word (e.g. 'Implements and quality frameworks', 'for analytics and "
+        "regulatory.', 'adoption and KPI.'). For those, complete the ending "
+        "with the smallest possible fix — do not rewrite the rest of the "
+        "bullet:\n"
         f"- ≤{_WL} words; keep the original's style (experience bullets start "
         "with a past-tense action verb; summary bullets keep their phrase style)\n"
         "- keep every number, percentage, and metric exactly\n"
         "- use ONLY tools/terms already present in the bullet — never add new "
         "ones and never re-add anything that appears to have been removed\n"
         "- no 'measured by/tracked via' evidence clauses\n"
-        'Return ONLY JSON: {"<id>": "<rewritten bullet>", ...} for every id.'
+        'Return ONLY JSON: {"<id>": "<bullet, unchanged or ending-fixed>", ...} for every id.'
     )
     try:
         raw = await chat(
@@ -3493,6 +3510,15 @@ async def _compress_flagged_bullets(resume: str, base_resume: str,
 
     _IDENT = re.compile(r"[A-Za-z][\w+#.]*")
 
+    def _idents(text: str) -> list[str]:
+        # A genuine dotted identifier (ASP.NET, Node.js) always ends in an
+        # alnum char — a token ending in a bare '.' only got one because the
+        # regex swallowed the sentence-final period off the last word
+        # ('reporting.'). Strip it so real repairs that legitimately end a
+        # bullet aren't rejected as a phantom 'new token' (live bug — this
+        # is what 'rejected: new token 'measurement.'' in the logs was).
+        return [t[:-1] if t.endswith(".") else t for t in _IDENT.findall(text)]
+
     def _stem(w: str) -> str:
         # Same suffix-fold family the JD-echo check uses — 'Dockerized'
         # folds toward 'Docker' so an inflected identifier doesn't fail
@@ -3506,7 +3532,7 @@ async def _compress_flagged_bullets(resume: str, base_resume: str,
 
     # Allowed vocabulary as a token set (exact lowers + stems), built once.
     _vocab_tokens: set[str] = set()
-    for tok in _IDENT.findall(base_resume + "\n" + job_description):
+    for tok in _idents(base_resume + "\n" + job_description):
         _vocab_tokens.add(tok.lower())
         _vocab_tokens.add(_stem(tok))
 
@@ -3524,23 +3550,46 @@ async def _compress_flagged_bullets(resume: str, base_resume: str,
                 return f"lost metric '{tok}'"
         # vocabulary: identifier-looking tokens must exist in base+JD+orig —
         # exact lower OR stem-folded, so inflections don't false-positive.
-        allowed = _vocab_tokens | {t.lower() for t in _IDENT.findall(orig)} \
-            | {_stem(t) for t in _IDENT.findall(orig)}
-        for tok in _IDENT.findall(new):
+        allowed = _vocab_tokens | {t.lower() for t in _idents(orig)} \
+            | {_stem(t) for t in _idents(orig)}
+        for tok in _idents(new):
             if (any(c.isupper() for c in tok[1:]) or any(c in "#+." for c in tok)) \
                     and tok.lower() not in allowed and _stem(tok) not in allowed:
                 return f"new token '{tok}'"
         return ""
 
-    fixed, salvaged, rejects = 0, 0, []
+    def _tail_only_edit(orig: str, new: str, max_tail_words: int = 4) -> bool:
+        """True when `new` differs from `orig` only in the last few words —
+        the shape of a legitimate ending-completion. Bullets the regex
+        didn't confirm broken get this extra guardrail so a wider-net AI
+        call can't quietly rewrite a bullet it wasn't asked to touch."""
+        ow = orig.rstrip(".").split()
+        nw = new.rstrip(".").split()
+        if len(ow) < 4:
+            return False
+        for k in range(0, max_tail_words + 1):
+            prefix_len = len(ow) - k
+            if prefix_len < 4:
+                break
+            if [w.lower() for w in ow[:prefix_len]] == [w.lower() for w in nw[:prefix_len]]:
+                return True
+        return False
+
+    fixed_heur, fixed_wide, salvaged, rejects = 0, 0, 0, []
     for fid, idx in flagged.items():
         new = str(rewrites.get(fid, "")).strip().lstrip("• ").strip()
         orig = payload[fid]
         if not new or new == orig:
             continue
+        if fid not in heur_flagged and not _tail_only_edit(orig, new):
+            # Wider-net bullet, but the AI's edit wasn't a tail-only
+            # completion — could be unwanted drift on a bullet that was
+            # never confirmed broken. Discard, keep the original untouched.
+            continue
         why = _valid(new, orig, is_summary=fid in summary_ids)
         if why:
-            rejects.append(why)
+            if fid in heur_flagged:
+                rejects.append(why)
             # Rejected rewrite — the pre-repair scissored text can itself
             # still be a fragment. Deterministic backup: cut its broken
             # tail rather than ship it (never for summary — those are
@@ -3554,10 +3603,15 @@ async def _compress_flagged_bullets(resume: str, base_resume: str,
             continue
         indent = lines[idx][:len(lines[idx]) - len(lines[idx].lstrip())]
         lines[idx] = f"{indent}• {new.rstrip('.')}." if not new.endswith(".") else f"{indent}• {new}"
-        fixed += 1
-    if fixed or rejects:
-        _plog(f"[COMPRESS] AI-repaired {fixed}/{len(flagged)} damaged bullet(s); "
-              f"{len(flagged) - fixed} kept scissored fallback"
+        if fid in heur_flagged:
+            fixed_heur += 1
+        else:
+            fixed_wide += 1
+    if fixed_heur or fixed_wide or rejects:
+        _plog(f"[COMPRESS] AI-repaired {fixed_heur}/{len(heur_flagged)} regex-flagged "
+              f"damaged bullet(s)"
+              + (f"; {fixed_wide} additional completion(s) found only by the wider AI "
+                 f"pass (missed by the regex pre-filter)" if fixed_wide else "")
               + (f" ({salvaged} salvaged via deterministic backup)" if salvaged else "")
               + (f" — rejected: {'; '.join(rejects[:5])}" if rejects else ""))
     return "\n".join(lines)

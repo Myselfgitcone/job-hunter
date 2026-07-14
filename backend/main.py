@@ -3580,6 +3580,45 @@ async def _load_profile_skills(user_id: str) -> list[str]:
     return list(profile_data.get("skills", [])) if profile_data else []
 
 
+@app.post("/api/quick-tailor/extract-jd")
+async def quick_tailor_extract_jd(file: UploadFile = File(...), user_id: str = Depends(get_current_user_id)):
+    """Extract raw text from an uploaded JD file (PDF/DOCX/TXT) — no AI call,
+    just pulls text so the user doesn't have to copy-paste. Reuses the same
+    extraction logic as /api/profile/parse-resume, minus the LLM structuring
+    step (a JD just needs to land in the textarea as plain text)."""
+    import io
+
+    content = await file.read()
+    filename = (file.filename or "").lower()
+    text = ""
+
+    if filename.endswith(".pdf"):
+        try:
+            import pypdf
+            reader = pypdf.PdfReader(io.BytesIO(content))
+            text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        except ImportError:
+            raise HTTPException(500, "pypdf not installed. Run: pip install pypdf")
+        except Exception as e:
+            raise HTTPException(400, f"Could not read PDF: {e}")
+    elif filename.endswith(".docx"):
+        try:
+            from docx import Document
+            doc = Document(io.BytesIO(content))
+            text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+        except Exception as e:
+            raise HTTPException(400, f"Could not read DOCX: {e}")
+    elif filename.endswith(".txt"):
+        text = content.decode("utf-8", errors="ignore")
+    else:
+        raise HTTPException(400, "Unsupported file. Use PDF, DOCX, or TXT.")
+
+    if not text.strip():
+        raise HTTPException(400, "No text extracted from file. Try a different format.")
+
+    return {"text": text.strip()}
+
+
 @app.post("/api/quick-tailor")
 async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:

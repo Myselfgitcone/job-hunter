@@ -307,6 +307,28 @@ export const api = {
     return res.json();
   },
 
+  extractJdFile: async (file: File): Promise<{ text: string }> => {
+    const token = localStorage.getItem("jh_token");
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${BASE}/api/quick-tailor/extract-jd`, {
+      method: "POST",
+      body: form,
+      headers: token ? { "Authorization": `Bearer ${token}` } : {},
+    });
+    if (res.status === 401) {
+      localStorage.removeItem("jh_token");
+      localStorage.removeItem("jh_user");
+      window.location.reload();
+      throw new Error("Unauthorized");
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || "Failed to extract JD text");
+    }
+    return res.json();
+  },
+
   qualifyJob: (id: string) => req<QualifyResult>(`/api/jobs/${id}/qualify`, { method: "POST" }),
   qualifyAll: () => req("/api/jobs/qualify-all", { method: "POST" }),
 

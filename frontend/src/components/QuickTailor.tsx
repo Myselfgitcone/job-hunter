@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { api } from "../api";
-import { Sparkles, Loader2, Download, X, FileText, FolderDown } from "lucide-react";
+import { Sparkles, Loader2, Download, X, FileText, FolderDown, Upload } from "lucide-react";
 import { CompanyAutocomplete } from "./CompanyAutocomplete";
 
 interface Props { open?: boolean; onClose: () => void; tailorModel?: string; pageMode?: boolean; }
@@ -15,7 +15,11 @@ export function QuickTailor({ open = true, onClose, onToast, pageMode = false }:
   const [saving, setSaving]           = useState(false);
   const [saveMsg, setSaveMsg]         = useState("");
   const [elapsed, setElapsed]         = useState(0);
+  const [finalTime, setFinalTime]     = useState<number | null>(null);
   const timerRef                       = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [uploadingJd, setUploadingJd] = useState(false);
+  const [jdUploadError, setJdUploadError] = useState("");
+  const jdFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (loading) {
@@ -29,15 +33,33 @@ export function QuickTailor({ open = true, onClose, onToast, pageMode = false }:
 
   const handleTailor = async () => {
     if (!jd.trim()) return;
-    setLoading(true); setError(""); setTailored("");
+    setLoading(true); setError(""); setTailored(""); setFinalTime(null);
+    const startedAt = Date.now();
     try {
       const res = await api.quickTailor(jd, company || "Company");
       setTailored(res.tailored_resume);
+      setFinalTime(Math.round((Date.now() - startedAt) / 1000));
     } catch (e: any) {
       setError(e.message || "Failed");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleUploadJdClick = () => jdFileRef.current?.click();
+
+  const handleUploadJd = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setUploadingJd(true); setJdUploadError("");
+    try {
+      const { text } = await api.extractJdFile(file);
+      setJd(text);
+    } catch (err: any) {
+      setJdUploadError(err?.message || "Could not extract text from file");
+    } finally {
+      setUploadingJd(false);
+    }
+    e.target.value = "";
   };
 
   const handleSavePackage = async () => {
@@ -110,7 +132,25 @@ export function QuickTailor({ open = true, onClose, onToast, pageMode = false }:
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-purple-500"
               />
             </div>
-            <label className="text-[11px] text-slate-500 mb-1.5">Paste full job description:</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[11px] text-slate-500">Paste full job description:</label>
+              <button
+                onClick={handleUploadJdClick}
+                disabled={uploadingJd}
+                className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 border border-slate-700 text-slate-300 text-[11px] rounded-lg transition-colors"
+              >
+                {uploadingJd ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
+                {uploadingJd ? "Reading…" : "Upload JD"}
+              </button>
+              <input
+                ref={jdFileRef}
+                type="file"
+                accept=".pdf,.docx,.txt"
+                style={{ display: "none" }}
+                onChange={handleUploadJd}
+              />
+            </div>
+            {jdUploadError && <p className="mb-1.5 text-[11px] text-red-400">{jdUploadError}</p>}
             <textarea
               value={jd}
               onChange={e => setJd(e.target.value)}
@@ -132,7 +172,12 @@ export function QuickTailor({ open = true, onClose, onToast, pageMode = false }:
           {/* Right — output */}
           <div className="flex flex-col flex-1 p-4 overflow-hidden">
             <div className="flex items-center justify-between mb-3">
-              <label className="text-[11px] text-slate-500">Tailored resume preview:</label>
+              <div className="flex items-center gap-2">
+                <label className="text-[11px] text-slate-500">Tailored resume preview:</label>
+                {finalTime !== null && (
+                  <span className="text-[11px] text-emerald-400">Tailored in {finalTime}s</span>
+                )}
+              </div>
               {tailored && (
                 <div className="flex gap-2 flex-wrap">
                   <button

@@ -2515,6 +2515,24 @@ def is_fragment_bullet(text: str, context: str = "") -> bool:
             bigram = f"{words[-2].strip(',;:()').lower()} {last}"
             if bigram not in context.lower():
                 return True
+        # Trailing bare adjective (live miss: "...to Snowflake for analytics
+        # and regulatory." — base had 'regulatory reporting', the noun got
+        # cut, 'regulatory' alone isn't a preposition so _FRAG_TRAILING
+        # never fired). Scoped tight to -ary/-ory only: broader adjective
+        # suffixes like -ive (effective, comprehensive, collaborative) are
+        # common, GRAMMATICAL predicate-adjective endings after a linking
+        # verb ('...was accurate and comprehensive.') and false-positived
+        # here during testing. Also skip entirely when a linking verb sits
+        # in the last few words — that's exactly the predicate-adjective
+        # shape this must not touch. Vocabulary-grounded like the gerund
+        # check: only flags when the trailing bigram isn't already
+        # established in context.
+        elif re.search(r"(ary|ory)$", last) and len(last) > 6 and not (
+            {"was", "were", "is", "are", "been", "being"} & {w.lower() for w in words[-5:-1]}
+        ):
+            bigram = f"{words[-2].strip(',;:()').lower()} {last}"
+            if bigram not in context.lower():
+                return True
     # Dangling digit-free participle tail: ", bringing MTTR" — a gerund
     # clause whose object got cut. A digit-bearing tail ("cutting runtime
     # 40%") is a completed outcome and passes.

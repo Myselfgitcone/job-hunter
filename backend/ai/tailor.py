@@ -2200,7 +2200,10 @@ def _trim_skills_to_layers(resume: str, jd_keywords: list[str], max_layer3: int 
 
     def classify(item: str) -> int:
         il = item.lower().strip()
-        if il in _CLOUD_PLATFORMS:
+        # Items are frequently written with a parenthetical service list —
+        # 'AWS (S3, EMR, Glue, ...)' — strip it before the platform-name check.
+        il_bare = re.sub(r'\s*\(.*?\)\s*$', '', il).strip()
+        if il in _CLOUD_PLATFORMS or il_bare in _CLOUD_PLATFORMS:
             return 1
         # L1: JD keyword
         for kw in jd_set:
@@ -4732,7 +4735,10 @@ def _guarantee_base_cloud_platforms(resume: str, base_resume: str) -> str:
     base_cloud: list[tuple[str, str, list[str]]] = []  # (canonical, row_label, sibling_items)
     for label, items in base_rows:
         for it in items:
-            canon = _CLOUD_PLATFORMS.get(it.strip().lower())
+            # 'AWS (S3, EMR, Glue, ...)' — strip the parenthetical service
+            # list before matching the bare platform name.
+            it_bare = re.sub(r'\s*\(.*?\)\s*$', '', it.strip().lower()).strip()
+            canon = _CLOUD_PLATFORMS.get(it.strip().lower()) or _CLOUD_PLATFORMS.get(it_bare)
             if canon:
                 base_cloud.append((canon, label, items))
     if not base_cloud:

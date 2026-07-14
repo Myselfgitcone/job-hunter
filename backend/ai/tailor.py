@@ -1988,6 +1988,20 @@ _COMPLIANCE_DOMAIN_KW = {
     "fraud", "sanctions", "pep", "watchlist", "gdpr", "hipaa", "sox", "pci",
 }
 
+# Major cloud platforms — resume-defining, ATS-scanned terms. Shared by
+# _trim_skills_to_layers (never cut once present) and
+# _guarantee_base_cloud_platforms (restore to output if base has it but
+# output dropped it). Canonical display form is the dict value.
+_CLOUD_PLATFORMS = {
+    "aws": "AWS", "amazon web services": "AWS",
+    "azure": "Azure", "microsoft azure": "Azure",
+    "gcp": "GCP", "google cloud": "GCP", "google cloud platform": "GCP",
+    "oci": "OCI", "oracle cloud": "OCI", "oracle cloud infrastructure": "OCI",
+    "ibm cloud": "IBM Cloud",
+    "alibaba cloud": "Alibaba Cloud",
+    "digitalocean": "DigitalOcean", "digital ocean": "DigitalOcean",
+}
+
 def _row_item_count(row_line: str) -> int:
     """Count items in a skills row (comma-separated values after the colon)."""
     if ':' not in row_line:
@@ -2183,14 +2197,6 @@ def _trim_skills_to_layers(resume: str, jd_keywords: list[str], max_layer3: int 
     ).lower()
 
     jd_set = {k.lower() for k in jd_keywords}
-    # Major cloud platforms are resume-defining, ATS-scanned terms — never
-    # let the layer-3 cap silently drop one because this specific JD didn't
-    # name it. Base-row-preservation: still requires the item to already be
-    # in the base resume's own skills section (this fn never adds items).
-    _CLOUD_PLATFORMS = {
-        "aws", "amazon web services", "azure", "microsoft azure",
-        "gcp", "google cloud", "google cloud platform",
-    }
 
     def classify(item: str) -> int:
         il = item.lower().strip()
@@ -4666,13 +4672,6 @@ async def tailor_resume(base_resume: str, job_description: str,
     review = {"needs_review": False, "reasons": [], "notes": list(_run_log)}
 
     return result, review
-
-
-_CLOUD_PLATFORMS = {
-    "aws": "AWS", "amazon web services": "AWS",
-    "azure": "Azure", "microsoft azure": "Azure",
-    "gcp": "GCP", "google cloud": "GCP", "google cloud platform": "GCP",
-}
 
 
 def _skills_section_span(resume: str) -> tuple[int, int] | None:

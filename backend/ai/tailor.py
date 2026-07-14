@@ -3504,6 +3504,20 @@ def _trim_long_bullets(resume: str, word_limit: int) -> str:
         t = re.sub(r"(?:\s+(?:and|or|with|from|to|of|in|on|for|by|via|"
                    r"across|per|than|the|a|an|using|into))+$", "", t,
                    flags=re.IGNORECASE)
+        # Same shape, but the cut landed one word further — a dangling
+        # infinitive: 'to' followed by a single orphaned bare verb
+        # ('...dbt Mesh to build'), nothing left to complete the clause.
+        # Scoped to 'to' + a LOWERCASE trailing word only — tool/platform
+        # names in these resumes are consistently capitalized ('to
+        # Snowflake', 'to AWS'), so this leaves genuine destination/target
+        # endings alone and only catches the bare-verb shape. The bullet's
+        # core subject+verb+object is already established earlier in the
+        # sentence, so the tail can go without breaking grammar. Re-run
+        # the bare-connective strip after, in case this exposes another.
+        t = re.sub(r"\s+to\s+[a-z]+$", "", t)
+        t = re.sub(r"(?:\s+(?:and|or|with|from|to|of|in|on|for|by|via|"
+                   r"across|per|than|the|a|an|using|into))+$", "", t,
+                   flags=re.IGNORECASE)
         return t.rstrip(" ,;—–.").rstrip()
 
     def trim_bullet(text: str) -> str:

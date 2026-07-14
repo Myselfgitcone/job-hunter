@@ -3383,13 +3383,29 @@ def _final_fragment_sweep(resume: str, job_description: str) -> str:
 
         # Summary bullets are exempt from verb/phrase heuristics (they are
         # verbless by design), but STRUCTURAL breakage is not a design
-        # choice — an unbalanced paren means the text was cut mid-list
-        # ('Azure (ADF, ADLS Gen2, Synapse Analytics' shipped live). Trim
-        # back to before the dangling '(' so it reads clean.
+        # choice.
         if in_summary:
             if body.count("(") > body.count(")"):
+                # Unbalanced paren — cut mid-list ('Azure (ADF, ADLS Gen2,
+                # Synapse Analytics' shipped live). Trim back to before the
+                # dangling '('.
                 cut = body.rfind("(")
                 salvage = body[:cut].rstrip(" ,;—–")
+                if len(salvage.split()) >= 6:
+                    indent = line[:len(line) - len(line.lstrip())]
+                    lines[i] = f"{indent}• {salvage.rstrip('.')}."
+                    fixed += 1
+                continue
+            # Dangling connective+gerund with nothing after it ('...while
+            # maintaining' shipped live — a professional summary cutting off
+            # mid-clause). Distinct from the phrase-style endings summary is
+            # meant to have: those never leave a bare preposition exposed
+            # right before the final word.
+            m = re.search(
+                r"\b(?:while|in|on|for|with|by|via|using|through|and|to|of)\s+"
+                r"[a-z]+ing$", body.rstrip("."), re.IGNORECASE)
+            if m:
+                salvage = body[:m.start()].rstrip(" ,;—–")
                 if len(salvage.split()) >= 6:
                     indent = line[:len(line) - len(line.lstrip())]
                     lines[i] = f"{indent}• {salvage.rstrip('.')}."

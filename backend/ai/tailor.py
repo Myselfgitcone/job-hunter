@@ -3903,7 +3903,12 @@ def _enforce_jd_tool_containment(result: str, base_resume: str,
         ('X and TOKEN'), then leading pair ('TOKEN and X' — the live bug:
         stripping 'data governance' from 'Implements data governance and
         quality frameworks' left 'Implements and quality frameworks')."""
-        kw = _kw_pat(skill)
+        # A gap-skill word immediately followed by a bare number is almost
+        # always one compound phrase ('Fortune 500', 'Web 2.0') — live bug:
+        # stripping just 'Fortune' left an orphaned '500' next to 'complex'
+        # ('large, complex 500 environments'). Consume the trailing number
+        # as part of the same removal.
+        kw = _kw_pat(skill) + r"(?:\s+\d[\d,.]*\+?)?"
         for pat in (r",\s*(?:and\s+)?" + kw,          # ", TOKEN" / ", and TOKEN"
                     r"\s+and\s+" + kw,                # "X and TOKEN"
                     kw + r"\s*,\s*(?=\S)",            # "TOKEN, X…"

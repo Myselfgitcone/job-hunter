@@ -4354,6 +4354,23 @@ async def tailor_resume(base_resume: str, job_description: str,
         print(f"[lint-{attempt+1}] {len(issues)} issue(s): " +
               " | ".join(i[:60] for i in issues))
 
+        # A '[SUMMARY] ... Trim.' issue (excess bullets, not a deficit) can
+        # never be fixed by augment_bullet_counts — it's add-only. Every call
+        # made for one was a paid no-op: confirmed across this session's live
+        # logs, this issue persisted through all 3 retries on nearly every
+        # run, unresolved by the loop every time, only ever actually fixed by
+        # the downstream deterministic _trim_summary_count (free, guaranteed).
+        # Filtered out here so the loop stops spending AI calls chasing
+        # something already guaranteed fixed for free later in the pipeline.
+        _unfixable_summary = [i for i in issues
+                               if i.startswith("[SUMMARY]") and i.rstrip().endswith("Trim.")]
+        if _unfixable_summary:
+            issues = [i for i in issues if i not in _unfixable_summary]
+            print(f"[RETRY] Skipping AI call for summary overshoot (fixed deterministically "
+                  f"downstream, no AI needed): {_unfixable_summary[0][:70]}")
+            if not issues:
+                break
+
         # ── Classify issues ───────────────────────────────────────────────────
         # NOTE: [BULLET OVERFLOW] must NOT go to the augmenter — it ADDS bullets,
         # overflow needs cutting. Overflow routes to the targeted retry instead.

@@ -1,6 +1,20 @@
 import re
 import json
+import contextvars
 from ai.llm import chat
+
+# Per-run guard log — surfaced in the tailor response (review["notes"]) so
+# guard behavior is auditable without Railway dashboard access. ContextVar =
+# safe under the 3-parallel-tailors model (each request task has its own
+# context copy).
+_RUN_LOG: contextvars.ContextVar = contextvars.ContextVar("tailor_run_log", default=None)
+
+
+def _plog(msg: str) -> None:
+    print(msg)
+    log = _RUN_LOG.get()
+    if log is not None:
+        log.append(msg)
 from resume_lint import lint_resume, detect_role_type, detect_domain_leak, BULLET_BUDGETS, BULLET_MINIMUMS, SUMMARY_EXACT
 from resume_lint import detect_skill_scatter, detect_cross_job_metric_theft
 from resume_lint import _is_job_header, _is_section_header
@@ -3304,7 +3318,7 @@ def _strip_metric_narration(resume: str) -> str:
 async def _compress_flagged_bullets(resume: str, base_resume: str,
                                     job_description: str,
                                     api_key: str, provider: str, model: str,
-                                    keys=None) -> str:
+                                    keys=None, forced_from: str = "") -> str:
     """
     END-OF-PIPELINE bullet repair. The scissor passes (trim, narration-strip,
     density-strip) cut mid-phrase and nothing re-checks their output — this
@@ -3321,21 +3335,38 @@ async def _compress_flagged_bullets(resume: str, base_resume: str,
     from resume_lint import is_fragment_bullet, WORD_LIMIT as _WL
     _frag_ctx = base_resume + "\n" + job_description
 
-    # Collect flagged experience bullets (summary excluded — its bullets are
-    # fragments by design).
+    # Bullets that existed verbatim before the sentence-mutating guards ran —
+    # anything NOT in this set was guard-modified and gets force-routed to
+    # repair regardless of ending heuristics (mid-sentence holes like
+    # "Implements and quality frameworks" are invisible to them).
+    baseline = set()
+    if forced_from:
+        baseline = {l.strip().lstrip("• ").strip()
+                    for l in forced_from.split("\n") if l.strip().startswith("•")}
+
+    # Collect flagged bullets. Heuristics apply to experience bullets only
+    # (summary bullets are fragments by design); guard-forced bullets are
+    # included wherever they live, summary included.
     lines = resume.split("\n")
-    flagged: dict[str, int] = {}   # id -> line index
+    flagged: dict[str, int] = {}      # id -> line index
+    summary_ids: set[str] = set()     # ids whose bullet lives in the summary
     in_summary = False
     for i, line in enumerate(lines):
         s = line.strip()
         if s and s.rstrip(":").isupper() and len(s) < 60:
             in_summary = "SUMMARY" in s.upper()
             continue
-        if in_summary or not s.startswith("•"):
+        if not s.startswith("•"):
             continue
         body = s.lstrip("• ").strip()
-        if len(body.split()) > _WL + 3 or is_fragment_bullet(body, _frag_ctx):
-            flagged[str(len(flagged))] = i
+        forced = bool(baseline) and body not in baseline
+        heur = (not in_summary) and (
+            len(body.split()) > _WL + 3 or is_fragment_bullet(body, _frag_ctx))
+        if forced or heur:
+            fid = str(len(flagged))
+            flagged[fid] = i
+            if in_summary:
+                summary_ids.add(fid)
     if not flagged:
         return resume
 
@@ -3343,10 +3374,14 @@ async def _compress_flagged_bullets(resume: str, base_resume: str,
                for fid, idx in flagged.items()}
     system = (
         "You repair damaged resume bullets. Each input bullet was mechanically "
-        "truncated and may end mid-phrase. Rewrite each as ONE complete sentence:\n"
-        f"- ≤{_WL} words, past-tense action verb first\n"
+        "edited and may end mid-phrase or have a hole mid-sentence (a removed "
+        "word leaving 'Implements and quality frameworks'). Rewrite each as ONE "
+        "grammatically complete line:\n"
+        f"- ≤{_WL} words; keep the original's style (experience bullets start "
+        "with a past-tense action verb; summary bullets keep their phrase style)\n"
         "- keep every number, percentage, and metric exactly\n"
-        "- use ONLY tools/terms already present in the bullet — never add new ones\n"
+        "- use ONLY tools/terms already present in the bullet — never add new "
+        "ones and never re-add anything that appears to have been removed\n"
         "- no 'measured by/tracked via' evidence clauses\n"
         'Return ONLY JSON: {"<id>": "<rewritten bullet>", ...} for every id.'
     )
@@ -3359,7 +3394,7 @@ async def _compress_flagged_bullets(resume: str, base_resume: str,
         m = re.search(r"\{.*\}", raw, re.DOTALL)
         rewrites = json.loads(m.group(0)) if m else {}
     except Exception as e:
-        print(f"[COMPRESS] pass skipped ({e}) — keeping scissored bullets")
+        _plog(f"[COMPRESS] pass skipped ({e}) — keeping scissored bullets")
         return resume
 
     _IDENT = re.compile(r"[A-Za-z][\w+#.]*")
@@ -3381,11 +3416,13 @@ async def _compress_flagged_bullets(resume: str, base_resume: str,
         _vocab_tokens.add(tok.lower())
         _vocab_tokens.add(_stem(tok))
 
-    def _valid(new: str, orig: str) -> str:
+    def _valid(new: str, orig: str, is_summary: bool = False) -> str:
         """'' when valid, else a short rejection reason (for the log)."""
         if not new or len(new.split()) > _WL + 3:
             return "too long"
-        if is_fragment_bullet(new, _frag_ctx):
+        # Summary bullets are verbless phrases by design — the fragment
+        # heuristic would reject every legitimate repair of one.
+        if not is_summary and is_fragment_bullet(new, _frag_ctx):
             return "still a fragment"
         # metric preservation: every digit-bearing token of orig survives
         for tok in re.findall(r"\d[\w.,%+→/-]*", orig):
@@ -3407,7 +3444,7 @@ async def _compress_flagged_bullets(resume: str, base_resume: str,
         orig = payload[fid]
         if not new or new == orig:
             continue
-        why = _valid(new, orig)
+        why = _valid(new, orig, is_summary=fid in summary_ids)
         if why:
             rejects.append(why)
             continue
@@ -3415,7 +3452,7 @@ async def _compress_flagged_bullets(resume: str, base_resume: str,
         lines[idx] = f"{indent}• {new.rstrip('.')}." if not new.endswith(".") else f"{indent}• {new}"
         fixed += 1
     if fixed or rejects:
-        print(f"[COMPRESS] AI-repaired {fixed}/{len(flagged)} damaged bullet(s); "
+        _plog(f"[COMPRESS] AI-repaired {fixed}/{len(flagged)} damaged bullet(s); "
               f"{len(flagged) - fixed} kept scissored fallback"
               + (f" — rejected: {'; '.join(rejects[:5])}" if rejects else ""))
     return "\n".join(lines)
@@ -3645,7 +3682,7 @@ def _enforce_metric_provenance(result: str, base_resume: str) -> str:
                 new = new.rstrip() + "."
             lines[i] = new
     if removed:
-        print(f"[METRIC GUARD] excised {len(removed)} number(s) with no basis in the "
+        _plog(f"[METRIC GUARD] excised {len(removed)} number(s) with no basis in the "
               f"same job's base bullets: {', '.join(removed[:6])}")
     return "\n".join(lines)
 
@@ -3744,7 +3781,7 @@ def _enforce_jd_tool_containment(result: str, base_resume: str,
                     lines[i] = new
                     changed += 1
     if changed:
-        print(f"[JD TOOL GUARD] contained {changed} gap-skill placement(s) "
+        _plog(f"[JD TOOL GUARD] contained {changed} gap-skill placement(s) "
               f"(summary/extra-bullet/tech-line)")
     out = "\n".join(l for k, l in zip(kinds, lines)
                     if not (l == "" and k[0] == "exp"))
@@ -3786,7 +3823,7 @@ def _revert_job_dates(result: str, base_resume: str) -> str:
                 after_at = line.split("@", 1)[1].lower()
                 for comp, dates in base_dates.items():
                     if comp in after_at and m.group(0) != dates:
-                        print(f"[DATE GUARD] {comp.title()}: '{m.group(0)}' → '{dates}' (reverted to base)")
+                        _plog(f"[DATE GUARD] {comp.title()}: '{m.group(0)}' → '{dates}' (reverted to base)")
                         line = line[:m.start()] + dates + line[m.end():]
                         break
         out.append(line)
@@ -3823,7 +3860,7 @@ def _revert_years_claim(result: str, base_resume: str) -> str:
     for i, l in _summary_lines(result):
         m = _YRS.search(l)
         if m and m.group(0).replace(" ", "") != base_claim.replace(" ", ""):
-            print(f"[YEARS GUARD] summary '{m.group(0)}' → '{base_claim}' (reverted to base)")
+            _plog(f"[YEARS GUARD] summary '{m.group(0)}' → '{base_claim}' (reverted to base)")
             lines[i] = l[:m.start()] + base_claim + l[m.end():]
             break
     return "\n".join(lines)
@@ -3866,10 +3903,10 @@ def _enforce_projects_integrity(result: str, base_resume: str,
         else:
             dropped += 1
     if dropped:
-        print(f"[PROJECTS GUARD] dropped {dropped} ungrounded project bullet(s)")
+        _plog(f"[PROJECTS GUARD] dropped {dropped} ungrounded project bullet(s)")
     if not any(k.strip().startswith("•") for k in kept):
         # nothing legitimate left — remove the section header too
-        print("[PROJECTS GUARD] removed empty/invented PROJECTS section")
+        _plog("[PROJECTS GUARD] removed empty/invented PROJECTS section")
         del lines[start:end]
         return "\n".join(lines)
     lines[start + 1:end] = kept
@@ -3901,7 +3938,7 @@ def _strip_company_leak(result: str, company: str, base_resume: str) -> str:
         else:
             out.append(line)
     if hits:
-        print(f"[COMPANY LEAK] stripped '{comp}' from {hits} bullet(s)")
+        _plog(f"[COMPANY LEAK] stripped '{comp}' from {hits} bullet(s)")
     return "\n".join(out)
 
 
@@ -3916,6 +3953,11 @@ async def tailor_resume(base_resume: str, job_description: str,
     # secondary_model: cheaper model for reviewer, tier audit, correction, retries.
     # Falls back to main model if not set.
     _sec = secondary_model or model
+
+    # Fresh per-run guard log (surfaced as review["notes"] in the response —
+    # auditable without Railway access).
+    _run_log: list[str] = []
+    _RUN_LOG.set(_run_log)
 
     # Some ATS feeds deliver the JD as (double-)encoded HTML. Decode/strip it
     # once here so the model prompt, lint, and coverage all see clean text.
@@ -4413,25 +4455,51 @@ async def tailor_resume(base_resume: str, job_description: str,
     except Exception as e:
         print(f"[METRIC DENSITY] Enforcement failed: {e}")
 
-    # ── Metric provenance — numbers must exist in the same job's base ─────
-    # Runs BEFORE compression so any stump left by an excision gets repaired.
+    # ── Sentence-mutating guards — ALL run BEFORE the repair pass ──────────
+    # Every guard that performs sentence surgery (metric excision, tool
+    # containment, company-leak strip) runs here; the compression pass then
+    # force-repairs every bullet they touched. Ending-based fragment
+    # heuristics can't see mid-sentence holes, so guard-touched bullets are
+    # routed unconditionally via a pre-mutation snapshot diff.
+    _pre_mutation = result
     try:
         result = _enforce_metric_provenance(result, base_resume)
     except Exception as e:
-        print(f"[METRIC GUARD] Failed: {e}")
+        _plog(f"[METRIC GUARD] Failed: {e}")
+    try:
+        result = _revert_job_dates(result, base_resume)
+    except Exception as e:
+        _plog(f"[DATE GUARD] Failed: {e}")
+    try:
+        result = _revert_years_claim(result, base_resume)
+    except Exception as e:
+        _plog(f"[YEARS GUARD] Failed: {e}")
+    try:
+        result = _enforce_jd_tool_containment(result, base_resume,
+                                              skills_missing_from_original)
+    except Exception as e:
+        _plog(f"[JD TOOL GUARD] Failed: {e}")
+    try:
+        result = _enforce_projects_integrity(result, base_resume, _declared_projects)
+    except Exception as e:
+        _plog(f"[PROJECTS GUARD] Failed: {e}")
+    try:
+        result = _strip_company_leak(result, company, base_resume)
+    except Exception as e:
+        _plog(f"[COMPANY LEAK] Failed: {e}")
 
-    # ── Bullet repair — AI compression of scissor-damaged bullets ─────────
-    # Runs AFTER every pass that cuts bullet text (trim, narration-strip,
-    # density-strip): only flagged bullets (fragment or over-limit) go to the
-    # cheap model; each rewrite is validated deterministically and falls back
-    # to the scissored text on any violation. Clean runs send nothing.
+    # ── Bullet repair — AI compression of damaged bullets ─────────────────
+    # Flags: fragment/over-limit heuristics PLUS every bullet the guards
+    # above modified (diff vs _pre_mutation). Each rewrite is validated
+    # deterministically and falls back to the guarded text on violation.
     try:
         result = await _compress_flagged_bullets(
             result, base_resume, job_description,
             api_key, provider, _sec, keys=keys,
+            forced_from=_pre_mutation,
         )
     except Exception as e:
-        print(f"[COMPRESS] Failed: {e}")
+        _plog(f"[COMPRESS] Failed: {e}")
 
     # ── Singleton skills rows — deterministic min-2-items enforcement ─────
     try:
@@ -4491,31 +4559,8 @@ async def tailor_resume(base_resume: str, job_description: str,
     # except Exception as e:
     #     print(f"[HEADER LOCATION] Sync failed: {e}")
 
-    # ── Honesty guards — deterministic, run after every AI pass ───────────
-    # Dates and years always match the base resume; a PROJECTS section may
-    # only contain declared/base-grounded projects; the target company's
-    # name never leaks into bullets.
-    try:
-        result = _revert_job_dates(result, base_resume)
-    except Exception as e:
-        print(f"[DATE GUARD] Failed: {e}")
-    try:
-        result = _revert_years_claim(result, base_resume)
-    except Exception as e:
-        print(f"[YEARS GUARD] Failed: {e}")
-    try:
-        result = _enforce_jd_tool_containment(result, base_resume,
-                                              skills_missing_from_original)
-    except Exception as e:
-        print(f"[JD TOOL GUARD] Failed: {e}")
-    try:
-        result = _enforce_projects_integrity(result, base_resume, _declared_projects)
-    except Exception as e:
-        print(f"[PROJECTS GUARD] Failed: {e}")
-    try:
-        result = _strip_company_leak(result, company, base_resume)
-    except Exception as e:
-        print(f"[COMPANY LEAK] Failed: {e}")
+    # (Honesty guards moved BEFORE the compression pass — see above. Running
+    # them here left tool-guard/company-leak sentence surgery unrepaired.)
 
     # ── Format normalizer — no blank lines inside a section's row block ────
     try:
@@ -4565,7 +4610,9 @@ async def tailor_resume(base_resume: str, job_description: str,
     #     print(f"[REVIEW GATE] Gate failed to run ({e}) — marking for review.")
     #     review = {"needs_review": True,
     #               "reasons": [f"[GATE ERROR] review gate crashed: {e}"], "notes": []}
-    review = {"needs_review": False, "reasons": [], "notes": []}
+    # Gate stays disabled; notes now carry the guard audit trail
+    # ([METRIC GUARD]/[JD TOOL GUARD]/[COMPRESS]/…) for observability.
+    review = {"needs_review": False, "reasons": [], "notes": list(_run_log)}
 
     return result, review
 

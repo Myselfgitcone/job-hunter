@@ -2183,9 +2183,19 @@ def _trim_skills_to_layers(resume: str, jd_keywords: list[str], max_layer3: int 
     ).lower()
 
     jd_set = {k.lower() for k in jd_keywords}
+    # Major cloud platforms are resume-defining, ATS-scanned terms — never
+    # let the layer-3 cap silently drop one because this specific JD didn't
+    # name it. Base-row-preservation: still requires the item to already be
+    # in the base resume's own skills section (this fn never adds items).
+    _CLOUD_PLATFORMS = {
+        "aws", "amazon web services", "azure", "microsoft azure",
+        "gcp", "google cloud", "google cloud platform",
+    }
 
     def classify(item: str) -> int:
         il = item.lower().strip()
+        if il in _CLOUD_PLATFORMS:
+            return 1
         # L1: JD keyword
         for kw in jd_set:
             if kw in il or il in kw:
@@ -3847,6 +3857,11 @@ def _trim_summary_count(result: str) -> str:
             idxs.append(i)
     if len(idxs) > SUMMARY_EXACT:
         drop = idxs[SUMMARY_EXACT:]
+        for i in drop:
+            preview = lines[i].strip()
+            if len(preview) > 90:
+                preview = preview[:87] + "..."
+            _plog(f"[SUMMARY TRIM] dropped: {preview}")
         _plog(f"[SUMMARY TRIM] {len(idxs)} bullets → {SUMMARY_EXACT} (dropped last {len(drop)})")
         lines = [l for i, l in enumerate(lines) if i not in set(drop)]
     return "\n".join(lines)
@@ -4594,11 +4609,21 @@ async def tailor_resume(base_resume: str, job_description: str,
     except Exception as e:
         print(f"[FORMAT] Normalizer failed: {e}")
 
+    # ── Cloud-platform base-row preservation — runs before the final
+    # coverage pass so its own row-limit/cont-row normalize also covers
+    # whatever this restores.
+    try:
+        result = _guarantee_base_cloud_platforms(result, base_resume)
+    except Exception as e:
+        _plog(f"[SKILLS BASE-GUARD] Failed: {e}")
+
     # ── Coverage guarantee — TRUE final pass, after every other mutation ──
     # Must stay last: anything earlier can still get stripped by a later
     # pass. This is the actual 100%-visibility guarantee.
     try:
         result = _guarantee_full_coverage(result, job_description, role_type)
+        result = _enforce_skills_line_limit(result, max_items=6)
+        result = _merge_cont_rows(result)
     except Exception as e:
         print(f"[COVERAGE GUARANTEE] Failed: {e}")
 
@@ -4641,6 +4666,113 @@ async def tailor_resume(base_resume: str, job_description: str,
     review = {"needs_review": False, "reasons": [], "notes": list(_run_log)}
 
     return result, review
+
+
+_CLOUD_PLATFORMS = {
+    "aws": "AWS", "amazon web services": "AWS",
+    "azure": "Azure", "microsoft azure": "Azure",
+    "gcp": "GCP", "google cloud": "GCP", "google cloud platform": "GCP",
+}
+
+
+def _skills_section_span(resume: str) -> tuple[int, int] | None:
+    sec_m = re.search(
+        r'(TECHNICAL SKILLS|CORE COMPETENCIES|SKILLS & EXPERTISE|SKILLS):?\s*\n',
+        resume, re.IGNORECASE
+    )
+    if not sec_m:
+        return None
+    sec_start = sec_m.end()
+    next_sec  = re.search(r'\n(?:[A-Z][A-Z &/]+):\s*\n', resume[sec_start:])
+    sec_end   = sec_start + next_sec.start() if next_sec else len(resume)
+    return sec_start, sec_end
+
+
+def _parse_skill_rows(block: str) -> list[tuple[str, list[str]]]:
+    rows: list[tuple[str, list[str]]] = []
+    for line in block.split('\n'):
+        stripped = line.strip()
+        if ':' not in stripped or not stripped:
+            continue
+        colon = stripped.index(':')
+        label = stripped[:colon].strip()
+        items_str = stripped[colon + 1:].strip()
+        if not items_str:
+            continue
+        items: list[str] = []
+        cur, depth = '', 0
+        for ch in items_str + ',':
+            if ch == '(':   depth += 1; cur += ch
+            elif ch == ')': depth -= 1; cur += ch
+            elif ch == ',' and depth == 0:
+                t = cur.strip()
+                if t: items.append(t)
+                cur = ''
+            else: cur += ch
+        rows.append((label, items))
+    return rows
+
+
+def _guarantee_base_cloud_platforms(resume: str, base_resume: str) -> str:
+    """Base-row-preservation for major cloud platforms (AWS/Azure/GCP).
+    Layer-3 trim (_trim_skills_to_layers) now protects these once present,
+    but the Sonnet generation pass can omit one from the skills row
+    entirely when the JD doesn't name it — 'AWS' shipped live in bullets/
+    Technologies Used lines but never in TECHNICAL SKILLS while Azure/GCP
+    (both JD-named) did. Any cloud platform present in the base resume's
+    own skills section is restored to the best-matching output row.
+    Never creates a new row — genuine gap (base doesn't have it) is left
+    alone, and a base item with no matching output row is logged, not
+    fabricated into one."""
+    base_span = _skills_section_span(base_resume)
+    out_span  = _skills_section_span(resume)
+    if not base_span or not out_span:
+        return resume
+
+    base_rows = _parse_skill_rows(base_resume[base_span[0]:base_span[1]])
+    base_cloud: list[tuple[str, str, list[str]]] = []  # (canonical, row_label, sibling_items)
+    for label, items in base_rows:
+        for it in items:
+            canon = _CLOUD_PLATFORMS.get(it.strip().lower())
+            if canon:
+                base_cloud.append((canon, label, items))
+    if not base_cloud:
+        return resume
+
+    sec_start, sec_end = out_span
+    out_block = resume[sec_start:sec_end]
+    lines = out_block.split('\n')
+    row_line_idx = [i for i, l in enumerate(lines) if ':' in l.strip()]
+
+    added: list[str] = []
+    for canon, base_label, siblings in base_cloud:
+        if re.search(_kw_pat(canon), out_block, re.IGNORECASE):
+            continue  # already present somewhere in the output skills section
+
+        target = -1
+        for li in row_line_idx:
+            row_label = re.sub(r'\s*\(cont\.\)$', '', lines[li].split(':')[0].strip(), flags=re.IGNORECASE)
+            if row_label.lower() == base_label.lower():
+                target = li
+                break
+        if target < 0:
+            for li in row_line_idx:
+                row_text = lines[li].lower()
+                if any(sib.strip().lower() in row_text
+                       for sib in siblings if sib.strip().lower() != canon.lower()):
+                    target = li
+                    break
+        if target < 0:
+            _plog(f"[SKILLS BASE-GUARD] '{canon}' in base but no matching row in output — left out (no fabricated row)")
+            continue
+
+        lines[target] = lines[target].rstrip().rstrip(',') + f", {canon}"
+        added.append(canon)
+
+    if not added:
+        return resume
+    _plog(f"[SKILLS BASE-GUARD] restored to TECHNICAL SKILLS: {', '.join(added)}")
+    return resume[:sec_start] + '\n'.join(lines) + resume[sec_end:]
 
 
 def _guarantee_full_coverage(resume: str, job_description: str, role_type: str) -> str:

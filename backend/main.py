@@ -1,0 +1,6091 @@
+# -*- coding: utf-8 -*-
+from zoneinfo import ZoneInfo
+EST = ZoneInfo('America/New_York')
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Depends, Body
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from sqlalchemy import select, update, delete, or_, text, func
+from pydantic import BaseModel
+from typing import Optional, List
+import asyncio
+import httpx
+import json
+import re
+import uuid
+import uuid as _uuid
+from pathlib import Path
+from datetime import datetime, timezone as _UTC, timedelta
+from dotenv import load_dotenv
+
+# Load .env file
+load_dotenv()
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+
+from database import init_db, SessionLocal, engine, Job, Setting, User, UserSettings, UserJob, Company, AppLog, QuickTailorHistory, ChatMessage, AssistantMessage, decrypt_secret
+from auth import get_current_user_id, get_optional_user_id, hash_password, verify_password, create_token
+from scrapers import run_all_scrapers, run_group_fast, run_group_greenhouse, run_group_hiringcafe, run_group_jobo, run_group_fantasticjobs
+from scrapers.o2ten import fetch as run_group_o2ten
+from scrapers.jobspy_scraper import fetch as jobspy_fetch
+from ai.ats import score_ats
+from ai.tailor import tailor_resume
+from ai.llm import set_fallback_notifier
+from ai.cover_letter import generate_cover_letter
+from resume_lint import clean_jd_html
+# StackShift-style export — Arial 11/13, 0.40"/0.50" margins, ruled section
+# headers, 2-page auto-fit by shrinking type rather than truncating.
+# pdf_gen / docx_gen are kept for reference and are no longer wired in.
+from exporters_ss import generate_pdf, generate_docx
+from jd_docx_gen import generate_jd_docx
+from jd_fetcher import fetch_full_jd
+import ats_apply
+from experience import extract_experience_level, resolve_experience_level, infer_experience_ai, TRAYS as EXP_TRAYS
+
+app = FastAPI(title="Job Hunter API")
+
+@app.get("/version")
+def version():
+    import os
+    db_url = os.getenv("DATABASE_URL", "sqlite")
+    masked = db_url[:15] + "..." if len(db_url) > 15 else db_url
+    return {"version": "6", "db": masked}
+
+import os as _os
+_cors_raw = _os.getenv("CORS_ORIGINS", "")
+_CORS_ORIGINS = [o.strip() for o in _cors_raw.split(",") if o.strip()] if _cors_raw else []
+_CORS_ORIGINS += [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://job-hunter-sigma.vercel.app",
+]
+_CORS_ORIGINS = list(set(_CORS_ORIGINS))
+
+# â"€â"€ Raw ASGI CORS — works with file uploads, streaming, and exceptions â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+_CORS_HEADERS = [
+    (b"access-control-allow-origin",  b"*"),
+    (b"access-control-allow-methods", b"GET, POST, PUT, DELETE, OPTIONS, PATCH"),
+    (b"access-control-allow-headers", b"*"),
+    (b"access-control-expose-headers", b"Content-Disposition"),
+    (b"access-control-max-age",        b"86400"),
+]
+
+class RawCORSMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        # Handle OPTIONS preflight immediately — no auth, no routing
+        if scope.get("method") == "OPTIONS":
+            await send({
+                "type": "http.response.start",
+                "status": 200,
+                "headers": _CORS_HEADERS,
+            })
+            await send({"type": "http.response.body", "body": b""})
+            return
+
+        # For all other requests — inject CORS headers into the response
+        async def send_with_cors(message):
+            if message["type"] == "http.response.start":
+                # Merge existing headers with CORS headers
+                existing = dict(message.get("headers", []))
+                for k, v in _CORS_HEADERS:
+                    existing[k] = v
+                message = {**message, "headers": list(existing.items())}
+            await send(message)
+
+        await self.app(scope, receive, send_with_cors)
+
+app.add_middleware(RawCORSMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
+)
+
+# â"€â"€ Global exception handlers — always include CORS headers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+from fastapi import Request as _Request
+from fastapi.responses import JSONResponse as _JSONResponse
+from fastapi.exception_handlers import http_exception_handler as _default_http_handler
+
+@app.exception_handler(Exception)
+async def _global_exc_handler(_req: _Request, exc: Exception):
+    return _JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)},
+        headers={"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*"},
+    )
+
+@app.exception_handler(HTTPException)
+async def _http_exc_handler(_req: _Request, exc: HTTPException):
+    return _JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers={"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*"},
+    )
+
+@app.get("/health")
+async def health_check():
+    """Public health endpoint for Railway/Vercel healthchecks."""
+    return {"status": "ok"}
+
+
+_scheduler = AsyncIOScheduler()
+
+# Lock so concurrent scraper groups serialize their DB inserts
+_insert_lock = asyncio.Lock()
+
+
+async def _scrape_and_insert(fetch_fn, group_name, settings, cutoff_posted, now_iso, timeout_s):
+    """Run one scraper group, filter, insert to DB. Returns (new_count, new_jobs)."""
+    ALLOWED_COUNTRIES = {"USA", "India", "Remote"}
+    try:
+        raw = await asyncio.wait_for(fetch_fn(settings), timeout=timeout_s)
+    except asyncio.TimeoutError:
+        print(f"[Scrape/{group_name}] Timed out after {timeout_s}s -- partial results discarded")
+        raw = []
+    except Exception as e:
+        print(f"[Scrape/{group_name}] Error: {e}")
+        raw = []
+
+    filtered = [j for j in raw if j.get("country", "") in ALLOWED_COUNTRIES]
+    filtered = [j for j in filtered if not j.get("posted_at") or j["posted_at"] >= cutoff_posted]
+    print(f"[Scrape/{group_name}] {len(filtered)} after filter (from {len(raw)} raw)")
+
+    new_count = 0
+    new_jobs = []
+
+    async with _insert_lock:
+        async with SessionLocal() as db:
+            existing_result = await db.execute(select(Job.url, Job.title, Job.company))
+            existing_rows = existing_result.all()
+            existing_urls = {row.url for row in existing_rows if row.url}
+            existing_fps = {
+                f"{(row.title or '').lower().strip()}|||{(row.company or '').lower().strip()}"
+                for row in existing_rows
+            }
+            for job_data in filtered:
+                url = job_data.get("url", "")
+                fp = f"{(job_data.get('title', '') or '').lower().strip()}|||{(job_data.get('company', '') or '').lower().strip()}"
+                _url_only = job_data.get("source") == "O2Ten"   # curated list: same
+                # title repeats across entries/sections legitimately — URL is identity
+                if (url and url in existing_urls) or (not _url_only and fp in existing_fps):
+                    continue
+                # Resolve experience tray: regex from JD > mapped FJ coarse value
+                job_data["experience_level"] = resolve_experience_level(
+                    job_data.get("experience_level") or "", job_data.get("description") or "")
+                jid = str(uuid.uuid4())
+                db.add(Job(id=jid, scraped_at=now_iso, **job_data))
+                if url:
+                    existing_urls.add(url)
+                existing_fps.add(fp)
+                new_count += 1
+                # record the DB id so post-scrape qualify can target exactly these jobs
+                job_data["id"] = jid
+                new_jobs.append(job_data)
+                if new_count % 500 == 0:
+                    await db.flush()
+            await db.commit()
+
+    # Durable daily ledger — job rows get deleted by retention, so exact
+    # per-day scrape history must be recorded at insert time
+    if new_count:
+        try:
+            day = now_iso[:10]
+            usa   = sum(1 for j in new_jobs if j.get("country") == "USA")
+            india = sum(1 for j in new_jobs if j.get("country") == "India")
+            async with SessionLocal() as db:
+                row = await db.get(Setting, "daily_scrape_ledger")
+                ledger = json.loads(row.value) if row and row.value else {}
+                d = ledger.get(day, {"total": 0, "USA": 0, "India": 0})
+                d["total"] += new_count; d["USA"] += usa; d["India"] += india
+                ledger[day] = d
+                # keep last 120 days
+                for k in sorted(ledger)[:-120]:
+                    ledger.pop(k, None)
+                if row:
+                    row.value = json.dumps(ledger)
+                else:
+                    db.add(Setting(key="daily_scrape_ledger", value=json.dumps(ledger)))
+                await db.commit()
+        except Exception as e:
+            print(f"[Scrape/{group_name}] ledger update failed: {e}")
+
+    print(f"[Scrape/{group_name}] Inserted {new_count} new jobs")
+    return new_count, new_jobs
+
+
+# Statuses that count as "applied" (applied + interview pipeline stages).
+# Keep in sync with frontend APPLIED_STAGES in types.ts.
+_APPLIED_STAGES = frozenset({"applied", "screening", "assessment", "interview", "final"})
+
+
+async def log_event(level: str, process: str, message: str):
+    """Write to app_logs table. ERROR level also fires a Telegram alert."""
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        async with SessionLocal() as db:
+            db.add(AppLog(timestamp=ts, level=level, process=process, message=message, seen=False))
+            await db.commit()
+            count_r = await db.execute(select(func.count()).select_from(AppLog))
+            total = count_r.scalar() or 0
+            if total > 500:
+                subq = select(AppLog.id).order_by(AppLog.id.asc()).limit(total - 500).subquery()
+                await db.execute(delete(AppLog).where(AppLog.id.in_(select(subq.c.id))))
+                await db.commit()
+    except Exception as e:
+        print(f"[AppLog] Write failed: {e}")
+    if level == "ERROR":
+        try:
+            import telegram_bot as _tb
+            if _tb.is_ready():
+                await _tb.send_message(f"🚨 <b>[{process}] ERROR</b>\n{message[:400]}")
+        except Exception:
+            pass
+
+
+_scrape_running = False
+
+async def _run_scrape() -> dict:
+    global _scrape_running
+    if _scrape_running:
+        print("[Scrape] A scrape is already running — ignoring duplicate trigger.")
+        return {"message": "Scrape already running"}
+    _scrape_running = True
+    try:
+        return await _run_scrape_internal()
+    finally:
+        _scrape_running = False
+
+async def _run_scrape_internal() -> dict:
+    """Core scrape logic: 3 groups run concurrently, each inserts when done."""
+    from datetime import timedelta, timezone  # timezone: module-level is aliased _UTC
+
+    async with SessionLocal() as db:
+        settings_result = await db.execute(select(Setting))
+        settings = {r.key: r.value for r in settings_result.scalars().all()}
+
+        user_settings_result = await db.execute(select(UserSettings.job_roles))
+        all_roles = set()
+        for row in user_settings_result.scalars().all():
+            if row:
+                try:
+                    roles = json.loads(row)
+                    all_roles.update([r.lower().strip() for r in roles])
+                except Exception:
+                    pass
+        settings["_dynamic_roles"] = list(all_roles) if all_roles else ["data engineer"]
+
+    # All scrape timestamps stored in UTC so date comparisons are consistent:
+    # - posted_at from FJ is UTC; scraped_at must also be UTC
+    # - date filter chips in frontend are UTC-based (toISOString().substring(0,10))
+    # - cutoff comparisons must be UTC to avoid EST-vs-UTC string mismatch
+    from datetime import timezone as _utc_tz
+    now     = datetime.now(_utc_tz.utc)
+    now_iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")  # always UTC, always Z-suffix
+
+    from scrapers.base import CUTOFF_HOURS as _DEFAULT_CUTOFF_H
+    _CUTOFF_H   = int(settings.get("scrape_cutoff_hours") or _DEFAULT_CUTOFF_H)
+    cutoff_old    = (now - timedelta(hours=_CUTOFF_H)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cutoff_posted = cutoff_old
+
+    async with SessionLocal() as db:
+        old_jobs_result = await db.execute(
+            select(Job).where(
+                Job.scraped_at < cutoff_old,
+                Job.status.in_(["new", "skipped", "closed"]),
+            )
+        )
+        old_jobs = old_jobs_result.scalars().all()
+        for j in old_jobs:
+            await db.delete(j)
+        deleted = len(old_jobs)
+        await db.commit()
+    if deleted:
+        print(f"[Scrape] Deleted {deleted} jobs older than {_CUTOFF_H}h ({_CUTOFF_H // 24}d)")
+
+    print("[Scrape] Starting FantasticJobs-only scraper (all others disabled for trial)...")
+    group_results = await asyncio.gather(
+        # _scrape_and_insert(run_group_fast,          "GroupA-Fast",          settings, cutoff_posted, now_iso, 600),
+        # _scrape_and_insert(run_group_greenhouse,    "GroupB-Greenhouse",    settings, cutoff_posted, now_iso, 900),
+        # _scrape_and_insert(run_group_hiringcafe,    "GroupC-HiringCafe",    settings, cutoff_posted, now_iso, 2700),
+        # _scrape_and_insert(run_group_jobo,          "GroupD-Jobo",          settings, cutoff_posted, now_iso, 300),
+        _scrape_and_insert(run_group_fantasticjobs, "GroupE-FantasticJobs", settings, cutoff_posted, now_iso, 120),
+        _scrape_and_insert(run_group_o2ten,         "GroupF-O2Ten",         settings, cutoff_posted, now_iso, 1200),
+        return_exceptions=True,
+    )
+
+    total_new = 0
+    all_new_jobs = []
+    for r in group_results:
+        if isinstance(r, Exception):
+            print(f"[Scrape] Group exception: {r}")
+        else:
+            cnt, jobs = r
+            total_new += cnt
+            all_new_jobs.extend(jobs)
+
+    async with SessionLocal() as db:
+        count_result = await db.execute(select(func.count()).select_from(Job))
+        total_count = count_result.scalar() or 0
+        setting = await db.get(Setting, "last_scraped_at")
+        if setting:
+            setting.value = now_iso
+        else:
+            db.add(Setting(key="last_scraped_at", value=now_iso))
+        await db.commit()
+
+    print(f"[Scrape] Done -- {total_new} new jobs saved ({total_count} total in DB)")
+    await log_event("INFO", "scraper", f"Scrape complete: {total_new} new jobs, {total_count} total in DB")
+
+    # Telegram digests — 2 cadences off one hourly scrape:
+    # 1) HOURLY  — this run's app-visible category breakdown (sent every scrape).
+    # 2) 24-HOUR — full-day category totals.
+    # A durable per-hour ledger in Settings feeds the 24h roll-up, so it
+    # survives redeploys and missed runs. Category counts come from telegram_bot.
+    try:
+        import telegram_bot
+
+        async def _set_setting(db, key, val):
+            row = await db.get(Setting, key)
+            if row:
+                row.value = val
+            else:
+                db.add(Setting(key=key, value=val))
+
+        def _parse_ts(s):
+            try:
+                t = datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+                return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+            except Exception:  # noqa: BLE001
+                return None
+
+        now_dt = datetime.now(timezone.utc)
+        fam_counts, other_titles = telegram_bot.count_families(all_new_jobs)
+        # App-visible = maps to a named family (not "Other") — the same nets the
+        # app's family filters use. Digest counts ONLY these.
+        vis_counts = {k: v for k, v in fam_counts.items() if k != "Other"}
+        vis_total = sum(vis_counts.values())
+
+        async with SessionLocal() as db:
+            # Self-heal: deploys reset the bot — re-init from stored settings.
+            if not telegram_bot.is_ready():
+                cred = (await db.execute(text(
+                    "SELECT telegram_bot_token, telegram_chat_id FROM user_settings "
+                    "WHERE telegram_bot_token IS NOT NULL AND telegram_bot_token != '' "
+                    "AND telegram_bot_token NOT LIKE '%•%' LIMIT 1"))).fetchone()
+                if cred and cred[0] and cred[1]:
+                    await telegram_bot.init_bot(decrypt_secret(cred[0]), cred[1])
+
+            ready = telegram_bot.is_ready()
+            if not ready:
+                print("[Scrape] Telegram digest SKIPPED — bot not initialized (check token in Settings)")
+
+            async def _record_err(stage, exc):
+                try:
+                    await _set_setting(db, "telegram_digest_last_error",
+                                       f"{now_iso} [{stage}] {exc!r}")
+                    await db.commit()
+                except Exception:  # noqa: BLE001
+                    pass
+
+            # "In app" — how many of ALL DB jobs are app-visible (named family).
+            total_app = None
+            if ready:
+                try:
+                    _titles = (await db.execute(select(Job.title))).scalars().all()
+                    total_app = sum(1 for t in _titles
+                                    if telegram_bot._role_family(t or "") != "Other")
+                except Exception as e:  # noqa: BLE001
+                    print(f"[Scrape] in-app count failed: {e!r}")
+
+            # 1) HOURLY — isolated so a later step can't cancel/rollback it.
+            if ready:
+                try:
+                    await telegram_bot.send_category_digest(
+                        "⏱️ <b>New jobs — this hour</b>",
+                        vis_counts, vis_total,
+                        total_db=total_count, total_app=total_app,
+                    )
+                except Exception as e:  # noqa: BLE001
+                    print(f"[Scrape] hourly digest failed: {e!r}")
+                    await _record_err("hourly", e)
+
+            # Durable per-hour ledger (keep ~26h). Commit IMMEDIATELY so a later
+            # 24h-digest failure can't roll the ledger write back.
+            try:
+                led_row = await db.get(Setting, "telegram_hourly_ledger")
+                try:
+                    ledger = json.loads(led_row.value) if (led_row and led_row.value) else []
+                except Exception:  # noqa: BLE001
+                    ledger = []
+                ledger.append({"ts": now_iso, "n": vis_total, "counts": vis_counts})
+                _keep_cut = now_dt - timedelta(hours=26)
+                ledger = [e for e in ledger if (_parse_ts(e.get("ts")) or now_dt) >= _keep_cut]
+                await _set_setting(db, "telegram_hourly_ledger", json.dumps(ledger))
+                await db.commit()
+            except Exception as e:  # noqa: BLE001
+                print(f"[Scrape] ledger write failed: {e!r}")
+                await _record_err("ledger", e)
+                ledger = []
+
+            def _window_sum(hours):
+                wc = now_dt - timedelta(hours=hours)
+                agg, tot = {}, 0
+                for e in ledger:
+                    t = _parse_ts(e.get("ts"))
+                    if not t or t < wc:
+                        continue
+                    tot += int(e.get("n", 0))
+                    for k, v in (e.get("counts") or {}).items():
+                        agg[k] = agg.get(k, 0) + int(v)
+                return agg, tot
+
+            async def _due(key, hours):
+                row = await db.get(Setting, key)
+                if row and row.value:
+                    last = _parse_ts(row.value)
+                    if last:
+                        return (now_dt - last) >= timedelta(hours=hours)
+                return True
+
+            # 2) 24-HOUR daily total — isolated + own commit. (6h roll-up
+            # removed: hourly + daily only.)
+            if ready:
+                try:
+                    if await _due("telegram_24h_last_sent", 24):
+                        agg, tot = _window_sum(24)
+                        await telegram_bot.send_category_digest(
+                            "📅 <b>Today — 24h total</b>", agg, tot,
+                            total_db=total_count, total_app=total_app)
+                        await _set_setting(db, "telegram_24h_last_sent", now_iso)
+                        await db.commit()
+                        print(f"[Scrape] Telegram 24h total sent ({tot} jobs)")
+                except Exception as e:  # noqa: BLE001
+                    print(f"[Scrape] 24h digest failed: {e!r}")
+                    await _record_err("24h", e)
+    except Exception as te:  # noqa: BLE001
+        print(f"[Scrape] Telegram notify failed: {te!r}")
+        # Record on a FRESH session — the failed one above may be poisoned.
+        try:
+            import traceback
+            _tb_txt = traceback.format_exc()[-800:]
+            async with SessionLocal() as _edb:
+                _row = await _edb.get(Setting, "telegram_digest_last_error")
+                _val = f"{now_iso} [outer] {te!r} :: {_tb_txt}"
+                if _row:
+                    _row.value = _val
+                else:
+                    _edb.add(Setting(key="telegram_digest_last_error", value=_val))
+                await _edb.commit()
+        except Exception as _e2:  # noqa: BLE001
+            print(f"[Scrape] could not record digest error: {_e2!r}")
+
+    # Only qualify the jobs we JUST scraped — not all unqualified historical jobs.
+    # Passing new_job_ids prevents the qualify-all loop from re-processing the
+    # entire DB on every hourly scrape, which was burning AI credits.
+    new_job_ids = [j.get("id") for j in all_new_jobs if j.get("id")] if all_new_jobs else []
+    asyncio.create_task(_run_qualify_all(new_job_ids=new_job_ids))          # admin (global)
+    asyncio.create_task(_run_qualify_for_users(new_job_ids=new_job_ids))    # each friend (per-profile)
+    if all_new_jobs:
+        # Fetch full JDs from ATS for new jobs, then AI-sweep whatever still has no tray
+        asyncio.create_task(_auto_fetch_jds_for_new(all_new_jobs))
+    else:
+        asyncio.create_task(_run_exp_ai_sweep())
+
+    return {"new_jobs": total_new, "deleted_old": deleted, "scraped_at": now_iso}
+
+async def _auto_scrape():
+    """Background auto-scrape task - runs on schedule."""
+    print("[Scheduler] Auto-scrape starting...")
+    try:
+        result = await asyncio.wait_for(_run_scrape(), timeout=3000)  # 50 min -- covers 3-group max
+        print(f"[Scheduler] Auto-scrape complete: {result}")
+    except asyncio.TimeoutError:
+        print("[Scheduler] Auto-scrape timed out after 30 minutes")
+        await log_event("ERROR", "scraper", "Auto-scrape timed out after 50 minutes")
+    except Exception as e:
+        print(f"[Scheduler] Auto-scrape failed: {e}")
+        await log_event("ERROR", "scraper", f"Auto-scrape failed: {e}")
+        import traceback; traceback.print_exc()
+
+async def _strip_stale_linkedin_roles() -> int:
+    """Remove '(LinkedIn)'-suffixed role items from every user's job_roles /
+    active_job_roles / role_request. Left over from the merged-away temporary
+    LinkedIn leadership family; their picker group no longer exists, so users
+    can't remove them and each one leaks leadership jobs into other feeds."""
+    changed = 0
+    async with SessionLocal() as db:
+        rows = (await db.execute(select(UserSettings))).scalars().all()
+        for s in rows:
+            dirty = False
+            for attr in ("job_roles", "active_job_roles", "role_request"):
+                raw = getattr(s, attr, None)
+                if not raw:
+                    continue
+                try:
+                    items = json.loads(raw)
+                except Exception:
+                    continue
+                if not isinstance(items, list):
+                    continue
+                kept = [r for r in items if "(linkedin)" not in str(r).lower()]
+                if len(kept) != len(items):
+                    setattr(s, attr, json.dumps(kept))
+                    dirty = True
+            if dirty:
+                changed += 1
+        if changed:
+            await db.commit()
+    return changed
+
+
+async def _sync_expired_wrapper():
+    """Fetch expired jobs (ATS + job-board) from Fantastic.jobs and mark them closed."""
+    print("[Scheduler] Expired sync starting...")
+    try:
+        from scrapers.fantasticjobs import sync_expired_jobs
+        count = await sync_expired_jobs({})
+        print(f"[Scheduler] Expired sync complete: {count} jobs closed.")
+        await log_event("INFO", "expired-sync", f"Marked {count} expired jobs closed")
+    except Exception as e:
+        print(f"[Scheduler] Expired sync failed: {e}")
+        await log_event("ERROR", "expired-sync", f"Failed: {e}")
+        import traceback; traceback.print_exc()
+
+
+async def _sync_modified_wrapper():
+    """Fetch ATS jobs modified in last 24h and update their DB records."""
+    print("[Scheduler] Modified jobs sync starting...")
+    try:
+        from scrapers.fantasticjobs import fetch_modified
+        from database import update_modified_jobs
+        updates = await fetch_modified({})
+        count = await update_modified_jobs(updates)
+        print(f"[Scheduler] Modified sync complete: {count} jobs updated.")
+        await log_event("INFO", "modified-sync", f"Updated {count} modified jobs")
+    except Exception as e:
+        print(f"[Scheduler] Modified sync failed: {e}")
+        await log_event("ERROR", "modified-sync", f"Failed: {e}")
+        import traceback; traceback.print_exc()
+
+
+
+
+# ── AI experience inference sweep ─────────────────────────────────────────────
+# ATS hosts that block scraping — skip silently
+_BLOCKED_ATS = ("successfactors.com", "sap.com", "icims.com", "taleo.net", "myworkday.com")
+
+
+async def _auto_fetch_jds_for_new(new_jobs: list[dict]):
+    """Fetch full JD HTML from ATS for newly scraped jobs.
+    Updates description + re-derives experience tray from real JD text.
+    Chains into AI sweep when done so any remaining empties get inferred."""
+    sem = asyncio.Semaphore(3)
+
+    async def fetch_one(job_id: str, url: str):
+        if not url or any(h in url for h in _BLOCKED_ATS):
+            return
+        async with sem:
+            await asyncio.sleep(0.3)
+            res = await fetch_full_jd(url)
+            if not res:
+                return
+            full_desc = res.get("description", "")
+            if not full_desc or len(full_desc.strip()) < 200:
+                return
+            async with SessionLocal() as db:
+                job = await db.get(Job, job_id)
+                if not job:
+                    return
+                job.description = full_desc
+                new_level = resolve_experience_level(job.experience_level or "", full_desc)
+                if new_level and new_level != (job.experience_level or ""):
+                    job.experience_level = new_level
+                    job.experience_level_inferred = False
+                await db.commit()
+
+    targets = [(j.get("id"), j.get("url")) for j in new_jobs if j.get("id") and j.get("url")]
+    if not targets:
+        await _run_exp_ai_sweep()
+        return
+
+    print(f"[AutoFetch] Fetching full JDs for {len(targets)} new jobs...")
+    await asyncio.gather(*[fetch_one(jid, url) for jid, url in targets], return_exceptions=True)
+    print(f"[AutoFetch] Done — running AI sweep for remaining empty trays")
+    await _run_exp_ai_sweep()
+
+
+async def _run_regex_backfill() -> int:
+    """Re-run experience regex on every job.
+    - If regex finds explicit years → overwrite tray (clears bad old value).
+    - If regex finds nothing AND job is stuck at '15+' → reset to '' so AI
+      sweep can re-infer (fixes false positives from company-age phrases).
+    Returns number of rows changed."""
+    async with SessionLocal() as db:
+        rows = await db.execute(select(Job.id, Job.experience_level, Job.description))
+        all_jobs = rows.fetchall()
+    changed = 0
+    async with SessionLocal() as db:
+        for jid, cur, desc in all_jobs:
+            rx = extract_experience_level(desc or "")
+            if rx and rx != (cur or ""):
+                await db.execute(update(Job).where(Job.id == jid).values(
+                    experience_level=rx, experience_level_inferred=False))
+                changed += 1
+            elif not rx and (cur or "") == "15+":
+                await db.execute(update(Job).where(Job.id == jid).values(
+                    experience_level="", experience_level_inferred=False))
+                changed += 1
+            if changed % 200 == 0 and changed:
+                await db.commit()
+        await db.commit()
+    return changed
+
+
+# For jobs whose JD states no years requirement: ask the cheap parse model to
+# estimate from title + JD. Runs after scrapes and once at startup.
+_exp_sweep_running = False
+
+async def _run_exp_ai_sweep(limit: int = 400):
+    global _exp_sweep_running
+    if _exp_sweep_running:
+        return
+    _exp_sweep_running = True
+    try:
+        async with SessionLocal() as db:
+            admin_s = await _get_admin_settings(db)
+        api_key  = (admin_s.ai_api_key  or "") if admin_s else ""
+        provider = (admin_s.ai_provider or "openrouter") if admin_s else "openrouter"
+        # Direct-API routing (avoids OpenRouter's 5.5% fee) — live OpenRouter
+        # billing showed this sweep's Gemini calls going through OpenRouter.
+        from ai.llm import ModelKeys as _MK
+        _mk = _MK(
+            anthropic=(getattr(admin_s, "anthropic_api_key", "") or "") if admin_s else "",
+            google=(getattr(admin_s, "google_api_key", "") or "") if admin_s else "",
+            openai=(getattr(admin_s, "openai_api_key", "") or "") if admin_s else "",
+            openrouter=api_key,
+        )
+        # Use admin's configured qualify model (Gemini Flash by default).
+        # DeepSeek R1 free was unreliable — caused 64 fallback Telegram alerts per sweep.
+        model = (admin_s.ai_model_qualify or "google/gemini-2.5-flash") if admin_s else "google/gemini-2.5-flash"
+        if not model:
+            model = "google/gemini-2.5-flash"
+        if not any([_mk.anthropic, _mk.google, _mk.openai, _mk.openrouter]):
+            print("[ExpSweep] No API key — skipping AI experience inference")
+            await log_event("WARNING", "exp-tray", "Skipped — no API key configured")
+            return
+
+        async with SessionLocal() as db:
+            rows = await db.execute(
+                select(Job.id, Job.title, Job.description).where(
+                    or_(
+                        Job.experience_level == None,
+                        Job.experience_level == "",
+                        Job.experience_level.notin_(EXP_TRAYS),  # also fix off-tray (5-10, 2-5 etc)
+                    ),
+                    Job.description != None, Job.description != "",
+                    Job.status != "closed",
+                ).limit(limit))
+            pending = rows.fetchall()
+        if not pending:
+            return
+        print(f"[ExpSweep] AI-inferring experience for {len(pending)} jobs ({model})...")
+        await log_event("INFO", "exp-tray", f"Starting sweep: {len(pending)} jobs to process")
+
+        sem = asyncio.Semaphore(2)  # R1 is slower; 2 concurrent keeps rate-limit safe
+        done = {"n": 0, "ok": 0, "err": 0}
+
+        async def infer_one(jid: str, title: str, desc: str):
+            async with sem:
+                try:
+                    level = await asyncio.wait_for(
+                        infer_experience_ai(title or "", desc or "", api_key, provider, model, keys=_mk),
+                        timeout=120,  # 90s per attempt × fallback models = cap at 120s total
+                    )
+                    if level:
+                        async with SessionLocal() as db:
+                            await db.execute(update(Job).where(Job.id == jid).values(
+                                experience_level=level,
+                                experience_level_inferred=True,
+                            ))
+                            await db.commit()
+                        done["ok"] += 1
+                except asyncio.TimeoutError:
+                    done["err"] += 1
+                    if done["err"] <= 3:
+                        await log_event("ERROR", "exp-tray", f"Timed out inferring exp for job {jid}")
+                except Exception as e:
+                    done["err"] += 1
+                    if done["err"] <= 3:  # log first few errors only
+                        await log_event("ERROR", "exp-tray", f"Failed on job {jid}: {e}")
+                done["n"] += 1
+                if done["n"] % 50 == 0:
+                    print(f"[ExpSweep] {done['n']}/{len(pending)} ({done['ok']} inferred)")
+                await asyncio.sleep(1.5)  # ~40 req/min — within free tier limit
+
+        await asyncio.gather(*(infer_one(jid, t, d) for jid, t, d in pending))
+        msg = f"Done — {done['ok']}/{len(pending)} inferred, {done['err']} errors"
+        print(f"[ExpSweep] {msg}")
+        await log_event("INFO", "exp-tray", msg)
+    except Exception as e:
+        err_msg = f"Sweep failed: {e}"
+        print(f"[ExpSweep] {err_msg}")
+        await log_event("ERROR", "exp-tray", err_msg)
+    finally:
+        _exp_sweep_running = False
+
+
+@app.on_event("startup")
+async def startup():
+    from database import DATABASE_URL as _db_url
+    _db_host = re.sub(r'//[^@]*@', '//***@', _db_url).split('?')[0]
+    print(f"[Startup] Connecting to DB: {_db_host}", flush=True)
+    try:
+        # Watchdog: a silent hang here blocked serving /health for 5+ min and
+        # failed deploys with zero log output. Cap it and keep booting.
+        await asyncio.wait_for(init_db(), timeout=30)
+        print("[Startup] DB initialized", flush=True)
+    except asyncio.TimeoutError:
+        print("[Startup] DB init TIMED OUT after 30s — starting anyway, will retry on requests", flush=True)
+    except Exception as e:
+        print(f"[Startup] DB init error (will retry on requests): {e}", flush=True)
+
+
+    # — Auto-migrate: add any missing columns safely ————————————————————————————————
+    new_columns = [
+        ("users",         "status",            "VARCHAR"),
+        ("jobs",          "experience_level_inferred", "BOOLEAN DEFAULT FALSE"),
+        ("user_settings", "profile_phone",      "VARCHAR"),
+        ("user_settings", "profile_address",    "VARCHAR"),
+        ("user_settings", "profile_linkedin",   "VARCHAR"),
+        ("user_settings", "profile_github",     "VARCHAR"),
+        ("user_settings", "profile_website",    "VARCHAR"),
+        ("user_settings", "profile_summary",    "TEXT"),
+        ("user_settings", "telegram_bot_token", "VARCHAR"),
+        ("user_settings", "telegram_chat_id",   "VARCHAR"),
+        ("user_settings", "role_request",        "TEXT"),
+        ("user_settings", "ai_model_secondary",  "VARCHAR"),
+        ("user_settings", "active_job_roles",    "TEXT"),
+        # Direct provider API keys (no OpenRouter service fee)
+        ("user_settings", "anthropic_api_key",  "VARCHAR"),
+        ("user_settings", "google_api_key",      "VARCHAR"),
+        ("user_settings", "openai_api_key",      "VARCHAR"),
+        # Auto-apply Phase 1
+        ("user_settings", "apply_dry_run",       "BOOLEAN DEFAULT TRUE"),
+        ("user_jobs",     "apply_method",        "VARCHAR"),
+        ("user_jobs",     "apply_result",        "TEXT"),
+        # Auto-apply: one-time application answers + per-question answer memory
+        ("user_settings", "apply_profile",       "TEXT"),
+        ("user_settings", "apply_answers",       "TEXT"),
+        # Per-resume AI cost accounting (real tokens × model rate)
+        ("user_jobs",     "tailor_cost",         "FLOAT"),
+        ("user_jobs",     "tailor_tokens_in",    "INTEGER"),
+        ("user_jobs",     "tailor_tokens_out",   "INTEGER"),
+    ]
+    try:
+        for table, col, typedef in new_columns:
+            try:
+                async with engine.begin() as conn:
+                    await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {typedef}"))
+            except Exception:
+                pass  # column already exists — safe to ignore
+        print("[Startup] DB migration complete")
+    except Exception as e:
+        print(f"[Startup] DB migration error: {e}")
+
+    # India purge: USA-only hunting now. Scraping India
+    # is already disabled (fantasticjobs LOCATIONS); this clears existing rows
+    # plus their user_jobs overlays. Idempotent — deletes 0 rows once clean.
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text(
+                "DELETE FROM user_jobs WHERE job_id IN (SELECT id FROM jobs WHERE country = 'India')"
+            ))
+            res = await conn.execute(text("DELETE FROM jobs WHERE country = 'India'"))
+        if getattr(res, "rowcount", 0):
+            print(f"[Startup] India purge: deleted {res.rowcount} India jobs")
+    except Exception as e:
+        print(f"[Startup] India purge skipped: {e}")
+
+    # Java purge: Java no longer hunted. Scraping is
+    # already disabled (removed _TERMS_JAVA from TITLE_FILTER_USA); this clears
+    # existing Java rows + their user_jobs overlays. Word-boundary match so
+    # "JavaScript" and substrings ("Javanese") are not caught. Idempotent.
+    try:
+        _JAVA_SQL = r"title ~* '\yjava\y' AND title !~* 'javascript'"
+        async with engine.begin() as conn:
+            await conn.execute(text(
+                f"DELETE FROM user_jobs WHERE job_id IN (SELECT id FROM jobs WHERE {_JAVA_SQL})"
+            ))
+            res = await conn.execute(text(f"DELETE FROM jobs WHERE {_JAVA_SQL}"))
+        if getattr(res, "rowcount", 0):
+            print(f"[Startup] Java purge: deleted {res.rowcount} Java jobs")
+    except Exception as e:
+        print(f"[Startup] Java purge skipped: {e}")
+
+    # No-sponsorship backfill: mark jobs whose JD explicitly refuses sponsorship
+    # as not visa-friendly (visa_sponsorship=false) so the list shows them red.
+    # Idempotent; catches full JDs fetched since the last boot.
+    try:
+        _NS_SQL = (r"not eligible for (immigration |visa |employment )?sponsorship"
+                   r"|does not (offer|support|provide) (immigration |visa )?sponsorship"
+                   r"|no (visa )?sponsorship|will not sponsor|cannot sponsor"
+                   r"|sponsorship is not available|unable to sponsor")
+        async with engine.begin() as conn:
+            res = await conn.execute(text(
+                "UPDATE jobs SET visa_sponsorship = false "
+                "WHERE (visa_sponsorship IS NULL OR visa_sponsorship = true) "
+                "AND description IS NOT NULL AND description ~* :pat"), {"pat": _NS_SQL})
+        if getattr(res, "rowcount", 0):
+            print(f"[Startup] No-sponsorship backfill: flagged {res.rowcount} jobs")
+    except Exception as e:
+        print(f"[Startup] No-sponsorship backfill skipped: {e}")
+
+    # One-time (guarded by Setting flag): reset auto-qualify scores. Live
+    # audit 2026-07-10 found 10,082 scored jobs with only 6 qualified —
+    # the profile fed to qualify_job had 0 experience years, so the model
+    # failed experience/seniority on everything. qualify_job now derives
+    # years from job dates; clearing the bad scores lets the hourly
+    # backfill sweep rescore honestly.
+    try:
+        async with engine.begin() as conn:
+            done = await conn.execute(text("SELECT value FROM settings WHERE key = 'qualify_reset_v2'"))
+            if not done.first():
+                res = await conn.execute(text(
+                    "UPDATE jobs SET qualify_result = NULL WHERE status != 'closed'"
+                ))
+                await conn.execute(text(
+                    "INSERT INTO settings (key, value) VALUES ('qualify_reset_v2', 'done')"
+                ))
+                print(f"[Startup] Qualify reset: cleared {getattr(res, 'rowcount', '?')} bad scores for rescoring")
+    except Exception as e:
+        print(f"[Startup] Qualify reset skipped: {e}")
+
+    # One-time: utility model Gemini → Haiku (Google 503 storms disrupted
+    # user-facing tailor passes; Haiku via Anthropic is reliable, Gemini
+    # stays for background bulk passes like qualify/exp-sweep)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text(
+                "UPDATE user_settings SET ai_model_secondary = 'anthropic/claude-haiku-4-5' "
+                "WHERE ai_model_secondary = 'google/gemini-2.5-flash'"
+            ))
+        print("[Startup] Utility model migrated to Haiku where set to Gemini Flash")
+    except Exception as e:
+        print(f"[Startup] Utility model migration skipped: {e}")
+
+    # One-time cost fix: qualify + parse are high-volume BULK passes that run on
+    # every scraped job / resume. They must stay on cheap Gemini Flash-Lite — an
+    # Anthropic model here (e.g. a user set qualify to Sonnet 4.6) is ~33x the
+    # cost and 5-17s/call vs <2s. Log who was on a premium model, then reset.
+    try:
+        async with engine.begin() as conn:
+            rows = (await conn.execute(text(
+                "SELECT u.email, s.ai_model_qualify, s.ai_model_parse "
+                "FROM user_settings s JOIN users u ON u.id = s.user_id "
+                "WHERE s.ai_model_qualify LIKE 'anthropic/%' "
+                "   OR s.ai_model_parse   LIKE 'anthropic/%'"
+            ))).fetchall()
+            for email, q, p in rows:
+                flagged = []
+                if q and q.startswith("anthropic/"):
+                    flagged.append(f"qualify={q}")
+                if p and p.startswith("anthropic/"):
+                    flagged.append(f"parse={p}")
+                print(f"[Startup] Bulk-model cost leak: {email} had {', '.join(flagged)} — resetting to Gemini Flash-Lite")
+            await conn.execute(text(
+                "UPDATE user_settings SET ai_model_qualify = 'google/gemini-2.5-flash-lite' "
+                "WHERE ai_model_qualify LIKE 'anthropic/%'"
+            ))
+            await conn.execute(text(
+                "UPDATE user_settings SET ai_model_parse = 'google/gemini-2.5-flash-lite' "
+                "WHERE ai_model_parse LIKE 'anthropic/%'"
+            ))
+        print(f"[Startup] Bulk-model reset complete — {len(rows)} user(s) moved off premium qualify/parse")
+    except Exception as e:
+        print(f"[Startup] Bulk-model reset skipped: {e}")
+
+    # One-time: USA-only app (India support removed). Purge any India jobs still
+    # in the DB — and the user_jobs rows referencing them — so no India job
+    # shows anywhere. Idempotent: a no-op once clean.
+    try:
+        async with engine.begin() as conn:
+            n_uj = (await conn.execute(text(
+                "DELETE FROM user_jobs WHERE job_id IN (SELECT id FROM jobs WHERE country = 'India')"
+            ))).rowcount
+            n_j = (await conn.execute(text(
+                "DELETE FROM jobs WHERE country = 'India'"
+            ))).rowcount
+        if n_j or n_uj:
+            print(f"[Startup] India purge: removed {n_j} job(s) + {n_uj} user_job row(s) — USA-only")
+    except Exception as e:
+        print(f"[Startup] India purge skipped: {e}")
+
+    # â"€â"€ Init Telegram + Seed companies in background (non-blocking) â"€â"€â"€â"€â"€â"€
+    async def _background_init():
+        try:
+            async with SessionLocal() as db:
+                result = await db.execute(text(
+                    "SELECT telegram_bot_token, telegram_chat_id FROM user_settings "
+                    "WHERE telegram_bot_token IS NOT NULL AND telegram_bot_token != '' LIMIT 1"
+                ))
+                row = result.fetchone()
+                if row and row[0] and row[1]:
+                    await telegram_bot.init_bot(decrypt_secret(row[0]), row[1])
+                    # Wire fallback notifier so model failures alert via Telegram
+                    set_fallback_notifier(telegram_bot.send_message)
+        except Exception as e:
+            print(f"[Startup] Telegram init skipped: {e}")
+        # Approval migration: grandfather existing accounts as approved so the
+        # rollout doesn't lock anyone out; only NEW signups start pending
+        try:
+            async with SessionLocal() as db:
+                await db.execute(text(
+                    "UPDATE users SET status = 'approved' WHERE status IS NULL OR status = ''"))
+                await db.commit()
+        except Exception as e:
+            print(f"[Startup] Status migration skipped: {e}")
+        # Migrate legacy global profile/resume to the admin's per-user records
+        # (profile/resume predate multi-user; they were always the admin's)
+        try:
+            async with SessionLocal() as db:
+                res = await db.execute(select(User).where(User.email.ilike(ADMIN_EMAIL)))
+                admin_u = res.scalar_one_or_none()
+                if admin_u:
+                    legacy_p = await db.get(Setting, "profile")
+                    per_user = await db.get(Setting, f"profile:{admin_u.id}")
+                    if legacy_p and legacy_p.value and not per_user:
+                        db.add(Setting(key=f"profile:{admin_u.id}", value=legacy_p.value))
+                        print("[Startup] Migrated legacy profile to admin's per-user profile")
+                    legacy_r = await db.get(Setting, "resume")
+                    us_res = await db.execute(select(UserSettings).where(UserSettings.user_id == admin_u.id))
+                    us = us_res.scalar_one_or_none()
+                    if legacy_r and legacy_r.value and us and not (us.resume or ""):
+                        us.resume = legacy_r.value
+                        print("[Startup] Migrated legacy resume to admin's UserSettings")
+                    await db.commit()
+        except Exception as e:
+            print(f"[Startup] Profile migration skipped: {e}")
+        # Backfill experience trays: re-run regex on ALL jobs, then AI-infer empties
+        try:
+            n = await _run_regex_backfill()
+            print(f"[Startup] Experience backfill: {n} jobs updated")
+            asyncio.create_task(_run_exp_ai_sweep())
+        except Exception as e:
+            print(f"[Startup] Experience backfill skipped: {e}")
+        # Catch-up scrape: a deploy/restart during the top of the hour swallows
+        # that hour's cron tick (in-memory scheduler). If the last scrape is
+        # stale, run one now instead of waiting for the next hour.
+        try:
+            row = None
+            async with SessionLocal() as db:
+                row = await db.get(Setting, "last_scraped_at")
+            if row and row.value:
+                last_dt = datetime.fromisoformat(row.value)
+                from datetime import timezone as _tz2
+                now_aware = datetime.now(last_dt.tzinfo) if last_dt.tzinfo else datetime.now(_UTC.utc)
+                stale_min = (now_aware - last_dt).total_seconds() / 60
+                if stale_min > 65:
+                    print(f"[Startup] Last scrape {int(stale_min)}min ago — running catch-up scrape")
+                    asyncio.create_task(_run_scrape())
+        except Exception as e:
+            print(f"[Startup] Catch-up check skipped: {e}")
+        # Blank descriptions poisoned by bot-wall stubs ("unsupported browser"
+        # pages saved by the old Refresh JD) — UI then offers Fetch/Paste again
+        try:
+            from jd_fetcher import looks_like_junk as _junk
+            async with SessionLocal() as db:
+                rows = await db.execute(select(Job.id, Job.description).where(
+                    Job.description != None, Job.description != ""))
+                poisoned = [jid for jid, d in rows.fetchall() if _junk(d or "")]
+            if poisoned:
+                async with SessionLocal() as db:
+                    await db.execute(update(Job).where(Job.id.in_(poisoned)).values(description=""))
+                    await db.commit()
+                print(f"[Startup] Blanked {len(poisoned)} junk descriptions (bot-wall stubs)")
+        except Exception as e:
+            print(f"[Startup] Junk-desc cleanup skipped: {e}")
+        # Backfill real ATS names for rows labeled "FantasticJobs" — detect
+        # Greenhouse/iCIMS/ADP/... from the job URL (one-time, idempotent)
+        try:
+            from scrapers.fantasticjobs import detect_ats_from_url
+            async with SessionLocal() as db:
+                rows = await db.execute(select(Job.id, Job.url).where(Job.source == "FantasticJobs"))
+                fj_rows = rows.fetchall()
+            relabeled = 0
+            if fj_rows:
+                async with SessionLocal() as db:
+                    for jid, url in fj_rows:
+                        ats = detect_ats_from_url(url or "")
+                        if ats:
+                            await db.execute(update(Job).where(Job.id == jid).values(source=ats))
+                            relabeled += 1
+                            if relabeled % 200 == 0:
+                                await db.commit()
+                    await db.commit()
+                print(f"[Startup] ATS relabel: {relabeled}/{len(fj_rows)} FantasticJobs rows renamed")
+        except Exception as e:
+            print(f"[Startup] ATS relabel skipped: {e}")
+        # Remap legacy country="Remote" rows — remote is a work type, not a
+        # country. Must run BEFORE the board purge so remote-USA LinkedIn
+        # rows get caught by it.
+        try:
+            from scrapers.base import detect_country as _detect_c
+            async with SessionLocal() as db:
+                rows = await db.execute(select(Job.id, Job.location).where(Job.country == "Remote"))
+                remote_rows = rows.fetchall()
+            if remote_rows:
+                fixed = 0
+                async with SessionLocal() as db:
+                    for jid, loc in remote_rows:
+                        c = _detect_c(loc or "", default="")
+                        if c not in ("USA", "India"):
+                            # most "Remote" rows came from US-centric feeds; default USA
+                            c = "USA"
+                        await db.execute(update(Job).where(Job.id == jid).values(country=c, remote=True))
+                        fixed += 1
+                    await db.commit()
+                print(f"[Startup] Remapped {fixed} country='Remote' rows to real countries")
+        except Exception as e:
+            print(f"[Startup] Remote-country remap skipped: {e}")
+        # Purge disabled role families (DevOps/SRE + Security) — scraping for
+        # them is commented out; clear the existing rows instead of waiting for
+        # 7-day retention. Keeps applied/interview. Idempotent (no new ones arrive).
+        try:
+            from telegram_bot import _role_family
+            async with SessionLocal() as db:
+                rows = await db.execute(select(Job.id, Job.title).where(Job.status.in_(["new", "skipped"])))
+                victim_ids = [jid for jid, title in rows.fetchall()
+                              if _role_family(title or "") in ("DevOps/SRE", "Security")]
+            if victim_ids:
+                from sqlalchemy import delete as sa_delete
+                async with SessionLocal() as db:
+                    res = await db.execute(sa_delete(Job).where(Job.id.in_(victim_ids)))
+                    await db.commit()
+                print(f"[Startup] Purged {res.rowcount} DevOps/Security jobs (families disabled)")
+        except Exception as e:
+            print(f"[Startup] Disabled-family purge skipped: {e}")
+        # Purge USA job-board reposts (LinkedIn/Indeed/Dice...) — USA is
+        # direct-ATS only; these leaked in via FJ's ATS feed. Keeps applied/interview.
+        # EXCEPT source=="LinkedIn": that's the intentional JB leadership feed
+        # (forced label in fantasticjobs.py) — never purge it.
+        try:
+            from sqlalchemy import delete as sa_delete
+            board_domains = ("linkedin.com", "indeed.com", "dice.com", "glassdoor.com",
+                             "ziprecruiter", "monster.com", "lensa.com")
+            async with SessionLocal() as db:
+                cond = or_(*[Job.url.ilike(f"%{d}%") for d in board_domains])
+                keep_feed = or_(Job.source != "LinkedIn", Job.source.is_(None))
+                res = await db.execute(sa_delete(Job).where(
+                    Job.country == "USA", Job.status.in_(["new", "skipped"]), keep_feed, cond))
+                await db.commit()
+            if res.rowcount:
+                print(f"[Startup] Purged {res.rowcount} USA job-board reposts")
+        except Exception as e:
+            print(f"[Startup] USA board purge skipped: {e}")
+        # Strip orphaned "(LinkedIn)" role items — the temporary "AI/DS Leadership
+        # · LinkedIn" family was merged away, but grants saved during
+        # the verify phase still hold its items. Their group is gone from the
+        # picker, so users can't deselect them — and each one matches leadership
+        # jobs, leaking that family into every feed. Idempotent.
+        try:
+            res = await _strip_stale_linkedin_roles()
+            if res:
+                print(f"[Startup] Stripped stale (LinkedIn) role items from {res} user(s)")
+        except Exception as e:
+            print(f"[Startup] LinkedIn-role cleanup skipped: {e}")
+        # try:
+        # from scrapers.company_seeder import seed_companies_if_empty
+        # await seed_companies_if_empty()
+        # except Exception as e:
+        # print(f"[Startup] Company seeder failed: {e}")
+
+    asyncio.create_task(_background_init())
+    # Start auto-scraper scheduler
+    cron_expr = "0 * * * *"
+    try:
+        async with SessionLocal() as db:
+            result = await db.execute(select(Setting).where(Setting.key == "auto_scrape_cron"))
+            row = result.scalar_one_or_none()
+            cron_expr = row.value if row and row.value else "0 * * * *"
+    except Exception as e:
+        print(f"[Startup] Cron setting fetch failed (using default): {e}")
+
+    # All crons pinned to Eastern Time (app-wide standard)
+    _scheduler.add_job(_auto_scrape,         CronTrigger.from_crontab(cron_expr, timezone=EST),    id="auto_scrape",    replace_existing=True)
+    _scheduler.add_job(_sync_expired_wrapper, CronTrigger.from_crontab("0 0 * * *", timezone=EST),  id="sync_expired",   replace_existing=True)
+    _scheduler.add_job(_sync_modified_wrapper,CronTrigger.from_crontab("0 */6 * * *", timezone=EST),id="sync_modified",  replace_existing=True)
+    _scheduler.start()
+    print(f"[Scheduler] Auto-scrape scheduled:        {cron_expr} ET")
+    print("[Scheduler] Expired jobs sync scheduled:   0 0 * * * ET (daily midnight ET)")
+    print("[Scheduler] Modified jobs sync scheduled:  0 */6 * * * ET (12am/6am/12pm/6pm ET)")
+
+
+
+# â"€â"€ Auth â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+class RegisterBody(BaseModel):
+    email: str
+    password: str
+    name: Optional[str] = ""
+    desired_roles: List[str] = []
+
+class LoginBody(BaseModel):
+    email: str
+    password: str
+
+@app.post("/api/auth/register")
+async def register(body: RegisterBody):
+    async with SessionLocal() as db:
+        existing = await db.execute(select(User).where(User.email == body.email.lower()))
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Email already registered")
+        user_id = str(_uuid.uuid4())
+        now = datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        # Admin is auto-approved; everyone else waits for admin approval
+        status = "approved" if body.email.lower().strip() == ADMIN_EMAIL.lower() else "pending"
+        user = User(
+            id=user_id,
+            email=body.email.lower().strip(),
+            password_hash=hash_password(body.password),
+            name=body.name or "",
+            created_at=now,
+            last_seen_at=now,
+            status=status,
+        )
+        db.add(user)
+        # Store desired_roles from signup so admin can see what the user wants
+        initial_roles = json.dumps(body.desired_roles) if body.desired_roles else '[]'
+        if status != "pending":
+            initial_roles = initial_roles if body.desired_roles else '["Data Engineer"]'
+        db.add(UserSettings(
+            user_id=user_id,
+            resume="",
+            job_roles=initial_roles,
+            countries='["USA", "Remote"]',
+            visa_filter=False,
+            level_filter=False,
+        ))
+        await db.commit()
+    token = create_token(user_id)
+    return {"token": token, "user": {"id": user_id, "email": body.email.lower(), "name": body.name or "", "status": status}}
+
+
+@app.post("/api/auth/login")
+async def login(body: LoginBody):
+    try:
+        async with SessionLocal() as db:
+            result = await db.execute(select(User).where(User.email == body.email.lower()))
+            user = result.scalar_one_or_none()
+            if not user or not verify_password(body.password, user.password_hash):
+                raise HTTPException(status_code=401, detail="Invalid email or password")
+            # Update last_seen
+            user.last_seen_at = datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            await db.commit()
+        token = create_token(user.id)
+        return {"token": token, "user": {"id": user.id, "email": user.email, "name": user.name, "status": user.status or "approved"}}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print("[LOGIN ERROR]", str(e))
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/auth/me")
+async def get_me(user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return {"id": user.id, "email": user.email, "name": user.name, "created_at": user.created_at, "status": user.status or "approved"}
+
+
+# â"€â"€ Change Password (logged-in users) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+class ChangePasswordBody(BaseModel):
+    current_password: str
+    new_password: str
+
+@app.post("/api/auth/change-password")
+async def change_password(body: ChangePasswordBody, user_id: str = Depends(get_current_user_id)):
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+    async with SessionLocal() as db:
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if not verify_password(body.current_password, user.password_hash):
+            raise HTTPException(status_code=400, detail="Current password is incorrect")
+        user.password_hash = hash_password(body.new_password)
+        await db.commit()
+    return {"ok": True, "message": "Password changed successfully"}
+
+
+# â"€â"€ Forgot Password — sends reset email via Resend â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+import secrets as _secrets
+import os as _os
+from database import PasswordResetToken as _PRT
+
+class ForgotPasswordBody(BaseModel):
+    email: str
+
+@app.post("/api/auth/forgot-password")
+async def forgot_password(body: ForgotPasswordBody):
+    _SAFE_RESPONSE = {"ok": True, "message": "If that email is registered, you'll receive a reset link shortly."}
+    async with SessionLocal() as db:
+        result = await db.execute(select(User).where(User.email == body.email.lower().strip()))
+        user = result.scalar_one_or_none()
+        if not user:
+            return _SAFE_RESPONSE  # don't reveal whether email exists
+
+        # Expire any existing unused tokens for this user
+        existing = await db.execute(
+            select(_PRT).where(_PRT.user_id == user.id, _PRT.used == False)
+        )
+        for t in existing.scalars().all():
+            t.used = True
+
+        # Generate fresh token (valid 1 hour)
+        token = _secrets.token_urlsafe(40)
+        from datetime import timezone, timedelta
+        expires_at = (datetime.now(_UTC.utc) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        now_iso = datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        db.add(_PRT(
+            id=str(uuid.uuid4()),
+            user_id=user.id,
+            token=token,
+            expires_at=expires_at,
+            used=False,
+            created_at=now_iso,
+        ))
+        await db.commit()
+
+    # Build reset link
+    frontend_url = _os.getenv("FRONTEND_URL", "https://job-hunter-sigma.vercel.app").rstrip("/")
+    reset_link = f"{frontend_url}?reset_token={token}"
+    user_name = user.name or "there"
+
+    # Send email via Resend
+    try:
+        import resend
+        resend.api_key = _os.getenv("RESEND_API_KEY", "")
+        resend.Emails.send({
+            "from": _os.getenv("EMAIL_FROM", "onboarding@resend.dev"),
+            "to": [user.email],
+            "subject": "Reset your Job Hunter password",
+            "html": f"""
+<!DOCTYPE html>
+<html>
+<body style="font-family:Inter,sans-serif;background:#f8fafc;margin:0;padding:32px;">
+  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+    <div style="background:linear-gradient(135deg,#1d4ed8,#0284c7);padding:32px 36px;">
+      <div style="font-size:22px;font-weight:800;color:#fff;letter-spacing:-0.03em;">ðŸŽ¯ Job Hunter</div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:4px;">Hunt Smarter, Not Harder</div>
+    </div>
+    <div style="padding:36px;">
+      <h2 style="font-size:20px;font-weight:700;color:#0f172a;margin:0 0 12px;">Hi {user_name},</h2>
+      <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 24px;">
+        We received a request to reset your Job Hunter password. Click the button below to choose a new password.
+        This link expires in <strong>1 hour</strong>.
+      </p>
+      <a href="{reset_link}"
+         style="display:inline-block;background:linear-gradient(135deg,#1d4ed8,#2563eb);color:#fff;text-decoration:none;font-size:15px;font-weight:700;padding:14px 28px;border-radius:10px;letter-spacing:-0.01em;">
+        Reset Password â†'
+      </a>
+      <p style="font-size:12px;color:#94a3b8;margin-top:28px;line-height:1.6;">
+        If you didn't request this, you can safely ignore this email. Your password won't change.<br/>
+        Link not working? Copy this: <span style="color:#2563eb;">{reset_link}</span>
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+""",
+        })
+        print(f"[Auth] Reset email sent to {user.email}")
+    except Exception as e:
+        print(f"[Auth] Failed to send reset email: {e}")
+
+    return _SAFE_RESPONSE
+
+
+# â"€â"€ Reset Password with token â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+class ResetPasswordBody(BaseModel):
+    token: str
+    new_password: str
+
+@app.post("/api/auth/reset-password")
+async def reset_password_with_token(body: ResetPasswordBody):
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    from datetime import timezone
+    async with SessionLocal() as db:
+        result = await db.execute(select(_PRT).where(_PRT.token == body.token))
+        token_record = result.scalar_one_or_none()
+        if not token_record:
+            raise HTTPException(status_code=400, detail="Invalid or expired reset link. Please request a new one.")
+        if token_record.used:
+            raise HTTPException(status_code=400, detail="This reset link has already been used. Please request a new one.")
+        try:
+            expires_at = datetime.fromisoformat(token_record.expires_at)
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid token data.")
+        if datetime.now(_UTC.utc) > expires_at:
+            raise HTTPException(status_code=400, detail="Reset link has expired. Please request a new one.")
+
+        result2 = await db.execute(select(User).where(User.id == token_record.user_id))
+        user = result2.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=400, detail="User not found.")
+        user.password_hash = hash_password(body.new_password)
+        token_record.used = True
+        await db.commit()
+        return {"ok": True, "message": "Password reset successfully. You can now log in.", "email": user.email}
+
+@app.delete("/api/account")
+async def delete_account(user_id: str = Depends(get_current_user_id)):
+    from sqlalchemy import delete as sa_delete
+    from database import PasswordResetToken, UserSettings, UserJob, User
+    async with SessionLocal() as db:
+        await db.execute(sa_delete(PasswordResetToken).where(PasswordResetToken.user_id == user_id))
+        await db.execute(sa_delete(UserSettings).where(UserSettings.user_id == user_id))
+        await db.execute(sa_delete(UserJob).where(UserJob.user_id == user_id))
+        await db.execute(sa_delete(User).where(User.id == user_id))
+        await db.commit()
+    return {"message": "Account deleted successfully"}
+
+# ── OAuth (Google / GitHub) ───────────────────────────────────────────────────
+import urllib.parse
+from fastapi.responses import RedirectResponse
+
+GOOGLE_CLIENT_ID = _os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = _os.getenv("GOOGLE_CLIENT_SECRET", "")
+GITHUB_CLIENT_ID = _os.getenv("GITHUB_CLIENT_ID", "")
+GITHUB_CLIENT_SECRET = _os.getenv("GITHUB_CLIENT_SECRET", "")
+FRONTEND_URL = _os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+from fastapi import Request
+
+@app.get("/api/auth/google/login")
+def google_login(request: Request):
+    frontend = request.headers.get("origin") or FRONTEND_URL
+    if not GOOGLE_CLIENT_ID:
+        return RedirectResponse(f"{frontend}?error=Google+OAuth+not+configured")
+    base_url = str(request.base_url).rstrip("/")
+    if "railway.app" in base_url and base_url.startswith("http://"):
+        base_url = base_url.replace("http://", "https://")
+    redirect_uri = f"{base_url}/api/auth/google/callback"
+    scope = "openid email profile"
+    state = request.query_params.get("action", "login")
+    url = f"https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id={GOOGLE_CLIENT_ID}&redirect_uri={urllib.parse.quote(redirect_uri)}&scope={urllib.parse.quote(scope)}&state={state}"
+    return RedirectResponse(url)
+
+@app.get("/api/auth/google/callback")
+async def google_callback(request: Request, code: str = None, error: str = None, state: str = None):
+    # Origin won't be present on a callback redirect from Google, so use FRONTEND_URL env var
+    frontend = _os.getenv("FRONTEND_URL", "https://job-hunter-sigma.vercel.app" if "railway" in str(request.base_url) else "http://localhost:5173")
+    if error or not code:
+        return RedirectResponse(f"{frontend}?error=Google+login+failed")
+    base_url = str(request.base_url).rstrip("/")
+    if "railway.app" in base_url and base_url.startswith("http://"):
+        base_url = base_url.replace("http://", "https://")
+    redirect_uri = f"{base_url}/api/auth/google/callback"
+    async with httpx.AsyncClient() as client:
+        token_res = await client.post("https://oauth2.googleapis.com/token", data={
+            "client_id": GOOGLE_CLIENT_ID, "client_secret": GOOGLE_CLIENT_SECRET,
+            "code": code, "grant_type": "authorization_code", "redirect_uri": redirect_uri
+        })
+        token_data = token_res.json()
+        if "access_token" not in token_data:
+            return RedirectResponse(f"{FRONTEND_URL}?error=Google+token+error")
+        user_res = await client.get("https://www.googleapis.com/oauth2/v2/userinfo", headers={"Authorization": f"Bearer {token_data['access_token']}"})
+        user_data = user_res.json()
+        email = user_data.get("email")
+        name = user_data.get("name")
+        if not email:
+            return RedirectResponse(f"{FRONTEND_URL}?error=Google+no+email")
+        
+        async with SessionLocal() as db:
+            result = await db.execute(select(User).where(User.email == email))
+            user = result.scalar_one_or_none()
+            if not user:
+                if state != "register":
+                    return RedirectResponse(f"{frontend}?error=Account+not+found.+Please+register+first.")
+                user = User(id=str(_uuid.uuid4()), email=email, name=name, password_hash="OAUTH_USER", created_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                            status="approved" if email.lower() == ADMIN_EMAIL.lower() else "pending")
+                db.add(user)
+                # Roles stay empty until the admin assigns them on approval
+                db.add(UserSettings(user_id=user.id, resume="", job_roles="[]"))
+                await db.commit()
+                await db.refresh(user)
+            
+            token = create_token(user.id)
+            user_json = urllib.parse.quote(json.dumps({"id": user.id, "email": user.email, "name": user.name, "status": user.status or "approved"}))
+            return RedirectResponse(f"{frontend}?token={token}&user={user_json}#jobs")
+
+class GoogleTokenBody(BaseModel):
+    access_token: str
+
+@app.post("/api/auth/google/token")
+async def google_token_login(body: GoogleTokenBody):
+    """Exchange a Google OAuth access_token (from Chrome extension) for a Job Hunter JWT."""
+    async with httpx.AsyncClient() as client:
+        user_res = await client.get(
+            "https://www.googleapis.com/oauth2/v2/userinfo",
+            headers={"Authorization": f"Bearer {body.access_token}"}
+        )
+    if user_res.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid Google access token")
+    user_data = user_res.json()
+    email = user_data.get("email")
+    name = user_data.get("name", "")
+    if not email:
+        raise HTTPException(status_code=400, detail="Google account has no email")
+
+    async with SessionLocal() as db:
+        result = await db.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+        if not user:
+            user = User(
+                id=str(_uuid.uuid4()), email=email, name=name,
+                password_hash="OAUTH_USER",
+                created_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                status="approved" if email.lower() == ADMIN_EMAIL.lower() else "pending",
+            )
+            db.add(user)
+            db.add(UserSettings(user_id=user.id, resume="", job_roles="[]"))
+            await db.commit()
+            await db.refresh(user)
+
+        token = create_token(user.id)
+        return {"token": token, "user": {"id": user.id, "email": user.email, "name": user.name, "status": user.status or "approved"}}
+
+@app.get("/api/auth/github/login")
+def github_login(request: Request):
+    frontend = request.headers.get("origin") or FRONTEND_URL
+    if not GITHUB_CLIENT_ID:
+        return RedirectResponse(f"{frontend}?error=GitHub+OAuth+not+configured")
+    base_url = str(request.base_url).rstrip("/")
+    if "railway.app" in base_url and base_url.startswith("http://"):
+        base_url = base_url.replace("http://", "https://")
+    redirect_uri = f"{base_url}/api/auth/github/callback"
+    scope = "user:email"
+    state = request.query_params.get("action", "login")
+    url = f"https://github.com/login/oauth/authorize?client_id={GITHUB_CLIENT_ID}&redirect_uri={urllib.parse.quote(redirect_uri)}&scope={urllib.parse.quote(scope)}&state={state}"
+    return RedirectResponse(url)
+
+@app.get("/api/auth/github/callback")
+async def github_callback(request: Request, code: str = None, error: str = None, state: str = None):
+    frontend = _os.getenv("FRONTEND_URL", "https://job-hunter-sigma.vercel.app" if "railway" in str(request.base_url) else "http://localhost:5173")
+    if error or not code:
+        return RedirectResponse(f"{frontend}?error=GitHub+login+failed")
+    base_url = str(request.base_url).rstrip("/")
+    if "railway.app" in base_url and base_url.startswith("http://"):
+        base_url = base_url.replace("http://", "https://")
+    redirect_uri = f"{base_url}/api/auth/github/callback"
+    async with httpx.AsyncClient() as client:
+        token_res = await client.post("https://github.com/login/oauth/access_token", data={
+            "client_id": GITHUB_CLIENT_ID, "client_secret": GITHUB_CLIENT_SECRET,
+            "code": code, "redirect_uri": redirect_uri
+        }, headers={"Accept": "application/json"})
+        token_data = token_res.json()
+        if "access_token" not in token_data:
+            return RedirectResponse(f"{FRONTEND_URL}?error=GitHub+token+error")
+        access_token = token_data["access_token"]
+        
+        user_res = await client.get("https://api.github.com/user", headers={"Authorization": f"Bearer {access_token}", "Accept": "application/vnd.github.v3+json"})
+        user_data = user_res.json()
+        
+        email = user_data.get("email")
+        if not email:
+            emails_res = await client.get("https://api.github.com/user/emails", headers={"Authorization": f"Bearer {access_token}", "Accept": "application/vnd.github.v3+json"})
+            emails_data = emails_res.json()
+            primary = next((e["email"] for e in emails_data if e.get("primary")), None)
+            email = primary if primary else (emails_data[0]["email"] if emails_data else None)
+
+        if not email:
+            return RedirectResponse(f"{FRONTEND_URL}?error=GitHub+no+email")
+            
+        name = user_data.get("name") or user_data.get("login") or email.split("@")[0]
+        
+        async with SessionLocal() as db:
+            result = await db.execute(select(User).where(User.email == email))
+            user = result.scalar_one_or_none()
+            if not user:
+                if state != "register":
+                    return RedirectResponse(f"{frontend}?error=Account+not+found.+Please+register+first.")
+                user = User(id=str(_uuid.uuid4()), email=email, name=name, password_hash="OAUTH_USER", created_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                            status="approved" if email.lower() == ADMIN_EMAIL.lower() else "pending")
+                db.add(user)
+                # Roles stay empty until the admin assigns them on approval
+                db.add(UserSettings(user_id=user.id, resume="", job_roles="[]"))
+                await db.commit()
+                await db.refresh(user)
+            
+            token = create_token(user.id)
+            user_json = urllib.parse.quote(json.dumps({"id": user.id, "email": user.email, "name": user.name, "status": user.status or "approved"}))
+            return RedirectResponse(f"{frontend}?token={token}&user={user_json}#jobs")
+
+import telegram_bot
+
+# â"€â"€ Settings â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+ADMIN_EMAIL = "Jaggubhai8766@gmail.com"
+
+async def _get_admin_settings(db) -> UserSettings:
+    res = await db.execute(select(User).where(User.email.ilike(ADMIN_EMAIL)))
+    admin = res.scalar_one_or_none()
+    if not admin: return None
+    res_s = await db.execute(select(UserSettings).where(UserSettings.user_id == admin.id))
+    return res_s.scalar_one_or_none()
+
+
+_JAVA_WORD_RE = re.compile(r"\bjava\b", re.I)
+_BI_WORD_RE   = re.compile(r"\bbi\b", re.I)
+_DATA_WORD_RE = re.compile(r"\bdata\b", re.I)
+
+def _title_matches_roles(title: str, roles: list) -> bool:
+    """Mirror of the frontend role matcher (App.tsx) — title-only, with the
+    same wide-net special cases, so server and client agree on every job."""
+    t = (title or "").lower()
+    for r in roles:
+        term = (r or "").lower().strip()
+        if not term:
+            continue
+        if term == "bi":
+            if _BI_WORD_RE.search(t): return True
+        elif term == "java":
+            if _JAVA_WORD_RE.search(t): return True
+        elif term == "data engineer":
+            # DE net also covers DE-applicable titles without the word "data":
+            # Databricks Engineer, MLOps Engineer, Analytics Engineer.
+            if _DATA_WORD_RE.search(t) and "engineer" in t: return True
+            if "databricks" in t or "analytics engineer" in t: return True
+            if re.search(r"\bmlops\b", t): return True
+        elif term == "data analyst":
+            if _DATA_WORD_RE.search(t) and "analyst" in t: return True
+        elif term == "software engineer (data)":
+            if "software engineer" in t and _DATA_WORD_RE.search(t): return True
+        elif term in t:
+            return True
+    return False
+
+
+async def _load_profile(db, user_id: str) -> dict:
+    """Per-user profile (Setting key 'profile:<user_id>').
+    The legacy global 'profile' row predates multi-user — it belongs to the
+    admin account only and is used as the admin's fallback."""
+    row = await db.get(Setting, f"profile:{user_id}")
+    if not row:
+        res = await db.execute(select(User).where(User.id == user_id))
+        usr = res.scalar_one_or_none()
+        if usr and usr.email.lower() == ADMIN_EMAIL.lower():
+            row = await db.get(Setting, "profile")
+    try:
+        return json.loads(row.value) if row and row.value else {}
+    except Exception:
+        return {}
+
+async def _get_user_settings(user_id: str) -> dict:
+    """Helper to fetch user's AI/resume settings from user_settings table.
+       Falls back to Master Admin's API keys for normal users."""
+    async with SessionLocal() as db:
+        result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+        s = result.scalar_one_or_none()
+        
+        user_res = await db.execute(select(User).where(User.id == user_id))
+        u = user_res.scalar_one_or_none()
+        is_admin = bool(u and u.email.lower() == ADMIN_EMAIL.lower())
+        
+        admin_s = await _get_admin_settings(db) if not is_admin else None
+        ai_source = admin_s if admin_s else s
+
+        if not s and not admin_s:
+            return {}
+
+        # Resume is strictly per-user — the legacy global Setting("resume")
+        # belongs to the admin only (migrated at startup)
+        resume_text = (s.resume or "") if s else ""
+        if not resume_text and is_admin:
+            resume_row = await db.get(Setting, "resume")
+            resume_text = resume_row.value if resume_row else ""
+
+        profile_name_val = (s.profile_name or "") if s else ""
+        job_roles_val = json.loads(s.job_roles or "[]") if s else []
+        active_roles_val = (json.loads(s.active_job_roles or "[]") if s and s.active_job_roles else [])
+        effective_roles_val = active_roles_val or job_roles_val
+
+        # Build candidate full name from the JSON profile (first_name + last_name),
+        # NOT from UserSettings.profile_name (which is the account display name, e.g. "Admin").
+        # The Profile page saves first_name + last_name into the JSON profile via PUT /api/profile.
+        try:
+            # Reuse the session already open here — a nested SessionLocal() held a
+            # SECOND pooled connection on this hot path and helped exhaust the pool.
+            _prof = await _load_profile(db, user_id)
+            _fn = (_prof.get("first_name") or "").strip()
+            _ln = (_prof.get("last_name") or "").strip()
+            if _fn or _ln:
+                profile_name_val = f"{_fn} {_ln}".strip()
+        except Exception:
+            pass  # fall back to whatever profile_name_val was
+
+        return {
+            "resume": resume_text,
+            "ai_provider": ai_source.ai_provider if ai_source else "openrouter",
+            "ai_api_key": ai_source.ai_api_key if ai_source else "",
+            "anthropic_api_key": ai_source.anthropic_api_key if ai_source else "",
+            "google_api_key": ai_source.google_api_key if ai_source else "",
+            "openai_api_key": ai_source.openai_api_key if ai_source else "",
+            "ai_model_parse": ai_source.ai_model_parse if ai_source else "",
+            "ai_model_tailor": ai_source.ai_model_tailor if ai_source else "",
+            "ai_model_secondary": getattr(ai_source, "ai_model_secondary", "") if ai_source else "",
+            "ai_model_qualify": ai_source.ai_model_qualify if ai_source else "",
+            "ai_model_cover_letter": ai_source.ai_model_cover_letter if ai_source else "",
+            "profile_name": profile_name_val,
+            "job_roles": effective_roles_val,
+        }
+
+
+@app.get("/api/settings/ai-status")
+async def get_ai_status(user_id: str = Depends(get_current_user_id)):
+    """Returns which provider each model family will actually route to.
+    Used by Settings UI to show live routing status without exposing key values."""
+    from ai.llm import ModelKeys as _ModelKeys, _resolve_provider
+    cfg = await _get_user_settings(user_id)
+    mk = _ModelKeys(
+        anthropic=cfg.get("anthropic_api_key", "") or "",
+        google=cfg.get("google_api_key", "") or "",
+        openai=cfg.get("openai_api_key", "") or "",
+        openrouter=cfg.get("ai_api_key", "") or "",
+    )
+
+    def route(model: str) -> dict:
+        _, prov = _resolve_provider(model, mk)
+        label = {
+            "anthropic": "Anthropic Direct ✓",
+            "google":    "Google AI Direct ✓",
+            "openai":    "OpenAI Direct ✓",
+            "openrouter": "OpenRouter (fallback)",
+        }.get(prov, prov)
+        direct = prov != "openrouter"
+        return {"provider": prov, "label": label, "direct": direct}
+
+    tailor_model  = cfg.get("ai_model_tailor",       "anthropic/claude-sonnet-4.6")
+    sec_model     = cfg.get("ai_model_secondary") or "anthropic/claude-haiku-4-5"
+    parse_model   = cfg.get("ai_model_parse",         "google/gemini-2.5-flash-lite")
+    qualify_model = cfg.get("ai_model_qualify",       "google/gemini-2.5-flash-lite")
+    cover_model   = cfg.get("ai_model_cover_letter",  "anthropic/claude-sonnet-4.6")
+
+    return {
+        "keys_set": {
+            "anthropic":  bool(mk.anthropic),
+            "google":     bool(mk.google),
+            "openai":     bool(mk.openai),
+            "openrouter": bool(mk.openrouter),
+        },
+        "routing": {
+            "tailor":       {**route(tailor_model),  "model": tailor_model},
+            "utility":      {**route(sec_model),     "model": sec_model},
+            "parse":        {**route(parse_model),   "model": parse_model},
+            "qualify":      {**route(qualify_model), "model": qualify_model},
+            "cover_letter": {**route(cover_model),   "model": cover_model},
+        },
+    }
+
+
+@app.get("/api/settings")
+async def get_settings(user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+        s = result.scalar_one_or_none()
+        if not s:
+            # Create defaults — roles EMPTY (admin assigns them); the legacy
+            # column default '["Data Engineer"]' must not leak in here
+            s = UserSettings(user_id=user_id, job_roles="[]")
+            db.add(s)
+            await db.commit()
+            await db.refresh(s)  # prevent expired-object lazy load in async context
+        # Resume is per-user; legacy global Setting("resume") is admin-only
+        resume_val = s.resume or ""
+        if not resume_val:
+            u_res = await db.execute(select(User).where(User.id == user_id))
+            u_row = u_res.scalar_one_or_none()
+            if u_row and u_row.email.lower() == ADMIN_EMAIL.lower():
+                resume_row = await db.get(Setting, "resume")
+                resume_val = resume_row.value if resume_row else ""
+
+        data = {
+            "resume": resume_val,
+            "job_roles": json.loads(s.job_roles or '["Data Engineer"]'),
+            "active_job_roles": (json.loads(s.active_job_roles) if s.active_job_roles else []),
+            "countries": json.loads(s.countries or '["USA","Remote"]'),
+            "visa_filter": bool(s.visa_filter),
+            "level_filter": bool(s.level_filter),
+            "apply_dry_run": True if getattr(s, "apply_dry_run", None) is None else bool(s.apply_dry_run),
+            "ai_provider": s.ai_provider or "openrouter",
+            "ai_api_key": s.ai_api_key or "",
+            # Direct provider keys — masked for display, never sent plaintext
+            "anthropic_api_key": "•" * len(s.anthropic_api_key) if s.anthropic_api_key else "",
+            "google_api_key":    "•" * len(s.google_api_key)    if s.google_api_key    else "",
+            "openai_api_key":    "•" * len(s.openai_api_key)    if s.openai_api_key    else "",
+            "ai_model_parse": s.ai_model_parse or "google/gemini-2.5-flash-lite",
+            "ai_model_tailor": s.ai_model_tailor or "anthropic/claude-sonnet-4.6",
+            "ai_model_secondary": s.ai_model_secondary or "anthropic/claude-haiku-4-5",
+            "ai_model_qualify": s.ai_model_qualify or "google/gemini-2.5-flash-lite",
+            "ai_model_cover_letter": s.ai_model_cover_letter or "anthropic/claude-sonnet-4.6",
+            "profile_name": s.profile_name or "",
+            "profile_visa": s.profile_visa or "",
+            "profile_phone": s.profile_phone or "",
+            "profile_address": s.profile_address or "",
+            "profile_linkedin": s.profile_linkedin or "",
+            "profile_github": s.profile_github or "",
+            "profile_website": s.profile_website or "",
+            "profile_summary": s.profile_summary or "",
+            "telegram_bot_token": "•" * len(s.telegram_bot_token) if s.telegram_bot_token else "",
+            "telegram_chat_id": s.telegram_chat_id or "",
+            "telegram_configured": bool(s.telegram_bot_token and s.telegram_chat_id),
+            "role_request": json.loads(s.role_request) if s.role_request else [],
+            # Legacy fields for backward compat
+            "auto_scrape_cron": "0 * * * *",
+        }
+        
+        # Also fetch global settings for dashboard display
+        global_setting = await db.get(Setting, "last_scraped_at")
+        data["last_scraped_at"] = global_setting.value if global_setting else ""
+
+        # Earliest scraped_at in DB — used by frontend to cap the date filter dropdown
+        earliest_r = await db.execute(select(func.min(Job.scraped_at)).select_from(Job))
+        earliest = earliest_r.scalar()
+        data["earliest_scraped_date"] = earliest[:10] if earliest else ""
+
+        # Override profile fields from the structured JSON profile (Profile tab).
+        # UserSettings columns (profile_name, profile_phone...) are legacy/Settings-only.
+        # The Profile page saves first_name, last_name, phone etc. into the JSON profile —
+        # the extension needs these correct values, not the stale UserSettings columns.
+        try:
+            _prof = await _load_profile(db, user_id)
+            if _prof:
+                _fn = (_prof.get("first_name") or "").strip()
+                _ln = (_prof.get("last_name") or "").strip()
+                if _fn or _ln:
+                    data["profile_name"] = f"{_fn} {_ln}".strip()
+                if _prof.get("phone"):
+                    data["profile_phone"] = _prof["phone"]
+                if _prof.get("linkedin"):
+                    data["profile_linkedin"] = _prof["linkedin"]
+                if _prof.get("github"):
+                    data["profile_github"] = _prof["github"]
+                if _prof.get("address"):
+                    data["profile_address"] = _prof["address"]
+                # Expose split name fields for the extension
+                data["profile_first_name"] = _fn
+                data["profile_last_name"]  = _ln
+                # Profile email (on resume) may differ from login email
+                if _prof.get("email"):
+                    data["profile_email"] = _prof["email"]
+        except Exception:
+            pass  # fall back to UserSettings column values already in data
+
+        return data
+
+
+# Mirrors ROLE_GROUPS in frontend/src/components/JobPreferencesModal.tsx —
+# used to enforce "one family active at a time" for non-admin users.
+_ROLE_FAMILY_ITEMS: dict[str, set[str]] = {
+    "Data Engineer": {"data engineer", "etl developer", "data platform", "data warehouse",
+                       "data architect", "database engineer", "database developer",
+                       "sql developer", "software engineer (data)"},
+    "Data Analyst": {"data analyst", "data analytics", "analytics engineer",
+                      "reporting analyst", "business analyst"},
+    "Business Intelligence": {"business intelligence", "bi developer", "bi analyst",
+                               "bi engineer", "power bi", "tableau"},
+    "Project Manager": {"project manager"},
+}
+
+
+def _roles_families(roles: list[str]) -> set[str]:
+    """Returns every distinct family touched by these role labels.
+    Unmapped/custom labels are ignored (they don't trigger a conflict)."""
+    families: set[str] = set()
+    for r in roles:
+        rl = r.lower().strip()
+        if "java" in rl:
+            families.add("Java")
+            continue
+        for fam, items in _ROLE_FAMILY_ITEMS.items():
+            if rl in items:
+                families.add(fam)
+                break
+    return families
+
+
+@app.put("/api/settings")
+async def update_settings(body: dict = Body(...), user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+        s = result.scalar_one_or_none()
+        if not s:
+            s = UserSettings(user_id=user_id)
+            db.add(s)
+
+        if "job_roles" in body or "active_job_roles" in body:
+            user_res = await db.execute(select(User).where(User.id == user_id))
+            u = user_res.scalar_one_or_none()
+            is_admin = bool(u and u.email.lower() == ADMIN_EMAIL.lower())
+
+            if "job_roles" in body and not is_admin:
+                # A user with no roles yet (e.g. a pending OAuth signup) may make
+                # their INITIAL family pick — the admin still approves/adjusts it.
+                # Once roles exist, only an admin can change the grant.
+                _existing = json.loads(s.job_roles or "[]")
+                if _existing:
+                    raise HTTPException(403, "Only an admin can change granted job roles.")
+
+            if "active_job_roles" in body:
+                new_roles = body["active_job_roles"] if isinstance(body["active_job_roles"], list) else [body["active_job_roles"]]
+                if len(_roles_families(new_roles)) > 1:
+                    raise HTTPException(400, "Only one job preference can be active at a time. Choose one family (e.g. Data Engineer OR Data Analyst), not multiple.")
+                granted = set(r.lower().strip() for r in json.loads(s.job_roles or "[]"))
+                if granted and not set(r.lower().strip() for r in new_roles).issubset(granted):
+                    raise HTTPException(400, "You can only select roles your admin has granted you access to.")
+                s.active_job_roles = json.dumps(new_roles)
+        for field in ["resume", "ai_provider", "ai_model_parse", "ai_model_tailor", "ai_model_secondary", "ai_model_qualify", "ai_model_cover_letter",
+                       "profile_name", "profile_visa",
+                       "profile_phone", "profile_address", "profile_linkedin",
+                       "profile_github", "profile_website", "profile_summary",
+                       "telegram_chat_id", "ai_api_key", "telegram_bot_token",
+                       "anthropic_api_key", "google_api_key", "openai_api_key"]:
+            if field in body:
+                val = body[field]
+                # Secrets are returned masked by GET /api/settings; the UI echoes
+                # them back on save. Never overwrite a stored secret with the mask.
+                _SECRET_FIELDS = ("telegram_bot_token", "ai_api_key",
+                                  "anthropic_api_key", "google_api_key", "openai_api_key")
+                if field in _SECRET_FIELDS and isinstance(val, str) \
+                        and ("•" in val or "â€¢" in val):
+                    continue
+                setattr(s, field, val)
+
+        if "job_roles" in body:
+            new_grant = body["job_roles"] if isinstance(body["job_roles"], list) else [body["job_roles"]]
+            s.job_roles = json.dumps(new_grant)
+            # Drop a stale active pick that's no longer covered by the new grant
+            if s.active_job_roles:
+                grant_set = set(r.lower().strip() for r in new_grant)
+                active = json.loads(s.active_job_roles)
+                if not set(r.lower().strip() for r in active).issubset(grant_set):
+                    s.active_job_roles = ""
+        if "countries" in body:
+            s.countries = json.dumps(body["countries"] if isinstance(body["countries"], list) else [body["countries"]])
+        if "visa_filter" in body:
+            s.visa_filter = bool(body["visa_filter"])
+        if "level_filter" in body:
+            s.level_filter = bool(body["level_filter"])
+        if "apply_dry_run" in body:
+            s.apply_dry_run = bool(body["apply_dry_run"])
+        await db.commit()
+        saved_token   = s.telegram_bot_token or ""
+        saved_chat_id = s.telegram_chat_id or ""
+
+    # Re-init the Telegram bot immediately when a real token is on file —
+    # otherwise a corrected token wouldn't work until the next restart
+    new_token = body.get("telegram_bot_token", "")
+    if new_token and "•" not in new_token and saved_token and saved_chat_id:
+        asyncio.create_task(telegram_bot.init_bot(saved_token, saved_chat_id))
+
+    return {"ok": True}
+
+
+@app.post("/api/settings/request-role")
+async def request_role(body: dict = Body(...), user_id: str = Depends(get_current_user_id)):
+    """Approved user requests additional role families. Saves to role_request for admin review."""
+    roles = body.get("roles", [])
+    if not isinstance(roles, list):
+        raise HTTPException(400, "roles must be a list")
+    async with SessionLocal() as db:
+        s_res = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+        s = s_res.scalar_one_or_none()
+        if not s:
+            raise HTTPException(404, "Settings not found")
+        s.role_request = json.dumps(roles)
+        await db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/settings/telegram-token")
+async def reveal_telegram_token(user_id: str = Depends(get_current_user_id)):
+    """Admin-only: reveal the stored bot token (UI 'Show' button)."""
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+        s = result.scalar_one_or_none()
+    return {"token": (s.telegram_bot_token or "") if s else ""}
+
+
+@app.post("/api/telegram/test")
+async def test_telegram(body: dict = Body(...), user_id: str = Depends(get_current_user_id)):
+    """Test Telegram bot connection and send a test message."""
+    token = body.get("token", "")
+    chat_id = body.get("chat_id", "")
+    # UI shows the stored token masked — when the mask is echoed back,
+    # test with the real stored token instead
+    if "•" in token or "â€¢" in token:
+        async with SessionLocal() as db:
+            result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+            s = result.scalar_one_or_none()
+        token = (s.telegram_bot_token or "") if s else ""
+    if not token or not chat_id:
+        raise HTTPException(status_code=400, detail="Bot token and Chat ID are required")
+    ok, msg = await telegram_bot.test_connection(token, chat_id)
+    if ok:
+        # Also save to settings
+        async with SessionLocal() as db:
+            result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+            s = result.scalar_one_or_none()
+            if not s:
+                s = UserSettings(user_id=user_id)
+                db.add(s)
+            s.telegram_bot_token = token
+            s.telegram_chat_id = chat_id
+            await db.commit()
+        # Initialize the live bot
+        await telegram_bot.init_bot(token, chat_id)
+        return {"ok": True, "message": msg}
+    else:
+        raise HTTPException(status_code=400, detail=f"Telegram error: {msg}")
+
+
+# â"€â"€ Companies â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+@app.get("/api/companies")
+async def list_companies(user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        result = await db.execute(select(Company).order_by(Company.ats, Company.name))
+        companies = result.scalars().all()
+        return [{"id": c.id, "name": c.name, "ats": c.ats, "slug": c.slug,
+                 "careers_url": c.careers_url, "active": c.active, "source": c.source}
+                for c in companies]
+
+
+@app.post("/api/companies/detect")
+async def detect_company_ats(body: dict, user_id: str = Depends(get_current_user_id)):
+    url = body.get("url", "")
+    if not url:
+        raise HTTPException(status_code=400, detail="url required")
+    from scrapers.ats_detect import detect
+    result = await detect(url)
+    if not result:
+        raise HTTPException(status_code=422, detail="Could not detect ATS from this URL")
+    return result
+
+
+@app.post("/api/companies")
+async def add_company(body: dict, user_id: str = Depends(get_current_user_id)):
+    name = body.get("name", "")
+    ats = body.get("ats", "")
+    slug = body.get("slug", "")
+    careers_url = body.get("careers_url", "")
+    if not ats or not slug:
+        raise HTTPException(status_code=400, detail="ats and slug required")
+    async with SessionLocal() as db:
+        company = Company(
+            id=str(_uuid.uuid4()),
+            name=name or slug.replace("-", " ").title(),
+            ats=ats, slug=slug, careers_url=careers_url,
+            active=True,
+            added_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            source="manual",
+        )
+        db.add(company)
+        await db.commit()
+        return {"id": company.id, "name": company.name, "ats": company.ats, "slug": company.slug}
+
+
+@app.delete("/api/companies/{company_id}")
+async def delete_company(company_id: str, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        result = await db.execute(select(Company).where(Company.id == company_id))
+        c = result.scalar_one_or_none()
+        if not c:
+            raise HTTPException(status_code=404, detail="Company not found")
+        await db.delete(c)
+        await db.commit()
+    return {"ok": True}
+
+
+@app.put("/api/companies/{company_id}/toggle")
+async def toggle_company(company_id: str, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        result = await db.execute(select(Company).where(Company.id == company_id))
+        c = result.scalar_one_or_none()
+        if not c:
+            raise HTTPException(status_code=404, detail="Company not found")
+        c.active = not c.active
+        await db.commit()
+        return {"id": c.id, "active": c.active}
+
+
+# â"€â"€ Jobs â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+@app.get("/api/jobs/count")
+async def public_job_count():
+    """Public endpoint — no auth needed. Returns total job count for login page."""
+    async with SessionLocal() as db:
+        result = await db.execute(select(func.count()).select_from(Job))
+        count = result.scalar() or 0
+    return {"count": count}
+
+@app.get("/api/stats/today")
+async def public_today_stats():
+    """Public endpoint — live stats for login page (no auth needed)."""
+    from datetime import datetime, timezone as _tz
+    # scraped_at is stored as UTC Z-suffix; use UTC date to match correctly
+    now_utc = datetime.now(_tz.utc)
+    today   = now_utc.strftime("%Y-%m-%d")
+    async with SessionLocal() as db:
+        # Jobs added today (UTC date prefix match covers both old EST and new UTC formats)
+        added_r = await db.execute(
+            select(func.count()).select_from(Job).where(Job.scraped_at.like(f"{today}%"))
+        )
+        added_today = added_r.scalar() or 0
+        # Most recent scrape timestamp
+        setting = await db.get(Setting, "last_scraped_at")
+        last_scraped_at = setting.value if setting else None
+        # Best ATS match score
+        score_r = await db.execute(
+            select(func.max(Job.ats_score_before)).select_from(Job)
+        )
+        best_score = score_r.scalar()
+        # Qualify coverage — how many jobs have an AI match score
+        scored_r = await db.execute(
+            select(func.count()).select_from(Job).where(Job.qualify_result != None)
+        )
+        scored_jobs = scored_r.scalar() or 0
+
+    mins_ago = None
+    if last_scraped_at:
+        try:
+            last_dt = datetime.fromisoformat(last_scraped_at.replace("Z", "+00:00"))
+            mins_ago = max(0, int((now_utc - last_dt).total_seconds() / 60))
+        except Exception:
+            pass
+
+    return {
+        "added_today": added_today,
+        "last_scrape_mins_ago": mins_ago,
+        "best_match_score": best_score,
+        "scored_jobs": scored_jobs,
+    }
+
+@app.get("/api/jobs")
+async def list_jobs(
+    user_id:    str            = Depends(get_current_user_id),
+    status:     Optional[str]  = None,
+    source:     Optional[str]  = None,
+    remote:     Optional[bool] = None,
+    country:    Optional[str]  = None,
+    time_range: Optional[str]  = None,   # "24h" | "48h" | "7d" | None=all
+):
+    from datetime import timezone, timedelta
+    now = datetime.now(EST)
+
+    async with SessionLocal() as db:
+        # Approval gate + role scope for non-admins
+        u = await db.get(User, user_id)
+        is_admin = bool(u and u.email.lower() == ADMIN_EMAIL.lower())
+        if u and not is_admin:
+            st = u.status or "approved"
+            if st == "revoked":
+                raise HTTPException(403, "Account access revoked")
+            if st == "pending":
+                raise HTTPException(403, "Account pending approval")
+        user_roles: list = []
+        if not is_admin:
+            s_res = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+            s = s_res.scalar_one_or_none()
+            try:
+                user_roles = json.loads(s.job_roles) if s and s.job_roles else []
+            except Exception:
+                user_roles = []
+
+        q = select(Job).order_by(Job.posted_at.desc(), Job.scraped_at.desc())
+        if source:
+            q = q.where(Job.source == source)
+        if remote is not None:
+            q = q.where(Job.remote == remote)
+        if country:
+            q = q.where(Job.country == country)
+        result = await db.execute(q)
+        jobs = result.scalars().all()
+
+        # Admin family toggles: load the OFF set here; the hide is
+        # applied AFTER user statuses are known — an OFF family hides only its
+        # untouched ("new"/"skipped") jobs. Applied/interview-stage jobs stay
+        # visible so applications remain trackable while the family is off.
+        _fam_off: set = set()
+        try:
+            _sf_row = await db.get(Setting, "scrape_families")
+            if _sf_row and _sf_row.value:
+                _sf = json.loads(_sf_row.value)
+                _fam_off = {f for f, v in _sf.items() if not v}
+        except Exception as e:
+            print(f"[Jobs] family-toggle read skipped: {e}")
+
+        # Server-side role scope (non-admin): same wide-net title matching
+        # the frontend uses, so the two views never disagree. The O2Ten family
+        # is matched by SOURCE, not title — its curated titles never contain
+        # the role string, so title matching alone hid every job from grantees.
+        if not is_admin and user_roles:
+            _has_o2ten = any((r or "").lower().strip() == "o2ten" for r in user_roles)
+            jobs = [j for j in jobs
+                    if (_has_o2ten and (j.source or "") == "O2Ten")
+                    or _title_matches_roles(j.title or "", user_roles)]
+
+        # Get user's job statuses
+        job_ids = [j.id for j in jobs]
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id.in_(job_ids))
+        )
+        user_jobs_map = {uj.job_id: uj for uj in uj_result.scalars().all()}
+
+    # Filter by status using user_jobs overlay
+    def get_uj_status(j):
+        uj = user_jobs_map.get(j.id)
+        return uj.status if uj else "new"
+
+    # OFF-family hide — untouched jobs only; applied/interview stages always show.
+    if _fam_off:
+        import telegram_bot as _tg
+        jobs = [j for j in jobs
+                if get_uj_status(j) not in ("new", "skipped")
+                or _tg._role_family(j.title or "") not in _fam_off]
+
+    if status:
+        jobs = [j for j in jobs if get_uj_status(j) == status]
+
+    # Time filter in Python — use posted_at when available, fallback to scraped_at
+    def parse_dt(s: str):
+        try:
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            return None
+
+    def effective_dt(j) -> datetime:
+        """Use scraped_at (when WE found it) — avoids old posted_at dates from jobspy filtering out fresh scrapes."""
+        return parse_dt(j.scraped_at or "") or parse_dt(j.posted_at or "") or now
+
+    if time_range == "24h":
+        cutoff = now - timedelta(hours=24)
+        jobs = [j for j in jobs if effective_dt(j) >= cutoff]
+        jobs = sorted(jobs, key=effective_dt, reverse=True)
+    elif time_range == "48h":
+        cutoff_new = now - timedelta(hours=24)
+        cutoff_old = now - timedelta(hours=48)
+        jobs = [j for j in jobs if cutoff_old <= effective_dt(j) < cutoff_new]
+        jobs = sorted(jobs, key=effective_dt, reverse=True)
+    elif time_range == "7d":
+        cutoff = now - timedelta(days=7)
+        jobs = [j for j in jobs if effective_dt(j) >= cutoff]
+        jobs = sorted(jobs, key=effective_dt, reverse=True)
+
+    # Role-priority buckets (P1..P5): rank the viewer's target role families by
+    # how competitive they are — avg qualify score of the viewer's scored jobs in
+    # each family. Family with the highest avg = P1. Computed per request from
+    # data already stored (qualify_result + title); no column needed. Auto only.
+    from telegram_bot import _role_family as _fam
+
+    def _qr_for(job, uj):
+        raw = (uj.qualify_result if (uj and uj.qualify_result) else None) if not is_admin \
+            else (uj.qualify_result if (uj and uj.qualify_result) else job.qualify_result)
+        try:
+            return json.loads(raw) if raw else None
+        except Exception:  # noqa: BLE001
+            return None
+
+    _fam_scores: dict = {}
+    for job in jobs:
+        qr = _qr_for(job, user_jobs_map.get(job.id))
+        sc = qr.get("score") if qr else None
+        if isinstance(sc, (int, float)):
+            fam = _fam(job.title or "")
+            if fam:
+                _fam_scores.setdefault(fam, []).append(float(sc))
+    _fam_rank = {
+        fam: i for i, (fam, _) in enumerate(
+            sorted(_fam_scores.items(), key=lambda kv: -(sum(kv[1]) / len(kv[1]))), start=1)
+    }
+
+    # Merge user_jobs overlay into job dicts
+    out = []
+    for job in jobs:
+        d = _job_to_dict(job)
+        uj = user_jobs_map.get(job.id)
+        if uj:
+            d["status"] = uj.status
+            d["tailored_resume"] = uj.tailored_resume
+            d["cover_letter"] = uj.cover_letter or ""
+            d["ats_score_before"] = uj.ats_score_before
+            d["ats_score_after"] = uj.ats_score_after
+            d["ats_keywords_matched"] = json.loads(uj.ats_keywords_matched) if uj.ats_keywords_matched else []
+            d["ats_keywords_missing"] = json.loads(uj.ats_keywords_missing) if uj.ats_keywords_missing else []
+            d["fit_analysis"] = uj.fit_analysis
+            d["interview_tips"] = json.loads(uj.interview_tips) if uj.interview_tips else []
+            d["notes"] = uj.notes or ""
+            d["priority"] = uj.priority or 0
+            d["deferred"] = bool(getattr(uj, "deferred", False))
+            d["qualify_result"] = json.loads(uj.qualify_result) if uj.qualify_result else None
+            d["deadline"] = uj.deadline or ""
+            d["interview_date"] = uj.interview_date or ""
+            d["needs_review"] = bool(uj.needs_review)
+            d["review_reasons"] = json.loads(uj.review_reasons) if uj.review_reasons else []
+            d["review_notes"] = json.loads(uj.review_notes) if uj.review_notes else []
+            d["gate_scores"] = json.loads(uj.gate_scores) if uj.gate_scores else None
+            d["tailor_context"] = json.loads(uj.tailor_context) if uj.tailor_context else None
+        else:
+            d["status"] = "new"
+        # AI Match must reflect the VIEWER's own profile. _job_to_dict fills
+        # qualify_result/priority from the shared Job row (scored against the
+        # admin). For non-admins, show ONLY their own per-user qualify — never
+        # the admin's — so friends see real, per-profile scores (or none yet).
+        if not is_admin:
+            d["qualify_result"] = json.loads(uj.qualify_result) if (uj and uj.qualify_result) else None
+            d["priority"] = (uj.priority or 0) if uj else 0
+        # Role-priority bucket (1 = most competitive family for this candidate;
+        # 0 = family not yet scored / unknown).
+        d["role_priority"] = _fam_rank.get(_fam(job.title or ""), 0)
+        out.append(d)
+    return out
+
+
+
+@app.get("/api/jobs/{job_id}")
+async def get_job(job_id: str, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        d = _job_to_dict(job)
+        # Overlay user-specific data
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        if uj:
+            d["status"] = uj.status
+            d["tailored_resume"] = uj.tailored_resume
+            d["cover_letter"] = uj.cover_letter or ""
+            d["ats_score_before"] = uj.ats_score_before
+            d["ats_score_after"] = uj.ats_score_after
+            d["ats_keywords_matched"] = json.loads(uj.ats_keywords_matched) if uj.ats_keywords_matched else []
+            d["ats_keywords_missing"] = json.loads(uj.ats_keywords_missing) if uj.ats_keywords_missing else []
+            d["fit_analysis"] = uj.fit_analysis
+            d["interview_tips"] = json.loads(uj.interview_tips) if uj.interview_tips else []
+            d["notes"] = uj.notes or ""
+            d["priority"] = uj.priority or 0
+            d["deferred"] = bool(getattr(uj, "deferred", False))
+            d["qualify_result"] = json.loads(uj.qualify_result) if uj.qualify_result else None
+            d["deadline"] = uj.deadline or ""
+            d["interview_date"] = uj.interview_date or ""
+            d["applied_at"] = uj.applied_at or ""
+            d["tailored_at"] = uj.tailored_at or ""
+            d["needs_review"] = bool(uj.needs_review)
+            d["review_reasons"] = json.loads(uj.review_reasons) if uj.review_reasons else []
+            d["review_notes"] = json.loads(uj.review_notes) if uj.review_notes else []
+            d["gate_scores"] = json.loads(uj.gate_scores) if uj.gate_scores else None
+            d["tailor_context"] = json.loads(uj.tailor_context) if uj.tailor_context else None
+        return d
+
+
+# â"€â"€ Live job verification â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+@app.get("/api/jobs/{job_id}/verify")
+async def verify_job_live(job_id: str, user_id: str = Depends(get_current_user_id)):
+    """
+    HEAD-ping the job URL to check if it still exists.
+    Returns: {alive: bool|null, status_code: int|null}
+    null = couldn't reach (network error) — don't assume dead.
+    """
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        url = job.url
+
+    _HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=10,
+            follow_redirects=True,
+            headers=_HEADERS,
+        ) as client:
+            try:
+                resp = await client.head(url)
+            except Exception:
+                resp = None
+
+            # Some servers block HEAD — fall back to GET
+            if resp is None or resp.status_code == 405:
+                resp = await client.get(url)
+
+            code = resp.status_code
+            final_url = str(resp.url).lower()
+
+            # Explicit dead signals
+            dead_patterns = [
+                "job-not-found", "position-closed", "job-closed",
+                "no-longer-available", "this-job-is-no-longer",
+                "posting-not-found", "req-not-found",
+            ]
+            url_looks_dead = any(p in final_url for p in dead_patterns)
+
+            alive = (code < 400) and not url_looks_dead
+            return {"alive": alive, "status_code": code}
+
+    except Exception as e:
+        # Network error — unknown, don't flag as dead
+        return {"alive": None, "status_code": None, "error": str(e)[:120]}
+
+
+class StatusUpdate(BaseModel):
+    status: str  # new / applied / skipped / interview
+
+
+@app.put("/api/jobs/{job_id}/status")
+async def set_status(job_id: str, body: StatusUpdate, user_id: str = Depends(get_current_user_id)):
+    if body.status not in ("new", "applied", "screening", "assessment", "interview", "final", "skipped"):
+        raise HTTPException(400, "Invalid status")
+    async with SessionLocal() as db:
+        # Verify job exists
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        # Write to user_jobs table
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        if not uj:
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+            db.add(uj)
+        uj.status = body.status
+        # applied_at persists through every applied-or-beyond stage (screening,
+        # assessment, interview, final) — progressing must NOT wipe the date.
+        # Only going back to new/skipped clears it.
+        if body.status in _APPLIED_STAGES:
+            if not uj.applied_at:
+                uj.applied_at = datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        else:
+            uj.applied_at = None
+        await db.commit()
+    return {"ok": True}
+
+
+@app.put("/api/jobs/{job_id}/experience-level")
+async def update_experience_level(job_id: str, body: dict = Body(...), user_id: str = Depends(get_current_user_id)):
+    level = (body.get("experience_level") or "").strip()
+    if not level:
+        raise HTTPException(400, "experience_level required")
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        job.experience_level = level
+        job.experience_level_inferred = False
+        await db.commit()
+    return {"ok": True, "experience_level": level}
+
+
+
+# â"€â"€ Clear All Jobs â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+@app.delete("/api/jobs/all")
+async def clear_all_jobs(user_id: str = Depends(get_current_user_id)):
+    from sqlalchemy import delete as sa_delete
+    async with SessionLocal() as db:
+        result = await db.execute(sa_delete(Job))
+        await db.commit()
+        return {"deleted": result.rowcount}
+
+
+# ── Fix broken JDs (one-time cleanup) ─────────────────────────────────────────
+# Descriptions saved by the old page-scrape fetcher are flat text full of page
+# chrome ("Share on:", "Powered by ..."). Re-fetch only those with the new
+# HTML fetcher; FJ/ATS HTML descriptions are left untouched.
+
+_jd_fix_state = {"running": False, "total": 0, "done": 0, "fixed": 0, "failed": 0}
+
+def _is_broken_jd(desc: str) -> bool:
+    if not desc or len(desc.strip()) < 100:
+        return False  # empty/short — nothing to fix, user can fetch manually
+    has_html = bool(re.search(r"<(p|ul|ol|li|h[1-6]|div|br|strong)\b", desc, re.I))
+    if has_html:
+        return False  # already structured
+    junk = ("Powered by Rippling" in desc or "Share on:" in desc
+            or "Terms of service" in desc or "Cookie" in desc)
+    return junk or "\n" in desc  # flat multi-line text = old fetcher output
+
+async def _run_jd_fix():
+    global _jd_fix_state
+    async with SessionLocal() as db:
+        rows = await db.execute(
+            select(Job.id, Job.url, Job.description).where(Job.status != "closed"))
+        broken = [(jid, url) for jid, url, desc in rows.fetchall() if _is_broken_jd(desc or "")]
+
+    _jd_fix_state = {"running": True, "total": len(broken), "done": 0, "fixed": 0, "failed": 0}
+    print(f"[JD-Fix] {len(broken)} broken descriptions to re-fetch")
+
+    sem = asyncio.Semaphore(5)  # be polite to career sites
+
+    async def fix_one(jid: str, url: str):
+        async with sem:
+            try:
+                r = await fetch_full_jd(url)
+                if r and r.get("description"):
+                    async with SessionLocal() as db:
+                        job = await db.get(Job, jid)
+                        if job:
+                            job.description = r["description"]
+                            await db.commit()
+                    _jd_fix_state["fixed"] += 1
+                else:
+                    _jd_fix_state["failed"] += 1
+            except Exception as e:
+                _jd_fix_state["failed"] += 1
+                print(f"[JD-Fix] {url}: {e}")
+            finally:
+                _jd_fix_state["done"] += 1
+                if _jd_fix_state["done"] % 25 == 0:
+                    print(f"[JD-Fix] {_jd_fix_state['done']}/{_jd_fix_state['total']} "
+                          f"(fixed {_jd_fix_state['fixed']}, failed {_jd_fix_state['failed']})")
+
+    await asyncio.gather(*(fix_one(jid, url) for jid, url in broken))
+    _jd_fix_state["running"] = False
+    print(f"[JD-Fix] Done — fixed {_jd_fix_state['fixed']}, failed {_jd_fix_state['failed']} of {_jd_fix_state['total']}")
+
+
+# ── Admin: user approval & role assignment ────────────────────────────────────
+
+@app.get("/api/admin/users")
+async def admin_list_users(user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        res = await db.execute(select(User).order_by(User.created_at.desc()))
+        users = res.scalars().all()
+        out = []
+        for u in users:
+            s_res = await db.execute(select(UserSettings).where(UserSettings.user_id == u.id))
+            s = s_res.scalar_one_or_none()
+            try:
+                roles = json.loads(s.job_roles) if s and s.job_roles else []
+            except Exception:
+                roles = []
+            try:
+                role_request = json.loads(s.role_request) if s and s.role_request else []
+            except Exception:
+                role_request = []
+            out.append({
+                "id": u.id, "email": u.email, "name": u.name or "",
+                "status": u.status or "approved",
+                "is_admin": u.email.lower() == ADMIN_EMAIL.lower(),
+                "job_roles": roles,
+                "role_request": role_request,
+                "created_at": u.created_at or "",
+                "last_seen_at": u.last_seen_at or "",
+            })
+    return out
+
+
+@app.patch("/api/admin/users/{target_id}")
+async def admin_update_user(target_id: str, body: dict = Body(...),
+                            user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        u = await db.get(User, target_id)
+        if not u:
+            raise HTTPException(404, "User not found")
+        if u.email.lower() == ADMIN_EMAIL.lower() and body.get("status") == "pending":
+            raise HTTPException(400, "Cannot revoke the admin account")
+        if "status" in body and body["status"] in ("pending", "approved", "revoked"):
+            u.status = body["status"]
+        if "job_roles" in body and isinstance(body["job_roles"], list):
+            s_res = await db.execute(select(UserSettings).where(UserSettings.user_id == target_id))
+            s = s_res.scalar_one_or_none()
+            if s:
+                s.job_roles = json.dumps(body["job_roles"])
+                if s.active_job_roles:
+                    grant_set = set(r.lower().strip() for r in body["job_roles"])
+                    active = json.loads(s.active_job_roles)
+                    if not set(r.lower().strip() for r in active).issubset(grant_set):
+                        s.active_job_roles = ""
+            else:
+                db.add(UserSettings(user_id=target_id, job_roles=json.dumps(body["job_roles"])))
+        if body.get("grant_role_request"):
+            # Merge pending role_request into job_roles and clear the request
+            s_res = await db.execute(select(UserSettings).where(UserSettings.user_id == target_id))
+            s = s_res.scalar_one_or_none()
+            if s:
+                try:
+                    current = json.loads(s.job_roles) if s.job_roles else []
+                    requested = json.loads(s.role_request) if s.role_request else []
+                except Exception:
+                    current, requested = [], []
+                merged = list(dict.fromkeys(current + requested))  # dedupe, preserve order
+                s.job_roles = json.dumps(merged)
+                s.role_request = ""
+        if body.get("dismiss_role_request"):
+            s_res = await db.execute(select(UserSettings).where(UserSettings.user_id == target_id))
+            s = s_res.scalar_one_or_none()
+            if s:
+                s.role_request = ""
+        await db.commit()
+    return {"ok": True}
+
+
+@app.delete("/api/admin/users/{target_id}")
+async def admin_delete_user(target_id: str, user_id: str = Depends(get_current_user_id)):
+    """Permanently remove a user and all their data. Admin cannot delete self."""
+    await _verify_admin(user_id)
+    from sqlalchemy import delete as sa_delete
+    async with SessionLocal() as db:
+        u = await db.get(User, target_id)
+        if not u:
+            raise HTTPException(404, "User not found")
+        if u.email.lower() == ADMIN_EMAIL.lower():
+            raise HTTPException(400, "Cannot delete the admin account")
+        await db.execute(sa_delete(UserJob).where(UserJob.user_id == target_id))
+        await db.execute(sa_delete(UserSettings).where(UserSettings.user_id == target_id))
+        prof = await db.get(Setting, f"profile:{target_id}")
+        if prof:
+            await db.delete(prof)
+        await db.delete(u)
+        await db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/admin/pending-count")
+async def admin_pending_count(user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        pending_res = await db.execute(select(func.count()).select_from(User).where(User.status == "pending"))
+        pending = pending_res.scalar() or 0
+        # Also count approved users with a pending role request
+        role_req_res = await db.execute(
+            select(func.count()).select_from(UserSettings).where(
+                UserSettings.role_request != None,
+                UserSettings.role_request != "",
+                UserSettings.role_request != "[]",
+            )
+        )
+        role_requests = role_req_res.scalar() or 0
+        return {"count": pending + role_requests}
+
+
+# ── Admin: system logs ───────────────────────────────────────────────────────
+
+@app.get("/api/admin/logs")
+async def admin_get_logs(limit: int = 100, level: str = "", user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        q = select(AppLog).order_by(AppLog.id.desc()).limit(limit)
+        if level:
+            q = select(AppLog).where(AppLog.level == level.upper()).order_by(AppLog.id.desc()).limit(limit)
+        rows = await db.execute(q)
+        logs = rows.scalars().all()
+    return [{"id": l.id, "timestamp": l.timestamp, "level": l.level,
+             "process": l.process, "message": l.message, "seen": l.seen} for l in logs]
+
+
+@app.get("/api/admin/logs/unseen-count")
+async def admin_unseen_count(user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        r = await db.execute(
+            select(func.count()).select_from(AppLog).where(
+                AppLog.seen == False, AppLog.level == "ERROR"
+            )
+        )
+        return {"count": r.scalar() or 0}
+
+
+@app.post("/api/admin/logs/mark-seen")
+async def admin_mark_logs_seen(user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        await db.execute(update(AppLog).where(AppLog.seen == False).values(seen=True))
+        await db.commit()
+    return {"ok": True}
+
+
+# ── Help & Chat — per-user thread with admin ─────────────────────────────────
+
+def _now_iso() -> str:
+    from datetime import timezone as _tz
+    return datetime.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+async def _is_admin_user(db, user_id: str) -> bool:
+    u = await db.get(User, user_id)
+    return bool(u and u.email.lower() == ADMIN_EMAIL.lower())
+
+
+def _msg_dict(m: ChatMessage) -> dict:
+    # seen = has the OTHER party read it
+    return {"id": m.id, "sender": m.sender, "text": m.text, "created_at": m.created_at,
+            "seen": bool(m.read_by_admin if m.sender == "user" else m.read_by_user)}
+
+
+def _is_active(last_seen_iso: str, window_s: int = 60) -> bool:
+    """Active = heartbeat (chat unread poll, every 15s) within the last minute."""
+    if not last_seen_iso:
+        return False
+    try:
+        from datetime import timezone as _tz
+        dt = datetime.fromisoformat(last_seen_iso.replace("Z", "+00:00"))
+        return (datetime.now(_tz.utc) - dt).total_seconds() <= window_s
+    except Exception:
+        return False
+
+
+@app.get("/api/chat/messages")
+async def chat_messages(user_id: str = Depends(get_current_user_id)):
+    """Non-admin: own thread. Marks admin messages as read."""
+    async with SessionLocal() as db:
+        res = await db.execute(
+            select(ChatMessage).where(ChatMessage.user_id == user_id)
+            .order_by(ChatMessage.id.asc()).limit(500))
+        msgs = res.scalars().all()
+        await db.execute(update(ChatMessage).where(
+            ChatMessage.user_id == user_id, ChatMessage.sender == "admin",
+            ChatMessage.read_by_user == False).values(read_by_user=True))
+        await db.commit()
+    return [_msg_dict(m) for m in msgs]
+
+
+@app.get("/api/chat/unread")
+async def chat_unread(user_id: str = Depends(get_current_user_id)):
+    """Badge count + presence. Every logged-in client polls this (15s), so it
+    doubles as the presence heartbeat: caller's last_seen_at is stamped here,
+    and 'active within 60s' is what the green dot means everywhere."""
+    async with SessionLocal() as db:
+        u = await db.get(User, user_id)
+        if u:
+            u.last_seen_at = _now_iso()
+            await db.commit()
+        if await _is_admin_user(db, user_id):
+            r = await db.execute(select(func.count()).select_from(ChatMessage).where(
+                ChatMessage.sender == "user", ChatMessage.read_by_admin == False))
+            return {"count": r.scalar() or 0, "peer_active": False}
+        r = await db.execute(select(func.count()).select_from(ChatMessage).where(
+            ChatMessage.user_id == user_id, ChatMessage.sender == "admin",
+            ChatMessage.read_by_user == False))
+        adm_res = await db.execute(select(User).where(func.lower(User.email) == ADMIN_EMAIL.lower()))
+        adm = adm_res.scalar_one_or_none()
+        return {"count": r.scalar() or 0,
+                "peer_active": _is_active(adm.last_seen_at if adm else "")}
+
+
+@app.post("/api/chat/send")
+async def chat_send(body: dict, user_id: str = Depends(get_current_user_id)):
+    text_val = (body.get("text") or "").strip()
+    if not text_val:
+        raise HTTPException(400, "Empty message")
+    if len(text_val) > 4000:
+        raise HTTPException(400, "Message too long (4000 chars max)")
+    async with SessionLocal() as db:
+        db.add(ChatMessage(user_id=user_id, sender="user", text=text_val, created_at=_now_iso()))
+        await db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/admin/chat/threads")
+async def admin_chat_threads(user_id: str = Depends(get_current_user_id)):
+    """All user threads: latest message + unread count each."""
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        res = await db.execute(select(ChatMessage).order_by(ChatMessage.id.desc()).limit(2000))
+        msgs = res.scalars().all()
+        users_res = await db.execute(select(User))
+        users = {u.id: u for u in users_res.scalars().all()}
+    threads: dict = {}
+    for m in msgs:  # newest first — first hit per user is the latest message
+        t = threads.setdefault(m.user_id, {"user_id": m.user_id, "last": None, "unread": 0})
+        if t["last"] is None:
+            t["last"] = {"text": m.text[:80], "sender": m.sender, "created_at": m.created_at}
+        if m.sender == "user" and not m.read_by_admin:
+            t["unread"] += 1
+    out = []
+    for uid, t in threads.items():
+        u = users.get(uid)
+        out.append({**t, "name": (u.name or u.email) if u else uid, "email": u.email if u else "",
+                    "active": _is_active(u.last_seen_at if u else "")})
+    out.sort(key=lambda x: x["last"]["created_at"] if x["last"] else "", reverse=True)
+    return out
+
+
+@app.get("/api/admin/chat/users")
+async def admin_chat_users(user_id: str = Depends(get_current_user_id)):
+    """All non-admin users — lets admin search anyone and start a new thread,
+    not just users who already messaged."""
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        res = await db.execute(select(User))
+        users = res.scalars().all()
+    return [
+        {"user_id": u.id, "name": u.name or u.email, "email": u.email,
+         "active": _is_active(u.last_seen_at or "")}
+        for u in users if u.email.lower() != ADMIN_EMAIL.lower()
+    ]
+
+
+@app.get("/api/admin/chat/{thread_user_id}/messages")
+async def admin_chat_thread(thread_user_id: str, user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        res = await db.execute(
+            select(ChatMessage).where(ChatMessage.user_id == thread_user_id)
+            .order_by(ChatMessage.id.asc()).limit(500))
+        msgs = res.scalars().all()
+        await db.execute(update(ChatMessage).where(
+            ChatMessage.user_id == thread_user_id, ChatMessage.sender == "user",
+            ChatMessage.read_by_admin == False).values(read_by_admin=True))
+        await db.commit()
+    return [_msg_dict(m) for m in msgs]
+
+
+@app.post("/api/admin/chat/{thread_user_id}/send")
+async def admin_chat_send(thread_user_id: str, body: dict, user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    text_val = (body.get("text") or "").strip()
+    if not text_val:
+        raise HTTPException(400, "Empty message")
+    if len(text_val) > 4000:
+        raise HTTPException(400, "Message too long (4000 chars max)")
+    async with SessionLocal() as db:
+        db.add(ChatMessage(user_id=thread_user_id, sender="admin", text=text_val, created_at=_now_iso()))
+        await db.commit()
+    return {"ok": True}
+
+
+# ── AI Assistant — resume-grounded Q&A ("can I apply to this JD?") ────────────
+
+ASSISTANT_DAILY_LIMIT = 30
+
+# JD-shaped input heuristic: long text or requirement-section vocabulary
+_JD_SHAPE_RE = re.compile(
+    r"(responsibilit|qualification|requirement|what you.ll do|you will|"
+    r"we are looking|experience with|years of experience|about the role)", re.IGNORECASE)
+
+# No-sponsorship / clearance hard blockers in JD text
+_SPONSOR_BLOCK_RE = re.compile(
+    r"(without\s+(?:the\s+need\s+for\s+)?sponsorship|no\s+(?:visa\s+)?sponsorship"
+    r"|not\s+(?:able\s+to\s+|offer(?:ing)?\s+)?sponsor|unable\s+to\s+sponsor"
+    r"|will\s+not\s+sponsor|cannot\s+sponsor|sponsorship\s+is\s+not\s+available"
+    r"|not\s+eligible\s+for\s+(?:immigration\s+|visa\s+|employment\s+)?sponsorship"
+    r"|do(?:es)?\s+not\s+(?:offer|support|provide)\s+(?:immigration\s+|visa\s+)?sponsorship"
+    r"|now\s+or\s+in\s+the\s+future"
+    r"|security\s+clearance|ts/sci|top.?secret|u\.?s\.?\s+citizens?\s+only"
+    r"|must\s+be\s+(?:a\s+)?u\.?s\.?\s+citizen|citizenship\s+required)", re.IGNORECASE)
+
+_ASSISTANT_SYSTEM = """You are the Job Hunter app's AI assistant. You answer a job seeker's questions grounded ONLY in their actual resume and the FACTS block provided.
+
+HARD RULES:
+- Never claim the candidate has a skill, tool, or experience that is not in their resume text.
+- When a FACTS block is present (JD analysis), your verdict MUST agree with it — especially the sponsorship blocker and skill coverage numbers. Do not soften a hard blocker.
+- For "can I apply" questions: start your reply with exactly one of: "YES —", "STRETCH —", or "NO —", then 2-4 short bullet reasons (matched strengths, missing skills, blockers), then one practical tip.
+- General career questions: answer from the resume; concise, specific, honest about gaps.
+- Keep replies under 180 words. Plain text, no markdown headers."""
+
+
+@app.get("/api/assistant/messages")
+async def assistant_messages(user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        res = await db.execute(
+            select(AssistantMessage).where(AssistantMessage.user_id == user_id)
+            .order_by(AssistantMessage.id.desc()).limit(100))
+        msgs = list(reversed(res.scalars().all()))
+        today = _now_iso()[:10]
+        used_r = await db.execute(select(func.count()).select_from(AssistantMessage).where(
+            AssistantMessage.user_id == user_id, AssistantMessage.role == "user",
+            AssistantMessage.created_at.like(f"{today}%")))
+        used = used_r.scalar() or 0
+    return {"messages": [{"id": m.id, "role": m.role, "text": m.text, "created_at": m.created_at} for m in msgs],
+            "remaining": max(0, ASSISTANT_DAILY_LIMIT - used)}
+
+
+@app.post("/api/assistant/ask")
+async def assistant_ask(body: dict, user_id: str = Depends(get_current_user_id)):
+    question = (body.get("text") or "").strip()
+    if not question:
+        raise HTTPException(400, "Empty question")
+    if len(question) > 20000:
+        raise HTTPException(400, "Too long — paste the JD's key sections, not the whole page")
+
+    today = _now_iso()[:10]
+    async with SessionLocal() as db:
+        used_r = await db.execute(select(func.count()).select_from(AssistantMessage).where(
+            AssistantMessage.user_id == user_id, AssistantMessage.role == "user",
+            AssistantMessage.created_at.like(f"{today}%")))
+        used = used_r.scalar() or 0
+        if used >= ASSISTANT_DAILY_LIMIT:
+            raise HTTPException(429, f"Daily limit reached ({ASSISTANT_DAILY_LIMIT} questions). Resets at midnight UTC.")
+
+    user_cfg = await _get_user_settings(user_id)
+    resume = user_cfg.get("resume", "")
+    if not resume.strip():
+        raise HTTPException(400, "Upload your resume in Profile first — the assistant answers from it.")
+    visa = user_cfg.get("profile_visa", "") or "not specified"
+    roles = user_cfg.get("job_roles") or []
+
+    from ai.llm import ModelKeys as _MK
+    mk = _MK(
+        anthropic=user_cfg.get("anthropic_api_key", "") or "",
+        google=user_cfg.get("google_api_key", "") or "",
+        openai=user_cfg.get("openai_api_key", "") or "",
+        openrouter=user_cfg.get("ai_api_key", "") or "",
+    )
+    if not any([mk.anthropic, mk.google, mk.openai, mk.openrouter]):
+        raise HTTPException(400, "No AI API key set. Add one in Settings.")
+    model = user_cfg.get("ai_model_secondary") or "anthropic/claude-haiku-4-5"
+
+    # Deterministic JD analysis — the AI narrates these facts, never invents them
+    facts = ""
+    if len(question) > 500 or _JD_SHAPE_RE.search(question):
+        try:
+            from resume_lint import clean_jd_html, extract_jd_hard_skills, skill_coverage_report, user_roles_to_role_type, TECH
+            jd = clean_jd_html(question)
+            role_type = user_roles_to_role_type(roles) or TECH
+            jd_skills = extract_jd_hard_skills(jd, role_type)
+            cov = skill_coverage_report(resume, jd, role_type=role_type) if jd_skills else {}
+            sponsor_hit = _SPONSOR_BLOCK_RE.search(jd)
+            yoe = [int(m) for m in re.findall(r"(\d{1,2})\+?\s*(?:\+\s*)?years", jd, re.IGNORECASE) if int(m) <= 30]
+            facts_lines = []
+            if jd_skills:
+                facts_lines.append(f"JD hard skills detected ({len(jd_skills)}): {', '.join(jd_skills[:40])}")
+                facts_lines.append(f"Resume skill coverage: {cov.get('coverage_pct', '?')}% — matched: {', '.join(cov.get('matched', [])[:25]) or 'none'}")
+                facts_lines.append(f"Missing from resume: {', '.join(cov.get('missing', [])[:25]) or 'none'}")
+            if sponsor_hit:
+                facts_lines.append(f"SPONSORSHIP/CLEARANCE BLOCKER in JD: \"{sponsor_hit.group(0)}\" — candidate visa status: {visa}. "
+                                   "If the candidate needs sponsorship, this is a hard NO regardless of skills.")
+            else:
+                facts_lines.append(f"No sponsorship/clearance blocker language detected in JD. Candidate visa status: {visa}.")
+            if yoe:
+                facts_lines.append(f"Years-of-experience figures mentioned in JD: {sorted(set(yoe))}")
+            facts = "=== FACTS (computed, authoritative) ===\n" + "\n".join(facts_lines) + "\n"
+        except Exception as e:
+            print(f"[Assistant] JD analysis failed (answering without facts): {e}")
+
+    from ai.llm import chat as _chat
+    user_msg = (
+        f"{facts}\n=== CANDIDATE RESUME ===\n{resume[:12000]}\n\n"
+        f"=== CANDIDATE VISA STATUS ===\n{visa}\n\n"
+        f"=== QUESTION ===\n{question[:16000]}"
+    )
+    try:
+        answer = await _chat(system=_ASSISTANT_SYSTEM, user=user_msg,
+                             api_key="", provider="", model=model,
+                             max_tokens=600, pass_name="assistant", keys=mk)
+    except Exception as e:
+        raise HTTPException(502, f"AI call failed: {e}")
+
+    now = _now_iso()
+    async with SessionLocal() as db:
+        db.add(AssistantMessage(user_id=user_id, role="user", text=question, created_at=now))
+        db.add(AssistantMessage(user_id=user_id, role="assistant", text=answer.strip(), created_at=now))
+        await db.commit()
+    return {"answer": answer.strip(), "remaining": max(0, ASSISTANT_DAILY_LIMIT - used - 1)}
+
+
+@app.post("/api/admin/backfill-trays")
+async def admin_backfill_trays(user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    asyncio.create_task(_run_regex_backfill_then_ai())
+    await log_event("INFO", "exp-tray", "Backfill triggered manually by admin")
+    return {"message": "Backfill started — regex pass then AI sweep in background"}
+
+
+async def _run_regex_backfill_then_ai():
+    n = await _run_regex_backfill()
+    await log_event("INFO", "exp-tray", f"Regex backfill complete: {n} jobs updated")
+    await _run_exp_ai_sweep(limit=2000)
+
+
+@app.get("/api/admin/job-stats")
+async def admin_job_stats(user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        total = (await db.execute(select(func.count()).select_from(Job))).scalar() or 0
+        status_counts = {}
+        for st in ("new", "applied", "skipped", "interview"):
+            r = await db.execute(select(func.count()).select_from(Job).where(Job.status == st))
+            status_counts[st] = r.scalar() or 0
+        exp_confirmed = (await db.execute(
+            select(func.count()).select_from(Job).where(
+                Job.experience_level != None, Job.experience_level != "",
+                Job.experience_level_inferred == False
+            )
+        )).scalar() or 0
+        exp_inferred = (await db.execute(
+            select(func.count()).select_from(Job).where(Job.experience_level_inferred == True)
+        )).scalar() or 0
+        exp_missing = (await db.execute(
+            select(func.count()).select_from(Job).where(
+                or_(Job.experience_level == None, Job.experience_level == "")
+            )
+        )).scalar() or 0
+        last_scraped = (await db.execute(select(func.max(Job.scraped_at)))).scalar()
+    return {
+        "total": total,
+        "status": status_counts,
+        "experience": {"confirmed": exp_confirmed, "inferred": exp_inferred, "missing": exp_missing},
+        "last_scraped_at": last_scraped,
+    }
+
+
+@app.get("/api/admin/billing")
+async def admin_billing(user_id: str = Depends(get_current_user_id)):
+    """Proxy FJ + OpenRouter live billing data."""
+    await _verify_admin(user_id)
+    import os
+    fj_key = os.getenv("FANTASTIC_JOBS_API_KEY", "")
+    async with SessionLocal() as db:
+        admin_s = await _get_admin_settings(db)
+        or_key = (admin_s.ai_api_key or "") if admin_s else ""
+        prov = (admin_s.ai_provider or "OpenRouter") if admin_s else "OpenRouter"
+
+    or_credits = None
+    async with httpx.AsyncClient(timeout=10) as client:
+        if or_key:
+            try:
+                r = await client.get(
+                    "https://openrouter.ai/api/v1/credits",
+                    headers={"Authorization": f"Bearer {or_key}"}
+                )
+                if r.status_code == 200:
+                    or_credits = r.json().get("data")
+            except Exception:
+                pass
+    return {"or_credits": or_credits}
+
+
+@app.get("/api/qualify/health")
+async def qualify_health(user_id: str = Depends(get_current_user_id)):
+    """Admin diagnostic: why is auto-qualify (not) running?"""
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        admin_s = await _get_admin_settings(db)
+        profile_ok = bool(await _load_profile(db, user_id))
+        scored_r  = await db.execute(select(func.count()).select_from(Job).where(Job.qualify_result != None))
+        pending_r = await db.execute(select(func.count()).select_from(Job).where(
+            Job.qualify_result == None, Job.status == "new"))
+    return {
+        "admin_settings_found": admin_s is not None,
+        "api_key_set": bool(admin_s.ai_api_key) if admin_s else False,
+        "profile_set": profile_ok,
+        "qualify_model": (admin_s.ai_model_qualify or "(default)") if admin_s else None,
+        "scored_jobs": scored_r.scalar() or 0,
+        "pending_jobs": pending_r.scalar() or 0,
+        "running": _qualify_running,
+    }
+
+
+@app.post("/api/jobs/fix-descriptions")
+async def fix_broken_descriptions(background_tasks: BackgroundTasks,
+                                  user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    if _jd_fix_state["running"]:
+        return {"message": "Already running", **_jd_fix_state}
+    background_tasks.add_task(_run_jd_fix)
+    return {"message": "JD fix started in background. Poll /api/jobs/fix-descriptions/status."}
+
+@app.get("/api/jobs/fix-descriptions/status")
+async def fix_descriptions_status(user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    return _jd_fix_state
+
+
+# â"€â"€ Debug JobSpy â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+@app.get("/api/debug/jobspy")
+async def debug_jobspy(user_id: str = Depends(get_current_user_id)):
+    """Test JobSpy directly — bypasses DB, shows raw counts."""
+    jobs = await jobspy_fetch({})
+    by_source: dict = {}
+    for j in jobs:
+        s = j.get("source", "?")
+        by_source[s] = by_source.get(s, 0) + 1
+    return {"total": len(jobs), "by_source": by_source,
+            "sample": [{"title": j["title"], "company": j["company"], "source": j["source"]} for j in jobs[:5]]}
+
+
+@app.get("/api/debug/google")
+async def debug_google():
+    """Test Google Jobs with different search terms."""
+    import asyncio, traceback
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _test(term: str):
+        try:
+            from jobspy import scrape_jobs
+            df = scrape_jobs(
+                site_name=["google"],
+                google_search_term=term,
+                results_wanted=10,
+                description_format="markdown",
+                verbose=0,
+            )
+            if df is None or df.empty:
+                return {"count": 0, "term": term}
+            return {"count": len(df), "term": term,
+                    "sample": df[["title","company","location"]].head(3).to_dict("records")}
+        except Exception as e:
+            return {"count": 0, "term": term, "error": str(e)[:300]}
+
+    loop = asyncio.get_event_loop()
+    ex   = ThreadPoolExecutor(max_workers=3)
+    r1 = await loop.run_in_executor(ex, _test, "data engineer USA")
+    r2 = await loop.run_in_executor(ex, _test, "data engineer")
+    r3 = await loop.run_in_executor(ex, _test, "software engineer New York")
+    return {"results": [r1, r2, r3]}
+
+
+# ————————————————————————————————————————————————————————————————————————————————
+
+
+async def _verify_admin(user_id: str):
+    async with SessionLocal() as db:
+        res = await db.execute(select(User).where(User.id == user_id))
+        u = res.scalar_one_or_none()
+        if not u or u.email.lower() != ADMIN_EMAIL.lower():
+            raise HTTPException(status_code=403, detail="Restricted Access. Only the Master Admin can perform this action.")
+
+@app.post("/api/admin/o2ten-token")
+async def set_o2ten_token(body: dict, user_id: str = Depends(get_current_user_id)):
+    """Store the O2Ten session token (from localStorage `o2ten_token` on
+    immediate-jobs.o2ten.com). The daily doc itself is public; this token is
+    only needed for the two tiny date/doc-id API calls."""
+    await _verify_admin(user_id)
+    token = (body.get("token") or "").strip()
+    if len(token) < 20:
+        raise HTTPException(status_code=400, detail="token looks empty/too short")
+    async with SessionLocal() as db:
+        row = await db.get(Setting, "o2ten_token")
+        if row:
+            row.value = token
+        else:
+            db.add(Setting(key="o2ten_token", value=token))
+        # allow re-alerting after a fresh token
+        arow = await db.get(Setting, "o2ten_401_alerted")
+        if arow:
+            arow.value = ""
+        await db.commit()
+    return {"ok": True, "len": len(token)}
+
+
+@app.get("/api/admin/scrape-families")
+async def get_scrape_families(user_id: str = Depends(get_current_user_id)):
+    """Admin family toggles: ON = scraped from FantasticJobs + visible in app."""
+    await _verify_admin(user_id)
+    from scrapers.fantasticjobs import ALL_FAMILIES
+    async with SessionLocal() as db:
+        row = await db.get(Setting, "scrape_families")
+        try:
+            m = json.loads(row.value) if row and row.value else {}
+        except Exception:
+            m = {}
+    return {f: bool(m.get(f, True)) for f in ALL_FAMILIES}
+
+
+@app.put("/api/admin/scrape-families")
+async def set_scrape_families(body: dict, user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    from scrapers.fantasticjobs import ALL_FAMILIES
+    clean = {f: bool(body.get(f, True)) for f in ALL_FAMILIES}
+    async with SessionLocal() as db:
+        row = await db.get(Setting, "scrape_families")
+        if row:
+            row.value = json.dumps(clean)
+        else:
+            db.add(Setting(key="scrape_families", value=json.dumps(clean)))
+        await db.commit()
+    return clean
+
+
+@app.post("/api/jobs/scrape")
+async def scrape_jobs(background_tasks: BackgroundTasks, window: str | None = None,
+                      user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    # Optional one-shot backfill: ?window=24h (or 6h/48h/7d) forces a wider
+    # FantasticJobs time_frame for this run only — used to pull a full day of
+    # newly added role families. Bypasses the hourly 1h-window economy once.
+    forced = None
+    if window:
+        allowed = {"1h", "6h", "24h", "48h", "2d", "3d", "4d", "5d", "7d"}
+        if window not in allowed:
+            raise HTTPException(status_code=400, detail=f"window must be one of {sorted(allowed)}")
+        forced = window
+        async with SessionLocal() as db:
+            row = await db.get(Setting, "fj_force_window")
+            if row:
+                row.value = window
+            else:
+                db.add(Setting(key="fj_force_window", value=window))
+            await db.commit()
+    # The actual scrape takes ~2 minutes for 3600 companies, which exceeds Railway's 100s HTTP timeout.
+    # We must run it in the background so the UI doesn't crash or timeout.
+    background_tasks.add_task(_run_scrape)
+    msg = f"Scrape started (backfill window={forced})." if forced else "Scrape started in background. Check back in a few minutes."
+    return {"message": msg, "window": forced}
+
+
+# ————————————————————————————————————————————————————————————————————————————————
+
+
+class DescriptionUpdate(BaseModel):
+    description: str
+
+@app.put("/api/jobs/{job_id}/description")
+async def set_description(job_id: str, body: DescriptionUpdate, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        job.description = body.description.strip()
+        # Explicit no-sponsorship language in the JD → mark not visa-friendly so
+        # the list shows it red, even if the feed didn't flag it.
+        if job.description and _SPONSOR_BLOCK_RE.search(job.description) and job.visa_sponsorship is not False:
+            job.visa_sponsorship = False
+        await db.commit()
+    return {"ok": True}
+
+@app.post("/api/jobs/{job_id}/fetch-jd")
+async def fetch_jd(job_id: str, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        url       = job.url
+        existing  = (job.description or "").strip()
+
+    res = await fetch_full_jd(url)
+    if res is None:
+        # Site blocked / JS-rendered — re-compute tray on existing description at least
+        if existing:
+            async with SessionLocal() as db:
+                job = await db.get(Job, job_id)
+                new_level = resolve_experience_level(job.experience_level or "", existing)
+                if new_level and new_level != (job.experience_level or ""):
+                    job.experience_level = new_level
+                    job.experience_level_inferred = False
+                    await db.commit()
+        raise HTTPException(502, "Could not fetch the job page (blocked or JS-rendered). Paste the JD manually.")
+    full_desc = res.get("description", "")
+    extracted_date = res.get("date", "")
+
+    # If URL fetch failed/useless, keep existing scraped description (better than nothing)
+    FAILED = {"[Description not available", "[Could not load"}
+    if any(full_desc.startswith(f) for f in FAILED):
+        if len(existing) > 100:
+            full_desc = existing   # existing Adzuna API snippet is better
+        # else leave the error message so user knows to paste manually
+    # Decode/strip (possibly double-encoded) HTML before storing + returning —
+    # harmless no-op on the plain error-message branch above.
+    full_desc = clean_jd_html(full_desc)
+
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        job.description = full_desc
+        # Re-derive experience tray from fresh JD — overrides wrong FJ value
+        new_level = resolve_experience_level(job.experience_level or "", full_desc)
+        if new_level and new_level != (job.experience_level or ""):
+            job.experience_level = new_level
+            job.experience_level_inferred = False
+        if extracted_date:
+            try:
+                from datetime import timezone as _tz
+                pub_dt = datetime.fromisoformat(extracted_date.replace("Z", "+00:00"))
+                now_utc = datetime.now(_tz.utc)
+                age_days = (now_utc - pub_dt).days
+                if 0 <= age_days <= 180:
+                    job.posted_at = pub_dt.astimezone(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            except Exception:
+                pass
+        await db.commit()
+
+    return {"description": full_desc, "date": job.posted_at, "experience_level": job.experience_level}
+
+
+DAILY_TAILOR_LIMIT = 80
+DAILY_APPLY_LIMIT  = 60
+
+async def _get_daily_tailor_count(user_id: str, db) -> int:
+    """Count job tailors + quick tailors this user has run today (UTC)."""
+    today = datetime.now(_UTC.utc).strftime("%Y-%m-%d")
+    job_count = (await db.execute(
+        select(func.count()).select_from(UserJob)
+        .where(UserJob.user_id == user_id, UserJob.tailored_at.like(f"{today}%"))
+    )).scalar() or 0
+    quick_count = (await db.execute(
+        select(func.count()).select_from(QuickTailorHistory)
+        .where(QuickTailorHistory.user_id == user_id,
+               QuickTailorHistory.created_at.like(f"{today}%"))
+    )).scalar() or 0
+    return job_count + quick_count
+
+
+async def _get_daily_applied_count(user_id: str, db) -> int:
+    """Count jobs this user marked 'applied' today (UTC) — keyed off
+    applied_at, the timestamp set whenever status flips to 'applied'
+    (manual status change or successful auto-apply)."""
+    today = datetime.now(_UTC.utc).strftime("%Y-%m-%d")
+    return (await db.execute(
+        select(func.count()).select_from(UserJob)
+        .where(UserJob.user_id == user_id, UserJob.status == "applied",
+               UserJob.applied_at.like(f"{today}%"))
+    )).scalar() or 0
+
+
+@app.get("/api/usage/today")
+async def get_daily_usage(user_id: str = Depends(get_current_user_id)):
+    """How many tailoring runs and applications the user has done today vs
+    their daily limits."""
+    async with SessionLocal() as db:
+        used = await _get_daily_tailor_count(user_id, db)
+        applied_used = await _get_daily_applied_count(user_id, db)
+        # This user's OWN tailoring spend (real token cost from user_jobs).
+        _today = datetime.now(_UTC.utc).strftime("%Y-%m-%d")
+        spend_total = (await db.execute(
+            select(func.coalesce(func.sum(UserJob.tailor_cost), 0.0))
+            .where(UserJob.user_id == user_id))).scalar() or 0.0
+        spend_today = (await db.execute(
+            select(func.coalesce(func.sum(UserJob.tailor_cost), 0.0))
+            .where(UserJob.user_id == user_id, UserJob.tailored_at.like(f"{_today}%")))).scalar() or 0.0
+    return {
+        "used": used, "limit": DAILY_TAILOR_LIMIT, "remaining": max(0, DAILY_TAILOR_LIMIT - used),
+        "applied_used": applied_used, "applied_limit": DAILY_APPLY_LIMIT,
+        "applied_remaining": max(0, DAILY_APPLY_LIMIT - applied_used),
+        "spend_today": round(float(spend_today), 3), "spend_total": round(float(spend_total), 2),
+    }
+
+
+# ————————————————————————————————————————————————————————————————————————————————
+
+@app.post("/api/jobs/{job_id}/tailor")
+async def tailor_job(job_id: str, batch: bool = False, user_id: str = Depends(get_current_user_id)):
+    # Prompt caching only for the checkbox batch flow (?batch=1) — many calls
+    # close together make it pay. Single/manual tailors stay at baseline cost.
+    from ai.llm import set_cache_enabled
+    set_cache_enabled(batch)
+    async with SessionLocal() as db:
+        used = await _get_daily_tailor_count(user_id, db)
+        if used >= DAILY_TAILOR_LIMIT:
+            raise HTTPException(429, f"Daily limit reached: {used}/{DAILY_TAILOR_LIMIT} tailoring runs used today. Resets at midnight UTC.")
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        profile_data = await _load_profile(db, user_id)
+
+    profile_skills = list(profile_data.get("skills", [])) if profile_data else []
+
+    user_cfg = await _get_user_settings(user_id)
+    api_key = user_cfg.get("ai_api_key", "")
+    provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
+    model = user_cfg.get("ai_model_tailor", "anthropic/claude-sonnet-4.6")
+
+    # Build direct-provider key bundle — prefers direct APIs over OpenRouter
+    from ai.llm import ModelKeys as _ModelKeys
+    _mk = _ModelKeys(
+        anthropic=user_cfg.get("anthropic_api_key", "") or "",
+        google=user_cfg.get("google_api_key", "") or "",
+        openai=user_cfg.get("openai_api_key", "") or "",
+        openrouter=api_key,
+    )
+    _any_key_set = any([_mk.anthropic, _mk.google, _mk.openai, _mk.openrouter])
+    if not _any_key_set:
+        raise HTTPException(400, "No AI API key set. Add one in Settings.")
+
+    base_resume = user_cfg.get("resume", "")
+    if not base_resume or not base_resume.strip():
+        raise HTTPException(400, "No resume found. Upload your resume in Profile → Resume section first.")
+
+    jd = job.description
+    if not jd or not jd.strip():
+        raise HTTPException(400, "This job has no description yet. Try refreshing the job.")
+
+    ats_before = score_ats(base_resume, jd)
+
+    tailored_text, review = await tailor_resume(
+        base_resume, jd, api_key, provider, model,
+        profile_skills=profile_skills,
+        secondary_model=user_cfg.get("ai_model_secondary") or "anthropic/claude-haiku-4-5",
+        user_job_roles=user_cfg.get("job_roles") or [],
+        profile_projects=(profile_data or {}).get("projects") or [],
+        company=job.company or "",
+        keys=_mk,
+    )
+    ats_after = score_ats(tailored_text, jd)   # keyword lists for the columns
+
+    # The ATS gate is now the semantic coverage computed inside tailor_resume
+    # (present/total, judged by meaning) — it drives the panel, the badge, and
+    # the min-ATS filter, and it agrees with the present/missing chips. Fall back
+    # to the literal keyword score only if the score pass returned nothing.
+    _sem_ats = ((review.get("scores") or {}).get("ats") or {}).get("score")
+    ats_after_score = _sem_ats if isinstance(_sem_ats, (int, float)) else ats_after["score"]
+
+    # Fit analysis (analyze_fit) removed 2026-07-08 — cost-saving, was an
+    # unconditional extra AI call on every single "Tailor Resume" click.
+
+    # Write tailored resume to user_jobs table
+    async with SessionLocal() as db:
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        if not uj:
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+            db.add(uj)
+        uj.tailored_resume = tailored_text
+        uj.tailored_at = datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        uj.ats_score_before = ats_before["score"]
+        uj.ats_score_after = ats_after_score
+        uj.ats_keywords_matched = json.dumps(ats_after["matched"])
+        uj.ats_keywords_missing = json.dumps(ats_after["missing"])
+        uj.needs_review = review["needs_review"]
+        uj.review_reasons = json.dumps(review["reasons"]) if review["reasons"] else None
+        uj.review_notes = json.dumps(review["notes"]) if review["notes"] else None
+        uj.gate_scores = json.dumps(review["scores"]) if review.get("scores") else None
+        uj.tailor_context = json.dumps(review["context"]) if review.get("context") else None
+        _usage = review.get("usage") or {}
+        uj.tailor_cost = _usage.get("cost")
+        uj.tailor_tokens_in = _usage.get("tokens_in")
+        uj.tailor_tokens_out = _usage.get("tokens_out")
+        await db.commit()
+
+    return {
+        "ats_before": ats_before,
+        "ats_after": {**ats_after, "score": ats_after_score},   # semantic ATS
+        "tailored_resume": tailored_text,
+        "needs_review": review["needs_review"],
+        "review_reasons": review["reasons"],
+        "review_notes": review["notes"],
+        "gate_scores": review.get("scores") or None,
+        "tailor_context": review.get("context") or None,
+        "tailor_cost": _usage.get("cost"),
+        "tailor_tokens_in": _usage.get("tokens_in"),
+        "tailor_tokens_out": _usage.get("tokens_out"),
+    }
+
+
+# ── Auto-apply Phase 1 (Greenhouse / Lever / Ashby) ──────────────────────────
+
+def _apply_profile(profile: dict, settings: dict) -> dict:
+    """Flatten the JSON profile into the prefill shape ats_apply expects."""
+    current_company = ""
+    for e in profile.get("experience", []):
+        end = (e.get("end_date") or "").strip().lower()
+        if not end or "present" in end or "current" in end:
+            current_company = e.get("company", "")
+            break
+    # Location fallback: profile.location is often empty while address is
+    # full ("12359 Lakepoint Dr, Maryland Heights, Missouri 63043") — derive
+    # "City, State" by dropping the street segment and trailing zip.
+    location = (profile.get("location") or "").strip()
+    if not location:
+        parts = [p.strip() for p in (profile.get("address") or "").split(",") if p.strip()]
+        if len(parts) >= 2:
+            city = parts[-2]
+            state = re.sub(r"\s*\d{5}(?:-\d{4})?\s*$", "", parts[-1]).strip()
+            location = f"{city}, {state}" if state else city
+    return {
+        "name": profile.get("name", "") or settings.get("profile_name", ""),
+        "email": profile.get("email", ""),
+        "phone": profile.get("phone", ""),
+        "address": profile.get("address", ""),
+        "location": location,
+        "linkedin": profile.get("linkedin", ""),
+        "github": profile.get("github", ""),
+        "website": profile.get("website", ""),
+        "visa": profile.get("visa_status", ""),
+        "current_company": current_company,
+    }
+
+
+async def _load_apply_data(user_id: str) -> tuple[dict, dict]:
+    """(apply_profile, answer_memory) JSON columns; {} when unset."""
+    async with SessionLocal() as db:
+        res = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+        s = res.scalar_one_or_none()
+    def _j(v):
+        try:
+            return json.loads(v) if v else {}
+        except Exception:
+            return {}
+    return (_j(getattr(s, "apply_profile", None)) if s else {},
+            _j(getattr(s, "apply_answers", None)) if s else {})
+
+
+_US_STATES = {
+    "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas", "CA": "California",
+    "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware", "FL": "Florida", "GA": "Georgia",
+    "HI": "Hawaii", "ID": "Idaho", "IL": "Illinois", "IN": "Indiana", "IA": "Iowa",
+    "KS": "Kansas", "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine", "MD": "Maryland",
+    "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota", "MS": "Mississippi",
+    "MO": "Missouri", "MT": "Montana", "NE": "Nebraska", "NV": "Nevada", "NH": "New Hampshire",
+    "NJ": "New Jersey", "NM": "New Mexico", "NY": "New York", "NC": "North Carolina",
+    "ND": "North Dakota", "OH": "Ohio", "OK": "Oklahoma", "OR": "Oregon", "PA": "Pennsylvania",
+    "RI": "Rhode Island", "SC": "South Carolina", "SD": "South Dakota", "TN": "Tennessee",
+    "TX": "Texas", "UT": "Utah", "VT": "Vermont", "VA": "Virginia", "WA": "Washington",
+    "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming", "DC": "District of Columbia",
+}
+
+
+def _us_state_from(loc: str) -> str:
+    """'Maryland Heights, MO' → 'Missouri'. Abbreviations win over name
+    substrings — 'Maryland Heights' is a Missouri city, not Maryland."""
+    for abbr, name in _US_STATES.items():
+        if re.search(rf"\b{abbr}\b", loc or ""):
+            return name
+    for name in _US_STATES.values():
+        if name.lower() in (loc or "").lower():
+            return name
+    return ""
+
+
+def _derive_apply_defaults(profile: dict, settings: dict) -> dict:
+    """Defaults derivable from data we already hold — shown in the
+    Application Answers form as pre-filled suggestions the user can edit."""
+    visa = (profile.get("visa_status") or settings.get("profile_visa") or "").upper()
+    needs_sponsor = ""
+    if visa:
+        # F1/OPT/CPT/H1B → will need sponsorship now or in future; citizens/
+        # green card holders don't. Anything unrecognized stays blank.
+        if any(t in visa for t in ("F1", "F-1", "OPT", "CPT", "H1", "H-1", "STEM")):
+            needs_sponsor = "Yes"
+        elif any(t in visa for t in ("CITIZEN", "GREEN", "GC", "PERMANENT")):
+            needs_sponsor = "No"
+    years = ""
+    try:
+        from ai.qualify import _derive_total_years
+        y = _derive_total_years(profile.get("experience", []))
+        if y:
+            years = str(round(y, 1))
+    except Exception:
+        pass
+    zip_m = re.search(r"\b(\d{5})(?:-\d{4})?\b", profile.get("address", "") or "")
+    first, last = ats_apply._split_name(profile.get("name", ""))
+    return {
+        "work_authorized": "Yes" if visa else "",
+        "need_sponsorship": needs_sponsor,
+        "relocation": "",
+        "onsite_ok": "Yes",          # willing to work on-site / hybrid / commute
+        "background_check": "Yes",   # consent to a background check
+        "drug_test": "Yes",          # consent to a drug screen
+        "convicted": "No",           # no criminal conviction (user can override)
+        "salary": "Open / Negotiable",
+        "zip": zip_m.group(1) if zip_m else "",
+        "degree": "Yes" if profile.get("education") else "",
+        "years_experience": years,
+        "how_heard": "",
+        "previously_worked": "No",
+        "preferred_first": first,
+        "preferred_last": last,
+        "pronouns": "",
+        "age_18": "Yes",
+        "state": _us_state_from(profile.get("location", "") or profile.get("address", "")),
+        "currently_employed": "Yes",
+        "citizenship": "",
+        "clearance": "",
+        "start_date": "",
+        "noncompete": "No",
+        "referral": "",
+        "demo_gender": "", "demo_race": "", "demo_veteran": "", "demo_disability": "",
+    }
+
+
+def _merged_memory(ap: dict, memory: dict) -> dict:
+    """Learned answers + the user's own hand-added Q&A rows (values.custom).
+    Hand-added entries win — they're explicit intent."""
+    merged = dict(memory)
+    for c in ap.get("custom", []) or []:
+        q, a = (c.get("q") or "").strip(), (c.get("a") or "").strip()
+        if q and a:
+            merged[ats_apply._norm_label(q)] = a
+    return merged
+
+
+@app.get("/api/apply-profile")
+async def get_apply_profile(user_id: str = Depends(get_current_user_id)):
+    """Application Answers form: saved values merged over derived defaults,
+    plus the learned answer memory for display/management."""
+    async with SessionLocal() as db:
+        profile = await _load_profile(db, user_id)
+    settings = await _get_user_settings(user_id)
+    saved, memory = await _load_apply_data(user_id)
+    values = {**_derive_apply_defaults(profile, settings), **saved}
+    return {"values": values, "saved": bool(saved), "memory": memory}
+
+
+@app.put("/api/apply-profile")
+async def save_apply_profile(body: dict, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        res = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+        s = res.scalar_one_or_none()
+        if not s:
+            s = UserSettings(user_id=user_id)
+            db.add(s)
+        if "values" in body:
+            s.apply_profile = json.dumps(body["values"])
+        if "memory" in body:   # allows deleting/correcting remembered answers
+            s.apply_answers = json.dumps(body["memory"])
+        await db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/jobs/{job_id}/apply-form")
+async def get_apply_form(job_id: str, user_id: str = Depends(get_current_user_id)):
+    """Detect the job's ATS, fetch its public form schema, and prefill
+    answers from the user's profile. Read-only — nothing is submitted."""
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        profile = await _load_profile(db, user_id)
+
+    ref = await ats_apply.resolve_ats(job.url, job.company or "")
+    if not ref:
+        return {"supported": False, "apply_url": job.url,
+                "reason": "Job URL is not a direct Greenhouse/Lever/Ashby posting"}
+
+    try:
+        form = await ats_apply.fetch_form(ref)
+    except ValueError as e:
+        return {"supported": False, "apply_url": job.url, "ats": ref.ats,
+                "reason": str(e)}
+    except Exception as e:
+        return {"supported": False, "apply_url": job.url, "ats": ref.ats,
+                "reason": f"Form fetch failed: {e}"}
+
+    settings = await _get_user_settings(user_id)
+    saved_ap, memory = await _load_apply_data(user_id)
+    ap = {**_derive_apply_defaults(profile, settings), **saved_ap}
+    answers = ats_apply.prefill(form["fields"], _apply_profile(profile, settings),
+                                apply_profile=ap, memory=_merged_memory(ap, memory))
+    # Ashby has no third-party submit path — prefill-assisted manual only
+    method = "manual" if ref.ats == "ashby" else "auto"
+    return {
+        "supported": True,
+        "ats": ref.ats,
+        "method": method,
+        "fields": form["fields"],
+        "answers": answers,
+        "apply_url": form["apply_url"],
+        "meta": form["meta"],
+        "dry_run": bool(settings.get("apply_dry_run", True)),
+    }
+
+
+class AiAnswersBody(BaseModel):
+    questions: list = []   # [{key, label, type, options?: [labels]}]
+
+
+@app.post("/api/jobs/{job_id}/ai-answers")
+async def draft_ai_answers(job_id: str, body: AiAnswersBody,
+                           user_id: str = Depends(get_current_user_id)):
+    """Draft answers for open-ended / screening questions the profile and
+    answer-memory can't fill. Grounded on the user's resume + this JD via the
+    cheap utility model; drafts are shown in the modal for review — nothing
+    submits without the user's explicit click."""
+    if not body.questions:
+        return {"answers": {}}
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        uj_res = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id))
+        uj = uj_res.scalar_one_or_none()
+
+    user_cfg = await _get_user_settings(user_id)
+    from ai.llm import ModelKeys as _MK, chat as _chat
+    mk = _MK(anthropic=user_cfg.get("anthropic_api_key", "") or "",
+             google=user_cfg.get("google_api_key", "") or "",
+             openai=user_cfg.get("openai_api_key", "") or "",
+             openrouter=user_cfg.get("ai_api_key", "") or "")
+    if not any([mk.anthropic, mk.google, mk.openai, mk.openrouter]):
+        raise HTTPException(400, "No AI API key set. Add one in Settings.")
+
+    resume = ((uj.tailored_resume if uj else "") or user_cfg.get("resume", "")).strip()
+    if not resume:
+        raise HTTPException(400, "No resume on file — upload one in Profile first")
+
+    q_lines = []
+    for i, q in enumerate(body.questions[:15]):
+        opts = q.get("options") or []
+        opt_s = f" (must answer with EXACTLY one of: {' | '.join(o[:60] for o in opts[:12])})" if opts else ""
+        q_lines.append(f"{i+1}. [{q.get('key','')}] {q.get('label','')}{opt_s}")
+
+    system = (
+        "You draft job-application answers for a candidate. STRICT RULES:\n"
+        "- Ground every claim in the RESUME below. Never invent employers, tools, "
+        "metrics, or years the resume does not support.\n"
+        "- Experience/years questions: derive from the resume's job dates.\n"
+        "- Option questions: reply with exactly one allowed option string; when the "
+        "resume can't justify a confident choice, reply with an empty string.\n"
+        "- Free-text 'why us / describe a project' questions: 2-4 sentences, first "
+        "person, specific to the resume and the job description, no clichés.\n"
+        "- If a question can't be answered from the resume (e.g. asks about the "
+        "candidate's private circumstances), reply with an empty string.\n"
+        'Return ONLY a JSON object: {"<key>": "<answer>", ...} for every question key.'
+    )
+    user_msg = (f"JOB: {job.title} @ {job.company}\n\nJOB DESCRIPTION (excerpt):\n"
+                f"{(job.description or '')[:3000]}\n\nRESUME:\n{resume[:9000]}\n\n"
+                f"QUESTIONS:\n" + "\n".join(q_lines))
+
+    model = user_cfg.get("ai_model_secondary") or "anthropic/claude-haiku-4-5"
+    raw = await _chat(system, user_msg, user_cfg.get("ai_api_key", ""),
+                      user_cfg.get("ai_provider", "openrouter"), model,
+                      max_tokens=2000, pass_name="ai-answers", keys=mk)
+    m = re.search(r"\{.*\}", raw, re.S)
+    try:
+        answers = json.loads(m.group(0)) if m else {}
+    except Exception:
+        answers = {}
+    valid_keys = {q.get("key") for q in body.questions}
+    answers = {k: str(v).strip() for k, v in answers.items()
+               if k in valid_keys and str(v).strip()}
+    return {"answers": answers}
+
+
+class ApplyBody(BaseModel):
+    answers: dict = {}
+    confirm: bool = False
+    use_tailored: bool = True
+
+
+@app.post("/api/jobs/{job_id}/apply")
+async def submit_application(job_id: str, body: ApplyBody,
+                             user_id: str = Depends(get_current_user_id)):
+    """Submit ONE application, only after the user reviewed the pre-filled
+    form and clicked confirm. Honors the per-user dry-run guard. Captcha or
+    any rejection degrades to a manual-apply response — never an error."""
+    if not body.confirm:
+        raise HTTPException(400, "Submission requires confirm=true after reviewing the form")
+
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        uj_res = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id))
+        uj = uj_res.scalar_one_or_none()
+
+    ref = await ats_apply.resolve_ats(job.url, job.company or "")
+    if not ref:
+        raise HTTPException(400, "Job is not on a supported ATS")
+
+    settings = await _get_user_settings(user_id)
+    dry_run = bool(settings.get("apply_dry_run", True))
+
+    resume_text = (uj.tailored_resume if (uj and body.use_tailored and uj.tailored_resume)
+                   else settings.get("resume", ""))
+    if not resume_text.strip():
+        raise HTTPException(400, "No resume available — tailor one or upload a base resume first")
+    resume_bytes = generate_pdf(resume_text, job.title, job.company)
+    cand = (settings.get("profile_name") or "resume").replace(" ", "_")
+    fname = f"{cand}_Resume.pdf"
+
+    # Cover letter: attach whenever one was generated for this job — some
+    # boards mark it required, and submit() blocks those when it's missing.
+    cover_bytes, cover_fname = None, f"{cand}_Cover_Letter.pdf"
+    if uj and (uj.cover_letter or "").strip():
+        try:
+            from cover_gen import generate_cover_pdf
+            cover_bytes = generate_cover_pdf(uj.cover_letter,
+                                             settings.get("profile_name", ""))
+        except Exception as e:
+            print(f"[APPLY] cover PDF generation failed, submitting without: {e}")
+
+    now_iso = datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        result = await ats_apply.submit(ref, body.answers, resume_bytes, fname,
+                                        dry_run=dry_run,
+                                        cover_bytes=cover_bytes,
+                                        cover_filename=cover_fname)
+    except ats_apply.CaptchaRequired as e:
+        result = {"status": "manual", "detail": str(e), "apply_url": job.url}
+    except ats_apply.ManualApplyRequired as e:
+        result = {"status": "manual", "detail": str(e), "apply_url": job.url}
+    except Exception as e:
+        result = {"status": "error", "detail": str(e)[:300]}
+
+    async with SessionLocal() as db:
+        uj_res = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id))
+        uj = uj_res.scalar_one_or_none()
+        if not uj:
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id,
+                         saved_at=now_iso)
+            db.add(uj)
+        uj.apply_result = json.dumps({**result, "at": now_iso})
+        if result["status"] == "submitted":
+            uj.status = "applied"
+            uj.applied_at = now_iso
+            uj.apply_method = f"auto:{ref.ats}"
+        elif result["status"] == "manual":
+            uj.apply_method = "manual"
+        await db.commit()
+
+    # Answer memory: remember what the user answered (dry-run included) so
+    # each unique question is ever answered once. ONLY answers the prefill
+    # engine could NOT produce itself get stored — standard fields (name,
+    # email, sponsorship…) already come from the profile every time, and
+    # remembering them would fill the Learned Answers list with noise.
+    # Stored as option LABELS, portable across companies. Failure here never
+    # breaks the apply flow.
+    try:
+        form = await ats_apply.fetch_form(ref)
+        async with SessionLocal() as db:
+            profile = await _load_profile(db, user_id)
+        saved_ap, _mem = await _load_apply_data(user_id)
+        ap = {**_derive_apply_defaults(profile, settings), **saved_ap}
+        # include custom+learned memory: an answer any saved source already
+        # produces is not novel and must not be re-learned
+        auto = ats_apply.prefill(form["fields"], _apply_profile(profile, settings),
+                                 apply_profile=ap, memory=_merged_memory(ap, _mem))
+        novel = {k: v for k, v in body.answers.items()
+                 if str(v).strip() and str(auto.get(k, "")).strip() != str(v).strip()}
+        learned = ats_apply.extract_memory(form["fields"], novel)
+        if learned:
+            async with SessionLocal() as db:
+                res = await db.execute(
+                    select(UserSettings).where(UserSettings.user_id == user_id))
+                s = res.scalar_one_or_none()
+                if s:
+                    try:
+                        mem = json.loads(s.apply_answers) if s.apply_answers else {}
+                    except Exception:
+                        mem = {}
+                    mem.update(learned)
+                    s.apply_answers = json.dumps(mem)
+                    await db.commit()
+    except Exception as e:
+        print(f"[APPLY MEMORY] skipped: {e}")
+
+    return result
+
+
+# ————————————————————————————————————————————————————————————————————————————————
+
+@app.post("/api/jobs/{job_id}/cover-letter")
+async def generate_cover_letter_endpoint(job_id: str, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+
+    user_cfg = await _get_user_settings(user_id)
+    api_key = user_cfg.get("ai_api_key", "")
+    provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
+    model = user_cfg.get("ai_model_cover_letter", "anthropic/claude-sonnet-4.6")
+
+    from ai.llm import ModelKeys as _ModelKeys
+    _mk = _ModelKeys(
+        anthropic=user_cfg.get("anthropic_api_key", "") or "",
+        google=user_cfg.get("google_api_key", "") or "",
+        openai=user_cfg.get("openai_api_key", "") or "",
+        openrouter=api_key,
+    )
+    if not any([_mk.anthropic, _mk.google, _mk.openai, _mk.openrouter]):
+        raise HTTPException(400, "No AI API key set. Add one in Settings.")
+
+    # Use tailored resume if one exists for this job — it's already JD-aligned.
+    # Fall back to base resume if not yet tailored.
+    async with SessionLocal() as db:
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj_for_resume = uj_result.scalar_one_or_none()
+    tailored = (uj_for_resume.tailored_resume or "") if uj_for_resume else ""
+    resume = tailored if tailored.strip() else user_cfg.get("resume", "")
+    jd = job.description or ""
+
+    letter = await generate_cover_letter(resume, jd, job.title, job.company, api_key, provider, model, keys=_mk)
+
+    # Write cover letter to user_jobs table
+    async with SessionLocal() as db:
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        if not uj:
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+            db.add(uj)
+        uj.cover_letter = letter
+        await db.commit()
+
+    return {"cover_letter": letter}
+
+
+class NotesUpdate(BaseModel):
+    notes: str
+
+
+class TailoredResumeUpdate(BaseModel):
+    tailored_resume: str
+
+@app.put("/api/jobs/{job_id}/tailored-resume")
+async def update_tailored_resume(job_id: str, body: TailoredResumeUpdate, user_id: str = Depends(get_current_user_id)):
+    """Save manually edited tailored resume text."""
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        if not uj:
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+            db.add(uj)
+        uj.tailored_resume = body.tailored_resume
+        await db.commit()
+    return {"ok": True}
+
+
+@app.put("/api/jobs/{job_id}/notes")
+async def update_notes(job_id: str, body: NotesUpdate, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        # Verify job exists
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        # Write to user_jobs
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        if not uj:
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+            db.add(uj)
+        uj.notes = body.notes
+        await db.commit()
+    return {"ok": True}
+
+
+# â"€â"€ PDF Download â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+
+def _candidate_slug(profile_name: str) -> str:
+    """'Jagadish Reddy Butukuri' → 'Jagadish_Butukuri' (first + last word only)."""
+    parts = profile_name.strip().split()
+    if len(parts) >= 2:
+        return f"{parts[0]}_{parts[-1]}"
+    elif parts:
+        return parts[0]
+    return "Candidate"
+
+
+@app.get("/api/jobs/{job_id}/resume/pdf")
+async def download_pdf(job_id: str, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        tailored_resume = uj.tailored_resume if uj else None
+        if not tailored_resume:
+            raise HTTPException(400, "No tailored resume yet. Click Tailor Resume first.")
+
+    user_cfg = await _get_user_settings(user_id)
+    cand = _candidate_slug(user_cfg.get("profile_name", ""))
+    company_slug = re.sub(r"[^\w]+", "_", job.company or "Company").strip("_")
+    filename = f"{cand}_{company_slug}.pdf"
+    pdf_bytes = generate_pdf(tailored_resume, job.title, job.company)
+
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/profile/resume/pdf")
+async def profile_resume_pdf(user_id: str = Depends(get_current_user_id)):
+    """Render the user's BASE resume to PDF for inline preview in Profile."""
+    user_cfg = await _get_user_settings(user_id)
+    base_resume = (user_cfg.get("resume", "") or "").strip()
+    if not base_resume:
+        raise HTTPException(404, "No base resume found. Add it in Profile → Resume.")
+    cand = _candidate_slug(user_cfg.get("profile_name", "") or "Base")
+    pdf_bytes = generate_pdf(base_resume, "", "")
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{cand}_base_resume.pdf"'},
+    )
+
+
+# â"€â"€ DOCX Download â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+@app.get("/api/jobs/{job_id}/resume/docx")
+async def download_docx(job_id: str, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        tailored_resume = uj.tailored_resume if uj else None
+        if not tailored_resume:
+            raise HTTPException(400, "No tailored resume yet. Click Tailor Resume first.")
+
+    user_cfg = await _get_user_settings(user_id)
+    cand = _candidate_slug(user_cfg.get("profile_name", ""))
+    company_slug = re.sub(r"[^\w]+", "_", job.company or "Company").strip("_")
+    filename = f"{cand}_{company_slug}.docx"
+    docx_bytes = generate_docx(tailored_resume, job.title, job.company)
+
+    return StreamingResponse(
+        iter([docx_bytes]),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── Cover Letter downloads ────────────────────────────────────────────────────
+
+async def _cover_letter_context(job_id: str, user_id: str):
+    """Shared: fetch letter + candidate name/contact for the header block."""
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        letter = (uj.cover_letter if uj else None) or ""
+        if not letter.strip():
+            raise HTTPException(400, "No cover letter yet. Generate one first.")
+        resume_src = (uj.tailored_resume if uj else None) or ""
+    user_cfg = await _get_user_settings(user_id)
+    if not resume_src:
+        resume_src = user_cfg.get("resume", "")
+    lines = [l.strip() for l in resume_src.strip().split("\n") if l.strip()][:2]
+    name_line = lines[0] if lines else (user_cfg.get("profile_name", "") or "")
+    candidate_name = name_line.split("—")[0].strip() if "—" in name_line else name_line.strip()
+    contact_line = lines[1] if len(lines) > 1 else ""
+    cand_slug = _candidate_slug(user_cfg.get("profile_name", ""))
+    company_slug = re.sub(r"[^\w]+", "_", job.company or "Company").strip("_")
+    return letter, candidate_name, contact_line, job.company or "", f"{cand_slug}_{company_slug}_CoverLetter"
+
+
+@app.get("/api/jobs/{job_id}/cover-letter/pdf")
+async def download_cover_pdf(job_id: str, user_id: str = Depends(get_current_user_id)):
+    from cover_gen import generate_cover_pdf
+    letter, cand, contact, company, fname = await _cover_letter_context(job_id, user_id)
+    pdf_bytes = generate_cover_pdf(letter, cand, contact, company)
+    return StreamingResponse(iter([pdf_bytes]), media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{fname}.pdf"'})
+
+
+@app.get("/api/jobs/{job_id}/cover-letter/docx")
+async def download_cover_docx(job_id: str, user_id: str = Depends(get_current_user_id)):
+    from cover_gen import generate_cover_docx
+    letter, cand, contact, company, fname = await _cover_letter_context(job_id, user_id)
+    docx_bytes = generate_cover_docx(letter, cand, contact, company)
+    return StreamingResponse(iter([docx_bytes]),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{fname}.docx"'})
+
+
+# â"€â"€ Quick Tailor (paste any JD, no job record needed) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+@app.get("/api/jobs/{job_id}/jd")
+async def download_jd(job_id: str, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job or not job.description:
+            raise HTTPException(404, "Job description not found")
+    company_slug = re.sub(r"[^\w]+", "_", job.company or "Company").strip("_")
+    title_slug   = re.sub(r"[^\w]+", "_", job.title   or "Role").strip("_")
+    filename = f"JD_{company_slug}_{title_slug}.txt"
+
+    # Strip HTML → clean plain text before download
+    raw = job.description
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(raw, "html.parser")
+        # Replace block elements with newlines before stripping
+        for tag in soup.find_all(["p", "li", "br", "h1", "h2", "h3", "h4", "tr"]):
+            tag.insert_before("\n")
+        text = soup.get_text(separator=" ")
+        # Collapse excessive blank lines
+        text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    except Exception:
+        text = re.sub(r"<[^>]+>", " ", raw)
+        text = re.sub(r"\s{2,}", " ", text).strip()
+
+    # utf-8-sig prepends a BOM so Windows apps (Word/Notepad) open it directly
+    # as UTF-8 instead of prompting for encoding on smart quotes/dashes.
+    return StreamingResponse(
+        iter([text.encode("utf-8-sig")]),
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+class QuickTailorRequest(BaseModel):
+    jd: str
+    company: str = "Company"
+    tailored_resume: str = ""  # if provided, skip AI — use this directly
+
+async def _load_profile_skills(user_id: str) -> list[str]:
+    async with SessionLocal() as db:
+        profile_data = await _load_profile(db, user_id)
+    return list(profile_data.get("skills", [])) if profile_data else []
+
+
+@app.post("/api/quick-tailor/extract-jd")
+async def quick_tailor_extract_jd(file: UploadFile = File(...), user_id: str = Depends(get_current_user_id)):
+    """Extract raw text from an uploaded JD file (PDF/DOCX/TXT) — no AI call,
+    just pulls text so the user doesn't have to copy-paste. Reuses the same
+    extraction logic as /api/profile/parse-resume, minus the LLM structuring
+    step (a JD just needs to land in the textarea as plain text)."""
+    import io
+
+    content = await file.read()
+    filename = (file.filename or "").lower()
+    text = ""
+
+    if filename.endswith(".pdf"):
+        try:
+            import pypdf
+            reader = pypdf.PdfReader(io.BytesIO(content))
+            text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        except ImportError:
+            raise HTTPException(500, "pypdf not installed. Run: pip install pypdf")
+        except Exception as e:
+            raise HTTPException(400, f"Could not read PDF: {e}")
+    elif filename.endswith(".docx"):
+        try:
+            from docx import Document
+            from docx.table import Table
+            from docx.text.paragraph import Paragraph
+            from docx.oxml.ns import qn
+            doc = Document(io.BytesIO(content))
+
+            # Walk the body in document order so paragraphs AND tables are
+            # captured. Many resume templates put job titles, dates, and section
+            # content inside tables — reading only doc.paragraphs silently drops
+            # all of it (live bug: a table-layout resume lost every date, so the
+            # tailored output showed "0+ years" and every job as "Present").
+            def _iter_blocks(parent):
+                for child in parent.element.body.iterchildren():
+                    if child.tag == qn("w:p"):
+                        yield Paragraph(child, parent)
+                    elif child.tag == qn("w:tbl"):
+                        yield Table(child, parent)
+
+            lines = []
+            for block in _iter_blocks(doc):
+                if isinstance(block, Paragraph):
+                    t = block.text.strip()
+                    if t:
+                        lines.append(t)
+                else:  # Table — keep each row's cells together (date stays with its title)
+                    for row in block.rows:
+                        cells = [c.text.strip() for c in row.cells if c.text.strip()]
+                        seen, uniq = set(), []
+                        for c in cells:
+                            if c not in seen:
+                                seen.add(c); uniq.append(c)
+                        if uniq:
+                            lines.append("   ".join(uniq))
+            text = "\n".join(lines)
+        except Exception as e:
+            raise HTTPException(400, f"Could not read DOCX: {e}")
+    elif filename.endswith(".txt"):
+        text = content.decode("utf-8", errors="ignore")
+    else:
+        raise HTTPException(400, "Unsupported file. Use PDF, DOCX, or TXT.")
+
+    if not text.strip():
+        raise HTTPException(400, "No text extracted from file. Try a different format.")
+
+    return {"text": text.strip()}
+
+
+@app.post("/api/quick-tailor")
+async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        used = await _get_daily_tailor_count(user_id, db)
+    if used >= DAILY_TAILOR_LIMIT:
+        raise HTTPException(429, f"Daily limit reached: {used}/{DAILY_TAILOR_LIMIT} tailoring runs used today. Resets at midnight UTC.")
+
+    user_cfg = await _get_user_settings(user_id)
+    api_key = user_cfg.get("ai_api_key", "")
+    provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
+    model    = user_cfg.get("ai_model_tailor", "anthropic/claude-opus-4-8")
+
+    from ai.llm import ModelKeys as _ModelKeys
+    _mk = _ModelKeys(
+        anthropic=user_cfg.get("anthropic_api_key", "") or "",
+        google=user_cfg.get("google_api_key", "") or "",
+        openai=user_cfg.get("openai_api_key", "") or "",
+        openrouter=api_key,
+    )
+    if not any([_mk.anthropic, _mk.google, _mk.openai, _mk.openrouter]):
+        raise HTTPException(400, "No AI API key set. Add one in Settings.")
+
+    base_resume = user_cfg.get("resume", "")
+    if not base_resume:
+        raise HTTPException(400, "No base resume found. Add it in Settings.")
+
+    profile_skills = await _load_profile_skills(user_id)
+    async with SessionLocal() as _pdb:
+        _qt_profile = await _load_profile(_pdb, user_id)
+    tailored, review = await tailor_resume(base_resume, body.jd, api_key, provider, model,
+                                   profile_skills=profile_skills,
+                                   secondary_model=user_cfg.get("ai_model_secondary") or "anthropic/claude-haiku-4-5",
+                                   user_job_roles=user_cfg.get("job_roles") or [],
+                                   profile_projects=(_qt_profile or {}).get("projects") or [],
+                                   company=body.company or "",
+                                   keys=_mk)
+
+    # ATS = semantic coverage, computed inside tailor_resume (same as job tailor).
+    ats_after = score_ats(tailored, body.jd)   # kept for the ats_after payload
+
+    async with SessionLocal() as db:
+        record = QuickTailorHistory(
+            id=str(_uuid.uuid4()),
+            user_id=user_id,
+            company=body.company or "",
+            jd=body.jd,
+            tailored_resume=tailored,
+            created_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        )
+        db.add(record)
+        await db.commit()
+
+    _qsem = ((review.get("scores") or {}).get("ats") or {}).get("score")
+    return {"tailored_resume": tailored, "needs_review": review["needs_review"],
+            "review_reasons": review["reasons"], "review_notes": review["notes"],
+            "gate_scores": review.get("scores") or None,
+            "tailor_context": review.get("context") or None,
+            "ats_after": {**ats_after, "score": _qsem if isinstance(_qsem, (int, float)) else ats_after["score"]}}
+
+
+@app.post("/api/quick-tailor/pdf")
+async def quick_tailor_pdf(body: QuickTailorRequest, user_id: str = Depends(get_current_user_id)):
+    user_cfg = await _get_user_settings(user_id)
+    cand = _candidate_slug(user_cfg.get("profile_name", ""))
+    company_slug = re.sub(r"[^\w]+", "_", body.company or "Company").strip("_")
+
+    # Use pre-computed resume if passed (avoids re-running AI, ensures same content as UI)
+    if body.tailored_resume and body.tailored_resume.strip():
+        tailored = body.tailored_resume
+    else:
+        api_key = user_cfg.get("ai_api_key", "")
+        provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
+        model    = user_cfg.get("ai_model_tailor", "anthropic/claude-opus-4-8")
+        from ai.llm import ModelKeys as _ModelKeys
+        _mk = _ModelKeys(
+            anthropic=user_cfg.get("anthropic_api_key", "") or "",
+            google=user_cfg.get("google_api_key", "") or "",
+            openai=user_cfg.get("openai_api_key", "") or "",
+            openrouter=api_key,
+        )
+        if not any([_mk.anthropic, _mk.google, _mk.openai, _mk.openrouter]):
+            raise HTTPException(400, "No AI API key set.")
+        profile_skills = await _load_profile_skills(user_id)
+        tailored, _review = await tailor_resume(base_resume, body.jd, api_key, provider, model,
+                                       profile_skills=profile_skills,
+                                       secondary_model=user_cfg.get("ai_model_secondary") or "anthropic/claude-haiku-4-5",
+                                       user_job_roles=user_cfg.get("job_roles") or [],
+                                       keys=_mk)
+
+    pdf_bytes = generate_pdf(tailored, "", body.company)
+    return StreamingResponse(
+        iter([pdf_bytes]), media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{cand}_{company_slug}.pdf"'},
+    )
+
+
+@app.post("/api/quick-tailor/docx")
+async def quick_tailor_docx(body: QuickTailorRequest, user_id: str = Depends(get_current_user_id)):
+    user_cfg = await _get_user_settings(user_id)
+    cand = _candidate_slug(user_cfg.get("profile_name", ""))
+    company_slug = re.sub(r"[^\w]+", "_", body.company or "Company").strip("_")
+
+    if body.tailored_resume and body.tailored_resume.strip():
+        tailored = body.tailored_resume
+    else:
+        api_key = user_cfg.get("ai_api_key", "")
+        provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
+        model    = user_cfg.get("ai_model_tailor", "anthropic/claude-opus-4-8")
+        from ai.llm import ModelKeys as _ModelKeys
+        _mk = _ModelKeys(
+            anthropic=user_cfg.get("anthropic_api_key", "") or "",
+            google=user_cfg.get("google_api_key", "") or "",
+            openai=user_cfg.get("openai_api_key", "") or "",
+            openrouter=api_key,
+        )
+        if not any([_mk.anthropic, _mk.google, _mk.openai, _mk.openrouter]):
+            raise HTTPException(400, "No AI API key set.")
+        profile_skills = await _load_profile_skills(user_id)
+        tailored, _review = await tailor_resume(base_resume, body.jd, api_key, provider, model,
+                                       profile_skills=profile_skills,
+                                       secondary_model=user_cfg.get("ai_model_secondary") or "anthropic/claude-haiku-4-5",
+                                       user_job_roles=user_cfg.get("job_roles") or [],
+                                       keys=_mk)
+
+    docx_bytes = generate_docx(tailored, "", body.company)
+    return StreamingResponse(
+        iter([docx_bytes]),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{cand}_{company_slug}.docx"'},
+    )
+
+
+# â"€â"€ Save Package (create folder + write all files to disk) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+def _build_package_zip(
+    company: str,
+    jd: str,
+    tailored_resume: str,
+    cover_letter: str = "",
+    candidate_slug: str = "Candidate",
+) -> bytes:
+    """Build all package files into a ZIP in memory. Returns raw ZIP bytes."""
+    import zipfile, io as _io
+    company_clean = re.sub(r"[^\w\s\-]", "", company).strip()
+    slug = re.sub(r"[^\w]+", "_", company).strip("_")
+    buf = _io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(f"{company_clean}_JD.docx",                          generate_jd_docx(jd, company_clean))
+        zf.writestr(f"{candidate_slug}_{slug}.pdf",                      generate_pdf(tailored_resume, "", company))
+        zf.writestr(f"{candidate_slug}_{slug}.docx",                     generate_docx(tailored_resume, "", company))
+        if cover_letter and cover_letter.strip():
+            zf.writestr(f"{candidate_slug}_{slug}_CoverLetter.txt",
+                        cover_letter.encode("utf-8"))
+    return buf.getvalue()
+
+
+@app.get("/api/jobs/{job_id}/save-package")
+async def save_package(job_id: str, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        tailored_resume = uj.tailored_resume if uj else None
+        cover_letter = uj.cover_letter if uj else ""
+        if not tailored_resume:
+            raise HTTPException(400, "No tailored resume yet. Tailor first.")
+
+    user_cfg = await _get_user_settings(user_id)
+    cand = _candidate_slug(user_cfg.get("profile_name", ""))
+    zip_bytes = _build_package_zip(job.company, job.description or "", tailored_resume, cover_letter or "", cand)
+    slug = re.sub(r"[^\w]+", "_", job.company).strip("_")
+    return StreamingResponse(
+        iter([zip_bytes]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="Package_{slug}.zip"'},
+    )
+
+
+class QuickSaveRequest(BaseModel):
+    company: str
+    jd: str
+    tailored_resume: str
+    cover_letter: str = ""
+
+@app.post("/api/quick-tailor/save-package")
+async def quick_save_package(body: QuickSaveRequest, user_id: str = Depends(get_current_user_id)):
+    user_cfg = await _get_user_settings(user_id)
+    cand = _candidate_slug(user_cfg.get("profile_name", ""))
+    zip_bytes = _build_package_zip(body.company, body.jd, body.tailored_resume, body.cover_letter, cand)
+    slug = re.sub(r"[^\w]+", "_", body.company).strip("_")
+    return StreamingResponse(
+        iter([zip_bytes]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="Package_{slug}.zip"'},
+    )
+
+
+# ── Quick Tailor History downloads ────────────────────────────────────────────
+
+@app.get("/api/quick-tailor/history/{record_id}/pdf")
+async def quick_tailor_history_pdf(record_id: str, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        record = await db.get(QuickTailorHistory, record_id)
+    if not record or record.user_id != user_id:
+        raise HTTPException(404, "Not found")
+    user_cfg = await _get_user_settings(user_id)
+    cand = _candidate_slug(user_cfg.get("profile_name", ""))
+    slug = re.sub(r"[^\w]+", "_", record.company or "Quick").strip("_")
+    pdf_bytes = generate_pdf(record.tailored_resume, "", record.company)
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{cand}_{slug}.pdf"'},
+    )
+
+
+@app.get("/api/quick-tailor/history/{record_id}/docx")
+async def quick_tailor_history_docx(record_id: str, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        record = await db.get(QuickTailorHistory, record_id)
+    if not record or record.user_id != user_id:
+        raise HTTPException(404, "Not found")
+    user_cfg = await _get_user_settings(user_id)
+    cand = _candidate_slug(user_cfg.get("profile_name", ""))
+    slug = re.sub(r"[^\w]+", "_", record.company or "Quick").strip("_")
+    docx_bytes = generate_docx(record.tailored_resume, "", record.company)
+    return StreamingResponse(
+        iter([docx_bytes]),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{cand}_{slug}.docx"'},
+    )
+
+
+@app.get("/api/quick-tailor/history/{record_id}/jd")
+async def quick_tailor_history_jd(record_id: str, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        record = await db.get(QuickTailorHistory, record_id)
+    if not record or record.user_id != user_id:
+        raise HTTPException(404, "Not found")
+    slug = re.sub(r"[^\w]+", "_", record.company or "Quick").strip("_")
+    return StreamingResponse(
+        iter([record.jd.encode("utf-8-sig")]),  # BOM → opens directly, no encoding prompt
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="JD_{slug}.txt"'},
+    )
+
+
+# â"€â"€ Analytics â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+@app.get("/api/admin/overview")
+async def admin_overview(user_id: str = Depends(get_current_user_id)):
+    """All-user aggregate stats for admin dashboard."""
+    await _verify_admin(user_id)
+    from collections import defaultdict
+    from datetime import date, timedelta
+
+    async with SessionLocal() as db:
+        # All users with their basic info
+        users_res = await db.execute(select(User.id, User.name, User.email))
+        all_users = {r[0]: {"name": r[1] or r[2], "email": r[2]} for r in users_res.fetchall()}
+
+        # All UserJob records
+        uj_res = await db.execute(
+            select(UserJob.user_id, UserJob.job_id, UserJob.status,
+                   UserJob.tailored_at, UserJob.tailored_resume,
+                   UserJob.applied_at, Job.title, Job.company, Job.location)
+            .join(Job, UserJob.job_id == Job.id)
+        )
+        uj_rows = uj_res.fetchall()
+
+        # QuickTailor history counts per user
+        qt_res = await db.execute(
+            select(QuickTailorHistory.user_id, func.count().label("cnt"))
+            .group_by(QuickTailorHistory.user_id)
+        )
+        quick_tailor_counts = {r[0]: r[1] for r in qt_res.fetchall()}
+
+    # Aggregate
+    total_applied = sum(1 for r in uj_rows if r[2] in _APPLIED_STAGES)
+    total_interview = sum(1 for r in uj_rows if r[2] in ("screening", "assessment", "interview", "final"))
+    total_tailored = sum(1 for r in uj_rows if r[3])
+
+    status_breakdown = defaultdict(int)
+    for r in uj_rows:
+        status_breakdown[r[2] or "new"] += 1
+
+    # Monthly trends (last 6 months) — applied + tailored across all users
+    today = date.today()
+    monthly_map = defaultdict(lambda: {"applied": 0, "tailored": 0})
+    for r in uj_rows:
+        if r[5]:  # applied_at
+            m = r[5][:7]
+            monthly_map[m]["applied"] += 1
+        if r[3]:  # tailored_at
+            m = r[3][:7]
+            monthly_map[m]["tailored"] += 1
+
+    monthly = []
+    for i in range(5, -1, -1):
+        yr, mon = today.year, today.month - i
+        while mon <= 0: mon += 12; yr -= 1
+        key = f"{yr}-{mon:02d}"
+        vals = monthly_map.get(key, {"applied": 0, "tailored": 0})
+        monthly.append({"month": date(yr, mon, 1).strftime("%b %Y"), **vals})
+
+    # 30-day activity per user
+    thirty_ago = (today - timedelta(days=30)).isoformat()
+    user_activity = {}
+    for uid, info in all_users.items():
+        user_rows = [r for r in uj_rows if r[0] == uid]
+        recent_applied = sum(1 for r in user_rows if r[5] and r[5][:10] >= thirty_ago)
+        recent_tailored = sum(1 for r in user_rows if r[3] and r[3][:10] >= thirty_ago)
+        user_activity[uid] = {
+            "name": info["name"],
+            "email": info["email"],
+            "applied_30d": recent_applied,
+            "tailored_30d": recent_tailored,
+            "quick_tailored_30d": quick_tailor_counts.get(uid, 0),
+            "total_applied": sum(1 for r in user_rows if r[2] in _APPLIED_STAGES),
+            "total_tailored": sum(1 for r in user_rows if r[3]),
+        }
+
+    # Tailored resumes grouped by user
+    tailored_by_user = defaultdict(list)
+    for r in uj_rows:
+        uid, jid, status, tai, resume, applied_at, title, company, location = r
+        if tai:
+            tailored_by_user[uid].append({
+                "job_id": jid, "title": title or "", "company": company or "",
+                "location": location or "", "tailored_at": tai,
+                "has_resume": bool(resume),
+            })
+
+    tailored_users = []
+    for uid, resumes in tailored_by_user.items():
+        info = all_users.get(uid, {})
+        tailored_users.append({
+            "user_id": uid,
+            "name": info.get("name", "Unknown"),
+            "email": info.get("email", ""),
+            "resume_count": len(resumes),
+            "resumes": sorted(resumes, key=lambda x: x["tailored_at"], reverse=True),
+        })
+    tailored_users.sort(key=lambda x: x["resume_count"], reverse=True)
+
+    return {
+        "totals": {
+            "applied": total_applied,
+            "interview": total_interview,
+            "tailored": total_tailored,
+            "quick_tailored": sum(quick_tailor_counts.values()),
+        },
+        "status_breakdown": dict(status_breakdown),
+        "monthly": monthly,
+        "user_activity": list(user_activity.values()),
+        "tailored_users": tailored_users,
+    }
+
+
+@app.get("/api/admin/tailored-resume/{job_id}")
+async def admin_get_tailored_resume(job_id: str, target_user_id: str,
+                                     user_id: str = Depends(get_current_user_id)):
+    """Fetch a specific user's tailored resume for a job."""
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        res = await db.execute(
+            select(UserJob.tailored_resume, UserJob.tailored_at, Job.title, Job.company, User.name)
+            .join(Job, UserJob.job_id == Job.id)
+            .join(User, UserJob.user_id == User.id)
+            .where(UserJob.job_id == job_id, UserJob.user_id == target_user_id)
+        )
+        row = res.fetchone()
+    if not row:
+        raise HTTPException(404, "Not found")
+    return {
+        "tailored_resume": row[0] or "",
+        "tailored_at": row[1],
+        "job_title": row[2],
+        "company": row[3],
+        "user_name": row[4],
+    }
+
+
+@app.get("/api/analytics")
+async def get_analytics(user_id: str = Depends(get_current_user_id),
+                        personal: int = 0,
+                        user: str = ""):
+    from collections import defaultdict
+    from datetime import date, timedelta
+
+    async with SessionLocal() as db:
+        u_row = await db.get(User, user_id)
+        is_admin = bool(u_row and u_row.email.lower() == ADMIN_EMAIL.lower())
+        # Admin can scope the WHOLE dashboard to one user via ?user=<id>.
+        # target_id drives every per-user join/filter below.
+        target_id = user if (is_admin and user) else user_id
+        # Aggregate (all-users) view only when admin, no ?user, and not ?personal.
+        is_admin_analytics = bool(is_admin and not personal and not user)
+        user_roles_analytics: list = []
+        if not is_admin_analytics:
+            s_res = await db.execute(select(UserSettings).where(UserSettings.user_id == target_id))
+            s = s_res.scalar_one_or_none()
+            try:
+                user_roles_analytics = json.loads(s.job_roles) if s and s.job_roles else []
+            except Exception:
+                user_roles_analytics = []
+
+        q = select(
+            Job.id,
+            Job.source,
+            Job.country,
+            Job.scraped_at,
+            Job.title,
+            Job.company,
+            Job.location,
+            Job.experience_level,
+            UserJob.status,
+            UserJob.applied_at,
+            UserJob.tailored_at
+        ).outerjoin(UserJob, (UserJob.job_id == Job.id) & (UserJob.user_id == target_id))
+
+        # Non-admins: scope to USA + their assigned roles
+        if not is_admin_analytics:
+            q = q.where(Job.country == "USA")
+
+        result = await db.execute(q)
+        rows = result.fetchall()
+
+        # Filter by assigned roles in Python (reuse title matcher)
+        if not is_admin_analytics and user_roles_analytics:
+            rows = [r for r in rows if _title_matches_roles(r[4] or "", user_roles_analytics)]
+
+    # Dedupe by job id — user_jobs has no unique (user_id, job_id) constraint,
+    # so duplicate overlay rows multiply the same job through the outerjoin and
+    # inflate every dashboard count (live: jobs list said 4,853 real jobs while
+    # this endpoint reported 11,444). Keep the row with user activity (status/
+    # applied/tailored) so those counts stay accurate.
+    _by_job: dict = {}
+    for r in rows:
+        prev = _by_job.get(r[0])
+        if prev is None or (r[8] or r[9] or r[10]):
+            _by_job[r[0]] = r
+    rows = list(_by_job.values())
+
+    total = len(rows)
+    by_status  = defaultdict(int)
+    by_country = defaultdict(int)
+    by_source  = defaultdict(int)
+    by_day     = defaultdict(int)
+    applied_by_day   = defaultdict(int)
+    tailored_by_day  = defaultdict(int)
+    by_month   = defaultdict(lambda: {"scraped": 0, "applied": 0, "tailored": 0})
+
+    applied_jobs  = []
+    tailored_jobs = []
+
+    for r in rows:
+        j_id, j_src, j_country, j_scraped, j_title, j_company, j_location, j_exp, u_status, u_applied, u_tailored = r
+        status = u_status or "new"
+        
+        by_status[status] += 1
+        by_country[j_country or "Unknown"] += 1
+        by_source[j_src or "Unknown"] += 1
+        
+        day   = (j_scraped or "")[:10]
+        month = (j_scraped or "")[:7]
+        if day:
+            by_day[day] += 1
+            by_month[month]["scraped"] += 1
+            
+        if status in _APPLIED_STAGES:
+            # Applied + all interview stages count as "applied" — a job that
+            # progressed to interview is still an application. Bucket by the
+            # APPLIED date, not the scrape date (matches "Applied today").
+            aday = (u_applied or j_scraped or "")[:10]
+            if aday:
+                applied_by_day[aday] += 1
+                by_month[aday[:7]]["applied"] += 1
+            applied_jobs.append({
+                "id": j_id, "title": j_title, "company": j_company,
+                "location": j_location, "applied_at": u_applied or j_scraped,
+                "experience_level": j_exp or "",
+            })
+
+        if u_tailored:
+            # Bucket by the TAILORED date, not the scrape date (same reasoning).
+            tday = (u_tailored or "")[:10]
+            if tday:
+                tailored_by_day[tday] += 1
+                by_month[tday[:7]]["tailored"] += 1
+            tailored_jobs.append({
+                "id": j_id, "title": j_title, "company": j_company,
+                "location": j_location, "tailored_at": u_tailored,
+                "experience_level": j_exp or "",
+            })
+
+    today = date.today()
+
+    # Durable per-day ledger (recorded at insert time) beats DB counts —
+    # retention deletes old rows, undercounting days >7d back
+    ledger: dict = {}
+    try:
+        async with SessionLocal() as db:
+            lrow = await db.get(Setting, "daily_scrape_ledger")
+        if lrow and lrow.value:
+            ledger = json.loads(lrow.value)
+    except Exception:
+        pass
+
+    # 30-day timeline
+    timeline = []
+    for i in range(29, -1, -1):
+        d = (today - timedelta(days=i)).isoformat()
+        led = ledger.get(d)
+        timeline.append({
+            "date": d,
+            "label": d[5:],   # MM-DD
+            # Admin: use global ledger total; non-admin: use role+country-filtered by_day
+            "scraped": (led["total"] if led else by_day.get(d, 0)) if is_admin_analytics else by_day.get(d, 0),
+            "scraped_usa":   (led or {}).get("USA"),
+            "scraped_india": (led or {}).get("India"),
+            "applied":  applied_by_day.get(d, 0),
+            "tailored": tailored_by_day.get(d, 0),
+        })
+
+    # Last 6 months
+    monthly = []
+    for i in range(5, -1, -1):
+        yr  = today.year
+        mon = today.month - i
+        while mon <= 0:
+            mon += 12; yr -= 1
+        key = f"{yr}-{mon:02d}"
+        label = date(yr, mon, 1).strftime("%b")
+        vals  = by_month.get(key, {"scraped": 0, "applied": 0, "tailored": 0})
+        monthly.append({"month": label, **vals})
+
+    async with SessionLocal() as db:
+        ls = await db.get(Setting, "last_scraped_at")
+        qt_result = await db.execute(
+            select(QuickTailorHistory)
+            .where(QuickTailorHistory.user_id == target_id)
+            .order_by(QuickTailorHistory.created_at.desc())
+            .limit(50)
+        )
+        qt_records = qt_result.scalars().all()
+
+    quick_tailored_jobs = [
+        {
+            "id": r.id,
+            "company": r.company,
+            "title": "",
+            "tailored_at": r.created_at,
+        }
+        for r in qt_records
+    ]
+
+    return {
+        "total": total,
+        "last_scraped_at": ls.value if ls else "",
+        "by_status":  dict(by_status),
+        "by_country": sorted(
+            [(k, v) for k, v in by_country.items() if k and k not in ("Unknown", "")],
+            key=lambda x: -x[1]
+        )[:10],
+        "by_source":  sorted(by_source.items(),  key=lambda x: -x[1]),
+        "timeline":   timeline,
+        "monthly":    monthly,
+        # Cap high (not 50): the UI searches/paginates this list client-side, so
+        # a small cap silently hid older applied/tailored jobs from search.
+        "applied_jobs":       sorted(applied_jobs,  key=lambda j: j.get("tailored_at") or j.get("applied_at") or "", reverse=True)[:1000],
+        "tailored_jobs":      sorted(tailored_jobs, key=lambda j: j.get("tailored_at") or "", reverse=True)[:1000],
+        "applied_total":      len(applied_jobs),
+        "tailored_total":     len(tailored_jobs),
+        "quick_tailored_jobs": quick_tailored_jobs,
+    }
+
+
+# â"€â"€ Helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+def _job_to_dict(job: Job) -> dict:
+    return {
+        "id": job.id,
+        "title": job.title,
+        "company": job.company,
+        "location": job.location,
+        "country": getattr(job, "country", "") or "",
+        "url": job.url,
+        "source": job.source,
+        # clean_jd_html decodes (possibly double-encoded) HTML entities and
+        # strips tags to readable plain text — some ATS feeds deliver raw/
+        # double-encoded HTML in the description field, which the frontend
+        # can't detect as HTML (no literal '<' chars) so it renders the
+        # escaped tag soup as visible text. Read-time fix: covers every
+        # already-scraped dirty row too, no DB migration needed.
+        "description": clean_jd_html(job.description or ""),
+        "salary": job.salary,
+        "remote": job.remote,
+        "posted_at": job.posted_at,
+        "scraped_at": job.scraped_at,
+        "indexed_at": getattr(job, "indexed_at", "") or "",
+        "hc_original_date": getattr(job, "hc_original_date", "") or "",
+        "status": job.status,
+        "tailored_resume": job.tailored_resume,
+        "tailored_at": getattr(job, "tailored_at", None) or "",
+        "applied_at":  getattr(job, "applied_at",  None) or "",
+        "ats_score_before": job.ats_score_before,
+        "ats_score_after": job.ats_score_after,
+        "ats_keywords_matched": json.loads(job.ats_keywords_matched) if job.ats_keywords_matched else [],
+        "ats_keywords_missing": json.loads(job.ats_keywords_missing) if job.ats_keywords_missing else [],
+        "fit_analysis": job.fit_analysis,
+        "interview_tips": json.loads(job.interview_tips) if job.interview_tips else [],
+        "cover_letter": job.cover_letter or "",
+        "notes": job.notes or "",
+        "deadline": getattr(job, "deadline", None) or "",
+        "interview_date": getattr(job, "interview_date", None) or "",
+        "priority": getattr(job, "priority", 0) or 0,
+        "qualify_result": json.loads(job.qualify_result) if getattr(job, "qualify_result", None) else None,
+        # FJ enrichment
+        "visa_sponsorship":  getattr(job, "visa_sponsorship", None),
+        "experience_level":  getattr(job, "experience_level", "") or "",
+        "experience_level_inferred": bool(getattr(job, "experience_level_inferred", False)),
+        "employment_type":   getattr(job, "employment_type",  "") or "",
+        "benefits":          json.loads(job.benefits)     if getattr(job, "benefits",     None) else [],
+        "job_expiry":        getattr(job, "job_expiry",    "") or "",
+        "logo_url":          getattr(job, "logo_url",      "") or "",
+        "company_size":      getattr(job, "company_size",  "") or "",
+        "company_industry":  getattr(job, "company_industry", "") or "",
+        "company_hq":        getattr(job, "company_hq",    "") or "",
+        "company_funding":   getattr(job, "company_funding", None),
+        "ai_keywords":       json.loads(job.ai_keywords)  if getattr(job, "ai_keywords",  None) else [],
+    }
+
+# â"€â"€ Deadline / Interview Date / Priority â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+class DeadlineUpdate(BaseModel):
+    deadline: Optional[str] = None        # ISO date "2025-03-15"
+    interview_date: Optional[str] = None  # ISO datetime
+    priority: Optional[int] = None        # 0/1/2
+    deferred: Optional[bool] = None       # soft "move to bottom of the day"
+
+@app.patch("/api/jobs/{job_id}/meta")
+async def update_job_meta(job_id: str, body: DeadlineUpdate, user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+        # Write to user_jobs for per-user deadline/interview/priority
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        if not uj:
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+            db.add(uj)
+        if body.deadline is not None:
+            uj.deadline = body.deadline
+        if body.interview_date is not None:
+            uj.interview_date = body.interview_date
+        if body.priority is not None:
+            uj.priority = body.priority
+        if body.deferred is not None:
+            uj.deferred = body.deferred
+        await db.commit()
+    return {"ok": True}
+
+
+# â"€â"€ Search endpoint â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+@app.get("/api/search")
+async def search_jobs(
+    user_id: str = Depends(get_current_user_id),
+    q: str = "",
+    status: str = "",
+    remote: Optional[bool] = None,
+    country: str = "",
+    source: str = "",
+    min_ats: Optional[int] = None,
+    has_deadline: Optional[bool] = None,
+    priority: Optional[int] = None,
+    sort: str = "scraped_at",
+    order: str = "desc",
+    page: int = 1,
+    limit: int = 20,
+):
+    async with SessionLocal() as db:
+        stmt = select(Job)
+
+        filters = []
+        if q:
+            term = f"%{q}%"
+            filters.append(or_(
+                Job.title.ilike(term),
+                Job.company.ilike(term),
+                Job.description.ilike(term),
+                Job.location.ilike(term),
+            ))
+        if status:
+            filters.append(Job.status == status)
+        if remote is not None:
+            filters.append(Job.remote == remote)
+        if country:
+            filters.append(Job.country == country)
+        if source:
+            filters.append(Job.source == source)
+        if min_ats is not None:
+            filters.append(Job.ats_score_after >= min_ats)
+        if has_deadline is True:
+            filters.append(Job.deadline != None)
+            filters.append(Job.deadline != "")
+        if priority is not None:
+            filters.append(Job.priority == priority)
+
+        if filters:
+            stmt = stmt.where(*filters)
+
+        col = {
+            "scraped_at": Job.scraped_at,
+            "posted_at": Job.posted_at,
+            "company": Job.company,
+            "title": Job.title,
+            "ats": Job.ats_score_after,
+            "priority": Job.priority,
+            "deadline": Job.deadline,
+        }.get(sort, Job.scraped_at)
+
+        stmt = stmt.order_by(col.asc() if order == "asc" else col.desc())
+
+        count_result = await db.execute(stmt)
+        total = len(count_result.scalars().all())
+
+        stmt = stmt.offset((page - 1) * limit).limit(limit)
+        result = await db.execute(stmt)
+        jobs = result.scalars().all()
+
+    return {
+        "data": [_job_to_dict(j) for j in jobs],
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": (total + limit - 1) // limit,
+    }
+
+
+# â"€â"€ Upcoming deadlines / reminders â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+@app.get("/api/reminders")
+async def get_reminders(user_id: str = Depends(get_current_user_id)):
+    """Return jobs with upcoming deadlines or interview dates within 7 days."""
+    from datetime import timezone, timedelta
+    now = datetime.now(EST)
+    cutoff = (now + timedelta(days=7)).isoformat()
+
+    async with SessionLocal() as db:
+        result = await db.execute(
+            select(Job).where(
+                Job.status.in_(["applied", "interview"]),
+            )
+        )
+        jobs = result.scalars().all()
+
+    reminders = []
+    for j in jobs:
+        deadline = j.deadline or ""
+        interview = j.interview_date or ""
+        if (deadline and deadline <= cutoff) or (interview and interview <= cutoff):
+            d = _job_to_dict(j)
+            d["days_until_deadline"] = None
+            d["days_until_interview"] = None
+            if deadline:
+                try:
+                    dl = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
+                    d["days_until_deadline"] = (dl - now).days
+                except Exception:
+                    pass
+            if interview:
+                try:
+                    iv = datetime.fromisoformat(interview.replace("Z", "+00:00"))
+                    d["days_until_interview"] = (iv - now).days
+                except Exception:
+                    pass
+            reminders.append(d)
+
+    reminders.sort(key=lambda x: (x.get("deadline") or x.get("interview_date") or ""))
+    return reminders
+
+
+# â"€â"€ Scheduler control â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+class SchedulerConfig(BaseModel):
+    cron: str  # e.g. "0 */6 * * *"
+
+class RetentionConfig(BaseModel):
+    days: int  # e.g. 7
+
+@app.get("/api/scheduler/status")
+async def scheduler_status(user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    from scrapers.base import CUTOFF_HOURS as _DEFAULT_H
+    jobs = _scheduler.get_jobs()
+    async with SessionLocal() as db:
+        cron_s  = await db.get(Setting, "auto_scrape_cron")
+        ret_s   = await db.get(Setting, "scrape_cutoff_hours")
+    cutoff_hours = int(ret_s.value) if ret_s else _DEFAULT_H
+    return {
+        "running":         _scheduler.running,
+        "jobs":            [{"id": j.id, "next_run": str(j.next_run_time)} for j in jobs],
+        "cron":            cron_s.value if cron_s else "0 * * * *",
+        "retention_days":  cutoff_hours // 24,
+        "retention_hours": cutoff_hours,
+    }
+
+@app.put("/api/scheduler/retention")
+async def update_retention(body: RetentionConfig, user_id: str = Depends(get_current_user_id)):
+    """Update the rolling job retention window (in days). Jobs older than this are deleted on next scrape."""
+    await _verify_admin(user_id)
+    if body.days < 1 or body.days > 30:
+        raise HTTPException(status_code=400, detail="days must be between 1 and 30")
+    hours = body.days * 24
+    async with SessionLocal() as db:
+        setting = await db.get(Setting, "scrape_cutoff_hours")
+        if setting:
+            setting.value = str(hours)
+        else:
+            db.add(Setting(key="scrape_cutoff_hours", value=str(hours)))
+        await db.commit()
+    return {"ok": True, "retention_days": body.days, "retention_hours": hours}
+
+@app.put("/api/scheduler/cron")
+async def update_scheduler_cron(body: SchedulerConfig, user_id: str = Depends(get_current_user_id)):
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        setting = await db.get(Setting, "auto_scrape_cron")
+        if setting:
+            setting.value = body.cron
+        else:
+            db.add(Setting(key="auto_scrape_cron", value=body.cron))
+        await db.commit()
+
+    _scheduler.reschedule_job("auto_scrape", trigger=CronTrigger.from_crontab(body.cron))
+    return {"ok": True, "cron": body.cron}
+
+@app.post("/api/scheduler/run-now")
+async def run_scraper_now(user_id: str = Depends(get_current_user_id)):
+    """Trigger scraper immediately outside the schedule."""
+    await _verify_admin(user_id)
+    _scheduler.modify_job("auto_scrape", next_run_time=datetime.now())
+    return {"ok": True, "message": "Scraper triggered immediately"}
+
+
+
+# â"€â"€ Structured Profile â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+class ProfileExperience(BaseModel):
+    role: str = ""
+    company: str = ""
+    location: str = ""   # "City, State" — used in job header: Role @ Company | City, State  Date
+    start_date: str = ""
+    end_date: str = ""
+    years: float = 0
+    bullets: List[str] = []
+    expanded: bool = True
+
+class ProfileEducation(BaseModel):
+    degree: str = ""
+    school: str = ""
+    year: str = ""
+    expanded: bool = True
+
+class ProfileProject(BaseModel):
+    name: str = ""
+    description: str = ""
+    expanded: bool = True
+
+class ProfileData(BaseModel):
+    name: str = ""
+    first_name: str = ""
+    last_name: str = ""
+    email: str = ""
+    phone: str = ""
+    location: str = ""
+    address: str = ""
+    linkedin: str = ""
+    github: str = ""
+    website: str = ""
+    visa_status: str = ""
+    summary: str = ""
+    experience: List[ProfileExperience] = []
+    education: List[ProfileEducation] = []
+    projects: List[ProfileProject] = []
+    skills: List[str] = []
+    certifications: List[str] = []
+
+@app.get("/api/profile")
+async def get_profile(user_id: str = Depends(get_current_user_id)):
+    async with SessionLocal() as db:
+        return await _load_profile(db, user_id)
+
+def _profile_to_resume_text(p: dict) -> str:
+    """Convert structured profile to plain-text resume for AI tailoring."""
+    lines = []
+    name = p.get("name", "")
+    email = p.get("email", "")
+    phone = p.get("phone", "")
+    location = p.get("location", "")
+    contact = " | ".join(filter(None, [phone, email, location]))
+    if name:
+        lines.append(f"{name} — Senior Data Engineer")
+    if contact:
+        lines.append(contact)
+    lines.append("")
+
+    summary = p.get("summary", "")
+    if summary:
+        lines.append("PROFESSIONAL SUMMARY:")
+        lines.append(summary)
+        lines.append("")
+
+    exp = p.get("experience", [])
+    if exp:
+        lines.append("WORK EXPERIENCE:")
+        for e in exp:
+            role = e.get("role", "")
+            company = e.get("company", "")
+            loc = e.get("location", "")          # "City, State"
+            start = e.get("start_date", "")
+            end = e.get("end_date", "")
+            date_range = (start + " – " + end).strip(" –") if (start or end) else ""
+            role_company = (role + " @ " + company) if (role and company) else (role or company)
+            location_date = "  ".join(filter(None, [loc, date_range]))
+            header = " | ".join(filter(None, [role_company, location_date]))
+            lines.append(header)
+            for b in e.get("bullets", []):
+                if b.strip():
+                    lines.append(f"â€¢ {b.strip()}")
+            lines.append("")
+
+    skills = p.get("skills", [])
+    if skills:
+        lines.append("TECHNICAL SKILLS:")
+        lines.append(", ".join(skills))
+        lines.append("")
+
+    certs = p.get("certifications", [])
+    if certs:
+        lines.append("CERTIFICATIONS:")
+        lines.append(", ".join(certs))
+        lines.append("")
+
+    edu = p.get("education", [])
+    if edu:
+        lines.append("EDUCATION:")
+        for e in edu:
+            degree = e.get("degree", "")
+            school = e.get("school", "")
+            year = e.get("year", "")
+            lines.append(" | ".join(filter(None, [f"{degree} @ {school}" if degree and school else (degree or school), year])))
+        lines.append("")
+
+    return "\n".join(lines).strip()
+
+
+@app.put("/api/profile")
+async def save_profile(body: ProfileData, user_id: str = Depends(get_current_user_id)):
+    """Profile is strictly per-user — saving never touches anyone else's data."""
+    async with SessionLocal() as db:
+        key = f"profile:{user_id}"
+        row = await db.get(Setting, key)
+        val = json.dumps(body.model_dump())
+        if row:
+            row.value = val
+        else:
+            db.add(Setting(key=key, value=val))
+
+        # Auto-sync plain-text resume for AI tailoring (this user only)
+        resume_text = _profile_to_resume_text(body.model_dump())
+        if resume_text:
+            us_result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+            us = us_result.scalar_one_or_none()
+            if us:
+                us.resume = resume_text
+            else:
+                db.add(UserSettings(user_id=user_id, resume=resume_text))
+
+        await db.commit()
+    return {"ok": True}
+
+
+# â"€â"€ Parse Resume File â†' structured profile â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+@app.post("/api/profile/parse-resume")
+async def parse_resume_file(file: UploadFile = File(...), user_id: str = Depends(get_current_user_id)):
+    import io
+
+    user_cfg = await _get_user_settings(user_id)
+    api_key = user_cfg.get("ai_api_key", "")
+    provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
+    model = user_cfg.get("ai_model_parse", "google/gemini-2.5-flash-lite")
+
+    from ai.llm import ModelKeys as _ModelKeys
+    _mk = _ModelKeys(
+        anthropic=user_cfg.get("anthropic_api_key", "") or "",
+        google=user_cfg.get("google_api_key", "") or "",
+        openai=user_cfg.get("openai_api_key", "") or "",
+        openrouter=api_key,
+    )
+    if not any([_mk.anthropic, _mk.google, _mk.openai, _mk.openrouter]):
+        raise HTTPException(400, "No AI API key set. Add one in Settings first.")
+
+    content = await file.read()
+    filename = (file.filename or "").lower()
+    text = ""
+
+    if filename.endswith(".pdf"):
+        try:
+            import pypdf
+            reader = pypdf.PdfReader(io.BytesIO(content))
+            text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        except ImportError:
+            raise HTTPException(500, "pypdf not installed. Run: pip install pypdf")
+        except Exception as e:
+            raise HTTPException(400, f"Could not read PDF: {e}")
+    elif filename.endswith(".docx"):
+        try:
+            from docx import Document
+            from docx.table import Table
+            from docx.text.paragraph import Paragraph
+            from docx.oxml.ns import qn
+            doc = Document(io.BytesIO(content))
+
+            # Walk the body in document order so paragraphs AND tables are
+            # captured. Many resume templates put job titles, dates, and section
+            # content inside tables — reading only doc.paragraphs silently drops
+            # all of it (live bug: a table-layout resume lost every date, so the
+            # tailored output showed "0+ years" and every job as "Present").
+            def _iter_blocks(parent):
+                for child in parent.element.body.iterchildren():
+                    if child.tag == qn("w:p"):
+                        yield Paragraph(child, parent)
+                    elif child.tag == qn("w:tbl"):
+                        yield Table(child, parent)
+
+            lines = []
+            for block in _iter_blocks(doc):
+                if isinstance(block, Paragraph):
+                    t = block.text.strip()
+                    if t:
+                        lines.append(t)
+                else:  # Table — keep each row's cells together (date stays with its title)
+                    for row in block.rows:
+                        cells = [c.text.strip() for c in row.cells if c.text.strip()]
+                        seen, uniq = set(), []
+                        for c in cells:
+                            if c not in seen:
+                                seen.add(c); uniq.append(c)
+                        if uniq:
+                            lines.append("   ".join(uniq))
+            text = "\n".join(lines)
+        except Exception as e:
+            raise HTTPException(400, f"Could not read DOCX: {e}")
+    elif filename.endswith(".txt"):
+        text = content.decode("utf-8", errors="ignore")
+    else:
+        raise HTTPException(400, "Unsupported file. Use PDF, DOCX, or TXT.")
+
+    if not text.strip():
+        raise HTTPException(400, "No text extracted from file. Try a different format.")
+
+    from ai.llm import chat
+
+    PARSE_SYSTEM = """Extract ALL structured information from this resume. Return ONLY valid JSON, no markdown, no explanation:
+{
+  "name": "",
+  "email": "",
+  "phone": "",
+  "location": "",
+  "linkedin": "",
+  "github": "",
+  "summary": "",
+  "experience": [
+    {
+      "role": "",
+      "company": "",
+      "location": "",
+      "start_date": "Jan 2022",
+      "end_date": "Present",
+      "years": 2.5,
+      "bullets": ["All bullet points exactly as written in resume — do not skip, summarize, or truncate any"]
+    }
+  ],
+  "education": [
+    {"degree": "", "school": "", "year": "", "gpa": ""}
+  ],
+  "projects": [
+    {"name": "", "description": "", "stack": "", "url": ""}
+  ],
+  "skills": ["Python", "SQL"],
+  "certifications": ["AWS Solutions Architect"]
+}
+
+Rules:
+- name: full name from top of resume
+- email: extract email address
+- phone: extract phone number
+- location: ONLY extract the applicant's personal home city/state. Do NOT extract locations of client companies or work history. If missing, leave as "".
+- linkedin: full LinkedIn URL or just the handle (e.g. linkedin.com/in/username)
+- github: full GitHub URL or handle (e.g. github.com/username)
+- summary: professional summary or objective paragraph if present, else ""
+- location (experience): city/state where the job was located (e.g. "Minneapolis, MN"). Use "" if not found.
+- start_date / end_date: exact date format from resume (e.g. "Sep 2023", "Jan 2021", "Present"). Use "" if not found.
+- years: calculate as decimal from start to end (2 years 6 months = 2.5). Estimate if dates missing.
+- bullets: extract EVERY bullet point for each role exactly as written — do NOT truncate, skip, or summarize any bullet.
+- skills: technical only (languages, frameworks, tools, platforms, databases, cloud services). No soft skills.
+- certifications: only actual certs/licenses. Empty array [] if none.
+- education: ALWAYS extract even if at the bottom. Include degree, university/school name, graduation year, GPA if present.
+- projects: extract all personal/side projects with name, description, tech stack, and URL if present.
+- Use "" for missing text fields. Use [] for missing arrays.
+- Do NOT invent, paraphrase, or add anything not explicitly in the resume."""
+
+    try:
+        response = await chat(
+            system=PARSE_SYSTEM,
+            user=f"Resume:\n\n{text[:15000]}",
+            api_key=api_key,
+            provider=provider,
+            model=model,
+            max_tokens=4000,
+            keys=_mk,
+        )
+    except Exception as e:
+        raise HTTPException(502, f"AI call failed on all fallback models. Last error: {str(e)[:300]}")
+
+    try:
+        import json_repair
+        result = json_repair.loads(response)
+        if not isinstance(result, dict):
+            raise Exception("Parsed result is not a JSON object. Ensure the AI returns structured data.")
+        return result
+    except Exception as e:
+        raise HTTPException(500, f"AI could not parse resume JSON. Error: {str(e)}\n\nRaw output snippet: {response[:500]}")
+
+
+
+# â"€â"€ Job Qualification â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+@app.post("/api/jobs/{job_id}/qualify")
+async def qualify_job_endpoint(job_id: str, user_id: str = Depends(get_current_user_id)):
+    from ai.qualify import qualify_job
+
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        if not job:
+            raise HTTPException(404, "Job not found")
+
+    user_cfg = await _get_user_settings(user_id)
+    api_key = user_cfg.get("ai_api_key", "")
+    provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
+    model = user_cfg.get("ai_model_qualify", "google/gemini-2.5-flash-lite")
+    # Per-user profile — each user's scores measure THEIR fit
+    async with SessionLocal() as db:
+        profile = await _load_profile(db, user_id)
+
+    if not api_key:
+        raise HTTPException(400, "No AI API key configured in Settings")
+    if not profile:
+        raise HTTPException(400, "No profile configured. Fill in your profile first.")
+
+    candidate_roles = user_cfg.get("job_roles", [])
+    result = await qualify_job(
+        profile=profile,
+        job_title=job.title,
+        job_description=job.description or "",
+        company=job.company,
+        location=job.location or "",
+        api_key=api_key,
+        provider=provider,
+        model=model,
+        candidate_roles=candidate_roles,
+    )
+
+    async with SessionLocal() as db:
+        # Write qualify_result to user_jobs table
+        uj_result = await db.execute(
+            select(UserJob).where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+        )
+        uj = uj_result.scalar_one_or_none()
+        if not uj:
+            uj = UserJob(id=str(_uuid.uuid4()), user_id=user_id, job_id=job_id, saved_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+            db.add(uj)
+        uj.qualify_result = json.dumps(result)
+        # Auto-set priority based on score
+        score = result.get("score", 0)
+        if result.get("qualified") and score >= 80:
+            uj.priority = 2
+        elif result.get("qualified") and score >= 60:
+            uj.priority = 1
+        await db.commit()
+
+    return result
+
+
+@app.post("/api/jobs/qualify-all")
+async def qualify_all_jobs(background_tasks: BackgroundTasks, user_id: str = Depends(get_current_user_id)):
+    """Qualify all unanalyzed jobs in the background (backfill mode, capped at QUALIFY_BATCH_CAP)."""
+    background_tasks.add_task(_run_qualify_all, None)  # new_job_ids=None = backfill mode
+    return {"message": f"Qualification running in background (up to {QUALIFY_BATCH_CAP} jobs)"}
+
+
+@app.post("/api/admin/qualify-users-backfill")
+async def qualify_users_backfill(background_tasks: BackgroundTasks,
+                                 user_id: str = Depends(get_current_user_id)):
+    """One-time per-user qualify backfill: score each active friend's existing
+    role-matched jobs against THEIR own profile so their current feed gets real
+    AI Match numbers now, instead of waiting for future scrapes. Admin only."""
+    await _verify_admin(user_id)
+    background_tasks.add_task(_run_qualify_for_users, None)  # None = backfill mode
+    return {"message": f"Per-user qualify backfill running (up to {QUALIFY_USER_BACKFILL_CAP} jobs/user)"}
+
+
+_qualify_running = False
+
+# Max jobs to qualify in a single auto-qualify run.
+# Prevents a single scrape cycle from hammering the AI API with 1000+ calls.
+QUALIFY_BATCH_CAP = 250   # was 75 — raised to clear the post-reset rescore backlog faster (~2 days)
+QUALIFY_USER_BACKFILL_CAP = 150   # per-user cap for the one-time per-user qualify backfill
+
+async def _run_qualify_all(new_job_ids: list | None = None):
+    """Standalone qualify-all — usable from scheduler and endpoint.
+
+    new_job_ids: if provided, only qualify those specific jobs (freshly scraped).
+                 If None, qualifies up to QUALIFY_BATCH_CAP unscored jobs from DB.
+    """
+    global _qualify_running
+    if _qualify_running:
+        print("[Qualify] Already running — skipping duplicate trigger")
+        return
+    _qualify_running = True
+    try:
+        await _run_qualify_all_inner(new_job_ids=new_job_ids)
+    finally:
+        _qualify_running = False
+
+
+_qualify_users_running = False
+
+
+async def _run_qualify_for_users(new_job_ids: list | None = None):
+    """Per-user qualify. The AI Match score must reflect the VIEWER's own profile,
+    but the global _run_qualify_all only scores against the admin's — so friends
+    saw the admin's numbers. This scores each freshly-scraped job against every
+    active non-admin user's OWN profile + roles and caches it in their UserJob.
+
+    Bounded and cheap: only new jobs that match a user's roles and aren't already
+    qualified for them, on the flash-lite tier. The admin keeps the global batch.
+    """
+    # new_job_ids semantics: a list of ids → score those (post-scrape); [] → the
+    # scrape produced nothing, do nothing; None → BACKFILL mode (score each user's
+    # role-matched unqualified jobs from the recent pool, capped).
+    global _qualify_users_running
+    if _qualify_users_running:
+        return
+    if new_job_ids is not None and not new_job_ids:
+        return
+    backfill = new_job_ids is None
+    _qualify_users_running = True
+    try:
+        from ai.qualify import qualify_job
+        from ai.llm import ModelKeys as _MK
+
+        cutoff = (datetime.now(_UTC.utc) - timedelta(days=21)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        async with SessionLocal() as db:
+            u_res = await db.execute(select(User).where(User.status == "approved"))
+            users = [u for u in u_res.scalars().all()
+                     if u.email.lower() != ADMIN_EMAIL.lower()
+                     and (u.last_seen_at or "") >= cutoff]        # active in last 21 days
+            admin_s = await _get_admin_settings(db)
+            if backfill:
+                # recent open jobs pool; each user takes their role-matched slice
+                j_res = await db.execute(
+                    select(Job).where(Job.status == "new")
+                    .order_by(Job.scraped_at.desc()).limit(1500))
+            else:
+                j_res = await db.execute(select(Job).where(Job.id.in_(new_job_ids)))
+            jobs = j_res.scalars().all()
+
+        if not users or not jobs:
+            return
+        per_user_cap = QUALIFY_USER_BACKFILL_CAP if backfill else None
+
+        for u in users:
+            async with SessionLocal() as db:
+                s = (await db.execute(
+                    select(UserSettings).where(UserSettings.user_id == u.id))).scalar_one_or_none()
+                profile = await _load_profile(db, u.id)
+                done = set((await db.execute(
+                    select(UserJob.job_id).where(
+                        UserJob.user_id == u.id, UserJob.qualify_result != None))).scalars().all())
+            if not profile or not s:
+                continue
+
+            # Only qualify the user's SELECTED role (active_job_roles) if they
+            # picked one; else all granted. Avoids paying to score other families.
+            _granted = json.loads(s.job_roles or "[]") if s.job_roles else []
+            _active = json.loads(s.active_job_roles or "[]") if getattr(s, "active_job_roles", None) else []
+            roles = _active or _granted
+            mine = [j for j in jobs if j.id not in done and _title_matches_roles(j.title, roles)]
+            if per_user_cap:
+                mine = mine[:per_user_cap]     # cap the backfill per user to bound cost
+            if not mine:
+                continue
+
+            # keys: user's own, else fall back to the admin's (same as tailoring)
+            _mk = _MK(
+                anthropic=(getattr(s, "anthropic_api_key", "") or (getattr(admin_s, "anthropic_api_key", "") if admin_s else "") or ""),
+                google=(getattr(s, "google_api_key", "") or (getattr(admin_s, "google_api_key", "") if admin_s else "") or ""),
+                openai=(getattr(s, "openai_api_key", "") or (getattr(admin_s, "openai_api_key", "") if admin_s else "") or ""),
+                openrouter=(s.ai_api_key or (admin_s.ai_api_key if admin_s else "") or ""),
+            )
+            if not any([_mk.anthropic, _mk.google, _mk.openai, _mk.openrouter]):
+                continue
+
+            model = s.ai_model_qualify or "google/gemini-2.5-flash-lite"
+            if any(m in model for m in ("gpt-5", "gpt-4o", "o3", "o1", "claude-opus")):
+                model = "google/gemini-2.5-flash-lite"
+            provider = s.ai_provider or "openrouter"
+
+            print(f"[Qualify/user] {u.email}: {len(mine)} new jobs")
+            for job in mine:
+                try:
+                    r = await qualify_job(
+                        profile=profile, job_title=job.title,
+                        job_description=job.description or "", company=job.company,
+                        location=job.location or "", api_key=(s.ai_api_key or ""),
+                        provider=provider, model=model, candidate_roles=roles, keys=_mk)
+                    async with SessionLocal() as db2:
+                        uj = (await db2.execute(select(UserJob).where(
+                            UserJob.user_id == u.id, UserJob.job_id == job.id))).scalar_one_or_none()
+                        if not uj:
+                            uj = UserJob(id=str(_uuid.uuid4()), user_id=u.id, job_id=job.id,
+                                         saved_at=datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+                            db2.add(uj)
+                        uj.qualify_result = json.dumps(r)
+                        sc = r.get("score", 0)
+                        uj.priority = 2 if (r.get("qualified") and sc >= 80) else \
+                                      1 if (r.get("qualified") and sc >= 60) else 0
+                        await db2.commit()
+                except Exception as e:
+                    es = str(e)
+                    print(f"[Qualify/user] error {u.email} {job.id}: {e}")
+                    if "402" in es or "Insufficient credits" in es:
+                        break   # this user's credits exhausted — stop their run
+                await asyncio.sleep(0.3)
+    finally:
+        _qualify_users_running = False
+
+async def _run_qualify_all_inner(new_job_ids: list | None = None):
+    from ai.qualify import qualify_job
+
+    # Get admin's API key + model from UserSettings (not legacy Setting table)
+    async with SessionLocal() as db:
+        admin_s = await _get_admin_settings(db)
+        res = await db.execute(select(User).where(User.email.ilike(ADMIN_EMAIL)))
+        admin_u = res.scalar_one_or_none()
+        # Auto-qualify scores against the ADMIN's per-user profile
+        profile = await _load_profile(db, admin_u.id) if admin_u else {}
+
+    api_key  = (admin_s.ai_api_key  or "") if admin_s else ""
+    provider = (admin_s.ai_provider or "openrouter") if admin_s else "openrouter"
+    # Direct-API routing (avoids OpenRouter's 5.5% fee) — live OpenRouter
+    # billing showed this sweep's Gemini calls going through OpenRouter.
+    from ai.llm import ModelKeys as _MK
+    _qmk = _MK(
+        anthropic=(getattr(admin_s, "anthropic_api_key", "") or "") if admin_s else "",
+        google=(getattr(admin_s, "google_api_key", "") or "") if admin_s else "",
+        openai=(getattr(admin_s, "openai_api_key", "") or "") if admin_s else "",
+        openrouter=api_key,
+    )
+    # Default to a cheap/free model — do NOT use gpt-5 for bulk qualify
+    model    = (admin_s.ai_model_qualify or "google/gemini-2.5-flash-lite") if admin_s else "google/gemini-2.5-flash-lite"
+    # Safety override: if the stored model is gpt-5 or o3 (very expensive), fall back
+    _expensive_models = ("gpt-5", "gpt-4o", "o3", "o1", "claude-opus")
+    if any(m in model for m in _expensive_models):
+        print(f"[Qualify] Model '{model}' is expensive — overriding to google/gemini-2.5-flash-lite for auto-qualify")
+        model = "google/gemini-2.5-flash-lite"
+
+    if not any([_qmk.anthropic, _qmk.google, _qmk.openai, _qmk.openrouter]) or not profile:
+        print(f"[Qualify] Skipping — admin_settings={'found' if admin_s else 'MISSING'} "
+              f"api_key={'set' if api_key else 'MISSING'} profile={'set' if profile else 'MISSING'}")
+        return
+
+    async with SessionLocal() as db:
+        if new_job_ids:
+            # Only qualify the freshly scraped jobs
+            result = await db.execute(
+                select(Job).where(Job.id.in_(new_job_ids), Job.qualify_result == None)
+            )
+        else:
+            # Backfill mode: qualify up to QUALIFY_BATCH_CAP unscored jobs
+            result = await db.execute(
+                select(Job).where(Job.qualify_result == None, Job.status == "new")
+                .limit(QUALIFY_BATCH_CAP)
+            )
+        jobs = result.scalars().all()
+
+    # Cost guard: only qualify jobs in the admin's SELECTED role (active_job_roles
+    # if chosen, else all granted). Skips paying to score families not being hunted.
+    try:
+        _eff = json.loads((getattr(admin_s, "active_job_roles", "") or (admin_s.job_roles if admin_s else "") or "[]"))
+    except Exception:  # noqa: BLE001
+        _eff = []
+    if _eff:
+        _before = len(jobs)
+        jobs = [j for j in jobs if _title_matches_roles(j.title or "", _eff)]
+        if _before != len(jobs):
+            print(f"[Qualify] role filter: {len(jobs)}/{_before} jobs match active roles {_eff}")
+
+    total = len(jobs)
+    cap_note = f" (capped at {QUALIFY_BATCH_CAP})" if not new_job_ids and total == QUALIFY_BATCH_CAP else ""
+    print(f"[Qualify] Auto-qualifying {total} jobs{cap_note} using {model}")
+    qualified = disqualified = errors = 0
+
+    for job in jobs:
+        try:
+            # Pass admin's job_roles so auto-qualify scores against their actual target roles
+            admin_roles = json.loads(admin_s.job_roles or "[]") if admin_s and admin_s.job_roles else []
+            res = await qualify_job(
+                profile=profile,
+                job_title=job.title,
+                job_description=job.description or "",
+                company=job.company,
+                location=job.location or "",
+                api_key=api_key,
+                provider=provider,
+                model=model,
+                candidate_roles=admin_roles,
+                keys=_qmk,
+            )
+            async with SessionLocal() as db2:
+                j = await db2.get(Job, job.id)
+                if j:
+                    j.qualify_result = json.dumps(res)
+                    score = res.get("score", 0)
+                    if res.get("qualified") and score >= 80:
+                        j.priority = 2
+                    elif res.get("qualified") and score >= 60:
+                        j.priority = 1
+                    await db2.commit()
+            if res.get("qualified"):
+                qualified += 1
+            else:
+                disqualified += 1
+        except Exception as e:
+            err_str = str(e)
+            print(f"[Qualify] Error on {job.id}: {e}")
+            errors += 1
+            # 402 = out of credits. Abort immediately — no point retrying 1000+ jobs.
+            if "402" in err_str or "Insufficient credits" in err_str:
+                print(f"[Qualify] ⚠️  HTTP 402 — AI credits exhausted. Aborting qualify run. "
+                      f"Top up credits at openrouter.ai or change ai_model_qualify in Settings.")
+                break
+        await asyncio.sleep(0.3)
+
+    print(f"[Qualify] Done. Qualified={qualified} Disqualified={disqualified} Errors={errors}")
+
+
+
+# â"€â"€ Clean HTML descriptions â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+@app.post("/api/jobs/clean-descriptions")
+async def clean_html_descriptions(user_id: str = Depends(get_current_user_id)):
+    """Strip raw HTML from all job descriptions in DB. One-time cleanup."""
+    from bs4 import BeautifulSoup
+    import re
+
+    _HTML_RE = re.compile(r'<[a-zA-Z][^>]*>')
+
+    async with SessionLocal() as db:
+        result = await db.execute(select(Job).where(Job.description != None))
+        jobs = result.scalars().all()
+
+    cleaned = 0
+    async with SessionLocal() as db:
+        for job in jobs:
+            desc = job.description or ""
+            if _HTML_RE.search(desc):
+                clean = BeautifulSoup(desc, "lxml").get_text(separator="\n", strip=True)
+                # Collapse 3+ newlines â†' 2
+                clean = re.sub(r'\n{3,}', '\n\n', clean).strip()
+                j = await db.get(Job, job.id)
+                j.description = clean[:10000]
+                cleaned += 1
+        await db.commit()
+
+    return {"cleaned": cleaned}
+
+
+
+
+
+
+# ── Extension: page autofill (unified answer engine) ─────────────────────────
+# One endpoint reusing the same matcher the in-app Auto-Apply modal uses
+# (ats_apply.prefill + class rules + answer memory), plus AI drafts for
+# open-ended questions. Replaces the old /batch-answer + /generate-answer.
+
+def _ext_job_key(url: str) -> str:
+    m = re.search(r'/jobs/(\d+)', url or '')
+    if m: return m.group(1)
+    m = re.search(r'([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', url or '')
+    if m: return m.group(1)
+    return (url or '').rstrip('/').split('/')[-1][:60]
+
+
+async def _ext_tailored_resume(user_id: str, apply_url: str, job_id: str = "") -> str | None:
+    # Prefer the exact job id the app handed us (via the Fill & Apply hash) —
+    # URL matching is fragile across ATS formats (Ashby appends /application,
+    # aggregators use redirect links, etc.). Fall back to URL match only when
+    # no job_id was passed (e.g. the user opened the ATS manually).
+    if job_id:
+        async with SessionLocal() as db:
+            res = await db.execute(
+                select(UserJob.tailored_resume)
+                .where(UserJob.user_id == user_id, UserJob.job_id == job_id)
+                .where(UserJob.tailored_resume.isnot(None)).limit(1))
+            hit = res.scalar_one_or_none()
+            if hit:
+                return hit
+        # job_id given but no tailored resume for it → don't silently fall back
+        # to a DIFFERENT job's resume via URL guessing.
+        return None
+    key = _ext_job_key(apply_url)
+    if not key or len(key) < 4:
+        return None
+    async with SessionLocal() as db:
+        res = await db.execute(
+            select(UserJob.tailored_resume)
+            .join(Job, UserJob.job_id == Job.id)
+            .where(UserJob.user_id == user_id)
+            .where(UserJob.tailored_resume.isnot(None))
+            .where(Job.url.contains(key))
+            .order_by(UserJob.tailored_at.desc()).limit(1))
+        return res.scalar_one_or_none()
+
+
+async def _ext_job_desc(apply_url: str) -> dict:
+    """Look up the scraped job by its apply URL so AI answers can be grounded
+    in the real JD (not just title/company). {} when no match."""
+    key = _ext_job_key(apply_url)
+    if not key or len(key) < 4:
+        return {}
+    async with SessionLocal() as db:
+        res = await db.execute(
+            select(Job.description, Job.title, Job.company, Job.salary)
+            .where(Job.url.contains(key)).limit(1))
+        row = res.first()
+    if not row:
+        return {}
+    return {"description": row[0] or "", "title": row[1] or "",
+            "company": row[2] or "", "salary": row[3] or ""}
+
+
+# Salary label patterns + range parsing for JD-aware salary answers.
+_SALARY_LABEL_RE = re.compile(
+    r"\bsalary\b|\bcompensation\b|pay\s+expectation|salary\s+or\s+rate"
+    r"|desired\s+(?:pay|rate|salary)|expected\s+(?:pay|salary|compensation)", re.I)
+
+
+def _parse_salaries(text: str) -> list[float]:
+    """Pull plausible ANNUAL salary numbers from a string like
+    '$125,000 - $145,000' or '85k-99k'. Hourly rates (small numbers) are
+    dropped — they can't be answered as an annual figure safely."""
+    out: list[float] = []
+    for m in re.finditer(r"\$?\s*(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*([kK])?", text or ""):
+        try:
+            v = float(m.group(1).replace(",", ""))
+        except ValueError:
+            continue
+        if m.group(2):        # trailing k
+            v *= 1000
+        if 100 <= v <= 1000000:   # pay figures (annual, monthly, weekly, or a contract rate)
+            out.append(v)
+    return out
+
+
+_SALARY_TARGET = 0.80   # ask ~80% up the range — upper band, but NOT the top
+
+
+def _smart_salary(job_salary: str, current: str) -> str:
+    """JD-aware salary: aim ~80% up the job's posted range — high enough to not
+    leave money on the table, below the top so it never auto-rejects — rounded
+    to a clean-but-specific figure. Examples: 88k-99k -> 97000,
+    140k-160k -> 156000, 1000-1200 -> 1160. Falls back to the profile value
+    when the job has no usable range (e.g. hourly contract rates)."""
+    nums = _parse_salaries(job_salary)
+    if len(nums) >= 2:
+        lo, hi = min(nums), max(nums)
+        target = lo + _SALARY_TARGET * (hi - lo)
+        step = 1000 if target >= 10000 else 100 if target >= 2000 else 10
+        return str(int(round(target / step) * step))
+    if len(nums) == 1:
+        return str(int(nums[0]))
+    return current
+
+
+class ExtField(BaseModel):
+    key: str
+    label: str
+    type: str = "text"
+    options: list = []
+
+
+class ExtAnswerBody(BaseModel):
+    url: str = ""
+    title: str = ""
+    company: str = ""
+    job_id: str = ""          # exact job the app is applying to (from Fill & Apply)
+    fields: list[ExtField] = []
+    ai_fill: bool = True
+
+
+@app.post("/api/extension/answer")
+async def extension_answer(body: ExtAnswerBody, user_id: str = Depends(get_current_user_id)):
+    """Answer a page's application fields with the same engine the in-app
+    Auto-Apply modal uses, plus optional AI drafts for open-ended questions."""
+    if not body.fields:
+        return {"answers": {}, "ai_keys": [], "resume_source": "none"}
+
+    async with SessionLocal() as db:
+        profile = await _load_profile(db, user_id)
+    settings = await _get_user_settings(user_id)
+    saved_ap, memory = await _load_apply_data(user_id)
+    ap = {**_derive_apply_defaults(profile, settings), **saved_ap}
+
+    fields = [{"key": f.key, "label": f.label, "type": f.type,
+               "options": [dict(o) for o in f.options]} for f in body.fields]
+
+    answers = ats_apply.prefill(fields, _apply_profile(profile, settings),
+                                apply_profile=ap, memory=_merged_memory(ap, memory))
+
+    # Look the job up once — used for JD-aware salary and (below) AI grounding.
+    jd_info = await _ext_job_desc(body.url)
+
+    # JD-aware salary: replace the profile's fixed guess with the TOP of the
+    # job's posted range so we neither over-ask (auto-reject) nor under-ask.
+    job_sal = (jd_info.get("salary") or "").strip()
+    if job_sal:
+        for f in fields:
+            if not f["options"] and _SALARY_LABEL_RE.search(f["label"] or ""):
+                smart = _smart_salary(job_sal, str(answers.get(f["key"], "")))
+                if smart:
+                    answers[f["key"]] = smart
+
+    ai_keys: list[str] = []
+    ai_status = "off"   # off | none_needed | no_resume | no_key | ok
+    if body.ai_fill:
+        unanswered = [f for f in fields
+                      if not str(answers.get(f["key"], "")).strip()
+                      and not f["label"].startswith("[Optional]")]
+        if not unanswered:
+            ai_status = "none_needed"
+        else:
+            resume = (await _ext_tailored_resume(user_id, body.url, body.job_id)) or settings.get("resume", "")
+            jd_text = (jd_info.get("description") or "").strip()
+            if not resume.strip():
+                ai_status = "no_resume"
+            else:
+                from ai.llm import ModelKeys as _MK, chat as _chat
+                mk = _MK(anthropic=settings.get("anthropic_api_key", "") or "",
+                         google=settings.get("google_api_key", "") or "",
+                         openai=settings.get("openai_api_key", "") or "",
+                         openrouter=settings.get("ai_api_key", "") or "")
+                if not any([mk.anthropic, mk.google, mk.openai, mk.openrouter]):
+                    ai_status = "no_key"
+                else:
+                    q_lines = []
+                    for i, f in enumerate(unanswered[:15]):
+                        opts = [o["label"] for o in f["options"]][:12]
+                        opt_s = f" (answer EXACTLY one of: {' | '.join(opts)})" if opts else ""
+                        q_lines.append(f"{i+1}. [{f['key']}] {f['label']}{opt_s}")
+                    # Feed the user's own profile facts so the AI can answer any
+                    # eligibility/screening question the rules missed — from REAL
+                    # facts, never a guess.
+                    _fact_labels = {
+                        "work_authorized": "Authorized to work in the US", "need_sponsorship": "Needs visa sponsorship",
+                        "citizenship": "Citizenship / work status", "relocation": "Open to relocation",
+                        "onsite_ok": "Willing to work on-site/hybrid", "background_check": "OK with a background check",
+                        "drug_test": "OK with a drug test", "convicted": "Has a criminal conviction",
+                        "degree": "Has a bachelor's degree or higher", "years_experience": "Total years of experience",
+                        "salary": "Salary expectation", "start_date": "Availability / earliest start",
+                        "currently_employed": "Currently employed", "previously_worked": "Worked at this company before",
+                        "clearance": "Security clearance", "state": "US state of residence", "how_heard": "How they heard about the role",
+                        "demo_gender": "Gender", "demo_race": "Race/ethnicity", "demo_veteran": "Veteran status",
+                        "demo_disability": "Disability status", "pronouns": "Pronouns",
+                    }
+                    facts = [f"- {lbl}: {str(ap.get(k, '')).strip()}"
+                             for k, lbl in _fact_labels.items() if str(ap.get(k, '')).strip()]
+                    facts_block = ("CANDIDATE FACTS (authoritative — use for any eligibility/screening "
+                                   "question, pick the matching option, never contradict):\n"
+                                   + "\n".join(facts) + "\n\n") if facts else ""
+                    system = (
+                        "You draft job-application answers for a candidate. RULES:\n"
+                        "- Eligibility/screening questions (work authorization, sponsorship, relocation, "
+                        "consent, degree, availability, EEO): answer from CANDIDATE FACTS; reply with exactly "
+                        "one allowed option (or 'Yes'/'No'); never contradict the facts.\n"
+                        "- Ground everything else in the RESUME. Never invent employers, tools, metrics, or years.\n"
+                        "- Skill/behavioral questions ('how did you handle SQL', 'describe a pipeline you built'): "
+                        "2-4 first-person sentences citing the SPECIFIC project, tools, and metrics from the resume.\n"
+                        "- 'Why do you want to work here / why this role': 2-4 first-person sentences tying the "
+                        "candidate's REAL strengths to THIS job description. Specific, never generic flattery.\n"
+                        "- Truly can't answer from facts or resume: empty string.\n"
+                        'Return ONLY JSON: {"<key>": "<answer>", ...} for every key.')
+                    user_msg = (f"JOB: {body.title} @ {body.company}\n\n" + facts_block
+                                + (f"JOB DESCRIPTION:\n{jd_text[:4000]}\n\n" if jd_text else "")
+                                + f"RESUME:\n{resume[:8000]}\n\nQUESTIONS:\n" + "\n".join(q_lines))
+                    model = settings.get("ai_model_secondary") or "anthropic/claude-haiku-4-5"
+                    try:
+                        raw = await _chat(system, user_msg, settings.get("ai_api_key", ""),
+                                          settings.get("ai_provider", "openrouter"), model,
+                                          max_tokens=2000, pass_name="ext-answer", keys=mk)
+                        m = re.search(r"\{.*\}", raw, re.S)
+                        drafted = json.loads(m.group(0)) if m else {}
+                        valid = {f["key"] for f in unanswered}
+                        by_key = {f["key"]: f for f in unanswered}
+                        for k, v in drafted.items():
+                            v = str(v).strip()
+                            if k not in valid or not v:
+                                continue
+                            fld = by_key[k]
+                            if fld["options"]:
+                                picked = ats_apply._pick_option(fld["options"], v)
+                                if picked:
+                                    answers[k] = picked; ai_keys.append(k)
+                            else:
+                                answers[k] = v; ai_keys.append(k)
+                        ai_status = "ok"
+                    except Exception as e:
+                        print(f"[EXT ANSWER] AI draft skipped: {e}")
+                        ai_status = "no_key"
+
+    src = "tailored" if await _ext_tailored_resume(user_id, body.url, body.job_id) else "base"
+    return {"answers": answers, "ai_keys": ai_keys, "resume_source": src, "ai_status": ai_status}
+
+
+class ExtResumeBody(BaseModel):
+    url: str = ""
+    company: str = ""
+    title: str = ""
+    job_id: str = ""          # exact job the app is applying to (from Fill & Apply)
+
+
+@app.post("/api/extension/resume-file")
+async def extension_resume_file(body: ExtResumeBody, user_id: str = Depends(get_current_user_id)):
+    """Return the resume PDF for THIS application page so the extension can
+    attach it to the form's file input — tailored for the job when we have one,
+    otherwise the base resume. Base64 so it rides the existing JSON bridge."""
+    import base64 as _b64
+
+    settings = await _get_user_settings(user_id)
+    tailored = await _ext_tailored_resume(user_id, body.url, body.job_id)
+    text = (tailored or settings.get("resume", "") or "").strip()
+    if not text:
+        raise HTTPException(400, "No resume on file — add one in Settings, or tailor this job first.")
+
+    jd_info = await _ext_job_desc(body.url)
+    title = body.title or jd_info.get("title", "")
+    company = body.company or jd_info.get("company", "")
+
+    cand = _candidate_slug(settings.get("profile_name", "")) or "Resume"
+    company_slug = re.sub(r"[^\w]+", "_", company or "").strip("_")
+    filename = f"{cand}_{company_slug}.pdf" if company_slug else f"{cand}.pdf"
+
+    try:
+        pdf_bytes = generate_pdf(text, title, company)
+    except Exception as e:
+        raise HTTPException(500, f"Could not build the resume PDF: {e}")
+
+    return {
+        "filename": filename,
+        "mime": "application/pdf",
+        "b64": _b64.b64encode(pdf_bytes).decode("ascii"),
+        "source": "tailored" if tailored else "base",
+    }
+
+
+class ExtLearnBody(BaseModel):
+    fields: list[ExtField] = []            # the page's fields (with options)
+    values: dict = {}                      # {field_key: current value on the page}
+
+
+@app.post("/api/extension/learn")
+async def extension_learn(body: ExtLearnBody, user_id: str = Depends(get_current_user_id)):
+    """Save what the user actually left in the form — but only answers the
+    deterministic engine could NOT have produced itself (genuinely novel
+    questions and deliberate overrides). Same novelty filter as the in-app
+    submit path, so name/email/standard answers never pollute the memory."""
+    if not body.fields or not body.values:
+        return {"learned": 0}
+
+    async with SessionLocal() as db:
+        profile = await _load_profile(db, user_id)
+    settings = await _get_user_settings(user_id)
+    saved_ap, memory = await _load_apply_data(user_id)
+    ap = {**_derive_apply_defaults(profile, settings), **saved_ap}
+
+    fields = [{"key": f.key, "label": f.label, "type": f.type,
+               "options": [dict(o) for o in f.options]} for f in body.fields]
+
+    auto = ats_apply.prefill(fields, _apply_profile(profile, settings),
+                             apply_profile=ap, memory=_merged_memory(ap, memory))
+    novel = {k: v for k, v in body.values.items()
+             if str(v).strip() and str(auto.get(k, "")).strip() != str(v).strip()}
+    learned = ats_apply.extract_memory(fields, novel)
+    if not learned:
+        return {"learned": 0}
+
+    async with SessionLocal() as db:
+        res = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+        s = res.scalar_one_or_none()
+        if not s:
+            return {"learned": 0}
+        try:
+            mem = json.loads(s.apply_answers) if s.apply_answers else {}
+        except Exception:
+            mem = {}
+        mem.update(learned)
+        s.apply_answers = json.dumps(mem)
+        await db.commit()
+    return {"learned": len(learned)}
+
+
+# ── Admin: per-user analytics ─────────────────────────────────────────────────
+@app.get("/api/admin/users-analytics")
+async def admin_users_analytics(user_id: str = Depends(get_current_user_id)):
+    """Per-user breakdown: tailored resumes + applied jobs + job counts for admin."""
+    await _verify_admin(user_id)
+
+    async with SessionLocal() as db:
+        users_r = await db.execute(
+            select(User).where(User.status == "approved").order_by(User.name)
+        )
+        users = users_r.scalars().all()
+
+        result = []
+        for u in users:
+            # Total user_jobs rows (jobs they've interacted with)
+            cnt_r = await db.execute(
+                select(func.count()).select_from(UserJob).where(UserJob.user_id == u.id)
+            )
+            job_count = cnt_r.scalar() or 0
+
+            # True totals — unaffected by the display-list limits below
+            tail_cnt_r = await db.execute(
+                select(func.count()).select_from(UserJob)
+                .where(UserJob.user_id == u.id, UserJob.tailored_resume.isnot(None))
+            )
+            tailored_total = tail_cnt_r.scalar() or 0
+
+            qt_cnt_r = await db.execute(
+                select(func.count()).select_from(QuickTailorHistory)
+                .where(QuickTailorHistory.user_id == u.id)
+            )
+            quick_tailored_total = qt_cnt_r.scalar() or 0
+
+            applied_cnt_r = await db.execute(
+                select(func.count()).select_from(UserJob)
+                .where(UserJob.user_id == u.id, UserJob.status == "applied")
+            )
+            applied_total = applied_cnt_r.scalar() or 0
+
+            # Tailored resumes (job tailor)
+            tail_r = await db.execute(
+                select(Job, UserJob)
+                .join(UserJob, Job.id == UserJob.job_id)
+                .where(UserJob.user_id == u.id, UserJob.tailored_resume.isnot(None))
+                .order_by(UserJob.tailored_at.desc())
+                .limit(100)
+            )
+            tailored = [
+                {
+                    "id": row.Job.id, "company": row.Job.company or "",
+                    "title": row.Job.title or "", "location": row.Job.location or "",
+                    "experience_level": row.Job.experience_level or "",
+                    "tailored_at": row.UserJob.tailored_at or "",
+                    "tailor_cost": row.UserJob.tailor_cost,
+                    "tailor_tokens_in": row.UserJob.tailor_tokens_in,
+                    "tailor_tokens_out": row.UserJob.tailor_tokens_out,
+                    "source": "job",
+                }
+                for row in tail_r.all()
+            ]
+
+            # Total AI spend for this user (sum of every tracked tailor run)
+            spend_r = await db.execute(
+                select(func.coalesce(func.sum(UserJob.tailor_cost), 0.0))
+                .where(UserJob.user_id == u.id)
+            )
+            spend_total = round(float(spend_r.scalar() or 0.0), 2)
+
+            # Quick tailor history
+            qt_r = await db.execute(
+                select(QuickTailorHistory)
+                .where(QuickTailorHistory.user_id == u.id)
+                .order_by(QuickTailorHistory.created_at.desc())
+                .limit(50)
+            )
+            quick_tailored = [
+                {
+                    "id": q.id, "company": q.company or "", "title": "",
+                    "location": "", "experience_level": "",
+                    "tailored_at": q.created_at or "", "source": "quick",
+                }
+                for q in qt_r.scalars().all()
+            ]
+
+            # Applied jobs
+            app_r = await db.execute(
+                select(Job, UserJob)
+                .join(UserJob, Job.id == UserJob.job_id)
+                .where(UserJob.user_id == u.id, UserJob.status == "applied")
+                .order_by(UserJob.applied_at.desc())
+                .limit(100)
+            )
+            applied = [
+                {
+                    "company": row.Job.company or "", "title": row.Job.title or "",
+                    "location": row.Job.location or "",
+                    "experience_level": row.Job.experience_level or "",
+                    "applied_at": row.UserJob.applied_at or "",
+                }
+                for row in app_r.all()
+            ]
+
+            result.append({
+                "user": {"id": u.id, "name": u.name or u.email, "email": u.email},
+                "job_count": job_count,
+                "tailored": tailored + quick_tailored,
+                "applied": applied,
+                "tailored_total": tailored_total + quick_tailored_total,
+                "applied_total": applied_total,
+                "spend_total": spend_total,   # USD, all tracked tailor runs
+            })
+
+    return result

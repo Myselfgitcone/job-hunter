@@ -1,0 +1,1955 @@
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import ReactDOM from "react-dom";
+import type { Job, JobStatus, QualifyResult } from "./types";
+import { api } from "./api";
+
+import JobPreferencesModal, { ROLE_GROUPS } from './components/JobPreferencesModal';
+import { coarseExpBand } from './roles';
+import PendingApproval from './components/PendingApproval';
+import O2TenList from './components/O2TenList';
+import ChatPanel from './components/ChatPanel';
+import AssistantPanel from './components/AssistantPanel';
+
+// Collapse a flat role list for display: when an entire family is selected,
+// show just the family name; partially-selected families show their children.
+function collapseRoles(roles: string[]): string[] {
+  const out: string[] = [];
+  const consumed = new Set<string>();
+  for (const g of ROLE_GROUPS) {
+    if (g.items.length && g.items.every(i => roles.includes(i))) {
+      out.push(g.group);
+      g.items.forEach(i => consumed.add(i));
+    }
+  }
+  for (const r of roles) if (!consumed.has(r)) out.push(r);
+  return out;
+}
+import { isLevelMatch } from "./utils/levelCheck";
+import { JobCard } from "./components/JobCard";
+import { JobList } from "./components/JobList";
+import { Dashboard } from "./components/Dashboard";
+import { Kanban } from "./components/Kanban";
+import { ApplyQueue } from "./components/ApplyQueue";
+import { QuickTailor } from "./components/QuickTailor";
+import { Profile } from "./components/Profile";
+import { Settings } from "./components/Settings";
+import { JobDetail } from "./components/JobDetail";
+import { Toasts, useToasts, Spinner } from "./components/primitives";
+import Auth from "./components/Auth";
+
+type View = "jobs" | "dashboard" | "mystats" | "profile" | "settings" | "tailor";
+type ViewMode = "list" | "kanban";
+
+// Hide AI Assistant + Help & Chat nav for now (flip to true to restore).
+const SHOW_HELP_NAV = false;
+
+// Strict "Data Engineer" title match — a real data-engineering role, not just
+// any "___ Engineer … Data ___". Excludes test/project/process/reliability/etc.
+// engineers and ML roles (kept separate from the DE family).
+const _DE_NOT = /\b(test|project|process|reliability|quality|network|hardware|firmware|sales|support|solutions?|security|field|manufacturing|mechanical|civil|electrical|chemical|systems?\s+development)\s+engineer\b|site\s+reliability|machine\s+learning|\bml\s+engineer\b|\bmlops\b|\bai\s+engineer\b|\bsre\b|\bdevops\b|data\s+scien\w*|\bleader\b|\bsvp\b|vice\s+president|\bvp\b|\bdirector\b|\bchief\b|head\s+of/i;
+const _DE_YES = /\bdata\s+engineer|\b(etl|elt)\b|\bdatabricks\b|\bsnowflake\b|\bdbt\b|\bairflow\b|\bkafka\b|\bspark\b|database\s+(engineer|developer)|\bsql\s+developer\b|\bdata\s+architect\b|\bbig\s+data\b|\bdata\b[\w\s,\-&/]*\b(platform|pipeline|warehouse|lakehouse|lake|infrastructure|ingestion|modell?ing|integration|ops|operations)\b/i;
+function _isDataEngineer(title: string): boolean {
+  return !_DE_NOT.test(title) && _DE_YES.test(title);
+}
+const _ML_TERM = /machine\s+learning|mlops|\bml\s+engineer\b|analytics\s+engineer/;
+
+// "Niche roles" (user's name for them): the 4 entry-level families. Scraper
+// drops 5+yr roles for these, so the Years filter shows only the junior trays.
+const NICHE_FAMILIES = ["Security / SIEM", "GenAI / RAG", "GRC", "IAM"];
+
+// Master-admin account — sees all jobs and manages users/settings.
+const ADMIN_EMAIL = "jaggubhai8766@gmail.com";
+
+// AI / Data-Science LEADERSHIP (Director/Head/VP/Chief/Principal of AI/DS/ML) —
+// its own family, for senior profiles. Separate from Data Engineer.
+const _AIL_TERM = /director|head\s+of|\bvp\b|vice\s+president|chief|principal|staff/;
+const _AIL_YES = /((director|head|\bvp\b|vice\s+president|chief|senior\s+director|sr\s+director|principal|staff)[\w\s,\-&/]*\b(ai|artificial\s+intelligence|data\s+scien\w*|data\s+platform|data\s+engineering|machine\s+learning|\bml\b|applied\s+ai|ml\s+platform|ai\s+platform|mlops|ai\s+governance|responsible\s+ai)\b)|(\b(ai\s+platform|artificial\s+intelligence|data\s+scien\w*|machine\s+learning|data\s+platform|data\s+engineering)\b[\w\s,\-&/]*\b(director|head|vice\s+president|\bvp\b|chief|principal)\b)|chief\s+ai\s+officer|chief\s+data\s+scientist|chief\s+data\s+officer/i;
+function _isAILeadership(title: string): boolean { return _AIL_YES.test(title); }
+
+// Matches design's filter shape exactly (INTERACTIONS.md)
+type Filters = {
+  q: string;
+  category: string[];
+  level: string[];
+  type: string[];
+  country: string[];
+  source: string[];
+  years: string[];  // experience trays: "0-2","2-4","4-5","5-6","6-7","7-8","8-10","10-13","13-15","15+"
+  visa: string[];   // "Sponsors" | "No Visa" | "Unknown"
+  score: "any" | "60" | "70" | "80" | "90";
+  time: string;  // "any" | ISO date string "YYYY-MM-DD"
+};
+
+function Ic({ d, size = 16, color, style }: { d: string; size?: number; color?: string; style?: React.CSSProperties }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke={color || "currentColor"} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"
+      style={{ flexShrink: 0, ...style }} dangerouslySetInnerHTML={{ __html: d }} />
+  );
+}
+
+const IC: Record<string,string> = {
+  target:   "<circle cx=\"12\" cy=\"12\" r=\"9\"/><circle cx=\"12\" cy=\"12\" r=\"5\"/><circle cx=\"12\" cy=\"12\" r=\"1\"/>",
+  dash:     "<polyline points=\"3 3 3 21 21 21\"/><polyline points=\"3 16 10 9 14 13 21 6\"/>",
+  user:     "<circle cx=\"12\" cy=\"8\" r=\"4\"/><path d=\"M4 21v-1a7 7 0 0 1 14 0v1\"/>",
+  settings: "<circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z\"/>",
+  sparkles: "<path d=\"M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z\"/>",
+  refresh:  "<path d=\"M21 12a9 9 0 1 1-3-6.7L21 8\"/><path d=\"M21 3v5h-5\"/>",
+  clock:    "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7v5l3 2\"/>",
+  list:     "<path d=\"M8 6h13M8 12h13M8 18h13\"/><circle cx=\"3.5\" cy=\"6\" r=\"1\"/><circle cx=\"3.5\" cy=\"12\" r=\"1\"/><circle cx=\"3.5\" cy=\"18\" r=\"1\"/>",
+  kanban:   "<rect x=\"3\" y=\"4\" width=\"5\" height=\"16\" rx=\"1\"/><rect x=\"10\" y=\"4\" width=\"5\" height=\"11\" rx=\"1\"/><rect x=\"17\" y=\"4\" width=\"4\" height=\"14\" rx=\"1\"/>",
+  search:   "<circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"m21 21-4.3-4.3\"/>",
+  trash:    "<path d=\"M4 7h16\"/><path d=\"M9 7V5h6v2\"/><path d=\"M6 7l1 13h10l1-13\"/>",
+  moon:     "<path d=\"M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z\"/>",
+  sun:      "<circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4\"/>",
+};
+
+function timeAgo(iso: string): string {
+  try {
+    const diff = Date.now() - new Date(iso).getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return "just now";
+    if (m < 60) return m + "min ago";
+    const h = Math.floor(m / 60);
+    if (h < 24) return h + "h ago";
+    return Math.floor(h / 24) + "d ago";
+  } catch { return ""; }
+}
+
+export default function App() {
+  // ── Auth state ────────────────────────────────────────────────────────────
+  const _storedUser = localStorage.getItem("jh_user");
+  const [currentUser, setCurrentUser] = useState<{ id: string; email: string; name: string } | null>(
+    _storedUser ? JSON.parse(_storedUser) : null
+  );
+  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem("jh_token"));
+  const [userSettings, setUserSettings]       = useState<any>(null);
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    const userStr = urlParams.get('user');
+    if (token && userStr) {
+      try {
+        const parsedUser = JSON.parse(decodeURIComponent(userStr));
+        localStorage.setItem("jh_token", token);
+        localStorage.setItem("jh_user", JSON.stringify(parsedUser));
+        window.history.replaceState({}, document.title, window.location.pathname);
+        setCurrentUser(parsedUser);
+        setIsAuthenticated(true);
+      } catch (e) {
+        console.error("Failed to parse OAuth user data", e);
+      }
+    }
+  }, []);
+
+  const getInitialView = (): View => {
+    const hash = window.location.hash.replace("#", "");
+    if (hash.startsWith("job=")) return "jobs";   // deep-link to a job detail
+    return ["jobs", "dashboard", "mystats", "profile", "settings", "tailor"].includes(hash) ? (hash as View) : "jobs";
+  };
+  const [view, setView]             = useState<View>(getInitialView);
+
+  useEffect(() => {
+    window.location.hash = view;
+  }, [view]);
+
+  useEffect(() => {
+    const handleHash = () => {
+      const hash = window.location.hash.replace("#", "");
+      if (["jobs", "dashboard", "mystats", "profile", "settings", "tailor"].includes(hash)) setView(hash as View);
+    };
+    window.addEventListener("hashchange", handleHash);
+    return () => window.removeEventListener("hashchange", handleHash);
+  }, []);
+
+  const [viewMode, setViewMode]     = useState<ViewMode>("list");
+  const [queueIds, setQueueIds]     = useState<string[] | null>(null);   // apply-queue run
+  const [listMode, setListMode]     = useState<"compact"|"cards">("cards");
+  const [sortBy, setSortBy]         = useState<"score"|"date"|"priority">(() =>
+    (["score","date","priority"].includes(localStorage.getItem("jh_sort") || "") ? localStorage.getItem("jh_sort") : "date") as any);
+  useEffect(() => { try { localStorage.setItem("jh_sort", sortBy); } catch {} }, [sortBy]);
+  const [jobs, setJobs]             = useState<Job[]>([]);
+  const [allJobs, setAllJobs]       = useState<Job[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [tab, setTab]               = useState("jobdetails");
+  const [loading, setLoading]       = useState(false);
+  const [scraping, setScraping]     = useState(false);
+  const [scrapeMsg, setScrapeMsg]   = useState("");
+  const [lastScrapedTs, setLastScrapedTs] = useState<string>("");
+  const [lastScrapedDisplay, setLastScrapedDisplay] = useState("");
+  const scrapePollerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const refreshJob = useCallback(async (id: string) => {
+    try {
+      const updated = await api.getJob(id);
+      setJobs(prev => prev.map(j => j.id === id ? { ...j, ...updated } : j));
+      setAllJobs(prev => prev.map(j => j.id === id ? { ...j, ...updated } : j));
+    } catch {}
+  }, []);
+
+  // Deep-link: open a specific job's detail (e.g. #job=<id> from Resume
+  // History "Open"). Fetch + upsert so JobDetail can render it even if the job
+  // isn't in the current filtered list (e.g. applied weeks ago).
+  const openJobById = useCallback(async (id: string) => {
+    setView("jobs"); setViewMode("list"); setTab("jobdetails"); setSelectedId(id);
+    try {
+      const j = await api.getJob(id);
+      const upsert = (prev: Job[]) => prev.some(x => x.id === id)
+        ? prev.map(x => x.id === id ? { ...x, ...j } : x)
+        : [j as Job, ...prev];
+      setJobs(upsert); setAllJobs(upsert);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    const openFromHash = () => {
+      const hash = window.location.hash.replace("#", "");
+      if (hash.startsWith("job=")) {
+        const id = hash.slice(4);
+        if (id) openJobById(id);
+      }
+    };
+    openFromHash();  // initial load
+    window.addEventListener("hashchange", openFromHash);
+    return () => window.removeEventListener("hashchange", openFromHash);
+  }, [openJobById]);
+
+  // Lazy-load the full job description when a job is selected
+  useEffect(() => {
+    if (selectedId) {
+      const j = allJobs.find(x => x.id === selectedId);
+      if (j && !j.description) {
+        refreshJob(selectedId);
+      }
+    }
+  }, [selectedId, allJobs, refreshJob]);
+
+  // Live-update "X min ago" every 30s
+  useEffect(() => {
+    if (!lastScrapedTs) return;
+    const update = () => setLastScrapedDisplay(timeAgo(lastScrapedTs));
+    update();
+    const iv = setInterval(update, 30000);
+    return () => clearInterval(iv);
+  }, [lastScrapedTs]);
+
+  // Cleanup scrape poller on unmount
+  useEffect(() => {
+    return () => { if (scrapePollerRef.current) clearInterval(scrapePollerRef.current); };
+  }, []);
+
+  const [visaFilter, setVisaFilter] = useState(false);
+  const [expFilter,  setExpFilter]  = useState(false);
+
+  // Load user settings on auth — first verify token still valid (user not deleted)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    api.auth.me().then((me: any) => {
+      // Always sync status — catches both revoke AND re-approve mid-session
+      if (me.status) {
+        setCurrentUser((prev: any) => {
+          if (!prev) return prev;
+          if ((prev.status || "approved") === me.status) return prev;
+          const updated = { ...prev, status: me.status };
+          localStorage.setItem("jh_user", JSON.stringify(updated));
+          return updated;
+        });
+      }
+    }).catch(() => {
+      // Token exists but user was deleted — force logout
+      localStorage.removeItem("jh_token");
+      localStorage.removeItem("jh_user");
+      setIsAuthenticated(false);
+      setCurrentUser(null);
+    });
+    api.getSettings().then((s: any) => {
+      setUserSettings(s);
+      if (s.last_scraped_at) setLastScrapedTs(s.last_scraped_at);
+      setVisaFilter(!!s.visa_filter);
+      setExpFilter(!!s.level_filter);
+    }).catch(() => {});
+  }, [isAuthenticated]);
+
+  // Poll every 30s for non-admin users — detects revoke/pending applied mid-session
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const stored = localStorage.getItem("jh_user");
+    const email = stored ? JSON.parse(stored).email?.toLowerCase() : "";
+    if (email === ADMIN_EMAIL) return;
+    const check = () => {
+      api.auth.me().then((me: any) => {
+        if (me.status) {
+          setCurrentUser((prev: any) => {
+            if (!prev) return prev;
+            if ((prev.status || "approved") === me.status) return prev;
+            const updated = { ...prev, status: me.status };
+            localStorage.setItem("jh_user", JSON.stringify(updated));
+            return updated;
+          });
+        }
+      }).catch(() => {});
+    };
+    const t = setInterval(check, 30000);
+    return () => clearInterval(t);
+  }, [isAuthenticated]);
+
+  // Persist visa/exp filter toggles to settings whenever they change
+  const saveFilterToggle = useCallback((visa: boolean, exp: boolean) => {
+    api.saveSettings({ visa_filter: visa, level_filter: exp } as any).catch(() => {});
+  }, []);
+
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [activeFamily, setActiveFamily] = useState<string>(() => localStorage.getItem("jh_active_family") || ""); // user role chip filter — persists across reloads
+  useEffect(() => { try { localStorage.setItem("jh_active_family", activeFamily); } catch {} }, [activeFamily]);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("jh_sidebar") === "1");
+  const [listPaneWidth, setListPaneWidth]       = useState<number>(() => parseInt(localStorage.getItem("jh_list_w") || "0") || window.innerWidth * 0.38);
+  useEffect(() => { localStorage.setItem("jh_list_w", String(Math.round(listPaneWidth))); }, [listPaneWidth]);
+  const [busy, setBusy]             = useState<string | null>(null);
+  const [busyJobId, setBusyJobId]   = useState<string | null>(null);
+  const [busyStartedAt, setBusyStartedAt] = useState<number | null>(null);
+  const abortRef                    = useRef<AbortController | null>(null);
+  // Parallel resume tailoring: jobId -> startedAt. Up to MAX_PARALLEL_TAILORS
+  // run concurrently (backend is async; each POST is independent).
+  const MAX_PARALLEL_TAILORS = 3;
+  const [tailorRuns, setTailorRuns] = useState<Record<string, number>>({});
+  // Multi-select batch tailoring
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const [batch, setBatch] = useState<{ done: number; total: number; running: boolean } | null>(null);
+  const toggleCheck = useCallback((id: string) => {
+    setCheckedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }, []);
+  const tailorCtrls = useRef<Record<string, AbortController>>({});
+  const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem("jh_welcomed"));
+  const { toasts, toast }           = useToasts();
+
+  useEffect(() => { localStorage.setItem("jh_sidebar", sidebarCollapsed ? "1" : "0"); }, [sidebarCollapsed]);
+  const searchRef                   = useRef<HTMLInputElement>(null);
+
+  // Dynamic user display from auth
+  const profileName = currentUser?.name || userSettings?.profile_name || "";
+  const initials    = profileName
+    ? profileName.split(" ").map((w: string) => w[0]).slice(0, 2).join("").toUpperCase()
+    : "?";
+
+  const handleLogout = () => {
+    localStorage.removeItem("jh_token");
+    localStorage.removeItem("jh_user");
+    setIsAuthenticated(false);
+    setCurrentUser(null);
+    setUserSettings(null);
+    setJobs([]); setAllJobs([]);
+  };
+
+  const DEFAULT_FILTERS: Filters = { q: "", category: [], level: [], type: [], country: ["USA"], source: [], years: [], visa: [], score: "any", time: "any" };
+  // Filters persist across page reloads (per browser) until the user clears
+  // them. Search text (q) is intentionally NOT restored — stale queries confuse.
+  const [filters, setFilters] = useState<Filters>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("jh_filters") || "null");
+      if (saved && typeof saved === "object") return { ...DEFAULT_FILTERS, ...saved, q: "" };
+    } catch {}
+    return DEFAULT_FILTERS;
+  });
+  useEffect(() => {
+    try { localStorage.setItem("jh_filters", JSON.stringify({ ...filters, q: "" })); } catch {}
+  }, [filters]);
+
+  // ── Theme toggle ──────────────────────────────────────────────────────────
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    const saved = localStorage.getItem("jh_theme");
+    return saved ? saved === "dark" : true; // default dark
+  });
+  useEffect(() => {
+    document.documentElement.classList.toggle("light", !isDark);
+    localStorage.setItem("jh_theme", isDark ? "dark" : "light");
+  }, [isDark]);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault(); setView("jobs"); setViewMode("list");
+        setTimeout(() => searchRef.current?.focus(), 0);
+      }
+    };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, []);
+
+  const loadJobs = useCallback(async (quiet: boolean = false) => {
+    if (!isAuthenticated) return;
+    if (!quiet) setLoading(true);   // background refreshes don't flash the spinner
+    const storedEmail = (() => { try { return JSON.parse(localStorage.getItem("jh_user") || "{}").email?.toLowerCase(); } catch { return ""; } })();
+    const _adm = storedEmail === ADMIN_EMAIL;
+    const params = _adm ? {} : { country: "USA" };
+    try { const raw = await api.getJobs(params); setJobs(raw); setAllJobs(raw); }
+    catch (e: any) {
+      // Backend returns 403 with "revoked" or "pending" when account status changed
+      // mid-session. Immediately push the new status into currentUser so the gate fires.
+      const msg: string = e?.message || "";
+      if (msg.includes("revoked") || msg.includes("pending")) {
+        const newStatus = msg.includes("revoked") ? "revoked" : "pending";
+        setCurrentUser((prev: any) => {
+          if (!prev) return prev;
+          const updated = { ...prev, status: newStatus };
+          localStorage.setItem("jh_user", JSON.stringify(updated));
+          return updated;
+        });
+      }
+    }
+    finally { setLoading(false); }
+  }, [isAuthenticated]);
+
+  useEffect(() => { loadJobs(); }, [loadJobs]);
+
+  // Auto-refresh: the hourly scrape lands server-side without the window
+  // knowing. Poll the cheap public count every 5 min; when it changes, a
+  // scrape (or retention delete) touched the DB — quietly reload the list.
+  const _lastJobCount = useRef<number | null>(null);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const check = async () => {
+      try {
+        const d = await api.jobCount();
+        const count = d.count ?? null;
+        if (count == null) return;
+        if (_lastJobCount.current != null && count !== _lastJobCount.current) {
+          const diff = count - _lastJobCount.current;
+          await loadJobs(true);
+          if (diff > 0) toast(`${diff.toLocaleString()} new jobs loaded`, "success");
+        }
+        _lastJobCount.current = count;
+      } catch { /* transient — next tick retries */ }
+    };
+    check();
+    const t = setInterval(check, 5 * 60 * 1000);
+    return () => clearInterval(t);
+  }, [isAuthenticated, loadJobs]);
+
+  const sourceCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    allJobs.forEach(j => { m[j.source] = (m[j.source] || 0) + 1; });
+    return m;
+  }, [allJobs]);
+
+  // Dynamic source list — sorted by count, only sources that have jobs
+  const DEFAULT_SOURCES = [
+    "Greenhouse", "Lever", "Ashby", "Workday", "HiringCafe",
+  ];
+
+  const SOURCES = useMemo(() => {
+    const scraped = Object.entries(sourceCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([src]) => src);
+    const merged = [...scraped, ...DEFAULT_SOURCES.filter(s => !scraped.includes(s))];
+    return merged;
+  }, [sourceCounts]);
+
+  const DEFAULT_COUNTRIES = ["India", "USA"];
+  const COUNTRIES = useMemo(() => {
+    const counts: Record<string, number> = {};
+    allJobs.forEach(j => { if (j.country) counts[j.country] = (counts[j.country] || 0) + 1; });
+    const scraped = Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([c]) => c);
+    const merged = [...scraped, ...DEFAULT_COUNTRIES.filter(c => !scraped.includes(c))];
+    return merged;
+  }, [allJobs]);
+
+
+  const { filteredJobs, yearsCounts } = useMemo(() => {
+    const now = Date.now();
+    const yc: Record<string, number> = {};
+    // AI/DS Leadership view → FJ coarse experience bands; all other views → fine trays.
+    const _leadView = (activeFamily || "").toLowerCase().includes("leadership");
+    const parseMs = (s: string): number | null => {
+      if (!s) return null;
+      const t = new Date(s.replace(/(\.\d{3})\d+/, "$1")).getTime();
+      return isNaN(t) ? null : t;
+    };
+    // Sort by OUR scrape time (matches the card's "X ago").
+    const bestTs = (j: Job): number => parseMs(j.scraped_at || j.posted_at || "") ?? 0;
+    // Extract UTC date string "YYYY-MM-DD" from ISO timestamp for consistent
+    // date bucketing — avoids timezone shift that moves midnight-UTC jobs to previous day.
+    const jobDateStr = (s: string | null): string | null => {
+      if (!s) return null;
+      const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+      return m ? m[1] : null;
+    };
+    const list = jobs.filter(j => {
+      // 1. Base Pool (Job Preferences)
+      // Admins see jobs across their whole grant; non-admins are restricted to
+      // their single active family pick (active_job_roles), not the full grant.
+      const _baseIsAdmin = currentUser?.email?.toLowerCase() === ADMIN_EMAIL;
+      const grantRoles = userSettings?.job_roles
+        ? (Array.isArray(userSettings.job_roles) ? userSettings.job_roles : JSON.parse(userSettings.job_roles || "[]"))
+        : [];
+      let rawRoles: string[] = grantRoles;
+      if (!_baseIsAdmin) {
+        const activeRoles = userSettings?.active_job_roles && userSettings.active_job_roles.length
+          ? userSettings.active_job_roles
+          : null;
+        if (activeRoles) {
+          rawRoles = activeRoles;
+        } else {
+          const firstGroup = ROLE_GROUPS.find(g => g.items.some((i: string) => grantRoles.includes(i)));
+          rawRoles = firstGroup ? firstGroup.items : grantRoles;
+        }
+      }
+      if (rawRoles) {
+        const roles: string[] = rawRoles;
+        if (roles.length > 0) {
+          const title = j.title.toLowerCase();
+          const desc = (j.description || "").toLowerCase();
+          // Role matching is TITLE-ONLY: descriptions mention adjacent roles
+          // incidentally ("collaborate with data analysts...") which leaked
+          // wrong-family jobs into every feed
+          const matchesAnyRole = roles.some((r: string) => {
+            const term = r.toLowerCase().trim();
+            // O2Ten curated-list family — matched by SOURCE, not title (its
+            // sections are author-invented and change daily). Hard wall both
+            // ways: O2Ten jobs belong ONLY to the O2Ten family.
+            if (term === "o2ten") return (j.source || "") === "O2Ten";
+            if ((j.source || "") === "O2Ten") return false;
+            // Hard family wall: a leadership-titled job belongs ONLY to the
+            // AI/DS Leadership family — DE items like "data platform" /
+            // "data architect" must not pull in "Head of Data Architecture" etc.
+            if (_isAILeadership(title)) return _AIL_TERM.test(term);
+            if (term === "bi")   return /\bbi\b/.test(title);
+            if (term === "java") return /\bjava\b/.test(title);  // \b excludes "javascript"
+            if (_AIL_TERM.test(term)) return _isAILeadership(title);   // AI/DS leadership (ATS + LinkedIn, merged)
+            // GenAI/RAG family item — exempt from the ML-exclusion below (that
+            // exclusion only means "ML is not Data Engineer").
+            if (term === "machine learning analyst") return title.includes(term);
+            if (_ML_TERM.test(term)) return false;               // ML dropped from DE
+            // Strict Data Engineer — real DE roles only (see _isDataEngineer).
+            if (term === "data engineer" || term === "software engineer (data)") return _isDataEngineer(title);
+            // "Data Architect" via strict gate — plain includes() matched
+            // "Data Architecture" (SVP/exec titles) by substring.
+            if (term === "data architect") return _isDataEngineer(title) && /\bdata\s+architects?\b/.test(title);
+            if (term === "data analyst")  return /\bdata\b/.test(title) && /analyst/.test(title);
+            return title.includes(term);
+          });
+          if (!matchesAnyRole) return false;
+        }
+      }
+      // 1b. Active family chip filter (role toggle — admin included, so switching
+      // the chip to Data Engineer really hides AI/DS leadership jobs and vice versa)
+      const _isAdmin = currentUser?.email?.toLowerCase() === ADMIN_EMAIL;
+      if (activeFamily) {
+        const group = ROLE_GROUPS.find(g => g.group === activeFamily);
+        // Chip may be a raw role item (uncollapsed grant) — filter by it alone.
+        const items = group ? group.items : [activeFamily];
+        {
+          const title = j.title.toLowerCase();
+          const familyMatch = items.some((r: string) => {
+            const term = r.toLowerCase().trim();
+            // O2Ten curated-list family — matched by SOURCE, not title (its
+            // sections are author-invented and change daily). Hard wall both
+            // ways: O2Ten jobs belong ONLY to the O2Ten family.
+            if (term === "o2ten") return (j.source || "") === "O2Ten";
+            if ((j.source || "") === "O2Ten") return false;
+            // Hard family wall: a leadership-titled job belongs ONLY to the
+            // AI/DS Leadership family — DE items like "data platform" /
+            // "data architect" must not pull in "Head of Data Architecture" etc.
+            if (_isAILeadership(title)) return _AIL_TERM.test(term);
+            if (term === "bi")   return /\bbi\b/.test(title);
+            if (term === "java") return /\bjava\b/.test(title);
+            if (_AIL_TERM.test(term)) return _isAILeadership(title);   // AI/DS leadership (ATS + LinkedIn, merged)
+            // GenAI/RAG family item — exempt from the ML-exclusion below (that
+            // exclusion only means "ML is not Data Engineer").
+            if (term === "machine learning analyst") return title.includes(term);
+            if (_ML_TERM.test(term)) return false;
+            if (term === "data engineer" || term === "software engineer (data)") return _isDataEngineer(title);
+            // "Data Architect" via strict gate — plain includes() matched
+            // "Data Architecture" (SVP/exec titles) by substring.
+            if (term === "data architect") return _isDataEngineer(title) && /\bdata\s+architects?\b/.test(title);
+            if (term === "data analyst")  return /\bdata\b/.test(title) && /analyst/.test(title);
+            return title.includes(term);
+          });
+          if (!familyMatch) return false;
+        }
+      }
+      // q — free text (design: title + company)
+      if (filters.q && !(j.title + " " + j.company).toLowerCase().includes(filters.q.toLowerCase())) return false;
+      // category — department names from the filter panel mapped to title keywords
+      if (filters.category.length) {
+        const terms = filters.category.flatMap(c => deptTerms(c));
+        if (!terms.some(t => j.title.toLowerCase().includes(t))) return false;
+      }
+      // level — keys must match the panel labels exactly
+      if (filters.level.length) {
+        const t = j.title.toLowerCase();
+        const EXP: Record<string, RegExp> = {
+          "Internship":  /(intern|internship|co-?op)/i,
+          "Entry Level": /(entry|junior|jr\.?|associate|graduate)/i,
+          "Mid Level":   /(mid|\bii\b|\b2\b|intermediate)/i,
+          "Senior":      /(senior|sr\.?|\biii\b)/i,
+          "Lead":        /(lead|principal|staff|director|head of)/i,
+        };
+        if (!filters.level.some(e => EXP[e]?.test(t))) return false;
+      }
+      // type: Remote→job.remote, Onsite→!remote, Hybrid→type===Hybrid
+      if (filters.type.length) {
+        const isRemote = j.remote || (j.location || "").toLowerCase().includes("remote");
+        const ok = filters.type.some(t =>
+          (t === "Remote" && isRemote) || (t === "Onsite" && !isRemote) || (t === "Hybrid" && (j.location || "").toLowerCase().includes("hybrid")));
+        if (!ok) return false;
+      }
+      // country — non-admins always see USA only
+      const effectiveCountry = _isAdmin ? filters.country : ["USA"];
+      if (effectiveCountry.length && !effectiveCountry.includes(j.country || "")) return false;
+      // source
+      if (filters.source.length && !filters.source.includes(j.source)) return false;
+      // score
+      if (filters.score !== "any") {
+        const sc = (j.qualify_result as any)?.score ?? null;
+        if (sc === null || sc < parseInt(filters.score)) return false;
+      }
+      // time — calendar date filter (e.g. "2026-06-15"), matched against UTC date
+      if (filters.time !== "any") {
+        const jobDate = jobDateStr(j.posted_at) ?? jobDateStr(j.scraped_at);
+        if (!jobDate || jobDate !== filters.time) return false;
+      }
+      // Visa filter — FJ semantics: true = JD explicitly mentions sponsorship,
+      // false = JD doesn't mention it (NOT a refusal), null = not checked
+      if (filters.visa.length) {
+        const st = j.visa_sponsorship === true ? "Sponsors ✓"
+                 : j.visa_sponsorship === false ? "Not mentioned" : "Not checked";
+        if (!filters.visa.includes(st)) return false;
+      }
+      // Legacy toggle (Settings): hide USA no-sponsorship jobs
+      if (visaFilter && !filters.visa.length && j.country === "USA" && j.visa_sponsorship === false) return false;
+      // Level filter — hide overqualified roles
+      if (expFilter  && !isLevelMatch(j.title)) return false;
+      // Job passed everything except years — count its tray so the Years
+      // dropdown can show how many jobs sit in each bucket
+      const tray = j.experience_level || "";
+      // ONLY the AI/DS Leadership view uses FJ's coarse bands (0-2/2-5/5-10/10+);
+      // every other view keeps the fine trays exactly as before.
+      const yrBucket = tray ? (_leadView ? coarseExpBand(tray) : tray) : "";
+      if (yrBucket) yc[yrBucket] = (yc[yrBucket] || 0) + 1;
+      // years of experience — structured tray (FJ AI or regex/AI extracted);
+      // jobs without a stated requirement are hidden when the filter is active
+      if (filters.years.length && !filters.years.includes(yrBucket)) return false;
+      return true;
+    }).sort((a, b) => {
+      // Deferred jobs sink to the bottom of their own posted-day group.
+      const dayA = (a.posted_at || a.scraped_at || "").slice(0, 10);
+      const dayB = (b.posted_at || b.scraped_at || "").slice(0, 10);
+      if (dayA === dayB && !!a.deferred !== !!b.deferred) return a.deferred ? 1 : -1;
+      if (sortBy === "priority") {
+        // P1 first; unranked (0) sinks to the bottom. Tie-break by match score.
+        const pa = a.role_priority && a.role_priority > 0 ? a.role_priority : 99;
+        const pb = b.role_priority && b.role_priority > 0 ? b.role_priority : 99;
+        if (pa !== pb) return pa - pb;
+        const sa = (a.qualify_result as any)?.score ?? -1;
+        const sb = (b.qualify_result as any)?.score ?? -1;
+        if (sa !== sb) return sb - sa;
+      }
+      if (sortBy === "score") {
+        const scoreA = (a.qualify_result as any)?.score ?? -1;
+        const scoreB = (b.qualify_result as any)?.score ?? -1;
+        if (scoreA !== scoreB) return scoreB - scoreA;
+      }
+      // Date sort — by the SAME timestamp the card shows ("X ago"), so the
+      // freshest jobs are actually on top (was tying on midnight posted_at).
+      return bestTs(b) - bestTs(a);
+    });
+    return { filteredJobs: list, yearsCounts: yc };
+  }, [jobs, filters, userSettings, sortBy, visaFilter, expFilter, activeFamily, currentUser]);
+
+  const selectedJob = jobs.find(j => j.id === selectedId) || null;
+
+  // Skipped jobs are dismissed — they live ONLY in the Kanban "Skipped" column,
+  // never in the list view. Kanban still gets the full filteredJobs.
+  const listJobs = useMemo(() => filteredJobs.filter(j => j.status !== "skipped"), [filteredJobs]);
+  // Selection counts only jobs still visible in the list — skipping/filtering a
+  // checked job drops it from the count automatically.
+  const selectedIds = useMemo(() => listJobs.filter(j => checkedIds.has(j.id)).map(j => j.id), [listJobs, checkedIds]);
+
+  useEffect(() => {
+    if (viewMode === "list" && listJobs.length && !listJobs.find(j => j.id === selectedId))
+      setSelectedId(listJobs[0].id);
+  }, [listJobs, viewMode, selectedId]);
+
+  const updateJob = (id: string, patch: Partial<Job>) =>
+    setJobs(js => js.map(j => j.id === id ? { ...j, ...patch } : j));
+
+  const handleScrape = async () => {
+    if (scraping) return;
+    setScraping(true);
+    setScrapeMsg("");
+    const tsBeforeScrape = lastScrapedTs;
+    try {
+      const r = await api.scrape();
+      setScrapeMsg("Running");
+      toast(r.message || "Scrape started — button unlocks when done", "success");
+      // Poll every 10s until last_scraped_at changes → scrape finished
+      if (scrapePollerRef.current) clearInterval(scrapePollerRef.current);
+      scrapePollerRef.current = setInterval(async () => {
+        try {
+          const s = await api.getSettings();
+          const newTs: string = (s as any).last_scraped_at || "";
+          if (newTs && newTs !== tsBeforeScrape) {
+            clearInterval(scrapePollerRef.current!);
+            scrapePollerRef.current = null;
+            setLastScrapedTs(newTs);
+            setScraping(false);
+            setScrapeMsg("");
+            toast("Scrape complete! New jobs loaded.", "success");
+            loadJobs();
+          }
+        } catch { /* ignore poll errors */ }
+      }, 10_000);
+    } catch (e: any) {
+      setScrapeMsg(e.message);
+      toast(e.message, "error");
+      setScraping(false);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!confirm("Delete ALL jobs? Cannot be undone.")) return;
+    try { const r = await api.clearAllJobs(); setJobs([]); setAllJobs([]); setSelectedId(null); toast("Cleared " + r.deleted + " jobs", "success"); }
+    catch (e: any) { toast(e.message, "error"); }
+  };
+
+  const handleResetFilters = () => { setFilters(DEFAULT_FILTERS); };
+
+  const handleStatusChange = async (id: string, status: JobStatus) => {
+    await api.setStatus(id, status); updateJob(id, { status }); toast("Moved to " + status, "success");
+  };
+
+  const runAction = async (action: string) => {
+    if (!selectedJob) return;
+
+    if (action === "resume") {
+      // Parallel path — snapshot the job now; the user can select another
+      // job while this one runs and each finish updates its own row.
+      const job = selectedJob;
+      if (tailorRuns[job.id]) return;   // this job already tailoring
+      if (Object.keys(tailorRuns).length >= MAX_PARALLEL_TAILORS) {
+        toast(`Max ${MAX_PARALLEL_TAILORS} tailors at once — wait for one to finish`, "error");
+        return;
+      }
+      const jd = job.description || "";
+      const flags: string[] = [];
+      if (/\b(TS\/SCI|top\s+secret|secret\s+clearance|security\s+clearance|clearance\s+required|active\s+(in-scope\s+)?clearance|polygraph|poly\b)/i.test(jd))
+        flags.push("security clearance");
+      if (/\b(U\.?S\.?\s*citizen(ship)?(\s+required)?|must\s+be\s+a\s+(U\.?S\.?\s*)?citizen|citizenship\s+required)/i.test(jd))
+        flags.push("U.S. citizenship");
+      if (flags.length > 0 && !window.confirm(`⚠️ This job requires ${flags.join(" and ")}.\n\nYou may not be eligible. Tailor anyway?`))
+        return;
+
+      const ctrl = new AbortController();
+      tailorCtrls.current[job.id] = ctrl;
+      setTailorRuns(m => ({ ...m, [job.id]: Date.now() }));
+      const genStart = Date.now();
+      try {
+        const r = await api.tailor(job.id, ctrl.signal);
+        const genSeconds = Math.round((Date.now() - genStart) / 1000);
+        updateJob(job.id, {
+          tailored_resume: r.tailored_resume,
+          ats_score_before: r.ats_before?.score ?? null,
+          ats_score_after:  r.ats_after?.score ?? null,
+          ats_keywords_matched: r.ats_after?.matched ?? [],
+          ats_keywords_missing: r.ats_after?.missing ?? [],
+          needs_review: r.needs_review ?? false,
+          review_reasons: r.review_reasons ?? [],
+          review_notes: r.review_notes ?? [],
+          gate_scores: r.gate_scores ?? null,
+          tailor_context: r.tailor_context ?? null,
+          generation_seconds: genSeconds,
+          ats_quality: r.ats_after?.quality,
+        });
+        const fragN = r.ats_after?.quality?.count ?? 0;
+        if (fragN > 0) toast(`Resume tailored — ${job.company} · ⚠ ${fragN} bullet(s) look cut off`, "error");
+        else toast(`Resume tailored — ${job.company}`, "success");
+        await refreshJob(job.id);
+      } catch (e: any) {
+        if (e?.name !== "AbortError") toast(`${job.company}: ${e.message || "Tailor failed"}`, "error");
+      } finally {
+        delete tailorCtrls.current[job.id];
+        setTailorRuns(m => { const n = { ...m }; delete n[job.id]; return n; });
+      }
+      return;
+    }
+
+    // Non-resume actions keep the single global busy flag
+    if (busy) return;
+    setBusy(action); setBusyJobId(selectedJob.id); setBusyStartedAt(Date.now());
+    try {
+      if (action === "cover") {
+        const r = await api.generateCoverLetter(selectedJob.id);
+        updateJob(selectedJob.id, { cover_letter: r.cover_letter });
+        toast("Cover letter generated", "success");
+      }
+      await refreshJob(selectedJob.id);
+    } catch (e: any) { if (e?.name !== "AbortError") toast(e.message || "Failed", "error"); }
+    finally { setBusy(null); setBusyJobId(null); setBusyStartedAt(null); abortRef.current = null; }
+  };
+
+  const cancelAction = (jobId?: string) => {
+    if (jobId && tailorCtrls.current[jobId]) { tailorCtrls.current[jobId].abort(); return; }
+    abortRef.current?.abort();
+  };
+
+  const handleSelect = (id: string) => { setSelectedId(id); setTab("jobdetails"); };
+
+  // Soft-defer: move a job to the bottom of its posted-day (not a skip).
+  const handleDefer = (id: string, deferred: boolean) => {
+    updateJob(id, { deferred });
+    api.setDeferred(id, deferred).catch(() => updateJob(id, { deferred: !deferred }));
+  };
+
+  // Batch tailor the checked jobs. Prime-then-parallel: the first runs alone
+  // to warm the prompt cache, then the rest run 5-at-a-time reading that cache.
+  const runBatchTailor = async () => {
+    const ids = selectedIds;
+    if (!ids.length || batch?.running) return;
+    setBatch({ done: 0, total: ids.length, running: true });
+    let done = 0;
+    const tailorOne = async (id: string) => {
+      const j = allJobs.find(x => x.id === id) || jobs.find(x => x.id === id);
+      const label = j?.company || "job";
+      setTailorRuns(m => ({ ...m, [id]: Date.now() }));
+      try {
+        const r = await api.tailor(id, undefined, true);   // batch → caching on
+        updateJob(id, {
+          tailored_resume: r.tailored_resume,
+          ats_score_before: r.ats_before?.score ?? null,
+          ats_score_after: r.ats_after?.score ?? null,
+          ats_keywords_matched: r.ats_after?.matched ?? [],
+          ats_keywords_missing: r.ats_after?.missing ?? [],
+          needs_review: r.needs_review ?? false,
+          review_reasons: r.review_reasons ?? [],
+          review_notes: r.review_notes ?? [],
+          gate_scores: r.gate_scores ?? null,
+          tailor_context: r.tailor_context ?? null,
+          ats_quality: r.ats_after?.quality,
+        });
+        await refreshJob(id);
+      } catch (e: any) {
+        toast(`${label}: ${e.message || "Tailor failed"}`, "error");
+      } finally {
+        setTailorRuns(m => { const n = { ...m }; delete n[id]; return n; });
+        done++; setBatch(b => b ? { ...b, done } : b);
+      }
+    };
+    await tailorOne(ids[0]);            // prime → warms the cache
+    const rest = ids.slice(1);
+    const CAP = 5;
+    for (let i = 0; i < rest.length; i += CAP) {
+      await Promise.all(rest.slice(i, i + CAP).map(tailorOne));
+    }
+    setBatch(b => b ? { ...b, running: false } : b);
+    setCheckedIds(new Set());
+    api.getDailyUsage().then(setDailyUsage).catch(() => {});
+    toast(`Batch done — ${ids.length} resume(s) tailored`, "success");
+    setTimeout(() => setBatch(null), 5000);
+  };
+  // Expose nav to Settings component for "Go to Profile" link
+  useEffect(() => { (window as any).__navToProfile = () => setView("profile"); }, []);
+  const handleNav = (v: string) => { setView(v as View); };
+  const activeFilterCount = filters.category.length + filters.level.length + filters.type.length + filters.country.length + filters.source.length + filters.years.length + filters.visa.length + (filters.score !== "any" ? 1 : 0);
+  const filtersActive = activeFilterCount > 0 || filters.q !== "";
+  const isAdmin = currentUser?.email?.toLowerCase() === ADMIN_EMAIL;
+
+  // Pending-approval badge for the admin's Settings nav item
+  const [pendingCount, setPendingCount] = useState(0);
+  useEffect(() => {
+    if (!isAuthenticated || !isAdmin) return;
+    const load = () => api.adminPendingCount().then(r => setPendingCount(r.count)).catch(() => {});
+    load();
+    const t = setInterval(load, 60000);
+    return () => clearInterval(t);
+  }, [isAuthenticated, isAdmin]);
+
+  // Unseen error badge for Settings nav (admin only)
+  const [unseenErrors, setUnseenErrors] = useState(0);
+  useEffect(() => {
+    if (!isAuthenticated || !isAdmin) return;
+    const load = () => api.adminLogsUnseenCount().then(d => setUnseenErrors(d.count || 0)).catch(() => {});
+    load();
+    const t = setInterval(load, 60000);
+    return () => clearInterval(t);
+  }, [isAuthenticated, isAdmin]);
+
+  // Help & Chat — open state + unread badge + admin presence (all users).
+  // The 15s unread poll doubles as the presence heartbeat server-side.
+  const [chatOpen, setChatOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);   // separate AI panel
+  const [chatUnread, setChatUnread] = useState(0);
+  const [chatPeerActive, setChatPeerActive] = useState(false);
+  const loadChatUnread = useCallback(
+    () => api.chatUnread().then(d => { setChatUnread(d.count || 0); setChatPeerActive(!!(d as any).peer_active); }).catch(() => {}), []);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    loadChatUnread();
+    const t = setInterval(loadChatUnread, 15000);
+    return () => clearInterval(t);
+  }, [isAuthenticated, loadChatUnread]);
+
+  // Daily tailor usage
+  const [dailyUsage, setDailyUsage] = useState<{
+    used: number; limit: number; remaining: number;
+    applied_used: number; applied_limit: number; applied_remaining: number;
+    spend_today?: number; spend_total?: number;
+  } | null>(null);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const load = () => api.getDailyUsage().then(setDailyUsage).catch(() => {});
+    load();
+    const t = setInterval(load, 60000);
+    return () => clearInterval(t);
+  }, [isAuthenticated]);
+
+  const navItems: { id: string; label: string; ic: string }[] = [
+    { id: "jobs",      label: "Jobs",         ic: IC.search   },
+    { id: "dashboard", label: isAdmin ? "All Users Dashboard" : "Dashboard", ic: IC.dash },
+    ...(isAdmin ? [{ id: "mystats", label: "My Stats", ic: IC.target }] : []),
+    { id: "profile",   label: "My Profile",   ic: IC.user     },
+    ...(isAdmin ? [{ id: "settings",  label: "Settings",     ic: IC.settings }] : []),
+    { id: "tailor",    label: "Quick Tailor", ic: IC.sparkles },
+  ];
+
+  // ── Auth gate ────────────────────────────────────────────────────────────
+  if (!isAuthenticated) {
+    return <Auth onSuccess={(user: { id: string; email: string; name: string }) => {
+      setCurrentUser(user);
+      setIsAuthenticated(true);
+      // No onboarding — role is set at signup, location is USA, resume/keys live
+      // in Profile/Settings. Straight into the app after auth.
+      api.getSettings().then((s: any) => setUserSettings(s)).catch(() => {});
+    }} />;
+  }
+
+  // Approval/revoke gate — pending and revoked users see a waiting/locked screen
+  const _gateStatus = (currentUser as any)?.status || "approved";
+  if (currentUser && !isAdmin && (_gateStatus === "pending" || _gateStatus === "revoked")) {
+    return <PendingApproval
+      email={currentUser.email}
+      isRevoked={_gateStatus === "revoked"}
+      onApproved={() => {
+        const updated = { ...currentUser, status: "approved" } as any;
+        localStorage.setItem("jh_user", JSON.stringify(updated));
+        setCurrentUser(updated);
+        loadJobs();
+      }}
+      onLogout={handleLogout}
+    />;
+  }
+
+
+  return (
+    <div className="app">
+      {/* ── SIDEBAR ── */}
+      {!sidebarCollapsed && (
+        <aside className="sidebar">
+          {/* Brand */}
+          <div className="brand" style={{ justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+              <div className="brand-mark" style={{ flexShrink: 0 }}><svg width="26" height="26" viewBox="0 0 60 60"><circle cx="30" cy="30" r="30" fill="#0f0f1a"/><path d="M30 9 L32.5 24 L46 27.5 L32.5 31 L30 46 L27.5 31 L14 27.5 L27.5 24 Z" fill="white"/><path d="M44 12 L45.2 16.8 L50 18 L45.2 19.2 L44 24 L42.8 19.2 L38 18 L42.8 16.8 Z" fill="#22d3ee"/></svg></div>
+              <div className="brand-text">
+                <div className="brand-name" style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                  Job <span className="hl">Hunter</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", background: "rgba(234,179,8,0.15)", color: "#ca8a04", border: "1px solid rgba(234,179,8,0.35)", borderRadius: 4, padding: "1px 5px", lineHeight: 1.6 }}>Beta</span>
+                </div>
+                <div className="brand-sub">Hunt Smarter, Not Harder</div>
+              </div>
+            </div>
+            <button onClick={() => setSidebarCollapsed(true)} className="collapse-btn" title="Close sidebar" style={{ flexShrink: 0 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M9 3v18"/></svg>
+            </button>
+          </div>
+
+        {/* Nav */}
+        <div className="nav-label">Workspace</div>
+        <nav className="nav-group">
+          {navItems.map(n => {
+            const active = view === n.id;
+            return (
+              <a key={n.id} onClick={() => handleNav(n.id)}
+                className={`nav-item${active ? " active" : ""}`} data-label={n.label} style={{ cursor: "pointer" }}>
+                <Ic d={n.ic} size={16} />
+                {n.label}
+                {n.id === "jobs" && <span className="nav-count">{listJobs.length}</span>}
+                {n.id === "settings" && (pendingCount > 0 || unseenErrors > 0) && (
+                  <span style={{ marginLeft: "auto", display: "flex", gap: 4, alignItems: "center" }}>
+                    {pendingCount > 0 && (
+                      <span style={{ minWidth: 18, height: 18, borderRadius: 999, background: "#dc2626",
+                        color: "#fff", fontSize: 10.5, fontWeight: 700, display: "grid", placeItems: "center", padding: "0 5px" }}>
+                        {pendingCount}
+                      </span>
+                    )}
+                    {unseenErrors > 0 && (
+                      <span title={`${unseenErrors} unseen error${unseenErrors > 1 ? "s" : ""}`}
+                        style={{ minWidth: 18, height: 18, borderRadius: 999, background: "#b45309",
+                        color: "#fff", fontSize: 10.5, fontWeight: 700, display: "grid", placeItems: "center", padding: "0 5px" }}>
+                        {unseenErrors}
+                      </span>
+                    )}
+                  </span>
+                )}
+              </a>
+            );
+          })}
+          {/* AI Assistant + Help & Chat hidden for now (set SHOW_HELP_NAV=true to restore) */}
+          {SHOW_HELP_NAV && (<>
+          <a onClick={() => { setAssistantOpen(o => !o); setChatOpen(false); }} className={`nav-item${assistantOpen ? " active" : ""}`}
+            data-label="AI Assistant" style={{ cursor: "pointer" }}>
+            <Ic d={'<path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/><path d="M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8z"/>'} size={16} />
+            AI Assistant
+          </a>
+          <a onClick={() => { setChatOpen(o => !o); setAssistantOpen(false); }} className={`nav-item${chatOpen ? " active" : ""}`}
+            data-label="Help & Chat" style={{ cursor: "pointer" }}>
+            <Ic d={'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'} size={16} />
+            Help &amp; Chat
+            {chatUnread > 0 && (
+              <span style={{ marginLeft: "auto", minWidth: 18, height: 18, borderRadius: 999, background: "#7c3aed",
+                color: "#fff", fontSize: 10.5, fontWeight: 700, display: "grid", placeItems: "center", padding: "0 5px" }}>
+                {chatUnread}
+              </span>
+            )}
+          </a>
+          </>)}
+        </nav>
+
+        {/* Batch tailoring — live progress in the workspace area */}
+        {batch && (
+          <div style={{ margin: "10px 12px 0", padding: "10px 12px", borderRadius: 8,
+            background: "rgba(124,58,237,0.08)", border: "1px solid rgba(124,58,237,0.3)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#7c3aed" }}>
+                {batch.running ? "Tailoring…" : "Batch done ✓"}
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--tx-2)" }}>{batch.done}/{batch.total}</span>
+            </div>
+            <div style={{ height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}>
+              <div style={{ height: "100%", borderRadius: 2, transition: "width .3s",
+                width: `${batch.total ? Math.round((batch.done / batch.total) * 100) : 0}%`, background: "#7c3aed" }} />
+            </div>
+          </div>
+        )}
+
+        <div className="sidebar-spacer" />
+
+        {/* Daily tailor usage */}
+        {dailyUsage && (
+          <div style={{ margin: "0 12px 10px", padding: "10px 12px", borderRadius: 8, background: "var(--bg-2)", border: "1px solid var(--border)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--tx-2)" }}>Tailors today</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: dailyUsage.remaining === 0 ? "#ef4444" : dailyUsage.remaining < 10 ? "#f59e0b" : "var(--tx-2)" }}>
+                {dailyUsage.used} / {dailyUsage.limit}
+              </span>
+            </div>
+            <div style={{ height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}>
+              <div style={{
+                height: "100%", borderRadius: 2, transition: "width 0.3s",
+                width: `${Math.min(100, (dailyUsage.used / dailyUsage.limit) * 100)}%`,
+                background: dailyUsage.remaining === 0 ? "#ef4444" : dailyUsage.remaining < 10 ? "#f59e0b" : "#8b5cf6"
+              }} />
+            </div>
+            {dailyUsage.remaining === 0 && (
+              <div style={{ fontSize: 10, color: "#ef4444", marginTop: 4 }}>Limit reached — resets midnight UTC</div>
+            )}
+            {dailyUsage.remaining > 0 && dailyUsage.remaining < 10 && (
+              <div style={{ fontSize: 10, color: "#f59e0b", marginTop: 4 }}>{dailyUsage.remaining} remaining today</div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "10px 0 6px" }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--tx-2)" }}>Applied today</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: dailyUsage.applied_remaining === 0 ? "#ef4444" : dailyUsage.applied_remaining < 10 ? "#f59e0b" : "var(--tx-2)" }}>
+                {dailyUsage.applied_used} / {dailyUsage.applied_limit}
+              </span>
+            </div>
+            <div style={{ height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}>
+              <div style={{
+                height: "100%", borderRadius: 2, transition: "width 0.3s",
+                width: `${Math.min(100, (dailyUsage.applied_used / dailyUsage.applied_limit) * 100)}%`,
+                background: dailyUsage.applied_remaining === 0 ? "#ef4444" : dailyUsage.applied_remaining < 10 ? "#f59e0b" : "#8b5cf6"
+              }} />
+            </div>
+            {dailyUsage.applied_remaining === 0 && (
+              <div style={{ fontSize: 10, color: "#ef4444", marginTop: 4 }}>Limit reached — resets midnight UTC</div>
+            )}
+            {dailyUsage.applied_remaining > 0 && dailyUsage.applied_remaining < 10 && (
+              <div style={{ fontSize: 10, color: "#f59e0b", marginTop: 4 }}>{dailyUsage.applied_remaining} remaining today</div>
+            )}
+
+            {/* Your own tailoring spend (real AI cost) */}
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: "var(--tx-2)" }}>My spend · today</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#7c3aed" }}>${(dailyUsage.spend_today ?? 0).toFixed(2)}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+                <span style={{ fontSize: 10, color: "var(--tx-3)" }}>Total</span>
+                <span style={{ fontSize: 10, fontWeight: 600, color: "var(--tx-3)" }}>${(dailyUsage.spend_total ?? 0).toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Theme toggle */}
+        <div className="theme-switch">
+          <button className={isDark ? "on" : ""} onClick={() => setIsDark(true)}>
+            <Ic d={IC.moon} size={14} /> Dark
+          </button>
+          <button className={!isDark ? "on" : ""} onClick={() => setIsDark(false)}>
+            <Ic d={IC.sun} size={14} /> Light
+          </button>
+        </div>
+
+        {/* User card */}
+        <div className="user-card">
+          <div className="user-av">{initials}</div>
+          <div className="user-meta">
+            <div className="user-name">{profileName.split(" ")[0] || currentUser?.email?.split("@")[0] || "User"}</div>
+            <div className="user-mail">{userSettings?.profile_visa || currentUser?.email || "Job Hunter"}</div>
+          </div>
+          <button className="user-logout" onClick={handleLogout} title="Sign out">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+          </button>
+        </div>
+      </aside>
+      )}
+
+      {/* ── MAIN CONTENT ── */}
+      <div className="main">
+        {sidebarCollapsed && view !== "jobs" && (
+          <div style={{ display: "flex", alignItems: "center", height: 58, borderBottom: "1px solid var(--line)", padding: "0 18px", flexShrink: 0, background: "var(--bg-surface)" }}>
+            <div style={{ display: "flex", alignItems: "center", width: 230, flexShrink: 0 }}>
+              <button onClick={() => setSidebarCollapsed(false)} className="collapse-btn" title="Open sidebar" style={{ marginRight: 16 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M9 3v18"/></svg>
+              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <div className="brand-mark" style={{ width: 26, height: 26, flexShrink: 0 }}><svg width="26" height="26" viewBox="0 0 60 60"><circle cx="30" cy="30" r="30" fill="#0f0f1a"/><path d="M30 9 L32.5 24 L46 27.5 L32.5 31 L30 46 L27.5 31 L14 27.5 L27.5 24 Z" fill="white"/><path d="M44 12 L45.2 16.8 L50 18 L45.2 19.2 L44 24 L42.8 19.2 L38 18 L42.8 16.8 Z" fill="#22d3ee"/></svg></div>
+                <div className="brand-text">
+                  <div className="brand-name" style={{ margin: 0, fontSize: 16 }}>Job <span className="hl">Hunter</span></div>
+                  <div className="brand-sub">Hunt Smarter, Not Harder</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {view === "dashboard" && <Dashboard isAdmin={isAdmin} />}
+        {view === "mystats"   && <Dashboard isAdmin={false} />}
+        {view === "profile"   && <Profile />}
+        {view === "settings"  && (isAdmin ? <Settings onToast={toast} onErrorsSeen={() => setUnseenErrors(0)} /> : <div style={{padding: 40, color: "#f87171", fontSize: 16}}>Restricted Access. Only the Master Admin can view Settings.</div>)}
+        {view === "tailor"    && <QuickTailor pageMode onClose={() => setView("jobs")} onToast={toast} />}
+
+        {view === "jobs" && (
+          <>
+            <Topbar
+              scraping={scraping} lastScraped={lastScrapedDisplay}
+              onScrape={handleScrape} count={listJobs.length}
+              totalJobs={allJobs.length}
+              viewMode={viewMode} setViewMode={setViewMode} IC={IC}
+              isAdmin={isAdmin}
+              onOpenPreferences={() => setPreferencesOpen(true)}
+              userRoles={(() => {
+                const grant = userSettings?.job_roles ? (Array.isArray(userSettings.job_roles) ? userSettings.job_roles : JSON.parse(userSettings.job_roles)) : [];
+                if (isAdmin) return grant;
+                const active = userSettings?.active_job_roles && userSettings.active_job_roles.length ? userSettings.active_job_roles : [];
+                if (active.length) return active;
+                // No pick saved yet — show just the first granted family, not the whole grant
+                const firstGroup = ROLE_GROUPS.find(g => g.items.some((i: string) => grant.includes(i)));
+                return firstGroup ? firstGroup.items : grant;
+              })()}
+              activeFamily={activeFamily}
+              setActiveFamily={setActiveFamily}
+              sidebarCollapsed={sidebarCollapsed}
+              setSidebarCollapsed={setSidebarCollapsed}
+              countries={isAdmin ? COUNTRIES : undefined}
+              countryFilter={isAdmin ? filters.country : undefined}
+              setCountryFilter={isAdmin ? (v: string[]) => setFilters(f => ({ ...f, country: v })) : undefined}
+              preferencesNode={
+                <JobPreferencesModal
+                  open={preferencesOpen}
+                  onClose={() => setPreferencesOpen(false)}
+                  onToast={toast}
+                  onSaved={(s) => setUserSettings(s)}
+                  isAdmin={isAdmin}
+                />
+              }
+            />
+            <FilterBar
+              filters={filters} setFilters={setFilters}
+              SOURCES={SOURCES} yearsCounts={yearsCounts}
+              yearsOptions={(activeFamily || "").toLowerCase().includes("leadership")
+                ? ["0-2","2-5","5-10","10+"]
+                : NICHE_FAMILIES.includes(activeFamily)
+                ? ["0-2","2-4","4-5"]
+                : ["0-2","2-4","4-5","5-6","6-7","7-8","8-10","10-13","13-15","15+"]}
+              visaFilter={visaFilter} setVisaFilter={(v) => { setVisaFilter(v); saveFilterToggle(v, expFilter); }}
+              expFilter={expFilter}   setExpFilter={(v) => { setExpFilter(v); saveFilterToggle(visaFilter, v); }}
+              isAdmin={isAdmin}
+              sidebarCollapsed={sidebarCollapsed}
+              earliestDate={userSettings?.earliest_scraped_date || ""}
+              sortBy={sortBy} setSortBy={setSortBy} searchRef={searchRef}
+            />
+              {scraping && (
+              <div className="scrape-banner">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--violet)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: "spin .9s linear infinite", flexShrink: 0 }} dangerouslySetInnerHTML={{ __html: IC.refresh }} />
+                Scraping sources for new roles…
+                <div className="bar"><i /></div>
+              </div>
+            )}
+          {viewMode === "kanban" ? (
+              <Kanban jobs={filteredJobs} onStatusChange={(id, s) => handleStatusChange(id, s as JobStatus)} onSelect={id => { setViewMode("list"); handleSelect(id); }} />
+            ) : (
+              <div className="jobs-body" style={{ position: "relative" }}>
+                <div className="list-pane" style={{ width: listPaneWidth, minWidth: 240, maxWidth: "70%", position: "relative" }}>
+                  <div className={`list-scroll${listMode === "cards" ? " cards" : ""}`}>
+                    {loading ? (
+                      <div style={{ padding: "2px" }}>
+                        {Array.from({ length: 7 }).map((_, i) => (
+                          <div className="jh-skel-card" key={i}>
+                            <div className="jh-skel" style={{ width: 38, height: 38, borderRadius: 9, flexShrink: 0 }} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div className="jh-skel" style={{ width: `${60 + (i % 3) * 12}%`, height: 13, marginBottom: 9 }} />
+                              <div className="jh-skel" style={{ width: "45%", height: 10, marginBottom: 8 }} />
+                              <div className="jh-skel" style={{ width: "72%", height: 10 }} />
+                            </div>
+                            <div className="jh-skel" style={{ width: 34, height: 18, borderRadius: 9, flexShrink: 0 }} />
+                          </div>
+                        ))}
+                      </div>
+                    ) : listJobs.length > 0 && listJobs.every(j => j.source === "O2Ten") ? (
+                      /* O2Ten curated list — grouped by role category:
+                         family -> section groups -> link rows w/ Apply/Applied/Skip */
+                      <O2TenList jobs={listJobs} selectedId={selectedId} onSelect={handleSelect} />
+                    ) : (
+                      <JobList
+                        jobs={listJobs}
+                        selectedId={selectedId}
+                        onSelect={handleSelect}
+                        onSkip={id => handleStatusChange(id, "skipped")}
+                        onUpdate={(id, patch) => updateJob(id, patch)}
+                        onQualifyUpdated={(id, r) => updateJob(id, { qualify_result: r })}
+                        emptyState={allJobs.length === 0 ? "Click Scrape Now to fetch jobs" : "Try clearing filters"}
+                        mode={listMode}
+                        tailorRuns={tailorRuns}
+                        checkedIds={checkedIds}
+                        onToggleCheck={toggleCheck}
+                        onDefer={handleDefer}
+                      />
+                    )}
+                  </div>
+                  {/* Floating batch-tailor bar — bottom of the list column */}
+                  {selectedIds.length > 0 && (
+                    <div style={{ position: "absolute", left: 10, right: 10, bottom: 12, zIndex: 20,
+                      display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 12,
+                      background: "var(--bg-surface)", border: "1px solid var(--violet)",
+                      boxShadow: "0 10px 30px rgba(0,0,0,.25)" }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "var(--tx)" }}>{selectedIds.length} selected</span>
+                      <button onClick={runBatchTailor} disabled={!!batch?.running}
+                        style={{ marginLeft: "auto", height: 34, padding: "0 16px", borderRadius: 9, border: "none",
+                          background: batch?.running ? "var(--line-hi)" : "var(--violet)", color: "#fff",
+                          fontSize: 13, fontWeight: 700, cursor: batch?.running ? "default" : "pointer" }}>
+                        {batch?.running ? `Tailoring ${batch.done}/${batch.total}…` : `✦ Tailor all (${selectedIds.length})`}
+                      </button>
+                      <button onClick={() => setCheckedIds(new Set())} title="Clear selection"
+                        style={{ height: 34, width: 34, borderRadius: 9, border: "1px solid var(--line)",
+                          background: "var(--bg-elevated)", color: "var(--tx-2)", cursor: "pointer", fontSize: 15 }}>✕</button>
+                    </div>
+                  )}
+                </div>
+                {/* Drag handle */}
+                <div
+                  onMouseDown={e => {
+                    e.preventDefault();
+                    const startX = e.clientX;
+                    const startW = listPaneWidth;
+                    const onMove = (ev: MouseEvent) => {
+                      const newW = Math.max(240, Math.min(window.innerWidth * 0.7, startW + ev.clientX - startX));
+                      setListPaneWidth(newW);
+                    };
+                    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+                    window.addEventListener('mousemove', onMove);
+                    window.addEventListener('mouseup', onUp);
+                  }}
+                  style={{
+                    width: 4, flexShrink: 0, cursor: 'col-resize', background: 'transparent',
+                    borderRight: '1px solid var(--line)', transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--violet)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  title="Drag to resize"
+                />
+                <JobDetail job={selectedJob} tab={tab} setTab={setTab} onUpdate={(patch: Partial<Job>) => selectedJob && updateJob(selectedJob.id, patch)} onToast={toast} busy={busy} busyJobId={busyJobId} busyStartedAt={busyStartedAt} tailorRuns={tailorRuns} runAction={runAction} onCancel={cancelAction} />
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      <Toasts toasts={toasts} />
+
+      {chatOpen && <ChatPanel isAdmin={isAdmin} adminActive={chatPeerActive} onClose={() => setChatOpen(false)} onRead={loadChatUnread} />}
+      {assistantOpen && <AssistantPanel onClose={() => setAssistantOpen(false)} />}
+
+      {queueIds && queueIds.length > 0 && (
+        <ApplyQueue
+          jobs={queueIds.map(id => jobs.find(j => j.id === id)).filter(Boolean) as any}
+          onClose={() => setQueueIds(null)}
+          onApplied={(id) => handleStatusChange(id, "applied")}
+          onSkip={(id) => handleStatusChange(id, "skipped")}
+        />
+      )}
+
+      {/* Welcome modal removed */}
+    </div>
+  );
+}
+
+// Department → job-title keywords. Explicit maps for tech/data (precise);
+// other departments fall back to phrase + significant words from the name.
+const DEPT_TERMS: Record<string, string[]> = {
+  "Software Engineering":      ["software engineer", "swe", "backend", "frontend", "full stack", "fullstack", "developer"],
+  "Data Engineering":          ["data engineer", "etl", "data platform", "data pipeline", "data infrastructure"],
+  "ML / AI Engineering":       ["machine learning", "ml engineer", "ai engineer", "deep learning", "llm", "mlops"],
+  "DevOps / Infrastructure":   ["devops", "sre", "site reliability", "infrastructure engineer", "platform engineer", "cloud engineer"],
+  "Mobile Engineering":        ["mobile", "ios", "android", "react native", "flutter"],
+  "QA / Testing":              ["qa ", "quality assurance", "test engineer", "sdet", "quality engineer"],
+  "Cybersecurity":             ["security engineer", "cybersecurity", "infosec", "security analyst"],
+  "IT Support":                ["it support", "help desk", "desktop support", "technical support"],
+  "Systems Administration":    ["system admin", "sysadmin", "systems engineer"],
+  "Data Science":              ["data scientist", "data science"],
+  "Data Analysis":             ["data analyst", "business analyst", "analytics analyst", "reporting analyst"],
+  "Business Intelligence":     ["business intelligence", "bi developer", "bi analyst", "bi engineer", "power bi", "tableau", "looker"],
+  "Analytics Engineering":     ["analytics engineer"],
+  "Data Architecture":         ["data architect"],
+  "Database Administration":   ["dba", "database admin", "database engineer"],
+  "Product Management":        ["product manager", "product owner"],
+  "Technical Product Management": ["technical product manager", "technical pm"],
+  "Program Management":        ["program manager", "tpm"],
+  "UX Design":                 ["ux design", "ux engineer", "user experience"],
+  "UI Design":                 ["ui design", "user interface"],
+  "Product Design":            ["product design"],
+  "UX Research":               ["ux research", "user research"],
+};
+const _DEPT_STOPWORDS = new Set(["and", "the", "of", "services", "general"]);
+function deptTerms(dept: string): string[] {
+  if (DEPT_TERMS[dept]) return DEPT_TERMS[dept];
+  const phrase = dept.toLowerCase().replace(/\s*\/\s*/g, " ").replace(/\s+-\s+/g, " ");
+  const words = phrase.split(/\s+/).filter(w => w.length >= 4 && !_DEPT_STOPWORDS.has(w));
+  return [phrase, ...words];
+}
+
+
+
+// ── Topbar (exact match to shell.jsx TopBar) ────────────────────────────────────
+function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, setViewMode, IC, isAdmin, onOpenPreferences, userRoles, activeFamily, setActiveFamily, sidebarCollapsed, setSidebarCollapsed, preferencesNode, countries, countryFilter, setCountryFilter }: {
+  scraping: boolean; lastScraped: string; onScrape: () => void;
+  count: number; totalJobs: number; viewMode: string; setViewMode: (m: ViewMode) => void;
+  IC: Record<string, string>; isAdmin: boolean; onOpenPreferences?: () => void; userRoles?: string[];
+  activeFamily?: string; setActiveFamily?: (f: string) => void;
+  sidebarCollapsed: boolean; setSidebarCollapsed: (v: boolean) => void;
+  preferencesNode?: React.ReactNode;
+  countries?: string[]; countryFilter?: string[]; setCountryFilter?: (v: string[]) => void;
+}) {
+  // Live countdown to next hourly scrape (cron fires at minute 0)
+  const [nowTs, setNowTs] = React.useState(Date.now());
+  React.useEffect(() => {
+    const t = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const nextScrape = new Date(nowTs);
+  nextScrape.setMinutes(60, 0, 0); // rolls over to the next full hour
+  const diffMs = Math.max(0, nextScrape.getTime() - nowTs);
+  const cdH = Math.floor(diffMs / 3600000);
+  const cdM = Math.floor((diffMs % 3600000) / 60000);
+  const cdS = Math.floor((diffMs % 60000) / 1000);
+  const countdown = (cdH > 0 ? `${String(cdH).padStart(2, "0")}:` : "") +
+    `${String(cdM).padStart(2, "0")}:${String(cdS).padStart(2, "0")}`;
+
+  return (
+    <div className="topbar" style={{ paddingLeft: sidebarCollapsed ? 18 : 20 }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
+        {sidebarCollapsed && (
+          <div style={{ display: "flex", alignItems: "center", width: 230, flexShrink: 0 }}>
+            <button onClick={() => setSidebarCollapsed(false)} className="collapse-btn" title="Open sidebar" style={{ marginRight: 16 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M9 3v18"/></svg>
+            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              <div className="brand-mark" style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0 }}><span className="brand-dot" /></div>
+              <div className="brand-text">
+                <div className="brand-name" style={{ margin: 0, fontSize: 16 }}>Job <span className="hl">Hunter</span></div>
+                <div className="brand-sub">Hunt Smarter, Not Harder</div>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Country quick-switch — left of Job Preferences, styled to match it */}
+        {countries && countryFilter && setCountryFilter && (
+          <div style={{ display: "inline-flex", alignItems: "center", background: "var(--bg-surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 4, marginRight: 12, boxShadow: "var(--sh-sm)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px 4px 6px", color: "var(--tx)", fontSize: 13, fontWeight: 600, borderRight: "1px solid var(--line)" }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--violet)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/>
+              </svg>
+              Country
+            </div>
+            <select
+              value={countryFilter.length === 1 ? countryFilter[0] : ""}
+              onChange={e => setCountryFilter(e.target.value ? [e.target.value] : [])}
+              style={{ background: "none", border: "none", color: "var(--violet)", fontWeight: 600, fontSize: 13, cursor: "pointer", outline: "none", fontFamily: "inherit", padding: "0 10px 0 8px", height: "100%" }}
+            >
+              <option value="">All</option>
+              {countries.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+        )}
+        <div style={{ position: "relative" }}>
+          <div
+            onClick={onOpenPreferences}
+            style={{ display: "inline-flex", alignItems: "center", background: "var(--bg-surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 4, cursor: "pointer", transition: "all 0.2s", boxShadow: "var(--sh-sm)" }}
+            onMouseOver={e => { e.currentTarget.style.borderColor = "rgba(124,58,237,0.4)"; e.currentTarget.style.boxShadow = "0 4px 14px -2px rgba(124,58,237,0.12)"; }}
+            onMouseOut={e => { e.currentTarget.style.borderColor = "var(--line)"; e.currentTarget.style.boxShadow = "var(--sh-sm)"; }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px 4px 6px", color: "var(--tx)", fontSize: 13, fontWeight: 600 }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--violet)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.target }} />
+              Job Preferences
+            </div>
+            
+            <div style={{ width: 1, height: 18, background: "var(--line)", margin: "0 6px 0 2px" }} />
+
+            <div style={{ display: "flex", alignItems: "center", gap: 6, paddingRight: 6 }}>
+              {userRoles && userRoles.length > 0 ? (() => {
+                const collapsed = collapseRoles(userRoles);
+                const shown = collapsed.slice(0, 3);
+                const extra = collapsed.length - shown.length;
+                return (
+                  <>
+                    {shown.map(role => {
+                      const isActive = activeFamily === role;
+                      return (
+                        <button key={role} type="button"
+                          onClick={() => setActiveFamily?.(isActive ? "" : role)}
+                          style={{
+                            fontSize: 11.5, fontWeight: 600, padding: "3px 8px", borderRadius: 6, whiteSpace: "nowrap",
+                            cursor: setActiveFamily ? "pointer" : "default", fontFamily: "inherit",
+                            border: isActive ? "1.5px solid var(--violet)" : "1px solid var(--line)",
+                            background: isActive ? "rgba(124,58,237,0.12)" : "var(--bg-elevated)",
+                            color: isActive ? "var(--violet)" : "var(--tx-2)",
+                            transition: "all 0.15s",
+                          }}>
+                          {role}
+                        </button>
+                      );
+                    })}
+                    {extra > 0 && (
+                      <span title={collapsed.slice(3).join(", ")}
+                        style={{ background: "rgba(124,58,237,0.1)", color: "var(--violet)", fontSize: 11.5, fontWeight: 700, padding: "3px 8px", borderRadius: 6, whiteSpace: "nowrap" }}>
+                        +{extra} more
+                      </span>
+                    )}
+                  </>
+                );
+              })() : (
+                <span style={{ fontSize: 12, color: "var(--tx-3)", padding: "0 6px", fontWeight: 500 }}>All jobs shown</span>
+              )}
+            </div>
+          </div>
+          {preferencesNode}
+        </div>
+      </div>
+
+      <div className="meta">
+        {isAdmin && (
+          <>
+            <button className={`scrape-btn${scraping ? " running" : ""}`} onClick={onScrape} disabled={scraping} style={{ height: 26, padding: "0 10px", fontSize: 12, borderRadius: 6, marginRight: 8 }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.refresh }} />
+              {scraping ? "Scraping…" : "Scrape Now"}
+            </button>
+            <span className="dot-sep" style={{ marginRight: 8 }} />
+          </>
+        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, lineHeight: 1.25 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div className="live-pip" />
+            Last scraped <b>{lastScraped || "never"}</b>
+          </span>
+          <span style={{ fontSize: 11, color: "var(--tx-3)", paddingLeft: 14 }}>
+            Next scrape in <b style={{ fontFamily: "var(--f-mono)", color: "var(--tx-2)" }}>{countdown}</b>
+          </span>
+        </div>
+        <span className="dot-sep" />
+        <span className="job-count"><b>{totalJobs.toLocaleString()}</b> jobs indexed</span>
+      </div>
+      <div className="topbar-right">
+        <div className="job-count"><b>{count}</b> shown</div>
+        <div className="seg">
+          <button className={viewMode === "list" ? "on" : ""} onClick={() => setViewMode("list")} title="List view">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.list }} />
+          </button>
+          <button className={viewMode === "kanban" ? "on" : ""} onClick={() => setViewMode("kanban")} title="Kanban view">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: IC.kanban }} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── FilterBar (exact match to shell.jsx FilterBar) ──────────────────────────────
+// ── All department groups (Category) ─────────────────────────────────────────
+const DEPT_GROUPS: { group: string; items: string[] }[] = [
+  { group: "Technology",                items: ["Software Engineering","Data Engineering","ML / AI Engineering","DevOps / Infrastructure","Mobile Engineering","QA / Testing","Cybersecurity","IT Support","Systems Administration"] },
+  { group: "Data and Analytics",        items: ["Data Science","Data Analysis","Business Intelligence","Analytics Engineering","Data Architecture","Database Administration"] },
+  { group: "Design and Creative",       items: ["UX Design","UI Design","Product Design","Graphic Design","Creative and Art Services","UX Research","Motion Design"] },
+  { group: "Product",                   items: ["Product Management","Technical Product Management","Program Management"] },
+  { group: "Business Operations",       items: ["Project Management","Business Operations","Finance and Accounting","Legal and Compliance","Human Resources","Administrative Support","Strategy and Consulting"] },
+  { group: "Sales and Marketing",       items: ["Sales","Marketing","Business Development","Content and Communications","Public Affairs","Account Management"] },
+  { group: "Healthcare",                items: ["Healthcare Services - Advanced Practice","Healthcare Services - Allied Health","Healthcare Services - Nursing","Healthcare Administration","Pharmacy","Mental Health"] },
+  { group: "Education",                 items: ["Teaching and Instruction","Curriculum and Training","Educational Administration","Academic Research"] },
+  { group: "Customer and Social Services", items: ["Customer Success","Customer Support","Social Work","Community Services","Non-Profit"] },
+  { group: "Research and Development",  items: ["R&D Engineering","Scientific Research","Lab Services","Product Research"] },
+  { group: "Skilled Trades",            items: ["Construction","Mechanical","Electrical","Repair and Maintenance","Labor"] },
+  { group: "Transportation and Logistics", items: ["Logistics","Supply Chain","Fleet Management","Warehousing","Delivery"] },
+  { group: "Quality and Safety",        items: ["Quality Assurance","Regulatory Compliance","Environment Health and Safety","Risk Management"] },
+  { group: "Food and Hospitality",      items: ["Food Service","Restaurant Management","Hotel and Lodging","Event Management"] },
+  { group: "Protective Services",       items: ["Law Enforcement","Security","Fire Services","Emergency Management"] },
+  { group: "Custodial Services",        items: ["Facilities Management","Janitorial","Groundskeeping"] },
+];
+
+// ── Accordion section (collapsible filter group) ──────────────────────────────
+function AccordionSection({ label, count, children, defaultOpen = false }: {
+  label: string; count: number; children: React.ReactNode; defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = React.useState(defaultOpen);
+  return (
+    <div className="acc-section">
+      <button className="acc-head" onClick={() => setOpen(o => !o)}>
+        <span className="acc-label">{label}</span>
+        {count > 0 && <span className="acc-count">{count}</span>}
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+          style={{ marginLeft: count > 0 ? 4 : "auto", transition: "transform .15s", transform: open ? "rotate(0deg)" : "rotate(-90deg)", flexShrink: 0 }}>
+          <path d="M6 9l6 6 6-6"/>
+        </svg>
+      </button>
+      {open && <div className="acc-body">{children}</div>}
+    </div>
+  );
+}
+
+// ── Department selector (nested: dept group → items) ─────────────────────────
+function DeptSelector({ selected, onChange }: { selected: string[]; onChange: (v: string[]) => void }) {
+  const [q, setQ] = React.useState("");
+  const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>(
+    Object.fromEntries(DEPT_GROUPS.map(g => [g.group, true]))
+  );
+  const toggleItem = (item: string) => onChange(selected.includes(item) ? selected.filter(x => x !== item) : [...selected, item]);
+  const toggleGroup = (g: string) => setCollapsed(c => ({ ...c, [g]: !c[g] }));
+  const expandAll   = () => setCollapsed(Object.fromEntries(DEPT_GROUPS.map(g => [g.group, false])));
+  const collapseAll = () => setCollapsed(Object.fromEntries(DEPT_GROUPS.map(g => [g.group, true])));
+  const filtered = q.trim()
+    ? DEPT_GROUPS.map(g => ({ ...g, items: g.items.filter(i => i.toLowerCase().includes(q.toLowerCase())) })).filter(g => g.items.length > 0)
+    : DEPT_GROUPS;
+  return (
+    <div className="dept-sel">
+      <div className="dept-search-wrap">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"var(--tx-3)", pointerEvents:"none" }}>
+          <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
+        </svg>
+        <input className="dept-search" value={q} onChange={e => setQ(e.target.value)} placeholder="Search departments…" />
+      </div>
+      {!q && (
+        <div className="dept-actions">
+          <button onClick={expandAll}>↓ Expand All</button>
+          <button onClick={collapseAll}>↑ Collapse All</button>
+          {selected.length > 0 && <button className="dept-clear" onClick={() => onChange([])}>Clear ({selected.length})</button>}
+        </div>
+      )}
+      <div className="dept-groups">
+        {filtered.map(({ group, items }) => {
+          const selCount = items.filter(i => selected.includes(i)).length;
+          return (
+            <div className="dept-group" key={group}>
+              <button className="dept-group-head" onClick={() => toggleGroup(group)}>
+                <span>{group}</span>
+                {selCount > 0 && <span className="dept-sel-count">{selCount}</span>}
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+                  style={{ marginLeft: selCount > 0 ? 4 : "auto", transition:"transform .15s", transform: collapsed[group] ? "rotate(-90deg)" : "rotate(0deg)", flexShrink: 0 }}>
+                  <path d="M6 9l6 6 6-6"/>
+                </svg>
+              </button>
+              {!collapsed[group] && (
+                <div className="dept-items">
+                  {items.map(item => (
+                    <label key={item} className={`fp-check${selected.includes(item) ? " on" : ""}`} onClick={() => toggleItem(item)}>
+                      <span className="fp-box">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
+                      </span>
+                      {item}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Compact inline multi-select dropdown for the filter bar.
+// Portals the panel to document.body with position:fixed so it escapes
+// the filterbar's overflow:hidden clipping context.
+function InlineMultiFilter({ label, options, selected, onChange, counts }: {
+  label: string; options: string[]; selected: string[]; onChange: (v: string[]) => void;
+  counts?: Record<string, number>;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [pos, setPos]   = React.useState({ top: 0, left: 0 });
+  const btnRef          = React.useRef<HTMLButtonElement>(null);
+  const panelRef        = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const fn = (e: MouseEvent) => {
+      if (!btnRef.current?.contains(e.target as Node) && !panelRef.current?.contains(e.target as Node))
+        setOpen(false);
+    };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+  }, [open]);
+
+  const handleClick = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 6, left: r.left });
+    }
+    setOpen(v => !v);
+  };
+
+  const toggle = (o: string) => onChange(selected.includes(o) ? selected.filter(x => x !== o) : [...selected, o]);
+
+  const panel = open ? ReactDOM.createPortal(
+    <div ref={panelRef} className="filter-panel" style={{ position: "fixed", top: pos.top, left: pos.left, width: "auto", minWidth: 170, padding: "8px 4px", zIndex: 9000 }}>
+      {selected.length > 0 && (
+        <button className="fp-reset" style={{ marginBottom: 6 }} onClick={() => onChange([])}>Clear</button>
+      )}
+      <div className="acc-opts">
+        {options.map(o => (
+          <label key={o} className={`fp-check${selected.includes(o) ? " on" : ""}`} onClick={() => toggle(o)}>
+            <span className="fp-box">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
+            </span>
+            {o}
+            {counts && <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--tx-3)", fontFamily: "var(--f-mono)" }}>{counts[o] || 0}</span>}
+          </label>
+        ))}
+      </div>
+    </div>,
+    document.body
+  ) : null;
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button ref={btnRef} className={`filters-btn${selected.length > 0 ? " has" : ""}`} onClick={handleClick}>
+        {label}
+        {selected.length > 0 && <span className="fb-count">{selected.length}</span>}
+        <svg className="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      {panel}
+    </div>
+  );
+}
+
+function FilterBar({ filters, setFilters, SOURCES, yearsCounts, yearsOptions, visaFilter, setVisaFilter, expFilter, setExpFilter, isAdmin, sidebarCollapsed, earliestDate, sortBy, setSortBy, searchRef }: {
+  filters: Filters; setFilters: React.Dispatch<React.SetStateAction<Filters>>;
+  SOURCES?: string[]; yearsCounts?: Record<string, number>; yearsOptions?: string[];
+  visaFilter: boolean; setVisaFilter: (v: boolean) => void;
+  expFilter: boolean; setExpFilter: (v: boolean) => void;
+  isAdmin: boolean;
+  sidebarCollapsed?: boolean;
+  earliestDate?: string;  // "YYYY-MM-DD" — oldest date with scraped jobs
+  sortBy: "score" | "date" | "priority"; setSortBy: (v: "score" | "date" | "priority") => void;
+  searchRef?: React.RefObject<HTMLInputElement>;
+}) {
+  const set = (k: keyof Filters, v: any) => setFilters(f => ({ ...f, [k]: v }));
+  const [open, setOpen] = React.useState(false);
+  const [filterPos, setFilterPos] = React.useState({ top: 0, left: 0 });
+  const [draft, setDraft] = React.useState({ source: [] as string[], score: "any" as string });
+  const filterBtnRef = React.useRef<HTMLButtonElement>(null);
+  const filterPanelRef = React.useRef<HTMLDivElement>(null);
+  const [infoTip, setInfoTip]         = React.useState(false);
+  const [infoTipPos, setInfoTipPos]   = React.useState({ top: 0, right: 0 });
+  const infoIconRef                   = React.useRef<HTMLSpanElement>(null);
+
+  React.useEffect(() => {
+    if (open) setDraft({ source: filters.source, score: filters.score });
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const fn = (e: MouseEvent) => {
+      if (!filterBtnRef.current?.contains(e.target as Node) && !filterPanelRef.current?.contains(e.target as Node))
+        setOpen(false);
+    };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+  }, [open]);
+
+  const handleFilterBtnClick = () => {
+    if (!open && filterBtnRef.current) {
+      const r = filterBtnRef.current.getBoundingClientRect();
+      setFilterPos({ top: r.bottom + 6, left: r.left });
+    }
+    setOpen(o => !o);
+  };
+
+  const resetAll = () => setDraft({ source: [], score: "any" });
+  const apply = () => { setFilters(f => ({ ...f, ...draft, score: draft.score as Filters["score"] })); setOpen(false); };
+
+  const committed = filters.source.length + (filters.score !== "any" ? 1 : 0);
+  const draftCount = draft.source.length + (draft.score !== "any" ? 1 : 0);
+  // Date range helpers — capped at earliestDate (first scrape date) or 60 days
+  const { dateDays, olderByMonth } = React.useMemo(() => {
+    const todayUtc = new Date().toISOString().substring(0, 10);
+    const allDays: { val: string; label: string; month: string }[] = [];
+    for (let i = 0; i < 60; i++) {
+      const d = new Date(todayUtc + "T00:00:00Z");
+      d.setUTCDate(d.getUTCDate() - i);
+      const val   = d.toISOString().substring(0, 10);
+      // Stop once we pass the earliest scraped date — no jobs before it
+      if (earliestDate && val < earliestDate) break;
+      const [y, m, day] = val.split("-");
+      const label = `${m}/${day}`;
+      const month = `${d.toLocaleString("en-US", { month: "long", timeZone: "UTC" })} ${y}`;
+      allDays.push({ val, label, month });
+    }
+    const quick = allDays.slice(0, 10);
+    const older = allDays.slice(10);
+    // Group older days by month
+    const grouped: Record<string, { val: string; label: string }[]> = {};
+    const monthOrder: string[] = [];
+    for (const d of older) {
+      if (!grouped[d.month]) { grouped[d.month] = []; monthOrder.push(d.month); }
+      grouped[d.month].push({ val: d.val, label: d.label });
+    }
+    return { dateDays: quick, olderByMonth: { grouped, monthOrder } };
+  }, [earliestDate]);
+
+  const [olderOpen, setOlderOpen]   = React.useState(false);
+  const [olderPos, setOlderPos]     = React.useState({ top: 0, left: 0 });
+  const olderBtnRef                 = React.useRef<HTMLButtonElement>(null);
+  const olderPanelRef               = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!olderOpen) return;
+    const fn = (e: MouseEvent) => {
+      if (!olderBtnRef.current?.contains(e.target as Node) && !olderPanelRef.current?.contains(e.target as Node))
+        setOlderOpen(false);
+    };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+  }, [olderOpen]);
+  const sourceOpts = SOURCES && SOURCES.length ? SOURCES : ["FantasticJobs","LinkedIn","Indeed"];
+  const scoreOpts: [string, string][] = [["any","Any"],["60","≥60%"],["70","≥70%"],["80","≥80%"],["90","≥90%"]];
+
+  return (
+    <div className="filterbar" style={{ paddingLeft: sidebarCollapsed ? 248 : 20 }}>
+      {/* Search + Sort — order: search, sort, then quick filters */}
+      <div className="search-wrap" style={{ flex: "0 1 240px", minWidth: 150 }}>
+        <svg className="s-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
+        </svg>
+        <input ref={searchRef} className="search-input" type="text" value={filters.q}
+          onChange={e => setFilters(f => ({ ...f, q: e.target.value }))} placeholder="Search…" />
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--tx-3)", whiteSpace: "nowrap", flexShrink: 0 }}>
+        Sort:
+        <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+          <select value={sortBy} onChange={e => setSortBy(e.target.value as "score" | "date" | "priority")}
+            style={{ appearance: "none", background: "var(--bg-elevated)", border: "1px solid var(--line)", borderRadius: 6, color: "var(--tx)", fontWeight: 600, padding: "2px 18px 2px 7px", cursor: "pointer", outline: "none", fontFamily: "inherit", fontSize: 11 }}>
+            <option value="priority">Priority</option>
+            <option value="score">Match Score</option>
+            <option value="date">Date Posted</option>
+          </select>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", right: 5, color: "var(--tx-3)", pointerEvents: "none" }}><path d="m6 9 6 6 6-6"/></svg>
+        </div>
+      </div>
+      {/* Inline quick filters — applied immediately */}
+      <InlineMultiFilter label="Years of Exp"
+        options={yearsOptions ?? ["0-2","2-4","4-5","5-6","6-7","7-8","8-10","10-13","13-15","15+"]}
+        selected={filters.years} onChange={v => set("years", v)} counts={yearsCounts} />
+      <InlineMultiFilter label="Work Type"
+        options={["Remote","Onsite","Hybrid"]}
+        selected={filters.type} onChange={v => set("type", v)} />
+      <InlineMultiFilter label="Visa"
+        options={["Sponsors ✓","Not mentioned","Not checked"]}
+        selected={filters.visa} onChange={v => set("visa", v)} />
+
+      {/* Filters panel — Source, Match Score, toggles */}
+      <div>
+        <button ref={filterBtnRef} className={`filters-btn${committed > 0 ? " has" : ""}`} onClick={handleFilterBtnClick}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 4h18l-7 8v6l-4 2v-8z"/>
+          </svg>
+          Filters
+          {committed > 0 && <span className="fb-count">{committed}</span>}
+          <svg className="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        {open && ReactDOM.createPortal(
+          <div ref={filterPanelRef} className="filter-panel" style={{ position: "fixed", top: filterPos.top, left: filterPos.left, zIndex: 9000 }}>
+            <div className="fp-head">
+              <span className="fp-title">Filters</span>
+              <button className="fp-reset" onClick={resetAll}>Reset all</button>
+            </div>
+            <div className="fp-accordion">
+              {isAdmin && (
+                <AccordionSection label="Source" count={draft.source.length}>
+                  <div className="acc-opts">
+                    {sourceOpts.map(o => (
+                      <label key={o} className={`fp-check${draft.source.includes(o) ? " on" : ""}`}
+                        onClick={() => setDraft(d => ({ ...d, source: d.source.includes(o) ? d.source.filter(x => x !== o) : [...d.source, o] }))}>
+                        <span className="fp-box">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
+                        </span>
+                        {o}
+                      </label>
+                    ))}
+                  </div>
+                </AccordionSection>
+              )}
+              <AccordionSection label="Match Score" count={draft.score !== "any" ? 1 : 0}>
+                <div className="acc-opts acc-pills">
+                  {scoreOpts.map(([v, l]) => (
+                    <label key={v} className={`fp-radio${draft.score === v ? " on" : ""}`} onClick={() => setDraft(d => ({ ...d, score: v }))}>
+                      <span className="fp-dot" />{l}
+                    </label>
+                  ))}
+                </div>
+              </AccordionSection>
+            </div>
+            <div className="fp-toggles">
+              <div className="fp-toggle-row">
+                <div>
+                  <div className="fp-toggle-name">Visa filter</div>
+                  <div className="fp-toggle-desc">Only show roles that sponsor visas</div>
+                </div>
+                <button className={`toggle${visaFilter ? " on" : ""}`} onClick={() => setVisaFilter(!visaFilter)}>
+                  <span className="toggle-knob" />
+                </button>
+              </div>
+              <div className="fp-toggle-row">
+                <div>
+                  <div className="fp-toggle-name">Experience filter</div>
+                  <div className="fp-toggle-desc">Hide overqualified roles (Principal, Director, VP+)</div>
+                </div>
+                <button className={`toggle${expFilter ? " on" : ""}`} onClick={() => setExpFilter(!expFilter)}>
+                  <span className="toggle-knob" />
+                </button>
+              </div>
+            </div>
+            <div className="fp-foot">
+              <span className="fp-summary"><b>{draftCount}</b> filter{draftCount === 1 ? "" : "s"} selected</span>
+              <button className="fp-apply" onClick={apply}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5"/></svg>
+                Apply filters
+              </button>
+            </div>
+          </div>,
+          document.body
+        )}
+      </div>
+
+      <div className="fb-divider" />
+      <span className="fb-time-label">Posted</span>
+      <div className="segchips">
+        <button className={filters.time === "any" ? "on" : ""} onClick={() => set("time", "any")}>Any</button>
+        {dateDays.map(({ val, label }) => (
+          <button key={val} className={filters.time === val ? "on" : ""} onClick={() => set("time", val)}>{label}</button>
+        ))}
+      </div>
+      {/* Older dates dropdown — days 11–60 grouped by month */}
+      <div style={{ position: "relative", flexShrink: 0 }}>
+        <button
+          ref={olderBtnRef}
+          className={`filters-btn${olderByMonth.monthOrder.some(m => olderByMonth.grouped[m].some(d => d.val === filters.time)) ? " has" : ""}`}
+          style={{ fontSize: 11, padding: "0 8px", height: 28 }}
+          onClick={() => {
+            if (!olderOpen && olderBtnRef.current) {
+              const r = olderBtnRef.current.getBoundingClientRect();
+              setOlderPos({ top: r.bottom + 6, left: r.left });
+            }
+            setOlderOpen(v => !v);
+          }}
+        >
+          Older
+          <svg className="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        {olderOpen && ReactDOM.createPortal(
+          <div ref={olderPanelRef} style={{
+            position: "fixed", top: olderPos.top, left: olderPos.left, zIndex: 9000,
+            background: "var(--bg-elevated)", border: "1px solid var(--line)",
+            borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
+            minWidth: 200, maxHeight: 340, overflowY: "auto", padding: "8px 0",
+          }}>
+            {olderByMonth.monthOrder.map(month => (
+              <div key={month}>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--tx-3)", padding: "6px 12px 3px" }}>{month}</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: "2px 10px 8px" }}>
+                  {olderByMonth.grouped[month].map(({ val, label }) => (
+                    <button key={val}
+                      onClick={() => { set("time", val); setOlderOpen(false); }}
+                      style={{
+                        fontSize: 11, padding: "3px 8px", borderRadius: 6, cursor: "pointer",
+                        border: "1px solid var(--line)", background: filters.time === val ? "var(--grad-soft)" : "var(--bg-surface)",
+                        color: filters.time === val ? "var(--tx)" : "var(--tx-2)",
+                        boxShadow: filters.time === val ? "inset 0 0 0 1px rgba(124,58,237,.4)" : "none",
+                      }}
+                    >{label}</button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>,
+          document.body
+        )}
+      </div>
+      {/* ℹ tooltip for retention notice */}
+      <div style={{ display: "flex", alignItems: "center", marginLeft: 10, paddingLeft: 10, borderLeft: "1px solid var(--line)", flexShrink: 0 }}>
+        <span
+          ref={infoIconRef}
+          style={{ flexShrink: 0, marginLeft: 2, cursor: "pointer", display: "inline-flex", alignItems: "center" }}
+          onMouseEnter={() => {
+            if (infoIconRef.current) {
+              const r = infoIconRef.current.getBoundingClientRect();
+              setInfoTipPos({ top: r.bottom + 6, right: window.innerWidth - r.right });
+            }
+            setInfoTip(true);
+          }}
+          onMouseLeave={() => setInfoTip(false)}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--tx-3)" }}>
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+          </svg>
+          {infoTip && ReactDOM.createPortal(
+            <div style={{
+              position: "fixed", top: infoTipPos.top, right: infoTipPos.right,
+              background: "var(--bg-elevated)", color: "var(--tx)", fontSize: 11.5, lineHeight: 1.5,
+              padding: "8px 12px", borderRadius: 8, whiteSpace: "nowrap",
+              border: "1px solid var(--line)", boxShadow: "0 4px 14px rgba(0,0,0,0.2)",
+              zIndex: 9999, pointerEvents: "none",
+            }}>
+              Jobs kept for <b>60 days</b>. Last 10 days shown as quick chips.<br/>
+              Use <b>Older ▾</b> to browse earlier dates grouped by month.
+            </div>,
+            document.body
+          )}
+        </span>
+      </div>
+
+    </div>
+  );
+}

@@ -1,0 +1,407 @@
+import React, { useState, useEffect } from 'react';
+import { api } from '../api';
+import { Icon as Ic } from './primitives';
+
+const I = { x: '<path d="M18 6 6 18M6 6l12 12"/>' };
+
+let externalRolesCache: string[] = [];
+let fetchingExternalRoles = false;
+
+const ALL_ROLES = [
+  // Data & Analytics
+  "Data Engineer", "Data Analyst", "Data Scientist", "Data Architect", "Database Administrator", "Analytics Engineer", "Business Intelligence Analyst", "Machine Learning Engineer", "AI Engineer", "MLOps Engineer", "Data Analytics Manager", "Big Data Engineer",
+  
+  // Software Engineering
+  "Software Engineer", "Backend Engineer", "Frontend Engineer", "Full Stack Engineer", "Web Developer", "Mobile Developer", "iOS Developer", "Android Developer", "Firmware Engineer", "Embedded Systems Engineer", "Game Developer", "QA Engineer", "Test Automation Engineer", "SDET",
+
+  // Product & Project Management
+  "Product Manager", "Project Manager", "Scrum Master", "Product Owner", "Technical Program Manager", "Program Manager", "Business Analyst", "Agile Coach", "Release Manager",
+
+  // IT, Cloud & Infrastructure
+  "DevOps Engineer", "Site Reliability Engineer", "Cloud Architect", "Security Engineer", "Network Engineer", "Systems Administrator", "IT Manager", "Help Desk Technician", "IT Support Specialist", "Information Security Analyst", "Cloud Engineer",
+
+  // Design & UX
+  "UI Designer", "UX Designer", "Product Designer", "Graphic Designer", "Web Designer", "Art Director", "Creative Director", "UX Researcher", "Interaction Designer",
+
+  // Sales & Account Management
+  "Sales Associate", "Sales Manager", "Sales Assistant", "Sales Engineer", "Sales Representative", "Sales Director", "Account Executive", "Account Manager", "Key Account Manager", "Business Development Manager", "Business Development Representative", "Sales Development Representative", "VP of Sales", "Customer Success Manager",
+
+  // Marketing
+  "Marketing Manager", "Marketing Director", "Digital Marketing Specialist", "SEO Specialist", "Content Creator", "Content Manager", "Social Media Manager", "Product Marketing Manager", "Growth Hacker", "Copywriter",
+
+  // Finance & HR
+  "Financial Analyst", "Accountant", "Finance Manager", "Human Resources Manager", "HR Generalist", "Recruiter", "Talent Acquisition Specialist", "Operations Manager"
+];
+
+// Role families the scraper targets — mirrors TITLE_FILTER in
+// backend/scrapers/fantasticjobs.py. Clicking a family selects all its roles.
+export const ROLE_GROUPS: { group: string; items: string[] }[] = [
+  // "Data Engineer" chip = wide net: any title with both data + engineer
+  // (Senior/Big/Cloud/Pipeline/Streaming Data Engineer all match), plus
+  // DE-applicable titles without the word "data" via matcher special cases.
+  { group: "Data Engineer",         items: ["Data Engineer", "ETL Developer", "Data Platform", "Data Warehouse", "Data Architect", "Database Engineer", "Database Developer", "SQL Developer", "Software Engineer (Data)", "Databricks Engineer", "Snowflake Engineer", "Spark Engineer"] },
+  // "Data Analyst" chip = wide net: any title with both data + analyst
+  { group: "Data Analyst",          items: ["Data Analyst", "Data Analytics", "Analytics Engineer", "Reporting Analyst", "Product Analyst"] },
+  { group: "Business Intelligence", items: ["Business Intelligence", "BI Developer", "BI Analyst", "BI Engineer", "Power BI", "Tableau", "Looker"] },
+  // Cloud + DevOps/SRE + Business Analyst — kept in sync with
+  // backend/scrapers/fantasticjobs.py TITLE_FILTER and telegram_bot families.
+  { group: "Cloud",                 items: ["Cloud Engineer", "Cloud Infrastructure Engineer", "Cloud Operations", "CloudOps", "Cloud Systems Engineer", "Cloud Developer", "AWS Engineer", "Azure Engineer", "GCP Engineer", "Infrastructure Engineer", "Kubernetes", "Terraform"] },
+  { group: "DevOps / SRE",          items: ["DevOps", "DevOps Engineer", "DevSecOps", "SRE", "Site Reliability", "Platform Engineer", "Release Engineer", "Build Engineer", "Production Engineer", "Reliability Engineer"] },
+  { group: "Business Analyst",      items: ["Business Analyst", "Business Systems Analyst", "Technical Business Analyst", "Systems Analyst", "IT Business Analyst", "Business Data Analyst", "Process Analyst", "Requirements Analyst", "Functional Analyst"] },
+  // Entry-level families — entry/associate/mid only,
+  // seniors cut at the scraper. Title-contains matching.
+  { group: "Security / SIEM",       items: ["Splunk Analyst", "Splunk Engineer", "SIEM Analyst", "SIEM Engineer", "SOC Analyst", "Security Analytics Analyst", "Security Analyst", "Cyber Defense Analyst", "Threat Detection Analyst", "Security Monitoring Analyst", "Detection Analyst", "Cybersecurity Analyst"] },
+  { group: "GenAI / RAG",           items: ["AI Analyst", "GenAI Analyst", "Generative AI Analyst", "AI Solutions Analyst", "AI Engineer", "RAG Engineer", "LLM Engineer", "Machine Learning Analyst", "AI Data Analyst", "Search Relevance Analyst", "Prompt Engineer"] },
+  { group: "GRC",                   items: ["GRC Analyst", "IT Risk Analyst", "IT Compliance Analyst", "Compliance Analyst", "Risk Analyst", "Information Security Analyst", "Security Compliance Analyst", "IT Auditor", "IT Audit Analyst", "Cyber Risk Analyst", "Third Party Risk Analyst", "Vendor Risk Analyst", "TPRM Analyst"] },
+  // O2Ten curated daily list — one family, dynamic sections (matched by source).
+  { group: "O2Ten Daily",           items: ["O2Ten"] },
+  { group: "IAM",                   items: ["IAM Analyst", "IAM Engineer", "Identity Analyst", "Identity Governance Analyst", "Access Management Analyst", "Identity Access Analyst", "SailPoint Developer", "SailPoint Engineer", "Okta Administrator", "Okta Engineer", "IGA Analyst"] },
+  // AI / DS Leadership —
+  // Director/Head/VP/Chief/Principal of AI/DS/ML. Matched via _isAILeadership.
+  { group: "AI / DS Leadership",    items: ["Director of AI", "Senior Director of AI", "Head of AI", "VP of AI", "Head of AI Engineering", "Director of AI Engineering", "Director of Data Science", "Head of Data Science", "VP of Data Science", "Director of Machine Learning", "Head of Machine Learning", "Head of Data Platform", "Director of Data Platform", "Director of Data Engineering", "Head of Data Engineering", "Chief AI Officer", "Chief Data Scientist", "Chief Data Officer", "Principal Data Scientist", "Principal Machine Learning Engineer"] },
+  // LinkedIn leadership MERGED into "AI / DS Leadership". The scraper
+  // still tags these source="LinkedIn"; the matcher no longer source-gates, so
+  // they flow into the family above alongside ATS leadership.
+  // Project Manager scraping disabled — uncomment here
+  // AND in backend/scrapers/fantasticjobs.py TITLE_FILTER to re-enable
+  // { group: "Project Manager",       items: ["Project Manager"] },
+  // Java scraping removed — uncomment here AND re-add
+  // _TERMS_JAVA to TITLE_FILTER_USA in fantasticjobs.py to re-enable.
+];
+
+// Hierarchical selector: group header click = select/deselect entire family.
+// singleSelect (non-admin): clicking a family replaces the entire selection
+// with that family's items — only one family active at a time. Cannot
+// deselect down to zero; pick a different family instead.
+function RoleGroupSelector({ selected, onChange, allowedGroups, readOnly = false, singleSelect = false }: { selected: string[]; onChange: (v: string[]) => void; allowedGroups?: string[]; readOnly?: boolean; singleSelect?: boolean }) {
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const toggleItem = (it: string) => {
+    if (readOnly || singleSelect) return;
+    onChange(selected.includes(it) ? selected.filter(x => x !== it) : [...selected, it]);
+  };
+  const toggleGroup = (g: { group: string; items: string[] }) => {
+    if (readOnly) return;
+    if (singleSelect) {
+      const allOn = g.items.every(i => selected.includes(i));
+      if (allOn) return; // already the sole active family — must pick a different one to switch
+      onChange([...g.items]);
+      return;
+    }
+    const allOn = g.items.every(i => selected.includes(i));
+    if (allOn) onChange(selected.filter(x => !g.items.includes(x)));
+    else onChange([...selected, ...g.items.filter(i => !selected.includes(i))]);
+  };
+  const visibleGroups = allowedGroups ? ROLE_GROUPS.filter(g => allowedGroups.includes(g.group)) : ROLE_GROUPS;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
+      {visibleGroups.map(g => {
+        const selCount = g.items.filter(i => selected.includes(i)).length;
+        const allOn = selCount === g.items.length;
+        const isOpen = open[g.group] ?? false;
+        return (
+          <div key={g.group} style={{ border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden", background: "var(--bg-elevated)" }}>
+            <div style={{ display: "flex", alignItems: "center" }}>
+              <button onClick={() => toggleGroup(g)}
+                style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: "none", border: "none", cursor: readOnly ? "default" : "pointer", textAlign: "left" }}>
+                {singleSelect ? (
+                  <span style={{ width: 16, height: 16, borderRadius: "50%", flexShrink: 0, display: "grid", placeItems: "center",
+                    border: allOn ? "5px solid var(--violet)" : "1.5px solid var(--line-hi)",
+                    background: "transparent" }} />
+                ) : (
+                  <span style={{ width: 16, height: 16, borderRadius: 4, flexShrink: 0, display: "grid", placeItems: "center",
+                    border: allOn ? "none" : "1.5px solid var(--line-hi)",
+                    background: allOn ? "var(--violet)" : selCount > 0 ? "rgba(124,58,237,0.25)" : "transparent" }}>
+                    {(allOn || selCount > 0) && (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round"><path d={allOn ? "M20 6 9 17l-5-5" : "M5 12h14"} /></svg>
+                    )}
+                  </span>
+                )}
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--tx)" }}>{g.group}</span>
+                {selCount > 0 && (
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--violet)", background: "rgba(124,58,237,0.1)", padding: "1px 7px", borderRadius: 999 }}>
+                    {selCount}/{g.items.length}
+                  </span>
+                )}
+                {readOnly && (
+                  <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--tx-3)", fontWeight: 500 }}>assigned by admin</span>
+                )}
+                {singleSelect && allOn && (
+                  <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--violet)", fontWeight: 700 }}>active</span>
+                )}
+              </button>
+              <button onClick={() => setOpen(o => ({ ...o, [g.group]: !isOpen }))}
+                style={{ background: "none", border: "none", cursor: "pointer", padding: "9px 12px", color: "var(--tx-3)", display: "flex" }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+                  style={{ transition: "transform .15s", transform: isOpen ? "rotate(0deg)" : "rotate(-90deg)" }}><path d="M6 9l6 6 6-6" /></svg>
+              </button>
+            </div>
+            {isOpen && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "2px 12px 10px 36px" }}>
+                {g.items.map(it => {
+                  const on = selected.includes(it);
+                  return (
+                    <button key={it} onClick={() => toggleItem(it)} disabled={singleSelect}
+                      style={{ fontSize: 12, fontWeight: 500, padding: "4px 11px", borderRadius: 999, cursor: (readOnly || singleSelect) ? "default" : "pointer",
+                        border: on ? "1px solid rgba(124,58,237,0.4)" : "1px dashed var(--line-hi)",
+                        background: on ? "var(--grad-soft)" : "transparent",
+                        color: on ? "var(--violet)" : "var(--tx-3)" }}>
+                      {on ? "✓ " : ""}{it}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TagInput({ tags, setTags, placeholder, suggestions, externalSuggestions = [] }: {
+  tags: string[]; setTags: (t: string[]) => void; placeholder?: string; suggestions?: string[]; externalSuggestions?: string[];
+}) {
+  const [val, setVal] = useState("");
+  const add = (t: string) => { t = t.trim(); if (t && !tags.includes(t)) setTags([...tags, t]); setVal(""); };
+  
+  const displaySuggestions = React.useMemo(() => {
+    if (!val.trim()) {
+      return [];  // grouped family selector below handles discovery
+    }
+    const lower = val.toLowerCase();
+    
+    let localMatches = (suggestions || []).filter(s => s.toLowerCase().includes(lower) && !tags.includes(s));
+    
+    // If we need more matches, search the massive external dictionary
+    if (localMatches.length < 8 && externalSuggestions.length > 0) {
+      const extMatches = externalSuggestions
+        .filter(s => s.toLowerCase().includes(lower))
+        // Convert to Title Case to look nice
+        .map(s => s.replace(/\b\w/g, c => c.toUpperCase()))
+        .filter(s => !tags.includes(s) && !localMatches.includes(s));
+        
+      localMatches = [...localMatches, ...extMatches];
+    }
+    
+    return localMatches.slice(0, 10);
+  }, [val, suggestions, tags, externalSuggestions]);
+
+  return (
+    <div style={{ width: "100%" }}>
+      <div 
+        className="taginput" 
+        onClick={e => (e.currentTarget.querySelector("input") as HTMLInputElement)?.focus()}
+        style={{ 
+          display: 'flex', flexWrap: 'wrap', gap: 8, padding: 12, 
+          background: 'var(--bg-base-2)', border: '1px solid var(--line)', 
+          borderRadius: 'var(--r-md)', minHeight: 48, cursor: 'text',
+          transition: 'border-color 0.2s, box-shadow 0.2s'
+        }}
+        onFocus={e => { e.currentTarget.style.borderColor = 'var(--violet)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(124,58,237,0.15)'; }}
+        onBlur={e => { e.currentTarget.style.borderColor = 'var(--line)'; e.currentTarget.style.boxShadow = 'none'; }}
+      >
+        {tags.map(t => (
+          <span className="tag-pill" key={t} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--grad-soft)', color: 'var(--violet)', padding: '4px 10px', borderRadius: 999, fontSize: 12.5, fontWeight: 600, border: '1px solid rgba(124,58,237,0.2)' }}>
+            {t}
+            <button onClick={() => setTags(tags.filter(x => x !== t))} style={{ background: 'none', border: 'none', color: 'inherit', opacity: 0.7, padding: 0, cursor: 'pointer', display: 'flex' }} onMouseOver={e => e.currentTarget.style.opacity = '1'} onMouseOut={e => e.currentTarget.style.opacity = '0.7'}>
+              <Ic name="x" size={12} />
+            </button>
+          </span>
+        ))}
+        <input 
+          value={val} onChange={e => setVal(e.target.value)} placeholder={tags.length ? "" : placeholder}
+          style={{ flex: 1, minWidth: 120, background: 'none', border: 'none', color: 'var(--tx)', fontSize: 13.5, outline: 'none' }}
+          onKeyDown={e => {
+            if (e.key === "Enter") { e.preventDefault(); add(val); }
+            else if (e.key === "Backspace" && !val && tags.length) setTags(tags.slice(0, -1));
+          }} 
+        />
+      </div>
+      {displaySuggestions.length > 0 && (
+        <div className="tag-suggest" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+          {displaySuggestions.map(s => (
+            <button key={s} className="tag-sg" onClick={() => add(s)} style={{ background: 'var(--bg-elevated)', border: '1px dashed var(--line)', color: 'var(--tx-3)', padding: '5px 12px', borderRadius: 999, fontSize: 12, fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s' }} onMouseOver={e => { e.currentTarget.style.color = 'var(--violet)'; e.currentTarget.style.borderColor = 'var(--violet)'; e.currentTarget.style.background = 'var(--grad-soft)'; }} onMouseOut={e => { e.currentTarget.style.color = 'var(--tx-3)'; e.currentTarget.style.borderColor = 'var(--line)'; e.currentTarget.style.background = 'var(--bg-elevated)'; }}>
+              + {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function JobPreferencesModal({
+  open,
+  onClose,
+  onToast,
+  onSaved,
+  isAdmin = false,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onToast: (msg: string, type?: "success" | "error") => void;
+  onSaved: (newSettings: any) => void;
+  isAdmin?: boolean;
+}) {
+  const [roles, setRoles] = useState<string[]>([]);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [loading, setLoading] = useState(true);
+  const [extRoles, setExtRoles] = useState<string[]>(externalRolesCache);
+  const settingsRef = React.useRef<any>(null);
+  const allowedFamiliesRef = React.useRef<string[]>([]);  // families in admin-assigned roles, fixed on load
+  const popRef = React.useRef<HTMLDivElement>(null);
+  const saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadedRef = React.useRef(false);
+
+  useEffect(() => {
+    if (open) {
+      setLoading(true);
+      loadedRef.current = false;
+      setSaveState("idle");
+      api.getSettings().then((s: any) => {
+        if (!s) return;
+        settingsRef.current = s;
+        const r = Array.isArray(s.job_roles) ? s.job_roles : JSON.parse(s.job_roles || "[]");
+        const active = Array.isArray(s.active_job_roles) ? s.active_job_roles : [];
+        // Lock non-admins to families present in their admin-granted roles (full grant, unaffected by their active pick)
+        allowedFamiliesRef.current = ROLE_GROUPS
+          .filter(g => g.items.some(i => r.includes(i)))
+          .map(g => g.group);
+        if (isAdmin) {
+          setRoles(r);
+        } else if (active.length) {
+          setRoles(active);
+        } else {
+          // No pick made yet — default to exactly ONE family, not the whole grant
+          const firstGroup = ROLE_GROUPS.find(g => g.group === allowedFamiliesRef.current[0]);
+          setRoles(firstGroup ? [...firstGroup.items] : r);
+        }
+      }).finally(() => { setLoading(false); loadedRef.current = true; });
+
+      // Fetch massive job dictionary if not cached
+      if (externalRolesCache.length === 0 && !fetchingExternalRoles) {
+        fetchingExternalRoles = true;
+        fetch("https://raw.githubusercontent.com/jneidel/job-titles/master/job-titles.json")
+          .then(res => res.json())
+          .then(data => {
+            if (data && data["job-titles"]) {
+              externalRolesCache = data["job-titles"];
+              setExtRoles(externalRolesCache);
+            }
+          })
+          .catch(err => console.error("Failed to load massive roles dict", err));
+      } else if (externalRolesCache.length > 0) {
+        setExtRoles(externalRolesCache);
+      }
+    }
+  }, [open]);
+
+  // Auto-save: debounce 600ms after any role change.
+  // Non-admins can now switch between admin-granted families (one at a time).
+  useEffect(() => {
+    if (!open || loading || !loadedRef.current) return;
+    setSaveState("saving");
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      try {
+        const s = { ...(settingsRef.current || {}) };
+        delete (s as any).job_roles;       // never re-send the admin grant from a non-admin save
+        delete (s as any).active_job_roles;
+        const patch = isAdmin ? { job_roles: roles } : { active_job_roles: roles };
+        await api.saveSettings({ ...s, ...patch } as any);
+        onSaved({ ...settingsRef.current, ...patch });
+        setSaveState("saved");
+      } catch {
+        setSaveState("idle");
+        onToast("Failed to save preferences", "error");
+      }
+    }, 600);
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roles]);
+
+  // Close on click outside the popover
+  useEffect(() => {
+    if (!open) return;
+    const fn = (e: MouseEvent) => {
+      if (popRef.current && !popRef.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div ref={popRef} style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, zIndex: 1000, background: "var(--bg-surface)", border: "1px solid var(--line)", borderRadius: 16, width: 420, boxShadow: "0 12px 30px -10px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05)", animation: "modalIn 200ms cubic-bezier(0.16, 1, 0.3, 1)", overflow: "hidden",
+        // Never grow past the viewport — header/footer stay pinned, middle scrolls
+        maxHeight: "calc(100vh - 110px)", display: "flex", flexDirection: "column" }}>
+        
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "24px 28px 20px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 44, height: 44, borderRadius: 14, background: "var(--grad-soft)", border: "1px solid rgba(124,58,237,0.2)", color: "var(--violet)", boxShadow: "0 4px 20px -4px rgba(124,58,237,0.3)" }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg>
+            </div>
+            <div>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--tx)", margin: 0, letterSpacing: "-0.02em" }}>Job Preferences</h2>
+              <p style={{ margin: "4px 0 0 0", fontSize: 13, color: "var(--tx-3)" }}>Tailor your job feed to your exact career goals.</p>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: "var(--bg-elevated)", border: "1px solid var(--line)", color: "var(--tx-2)", cursor: "pointer", display: "flex", padding: 8, borderRadius: 10, transition: "all 0.2s" }} onMouseOver={e => { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--tx)"; }} onMouseOut={e => { e.currentTarget.style.background = "var(--bg-elevated)"; e.currentTarget.style.color = "var(--tx-2)"; }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <div style={{ padding: "0 28px 28px", overflowY: "auto", flex: 1, minHeight: 0 }}>
+          {loading ? (
+            <div style={{ color: "var(--tx-3)", fontSize: 14, padding: "20px 0" }}>Loading preferences...</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <label style={{ fontSize: 13.5, fontWeight: 600, color: "var(--tx)", display: "flex", alignItems: "center", gap: 6 }}>
+                Target Roles
+                <span style={{ background: "rgba(124,58,237,0.1)", color: "var(--violet)", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{roles.length} selected</span>
+              </label>
+              {isAdmin && (
+                <TagInput
+                  tags={roles}
+                  setTags={setRoles}
+                  placeholder="Type a role and press Enter…"
+                  suggestions={ALL_ROLES}
+                  externalSuggestions={extRoles}
+                />
+              )}
+              {!isAdmin && allowedFamiliesRef.current.length === 0 && (
+                <div style={{ fontSize: 13, color: "var(--tx-3)", padding: "8px 0" }}>
+                  No roles assigned yet — contact admin for access.
+                </div>
+              )}
+              <RoleGroupSelector
+                selected={roles}
+                onChange={setRoles}
+                allowedGroups={isAdmin ? undefined : allowedFamiliesRef.current}
+                singleSelect={!isAdmin}
+              />
+              {!isAdmin && allowedFamiliesRef.current.length > 1 && (
+                <div style={{ fontSize: 12, color: "var(--tx-3)", padding: "2px 0" }}>
+                  Pick one — only one job preference can be active at a time.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "14px 28px", borderTop: "1px solid var(--line)", background: "var(--bg-base)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.02)", flexShrink: 0 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: saveState === "saved" ? "#16a34a" : "var(--tx-3)" }}>
+            {saveState === "saving" ? "Saving…" : saveState === "saved" ? "✓ Saved" : "Changes save automatically"}
+          </span>
+          <button onClick={onClose} style={{ height: 38, padding: "0 22px", borderRadius: 10, background: "var(--grad)", border: "none", color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", boxShadow: "0 4px 14px 0 rgba(124,58,237,0.39)" }}>
+            Done
+          </button>
+        </div>
+
+      </div>
+    </>
+  );
+}

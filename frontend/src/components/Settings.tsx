@@ -1,0 +1,1047 @@
+import { useState, useEffect } from "react";
+import { api } from "../api";
+import { ROLE_GROUPS } from "./JobPreferencesModal";
+
+// ── Scraping family toggles (admin): ON = scraped + visible; OFF = family cut
+// from the FantasticJobs request AND hidden in the app until re-enabled. ──────
+function ScrapeFamiliesPanel({ onToast }: { onToast: (m: string, t?: any) => void }) {
+  const [fams, setFams] = useState<Record<string, boolean> | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { api.getScrapeFamilies().then(setFams).catch(() => {}); }, []);
+  if (!fams) return null;
+
+  const toggle = async (f: string) => {
+    if (busy) return;
+    const next = { ...fams, [f]: !fams[f] };
+    setFams(next); setBusy(true);
+    try {
+      await api.setScrapeFamilies(next);
+      onToast(`${f}: scraping ${next[f] ? "ON — jobs resume next hourly scrape" : "OFF — hidden until re-enabled"}`, "success");
+    } catch (e: any) { setFams(fams); onToast(e.message, "error"); }
+    finally { setBusy(false); }
+  };
+
+  const names = Object.keys(fams).sort();
+  return (
+    <section className="form-section">
+      <div className="section-label">
+        <Ic d={'<path d="M3 12h4l3-9 4 18 3-9h4"/>'} size={16} /> Scraping Families
+        <span style={{ marginLeft: 8, fontSize: 11.5, color: "var(--tx-3)", fontWeight: 500 }}>
+          OFF = stop fetching from FantasticJobs + hide existing jobs (kept in DB)
+        </span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 8 }}>
+        {names.map(f => (
+          <button key={f} type="button" onClick={() => toggle(f)}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "9px 12px", borderRadius: 10, cursor: "pointer", fontFamily: "inherit",
+              fontSize: 13, fontWeight: 600, textAlign: "left",
+              border: fams[f] ? "1px solid rgba(124,58,237,0.4)" : "1px solid var(--line)",
+              background: fams[f] ? "rgba(124,58,237,0.08)" : "var(--bg-elevated)",
+              color: fams[f] ? "var(--violet)" : "var(--tx-3)",
+              opacity: busy ? 0.6 : 1,
+            }}>
+            <span>{f}</span>
+            <span style={{
+              fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: 999,
+              background: fams[f] ? "var(--violet)" : "var(--line)",
+              color: fams[f] ? "#fff" : "var(--tx-3)",
+            }}>{fams[f] ? "ON" : "OFF"}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ── User management (admin): approve signups + assign role families ───────────
+function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => void; onChanged: () => void }) {
+  const [open, setOpen] = useState(() => localStorage.getItem('settings_open_users') !== 'false');
+  useEffect(() => { localStorage.setItem('settings_open_users', String(open)); }, [open]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [editing, setEditing] = useState<string | null>(null);   // user id with role picker open
+  const [draftRoles, setDraftRoles] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const PER = 10;
+
+  const load = () => api.adminUsers().then(setUsers).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  const openPicker = (u: any) => { setEditing(u.id); setDraftRoles(u.job_roles || []); };
+
+  const toggleFamily = (items: string[]) => {
+    const allOn = items.every(i => draftRoles.includes(i));
+    setDraftRoles(allOn ? draftRoles.filter(r => !items.includes(r))
+                        : [...draftRoles, ...items.filter(i => !draftRoles.includes(i))]);
+  };
+
+  const confirm = async (u: any, approve: boolean) => {
+    setBusy(true);
+    try {
+      await api.adminUpdateUser(u.id, { ...(approve ? { status: "approved" } : {}), job_roles: draftRoles });
+      onToast(approve ? `${u.email} approved` : "Roles updated", "success");
+      setEditing(null); load(); onChanged();
+    } catch (e: any) { onToast(e.message, "error"); }
+    finally { setBusy(false); }
+  };
+
+  const revoke = async (u: any) => {
+    if (!window.confirm(`Revoke access for ${u.email}? They'll see a "locked" screen until re-approved.`)) return;
+    try { await api.adminUpdateUser(u.id, { status: "revoked" }); onToast("Access revoked", "success"); load(); onChanged(); }
+    catch (e: any) { onToast(e.message, "error"); }
+  };
+
+  const reapprove = async (u: any) => {
+    try { await api.adminUpdateUser(u.id, { status: "approved" }); onToast(`${u.email} re-approved`, "success"); load(); onChanged(); }
+    catch (e: any) { onToast(e.message, "error"); }
+  };
+
+  const remove = async (u: any) => {
+    if (!window.confirm(`PERMANENTLY delete ${u.email}? Their account, settings, profile and job statuses are removed. This cannot be undone.`)) return;
+    try { await api.adminDeleteUser(u.id); onToast(`${u.email} deleted`, "success"); load(); onChanged(); }
+    catch (e: any) { onToast(e.message, "error"); }
+  };
+
+  const sorted = [...users].sort((a, b) => {
+    const rank = (s: string) => s === "pending" ? 0 : s === "revoked" ? 1 : 2;
+    return rank(a.status) - rank(b.status);
+  });
+  const filtered = sorted.filter(u => (u.name + " " + u.email).toLowerCase().includes(q.toLowerCase()));
+  const pages = Math.max(1, Math.ceil(filtered.length / PER));
+  const cur = Math.min(page, pages);
+  const shown = filtered.slice((cur - 1) * PER, cur * PER);
+
+  return (
+    <section className="form-section">
+      <div className="section-label" style={{ cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
+        <Ic d={'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'} size={16} /> Users
+        <span style={{ marginLeft: 6, fontSize: 11.5, color: "var(--tx-3)", fontWeight: 600 }}>{users.length}</span>
+        {users.some(u => u.status === "pending") && (
+          <span style={{ marginLeft: 8, background: "#dc2626", color: "#fff", fontSize: 10.5, fontWeight: 700, borderRadius: 999, padding: "2px 8px" }}>
+            {users.filter(u => u.status === "pending").length} pending
+          </span>
+        )}
+        <Chevron open={open} />
+      </div>
+      {!open && null}
+      {open && <><input value={q} onChange={e => { setQ(e.target.value); setPage(1); }}
+        placeholder="Search by name or email"
+        style={{ width: "100%", height: 38, padding: "0 14px", borderRadius: 10, border: "1px solid var(--line)",
+          background: "var(--bg-elevated)", color: "var(--tx)", fontSize: 13, marginBottom: 10, outline: "none" }} />
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 440, overflowY: "auto",
+        paddingRight: 4, scrollbarWidth: "thin", scrollbarColor: "var(--line-hi) transparent" }}>
+        {shown.map(u => (
+          <div key={u.id} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "12px 14px",
+            background: u.status === "pending" ? "rgba(220,38,38,0.04)" : u.status === "revoked" ? "rgba(100,116,139,0.06)" : "var(--bg-elevated)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--tx)" }}>
+                  {u.name || u.email.split("@")[0]}
+                  {u.is_admin && <span style={{ marginLeft: 8, fontSize: 10.5, color: "var(--violet)", fontWeight: 700 }}>ADMIN</span>}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--tx-3)" }}>{u.email} · joined {(u.created_at || "").slice(0, 10) || "—"}</div>
+                {u.is_admin ? (
+                  <div style={{ fontSize: 11, color: "var(--tx-3)", marginTop: 6 }}>Sees all jobs (admin — preferences only slice the personal feed)</div>
+                ) : u.job_roles.length > 0 ? (
+                  u.status === "pending" ? (
+                    // Show family names for pending users so admin sees "Requested: Data Engineer, BI"
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6, alignItems: "center" }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: "#d97706", marginRight: 2 }}>Requested:</span>
+                      {ROLE_GROUPS
+                        .filter(g => g.items.some(i => u.job_roles.includes(i)))
+                        .map(g => (
+                          <span key={g.group} style={{ fontSize: 10.5, padding: "2px 10px", borderRadius: 999, fontWeight: 600, background: "rgba(217,119,6,0.1)", color: "#d97706" }}>
+                            {g.group}
+                          </span>
+                        ))}
+                    </div>
+                  ) : (
+                    <div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                        {u.job_roles.slice(0, 6).map((r: string) => (
+                          <span key={r} style={{ fontSize: 10.5, padding: "2px 8px", borderRadius: 999, background: "rgba(124,58,237,0.1)", color: "var(--violet)", fontWeight: 600 }}>{r}</span>
+                        ))}
+                        {u.job_roles.length > 6 && <span style={{ fontSize: 10.5, color: "var(--tx-3)" }}>+{u.job_roles.length - 6} more</span>}
+                      </div>
+                      {/* Role request from approved user */}
+                      {(u.role_request || []).length > 0 && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 10.5, fontWeight: 700, color: "#d97706" }}>Requesting:</span>
+                          {ROLE_GROUPS.filter(g => g.items.some(i => (u.role_request || []).includes(i))).map(g => (
+                            <span key={g.group} style={{ fontSize: 10.5, padding: "2px 10px", borderRadius: 999, fontWeight: 600, background: "rgba(217,119,6,0.1)", color: "#d97706" }}>{g.group}</span>
+                          ))}
+                          <button onClick={async () => { await api.adminUpdateUser(u.id, { grant_role_request: true }); onToast("Role granted", "success"); load(); }}
+                            style={{ fontSize: 10.5, fontWeight: 700, padding: "2px 10px", borderRadius: 999, border: "1px solid #16a34a", background: "rgba(22,163,74,0.1)", color: "#16a34a", cursor: "pointer" }}>
+                            Grant
+                          </button>
+                          <button onClick={async () => { await api.adminUpdateUser(u.id, { dismiss_role_request: true }); onToast("Request dismissed", "success"); load(); }}
+                            style={{ fontSize: 10.5, fontWeight: 700, padding: "2px 10px", borderRadius: 999, border: "1px solid var(--line-hi)", background: "transparent", color: "var(--tx-3)", cursor: "pointer" }}>
+                            Dismiss
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                ) : u.status === "pending" ? (
+                  <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 6 }}>No role preference stated</div>
+                ) : null}
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999,
+                background: u.status === "approved" ? "rgba(22,163,74,0.12)" : u.status === "revoked" ? "rgba(100,116,139,0.15)" : "rgba(220,38,38,0.1)",
+                color: u.status === "approved" ? "#16a34a" : u.status === "revoked" ? "#64748b" : "#dc2626" }}>
+                {u.status === "approved" ? "Approved" : u.status === "revoked" ? "Revoked" : "Pending"}
+              </span>
+              {!u.is_admin && (
+                <div style={{ display: "flex", gap: 6 }}>
+                  {u.status === "pending"
+                    ? <button className="act primary" style={{ height: 28, fontSize: 12 }} onClick={() => openPicker(u)}>Approve</button>
+                    : u.status === "revoked"
+                    ? <button className="act primary" style={{ height: 28, fontSize: 12 }} onClick={() => reapprove(u)}>Re-approve</button>
+                    : <>
+                        <button className="act" style={{ height: 28, fontSize: 12 }} onClick={() => openPicker(u)}>Edit Roles</button>
+                        <button className="act fail" style={{ height: 28, fontSize: 12, color: "var(--tx-error, #dc2626)" }} onClick={() => revoke(u)}>Revoke</button>
+                      </>}
+                  <button title="Delete permanently" onClick={() => remove(u)}
+                    style={{ height: 28, width: 30, borderRadius: 8, border: "1px solid rgba(220,38,38,0.35)", background: "rgba(220,38,38,0.06)", color: "#dc2626", cursor: "pointer", display: "grid", placeItems: "center" }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {editing === u.id && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--tx-2)", marginBottom: 8 }}>
+                  Assign role families — they will only see jobs matching these:
+                  {u.status === "pending" && u.job_roles.length > 0 && (
+                    <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 500, color: "#d97706" }}>
+                      (pre-filled from user's request)
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {ROLE_GROUPS.map(g => {
+                    const on = g.items.every(i => draftRoles.includes(i));
+                    return (
+                      <button key={g.group} onClick={() => toggleFamily(g.items)}
+                        style={{ fontSize: 12.5, fontWeight: 600, padding: "6px 14px", borderRadius: 999, cursor: "pointer",
+                          border: on ? "1px solid var(--violet)" : "1px dashed var(--line-hi)",
+                          background: on ? "rgba(124,58,237,0.12)" : "transparent",
+                          color: on ? "var(--violet)" : "var(--tx-2)" }}>
+                        {on ? "✓ " : "+ "}{g.group}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                  <button className="act primary" disabled={busy || draftRoles.length === 0}
+                    onClick={() => confirm(u, u.status === "pending")}>
+                    {u.status === "pending" ? "Approve with these roles" : "Save roles"}
+                  </button>
+                  <button className="act" onClick={() => setEditing(null)}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+        {users.length === 0 && <div style={{ fontSize: 12.5, color: "var(--tx-3)", padding: "10px 0" }}>Loading users…</div>}
+        {users.length > 0 && filtered.length === 0 && <div style={{ fontSize: 12.5, color: "var(--tx-3)", padding: "10px 0" }}>No users match "{q}"</div>}
+      </div>
+
+      {pages > 1 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 12 }}>
+          <button onClick={() => setPage(Math.max(1, cur - 1))} disabled={cur === 1}
+            style={{ background: "none", border: "none", color: cur === 1 ? "var(--tx-faint)" : "var(--tx-2)", fontSize: 12.5, fontWeight: 600, cursor: cur === 1 ? "default" : "pointer" }}>‹ Previous</button>
+          {Array.from({ length: pages }, (_, i) => i + 1)
+            .filter(p => p === 1 || p === pages || Math.abs(p - cur) <= 1)
+            .map((p, idx, arr) => (
+              <span key={p} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {idx > 0 && arr[idx - 1] !== p - 1 && <span style={{ color: "var(--tx-3)" }}>…</span>}
+                <button onClick={() => setPage(p)}
+                  style={{ minWidth: 30, height: 30, borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+                    border: cur === p ? "1px solid var(--violet)" : "1px solid var(--line)",
+                    background: cur === p ? "rgba(124,58,237,0.12)" : "transparent",
+                    color: cur === p ? "var(--violet)" : "var(--tx-2)" }}>{p}</button>
+              </span>
+            ))}
+          <button onClick={() => setPage(Math.min(pages, cur + 1))} disabled={cur === pages}
+            style={{ background: "none", border: "none", color: cur === pages ? "var(--tx-faint)" : "var(--tx-2)", fontSize: 12.5, fontWeight: 600, cursor: cur === pages ? "default" : "pointer" }}>Next ›</button>
+        </div>
+      )}
+      </>}
+    </section>
+  );
+}
+
+// ── Chevron for collapsible sections ─────────────────────────────────────────
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+      style={{ marginLeft: "auto", flexShrink: 0, transition: "transform .2s", transform: open ? "rotate(0deg)" : "rotate(-90deg)" }}>
+      <path d="M6 9l6 6 6-6"/>
+    </svg>
+  );
+}
+
+// ── SVG icon helper ───────────────────────────────────────────────────────────
+function Ic({ d, size = 16, color }: { d: string; size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke={color || "currentColor"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+      style={{ flexShrink: 0 }} dangerouslySetInnerHTML={{ __html: d }} />
+  );
+}
+const I = {
+  target:   '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+  sparkles: '<path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/>',
+  bell:     '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+  clock:    '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  check:    '<path d="M20 6 9 17l-5-5"/>',
+  x:        '<path d="M18 6 6 18M6 6l12 12"/>',
+  enter:    '<path d="M9 10l-5 5 5 5"/><path d="M4 15h12a4 4 0 0 0 4-4V4"/>',
+  skip:     '<path d="M5 4l10 8-10 8z"/><path d="M19 5v14"/>',
+  eye:      '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff:   '<path d="M17.9 17.9A10 10 0 0 1 2 12 10 10 0 0 1 12 2"/><path d="M3 3l18 18"/><path d="M9.9 4.2A10 10 0 0 1 22 12a10 10 0 0 1-1.2 4.8"/>',
+  zap:      '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+};
+
+// ── Toggle ────────────────────────────────────────────────────────────────────
+function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+  return (
+    <button className={`toggle${on ? " on" : ""}`} onClick={onClick}>
+      <span className="toggle-knob" />
+    </button>
+  );
+}
+
+
+
+const AI_PROVIDERS: Record<string, { models: {id: string, name: string}[]; keyUrl: string }> = {
+  "OpenRouter":  { 
+    models: [
+      { id: "anthropic/claude-sonnet-4.6", name: "Claude 4.6 Sonnet (Best + Recommended)" },
+      { id: "anthropic/claude-opus-4-8", name: "Claude 4.8 Opus (Balanced)" },
+      { id: "anthropic/claude-haiku-4.5", name: "Claude 4.5 Haiku" },
+      { id: "openai/gpt-5", name: "GPT-5" },
+      { id: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+      { id: "google/gemini-2.5-flash-lite", name: "Gemini 2.5 Lite" }
+    ], 
+    keyUrl: "openrouter.ai/keys" 
+  },
+  "Nvidia NIM":  { models: [{id: "nvidia/llama-3.1-nemotron-70b", name: "Llama 3.1 Nemotron 70B"}], keyUrl: "build.nvidia.com" },
+  "Anthropic":   { models: [{id: "claude-3-5-sonnet-latest", name: "Claude 3.5 Sonnet"}], keyUrl: "console.anthropic.com/settings/keys" },
+};
+
+const CRON_PRESETS: Record<string, string> = {
+  "0 * * * *":   "Every 1 hour",
+  "0 */6 * * *": "Every 6 hours",
+  "0 9 * * *":   "Every day at 9:00 AM",
+  "0 9 * * 1":   "Every Monday at 9:00 AM",
+};
+
+// ── Job Stats panel (admin-only) ─────────────────────────────────────────────
+function JobStatsPanel() {
+  const [open, setOpen] = useState(() => localStorage.getItem('settings_open_stats') !== 'false');
+  useEffect(() => { localStorage.setItem('settings_open_stats', String(open)); }, [open]);
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string>("");
+
+  const load = async () => {
+    setLoading(true);
+    setErr("");
+    try {
+      setStats(await api.adminJobStats());
+    } catch (e: any) {
+      setErr(e?.message || "fetch failed");
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 15000);
+    return () => clearInterval(t);
+  }, []);
+
+  const fmtTime = (iso: string) => {
+    if (!iso) return "—";
+    try { return new Date(iso).toLocaleString(); } catch { return iso; }
+  };
+
+  const exp = stats?.experience || {};
+  const expTotal = (exp.confirmed || 0) + (exp.inferred || 0) + (exp.missing || 0);
+  const coveragePct = expTotal > 0 ? Math.round(((exp.confirmed || 0) + (exp.inferred || 0)) / expTotal * 100) : 0;
+
+  const tile = (label: string, value: any, color?: string, sub?: string) => (
+    <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--line)", borderRadius: 10, padding: "12px 16px", minWidth: 110 }}>
+      <div style={{ fontSize: 22, fontWeight: 700, color: color || "var(--tx)", lineHeight: 1 }}>{value ?? "—"}</div>
+      <div style={{ fontSize: 11, color: "var(--tx-3)", marginTop: 4, fontWeight: 600 }}>{label}</div>
+      {sub && <div style={{ fontSize: 10, color: "var(--tx-faint)", marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+
+  return (
+    <section className="form-section">
+      <div className="section-label" style={{ cursor: "pointer" }} onClick={() => setOpen(o => !o)}>
+        <Ic d={'<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>'} size={16} /> Job Stats
+        {loading && <span style={{ marginLeft: 6, fontSize: 11, color: "var(--tx-3)", fontWeight: 500 }}>refreshing…</span>}
+        <span style={{ marginLeft: 4, fontSize: 11, color: "var(--tx-faint)", fontWeight: 500 }}>auto-refresh 15s</span>
+        <Chevron open={open} />
+      </div>
+
+      {open && <>{/* Row 1: job status */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+        {tile("Total Jobs", stats?.total)}
+        {tile("New", stats?.status?.new, "var(--st-new)")}
+        {tile("Applied", stats?.status?.applied, "var(--st-applied)")}
+        {tile("Interview", stats?.status?.interview, "var(--st-interview)")}
+        {tile("Skipped", stats?.status?.skipped, "var(--tx-3)")}
+      </div>
+
+      {/* Row 2: experience tray coverage */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+        {tile("Confirmed Tray", exp.confirmed, "#16a34a", "from FJ API")}
+        {tile("AI-Inferred Tray", exp.inferred, "var(--violet)", "DeepSeek R1")}
+        {tile("No Tray Yet", exp.missing, exp.missing > 0 ? "#d97706" : "#16a34a", "pending backfill")}
+        {tile("Tray Coverage", `${coveragePct}%`, coveragePct === 100 ? "#16a34a" : coveragePct > 50 ? "var(--violet)" : "#d97706")}
+      </div>
+
+      {err && (
+        <div style={{ fontSize: 11, color: "#dc2626", marginTop: 6, fontFamily: "monospace", wordBreak: "break-all" }}>
+          Error: {err}
+        </div>
+      )}
+
+      <div style={{ fontSize: 11, color: "var(--tx-3)", marginTop: 4 }}>
+        Last scraped: <span style={{ color: "var(--tx-2)" }}>{fmtTime(stats?.last_scraped_at)}</span>
+      </div>
+      </>}
+    </section>
+  );
+}
+
+
+// ── System Logs panel (admin-only) ────────────────────────────────────────────
+const LEVEL_COLOR: Record<string, string> = {
+  ERROR:   "#dc2626",
+  WARNING: "#d97706",
+  INFO:    "#16a34a",
+};
+
+function SystemLogsPanel({ onSeen }: { onSeen?: () => void }) {
+  const [open, setOpen] = useState(() => localStorage.getItem('settings_open_logs') !== 'false');
+  useEffect(() => { localStorage.setItem('settings_open_logs', String(open)); }, [open]);
+  const [logs, setLogs] = useState<any[]>([]);
+  const [filter, setFilter] = useState<"ALL"|"ERROR"|"WARNING"|"INFO">("ALL");
+  const [loading, setLoading] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
+
+  const load = async (lv = filter) => {
+    setLoading(true);
+    try {
+      setLogs(await api.adminLogs(lv));
+      await api.adminLogsMarkSeen();
+      onSeen?.();
+    } catch { /* ignore — empty state on error */ }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const startBackfill = async () => {
+    setBackfilling(true);
+    try {
+      await api.adminBackfillTrays();
+    } finally {
+      setTimeout(() => setBackfilling(false), 3000);
+      setTimeout(() => load(), 5000);
+    }
+  };
+
+  const [qualUsers, setQualUsers] = useState(false);
+  const startQualifyUsers = async () => {
+    setQualUsers(true);
+    try {
+      await api.adminQualifyUsersBackfill();
+    } finally {
+      setTimeout(() => setQualUsers(false), 3000);
+    }
+  };
+
+  const fmtTs = (ts: string) => {
+    try { return new Date(ts).toLocaleString(); } catch { return ts; }
+  };
+
+  return (
+    <section className="form-section">
+      <div className="section-label" style={{ cursor: "pointer", flexWrap: "wrap" }} onClick={() => setOpen(o => !o)}>
+        <Ic d={'<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>'} size={16} /> System Logs
+        <div style={{ display: "flex", gap: 6 }} onClick={e => e.stopPropagation()}>
+          {(["ALL","ERROR","WARNING","INFO"] as const).map(lv => (
+            <button key={lv} onClick={() => { setFilter(lv); load(lv); }}
+              style={{ fontSize: 11, padding: "2px 10px", borderRadius: 6, fontWeight: 600, cursor: "pointer",
+                background: filter === lv ? (lv === "ALL" ? "var(--violet)" : LEVEL_COLOR[lv]) : "var(--bg-2)",
+                color: filter === lv ? "#fff" : "var(--tx-3)", border: "none" }}>
+              {lv}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 8 }} onClick={e => e.stopPropagation()}>
+          <button onClick={() => load()} disabled={loading}
+            style={{ fontSize: 11.5, padding: "4px 12px", borderRadius: 6, cursor: "pointer", background: "var(--bg-2)", color: "var(--tx-2)", border: "1px solid var(--line)", fontWeight: 600 }}>
+            {loading ? "Loading…" : "Refresh"}
+          </button>
+          <button onClick={startBackfill} disabled={backfilling}
+            title="Run AI experience tray sweep on all unlabeled jobs"
+            style={{ fontSize: 11.5, padding: "4px 12px", borderRadius: 6, cursor: "pointer", background: "rgba(124,58,237,0.1)", color: "var(--violet)", border: "1px solid rgba(124,58,237,0.2)", fontWeight: 600 }}>
+            {backfilling ? "Starting…" : "Backfill Trays"}
+          </button>
+          <button onClick={startQualifyUsers} disabled={qualUsers}
+            title="Score existing jobs against each active user's own profile (per-user AI Match backfill)"
+            style={{ fontSize: 11.5, padding: "4px 12px", borderRadius: 6, cursor: "pointer", background: "rgba(34,197,94,0.1)", color: "#16a34a", border: "1px solid rgba(34,197,94,0.2)", fontWeight: 600 }}>
+            {qualUsers ? "Starting…" : "Qualify (users)"}
+          </button>
+        </div>
+        <Chevron open={open} />
+      </div>
+
+      {open && <div style={{ maxHeight: 380, overflowY: "auto", borderRadius: 10, border: "1px solid var(--line)", background: "var(--bg-elevated)", fontFamily: "monospace" }}>
+        {logs.length === 0 ? (
+          <div style={{ padding: 24, textAlign: "center", color: "var(--tx-3)", fontSize: 13 }}>
+            {loading ? "Loading…" : "No logs found"}
+          </div>
+        ) : logs.map((l: any) => (
+          <div key={l.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "7px 12px", borderBottom: "1px solid var(--line)", fontSize: 11.5 }}>
+            <span style={{ color: "var(--tx-3)", flexShrink: 0, minWidth: 130 }}>{fmtTs(l.timestamp)}</span>
+            <span style={{ flexShrink: 0, minWidth: 52, fontWeight: 700, color: LEVEL_COLOR[l.level] || "var(--tx-2)" }}>{l.level}</span>
+            <span style={{ flexShrink: 0, minWidth: 80, color: "var(--violet)", fontWeight: 600 }}>[{l.process}]</span>
+            <span style={{ color: "var(--tx-2)", wordBreak: "break-word" }}>{l.message}</span>
+          </div>
+        ))}
+      </div>}
+    </section>
+  );
+}
+
+
+// ── Live Billing Panel ────────────────────────────────────────────────────────
+function BillingPanel() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+
+  const load = async () => {
+    try {
+      setData(await api.adminBilling());
+    } catch (e: any) {
+      setErr(e?.message || "fetch failed");
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 60000);
+    return () => clearInterval(t);
+  }, []);
+
+  const orCredits = data?.or_credits;
+
+  const bar = (used: number, limit: number, color: string) => {
+    const pct = limit > 0 ? Math.min(100, Math.round(used / limit * 100)) : 0;
+    return (
+      <div style={{ height: 5, borderRadius: 3, background: "var(--bg-active)", marginTop: 6, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${pct}%`, borderRadius: 3, background: color, transition: "width .6s" }} />
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ position: "sticky", top: 28, display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+        <h2 style={{ fontFamily: "var(--f-display)", fontSize: 18, fontWeight: 700, letterSpacing: "-.01em" }}>Live Billing</h2>
+        <button onClick={load} style={{ fontSize: 11, color: "var(--tx-3)", background: "none", border: "none", cursor: "pointer", padding: "3px 7px", borderRadius: 5 }}>
+          {loading ? "..." : "↻ Refresh"}
+        </button>
+      </div>
+
+      {err && <div style={{ fontSize: 11, color: "#dc2626" }}>{err}</div>}
+
+      {/* ── OpenRouter ── */}
+      <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--line)", borderRadius: 12, padding: "20px 20px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg,#7c3aed,#06b6d4)", display: "grid", placeItems: "center" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          </div>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--tx)" }}>OpenRouter</span>
+        </div>
+
+        {loading && !orCredits && <div style={{ fontSize: 12, color: "var(--tx-3)" }}>Loading…</div>}
+        {!loading && !orCredits && <div style={{ fontSize: 12, color: "var(--tx-3)" }}>Set OpenRouter API key in AI Configuration</div>}
+
+        {orCredits != null && (() => {
+          const balance = (orCredits.total_credits ?? 0) - (orCredits.total_usage ?? 0);
+          return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span style={{ fontSize: 11, color: "var(--tx-3)", textTransform: "uppercase", letterSpacing: ".06em" }}>Balance</span>
+              <span style={{ fontFamily: "var(--f-mono)", fontSize: 28, fontWeight: 800, color: "#16a34a", lineHeight: 1 }}>
+                ${balance.toFixed(2)}
+              </span>
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* ── FantasticJobs ── */}
+      <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--line)", borderRadius: 12, padding: "20px 20px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg,#ec4899,#8b5cf6)", display: "grid", placeItems: "center" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          </div>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--tx)" }}>FantasticJobs</span>
+        </div>
+        <div style={{ fontSize: 12, color: "var(--tx-3)", marginBottom: 10, lineHeight: 1.5 }}>
+          FJ doesn't expose usage data via API — check your dashboard directly.
+        </div>
+        <a href="https://developer.fantastic.jobs/subscriptions#manage" target="_blank" rel="noreferrer"
+          style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "var(--violet)", textDecoration: "none" }}>
+          Open FJ Dashboard →
+        </a>
+      </div>
+
+      <div style={{ fontSize: 10.5, color: "var(--tx-faint)", textAlign: "center" }}>Auto-refreshes every 60s</div>
+    </div>
+  );
+}
+
+
+export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: any) => void; onErrorsSeen?: () => void }) {
+  const toast = onToast || ((m: string) => console.log(m));
+
+
+  const [visaFilter, setVisaFilter] = useState(false);
+  const [applyDryRun, setApplyDryRun] = useState(true);
+  const [expFilter, setExpFilter]   = useState(false);
+  const [openAI, setOpenAI]           = useState(() => localStorage.getItem('settings_open_ai') !== 'false');
+  const [openTelegram, setOpenTelegram] = useState(() => localStorage.getItem('settings_open_telegram') !== 'false');
+  const [openScheduler, setOpenScheduler] = useState(() => localStorage.getItem('settings_open_scheduler') !== 'false');
+  useEffect(() => { localStorage.setItem('settings_open_ai', String(openAI)); }, [openAI]);
+  useEffect(() => { localStorage.setItem('settings_open_telegram', String(openTelegram)); }, [openTelegram]);
+  useEffect(() => { localStorage.setItem('settings_open_scheduler', String(openScheduler)); }, [openScheduler]);
+
+  const [provider, setProvider] = useState("OpenRouter");
+  const [modelParse, setModelParse] = useState("google/gemini-2.5-flash-lite");
+  const [modelTailor, setModelTailor] = useState("anthropic/claude-sonnet-4.6");
+  const [modelSecondary, setModelSecondary] = useState("google/gemini-2.5-flash");
+  const [modelQualify, setModelQualify] = useState("anthropic/claude-sonnet-4.6");
+  const [modelCoverLetter, setModelCoverLetter] = useState("anthropic/claude-sonnet-4.6");
+  const [apiKey, setApiKey]         = useState("");
+  const [anthropicKey, setAnthropicKey] = useState("");
+  const [googleKey, setGoogleKey]   = useState("");
+  const [openaiKey, setOpenaiKey]   = useState("");
+  const [joboApiKey, setJoboApiKey] = useState("");
+  const [showKey, setShowKey]       = useState(false);
+  const [showAnthropicKey, setShowAnthropicKey] = useState(false);
+  const [showGoogleKey, setShowGoogleKey]       = useState(false);
+  const [showOpenaiKey, setShowOpenaiKey]       = useState(false);
+
+  const [botToken, setBotToken]   = useState("");
+  const [chatId, setChatId]       = useState("");
+  const [showToken, setShowToken] = useState(false);
+  const [testState, setTestState] = useState<null | "loading" | "ok" | "fail">(null);
+
+  const [cron, setCron]       = useState("0 * * * *");
+  const [scraping, setScraping] = useState(false);
+  const [jdFix, setJdFix] = useState<{ running: boolean; total: number; done: number; fixed: number; failed: number } | null>(null);
+  const [qualHealth, setQualHealth] = useState<{ admin_settings_found: boolean; api_key_set: boolean; profile_set: boolean; qualify_model: string | null; scored_jobs: number; pending_jobs: number; running: boolean } | null>(null);
+  const [aiStatus, setAiStatus] = useState<any>(null);
+
+  useEffect(() => {
+    api.getSettings().then((s: any) => {
+      if (!s) return;
+      setVisaFilter(!!s.visa_filter);
+      setExpFilter(!!s.level_filter);
+      setApplyDryRun(s.apply_dry_run !== false);
+      setProvider(s.ai_provider || "OpenRouter");
+      setModelParse(s.ai_model_parse || "google/gemini-2.5-flash-lite");
+      setModelTailor(s.ai_model_tailor || "anthropic/claude-sonnet-4.6");
+      setModelSecondary(s.ai_model_secondary || "anthropic/claude-haiku-4-5");
+      setModelQualify(s.ai_model_qualify || "anthropic/claude-sonnet-4.6");
+      setModelCoverLetter(s.ai_model_cover_letter || "anthropic/claude-sonnet-4.6");
+      setApiKey(s.ai_api_key || "");
+      setAnthropicKey(s.anthropic_api_key || "");
+      setGoogleKey(s.google_api_key || "");
+      setOpenaiKey(s.openai_api_key || "");
+      setJoboApiKey(s.jobo_api_key || "");
+      setBotToken(s.telegram_bot_token || "");
+      setChatId(s.telegram_chat_id || "");
+      setCron(s.auto_scrape_cron || "0 * * * *");
+    }).catch(() => {});
+    api.qualifyHealth().then(setQualHealth).catch(() => {});
+    api.getAiStatus().then(setAiStatus).catch(() => {});
+  }, []);
+
+  const saveSettings = async () => {
+    try {
+      await api.saveSettings({
+        visa_filter: visaFilter, level_filter: expFilter,
+        apply_dry_run: applyDryRun,
+        ai_provider: provider, ai_api_key: apiKey,
+        anthropic_api_key: anthropicKey,
+        google_api_key: googleKey,
+        openai_api_key: openaiKey,
+        jobo_api_key: joboApiKey,
+        ai_model_parse: modelParse, ai_model_tailor: modelTailor,
+        ai_model_secondary: modelSecondary,
+        ai_model_qualify: modelQualify, ai_model_cover_letter: modelCoverLetter,
+        telegram_bot_token: botToken, telegram_chat_id: chatId,
+        auto_scrape_cron: cron,
+      } as any);
+      toast("Settings saved", "success");
+    } catch { toast("Save failed", "error"); }
+  };
+
+  const testTelegram = async () => {
+    setTestState("loading");
+    try {
+      await (api as any).testTelegram(botToken, chatId);
+      setTestState("ok");
+      toast("Test message sent to Telegram", "success");
+    } catch {
+      setTestState("fail");
+      toast("Telegram test failed — check token & chat ID", "error");
+    }
+  };
+
+  const runNow = async () => {
+    if (scraping) return;
+    setScraping(true);
+    toast("Manual scrape started", "info" as any);
+    try { await (api as any).runScraperNow(); toast("+jobs found", "success"); }
+    catch { toast("Scrape failed", "error"); }
+    finally { setScraping(false); }
+  };
+
+  const runJdFix = async () => {
+    if (jdFix?.running) return;
+    try {
+      await api.fixDescriptions();
+      toast("JD cleanup started", "info" as any);
+      setJdFix({ running: true, total: 0, done: 0, fixed: 0, failed: 0 });
+      const poll = setInterval(async () => {
+        try {
+          const s = await api.fixDescriptionsStatus();
+          setJdFix(s);
+          if (!s.running) {
+            clearInterval(poll);
+            toast(`JD cleanup done — ${s.fixed} fixed, ${s.failed} failed of ${s.total}`, "success");
+          }
+        } catch { clearInterval(poll); }
+      }, 3000);
+    } catch (e: any) { toast(e.message, "error"); }
+  };
+
+  const cronDesc = CRON_PRESETS[cron] || "Custom schedule";
+
+  return (
+    <div className="form-scroll">
+      <div className="settings-layout">
+      <div className="form-inner settings-left">
+        <div className="form-head">
+          <div>
+            <h1 className="dash-title">Settings</h1>
+            <p className="dash-sub">Targeting, AI, notifications and scheduling</p>
+          </div>
+          <button className="save-btn" onClick={saveSettings}>
+            <Ic d={I.check} size={15} /> Save Settings
+          </button>
+        </div>
+
+        {/* User approval & role assignment (admin page) */}
+        <UsersPanel onToast={toast} onChanged={() => {}} />
+
+        {/* Scraping family toggles (admin) */}
+        <ScrapeFamiliesPanel onToast={toast} />
+
+        {/* AI Configuration */}
+        <section className="form-section">
+          <div className="section-label" style={{ cursor: "pointer" }} onClick={() => setOpenAI(o => !o)}>
+            <Ic d={I.sparkles} size={16} /> AI Configuration<Chevron open={openAI} />
+          </div>
+          {openAI && <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+            <label className="field">
+              <span className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                OpenRouter Key
+              </span>
+              <div className="input-reveal">
+                <input type={showKey ? "text" : "password"} value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-or-…" />
+                <button onClick={() => setShowKey(s => !s)}>{showKey ? "Hide" : "Show"}</button>
+              </div>
+            </label>
+
+            <label className="field">
+              <span className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                Anthropic Key
+                {anthropicKey && <span style={{ fontSize: 10, background: '#10b981', color: '#fff', borderRadius: 4, padding: '1px 6px' }}>ACTIVE</span>}
+              </span>
+              <div className="input-reveal">
+                <input type={showAnthropicKey ? "text" : "password"} value={anthropicKey} onChange={e => setAnthropicKey(e.target.value)} placeholder="sk-ant-…" />
+                <button onClick={() => setShowAnthropicKey(s => !s)}>{showAnthropicKey ? "Hide" : "Show"}</button>
+              </div>
+            </label>
+
+            <label className="field">
+              <span className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                Google AI Key
+                {googleKey && <span style={{ fontSize: 10, background: '#10b981', color: '#fff', borderRadius: 4, padding: '1px 6px' }}>ACTIVE</span>}
+              </span>
+              <div className="input-reveal">
+                <input type={showGoogleKey ? "text" : "password"} value={googleKey} onChange={e => setGoogleKey(e.target.value)} placeholder="AIza…" />
+                <button onClick={() => setShowGoogleKey(s => !s)}>{showGoogleKey ? "Hide" : "Show"}</button>
+              </div>
+            </label>
+
+            <label className="field">
+              <span className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                OpenAI Key
+                {openaiKey && <span style={{ fontSize: 10, background: '#10b981', color: '#fff', borderRadius: 4, padding: '1px 6px' }}>ACTIVE</span>}
+              </span>
+              <div className="input-reveal">
+                <input type={showOpenaiKey ? "text" : "password"} value={openaiKey} onChange={e => setOpenaiKey(e.target.value)} placeholder="sk-…" />
+                <button onClick={() => setShowOpenaiKey(s => !s)}>{showOpenaiKey ? "Hide" : "Show"}</button>
+              </div>
+            </label>
+
+          </div>
+
+          {/* ── Live Routing Status ── */}
+          {aiStatus && (
+            <div style={{ marginTop: 14, border: '1px solid var(--border, #e2e8f0)', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ background: 'var(--surface-2, #f8fafc)', padding: '8px 14px', fontSize: 11, fontWeight: 700, color: 'var(--tx-2)', letterSpacing: '0.06em', textTransform: 'uppercase', borderBottom: '1px solid var(--border, #e2e8f0)' }}>
+                Live Routing — what gets called when you run AI
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: 'var(--surface-2, #f8fafc)' }}>
+                    <th style={{ padding: '6px 14px', textAlign: 'left', fontWeight: 600, color: 'var(--tx-2)', borderBottom: '1px solid var(--border, #e2e8f0)' }}>Feature</th>
+                    <th style={{ padding: '6px 14px', textAlign: 'left', fontWeight: 600, color: 'var(--tx-2)', borderBottom: '1px solid var(--border, #e2e8f0)' }}>Model</th>
+                    <th style={{ padding: '6px 14px', textAlign: 'left', fontWeight: 600, color: 'var(--tx-2)', borderBottom: '1px solid var(--border, #e2e8f0)' }}>Routes via</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(aiStatus.routing || {}).map(([key, val]: [string, any], i) => (
+                    <tr key={key} style={{ borderBottom: '1px solid var(--border, #e2e8f0)', background: i % 2 ? 'var(--surface-2, #f8fafc)' : 'transparent' }}>
+                      <td style={{ padding: '7px 14px', color: 'var(--tx-1)', fontWeight: 500, textTransform: 'capitalize' }}>{key.replace('_', ' ')}</td>
+                      <td style={{ padding: '7px 14px', color: 'var(--tx-3)', fontFamily: 'monospace', fontSize: 11 }}>{val.model}</td>
+                      <td style={{ padding: '7px 14px' }}>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, borderRadius: 5, padding: '2px 8px',
+                          background: val.direct ? '#dcfce7' : '#fef3c7',
+                          color:      val.direct ? '#166534' : '#92400e',
+                        }}>
+                          {val.label}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+
+          <div className="field-grid" style={{ marginTop: 12 }}>
+            <label className="field">
+              <span className="field-label">Resume Parsing Model</span>
+              <select value={modelParse} onChange={e => setModelParse(e.target.value)}>
+                {provider === "OpenRouter" ? (
+                  <>
+                    <option value="google/gemini-2.5-flash-lite">Gemini 2.5 Lite (Best + Recommended)</option>
+                  </>
+                ) : (
+                  AI_PROVIDERS[provider]?.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
+                )}
+              </select>
+            </label>
+            <label className="field">
+              <span className="field-label">Tailoring Model</span>
+              <select value={modelTailor} onChange={e => setModelTailor(e.target.value)}>
+                {AI_PROVIDERS[provider]?.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </label>
+            <label className="field">
+              <span className="field-label">Utility Model <span style={{fontSize:10,color:"#94a3b8",fontWeight:400}}>(Review · Audit · Correction · Retries)</span></span>
+              <select value={modelSecondary} onChange={e => setModelSecondary(e.target.value)}>
+                {provider === "OpenRouter" ? (
+                  <>
+                    <option value="anthropic/claude-haiku-4-5">Claude Haiku 4.5 (Recommended — reliable)</option>
+                    <option value="google/gemini-2.5-flash">Gemini 2.5 Flash (cheaper, occasional 503s)</option>
+                    <option value="google/gemini-2.5-flash-lite">Gemini 2.5 Lite (Cheapest)</option>
+                    <option value="anthropic/claude-sonnet-4.6">Claude Sonnet 4.6</option>
+                  </>
+                ) : (
+                  AI_PROVIDERS[provider]?.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
+                )}
+              </select>
+            </label>
+            <label className="field">
+              <span className="field-label">Job Qualification Model</span>
+              <select value={modelQualify} onChange={e => setModelQualify(e.target.value)}>
+                {AI_PROVIDERS[provider]?.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </label>
+            <label className="field">
+              <span className="field-label">Cover Letter Model</span>
+              <select value={modelCoverLetter} onChange={e => setModelCoverLetter(e.target.value)}>
+                {AI_PROVIDERS[provider]?.models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </label>
+          </div>
+          </>}
+        </section>
+
+        {/* Telegram */}
+        <section className="form-section">
+          <div className="section-label" style={{ cursor: "pointer" }} onClick={() => setOpenTelegram(o => !o)}>
+            <Ic d={I.bell} size={16} /> Telegram Notifications<Chevron open={openTelegram} />
+          </div>
+          {openTelegram && <><div className="field-grid">
+            <label className="field">
+              <span className="field-label">Bot Token</span>
+              <div className="input-reveal">
+                <input type={showToken ? "text" : "password"} value={botToken} onChange={e => setBotToken(e.target.value)} placeholder="123456:ABC-DEF…" />
+                <button onClick={async () => {
+                  // Field holds the mask — fetch the real token (admin-only) on reveal
+                  if (!showToken && botToken.includes("•")) {
+                    try { const r = await api.revealTelegramToken(); if (r.token) setBotToken(r.token); } catch {}
+                  }
+                  setShowToken(s => !s);
+                }}>{showToken ? "Hide" : "Show"}</button>
+              </div>
+            </label>
+            <label className="field">
+              <span className="field-label">Chat ID</span>
+              <input type="text" value={chatId} onChange={e => setChatId(e.target.value)} placeholder="-1001234567890" />
+            </label>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
+            <button className="act ai" onClick={testTelegram} disabled={testState === "loading"}>
+              {testState === "loading" ? <span className="mini-spin" /> : <Ic d={I.enter} size={14} />}
+              Send
+            </button>
+            {testState === "ok"   && <span className="test-res ok"><Ic d={I.check} size={13} /> Delivered</span>}
+            {testState === "fail" && <span className="test-res fail"><Ic d={I.x} size={13} /> Failed</span>}
+          </div>
+          </>}
+        </section>
+
+        {/* Auto-Apply */}
+        <section className="form-section">
+          <div className="section-label">
+            <Ic d={I.zap} size={16} /> Auto-Apply
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <Toggle on={applyDryRun} onClick={() => setApplyDryRun(v => !v)} />
+            <div style={{ fontSize: 13, color: "var(--tx-2)", lineHeight: 1.5 }}>
+              <b style={{ color: "var(--tx-1)" }}>Dry-run mode {applyDryRun ? "ON" : "OFF"}</b><br />
+              {applyDryRun
+                ? "Submitting from the Auto-Apply panel validates the payload but sends nothing to the employer."
+                : "⚠ Live mode — confirming in the Auto-Apply panel sends a real application to the employer."}
+            </div>
+            <button className="act" style={{ marginLeft: "auto" }} onClick={saveSettings}>
+              <Ic d={I.check} size={14} /> Save
+            </button>
+          </div>
+        </section>
+
+        {/* Scheduler */}
+        <section className="form-section">
+          <div className="section-label" style={{ cursor: "pointer" }} onClick={() => setOpenScheduler(o => !o)}>
+            <Ic d={I.clock} size={16} /> Auto-Scrape Scheduler<Chevron open={openScheduler} />
+          </div>
+          {openScheduler && <><div className="field-grid">
+            <label className="field">
+              <span className="field-label">Cron Expression</span>
+              <input type="text" value={cron} onChange={e => setCron(e.target.value)} style={{ fontFamily: "var(--f-mono)" }} placeholder="0 * * * *" />
+            </label>
+            <div className="field">
+              <span className="field-label">Schedule</span>
+              <div className="cron-info">
+                <span className="cron-desc">{cronDesc}</span>
+                <span className="cron-next">Next run <b>soon</b></span>
+              </div>
+            </div>
+          </div>
+          <div className="cron-presets">
+            {Object.entries(CRON_PRESETS).map(([c, d]) => (
+              <button key={c} className={`cron-chip${cron === c ? " on" : ""}`} onClick={() => setCron(c)}>{d}</button>
+            ))}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
+            <button className="act" onClick={saveSettings}><Ic d={I.check} size={14} /> Update Schedule</button>
+            <button className={`act primary${scraping ? " running" : ""}`} onClick={runNow} style={scraping ? { animation: "pulseBtn 1.4s ease-in-out infinite" } : {}}>
+              <Ic d={I.skip} size={14} /> {scraping ? "Running…" : "Run Now"}
+            </button>
+            <button className="act fail" style={{ color: "var(--tx-error)", borderColor: "var(--tx-error)" }} onClick={async () => {
+              if (!confirm("Delete ALL jobs? Cannot be undone.")) return;
+              try { const r = await api.clearAllJobs(); toast("Cleared " + r.deleted + " jobs", "success"); setTimeout(() => window.location.reload(), 1500); }
+              catch (e: any) { toast(e.message, "error"); }
+            }}>
+              <Ic d={I.x} size={14} /> Clear All Jobs
+            </button>
+            <button className="act" onClick={runJdFix} disabled={!!jdFix?.running}>
+              <Ic d={I.check} size={14} /> {jdFix?.running ? `Fixing JDs… ${jdFix.done}/${jdFix.total || "?"}` : "Fix Broken JDs"}
+            </button>
+            {scraping && <span className="test-res" style={{ color: "var(--tx-3)" }}><span className="mini-spin" /> scraping sources…</span>}
+          </div>
+
+          {/* Auto-qualify health */}
+          {qualHealth && (
+            <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 10, background: "var(--bg-elevated)", border: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", fontSize: 12.5 }}>
+              <span style={{ fontWeight: 700, color: "var(--tx)" }}>Auto-Qualify</span>
+              <span style={{ color: qualHealth.api_key_set ? "#16a34a" : "#dc2626", fontWeight: 600 }}>
+                {qualHealth.api_key_set ? "✓ API key" : "✗ API key missing"}
+              </span>
+              <span style={{ color: qualHealth.profile_set ? "#16a34a" : "#dc2626", fontWeight: 600 }}>
+                {qualHealth.profile_set ? "✓ Profile" : "✗ Profile missing"}
+              </span>
+              <span style={{ color: "var(--tx-2)" }}>Scored: <b>{qualHealth.scored_jobs}</b></span>
+              <span style={{ color: "var(--tx-2)" }}>Pending: <b>{qualHealth.pending_jobs}</b></span>
+              {qualHealth.running && <span style={{ color: "var(--violet)", fontWeight: 600 }}>running…</span>}
+              <button className="act" style={{ height: 26, fontSize: 11.5 }}
+                disabled={qualHealth.running || !qualHealth.api_key_set || !qualHealth.profile_set}
+                onClick={async () => {
+                  try { await api.qualifyAll(); toast("Qualify started in background", "success"); }
+                  catch (e: any) { toast(e.message, "error"); }
+                }}>
+                Run Qualify Now
+              </button>
+            </div>
+          )}
+          </>}
+        </section>
+
+        <JobStatsPanel />
+
+        <SystemLogsPanel onSeen={onErrorsSeen} />
+
+        <div className="form-foot">
+          <button className="save-btn" onClick={saveSettings}>
+            <Ic d={I.check} size={15} /> Save Settings
+          </button>
+        </div>
+      </div>{/* form-inner settings-left */}
+
+      <div className="settings-right">
+        <BillingPanel />
+      </div>
+      </div>{/* settings-layout */}
+    </div>
+  );
+}

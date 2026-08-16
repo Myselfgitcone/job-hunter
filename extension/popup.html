@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="hdr">
+    <div class="logo">⚡</div>
+    <div class="hdr-txt">
+      <div class="hdr-title">Job Hunter</div>
+      <div class="hdr-sub">Autofill</div>
+    </div>
+    <button id="logout" class="logout" hidden title="Sign out">Sign out</button>
+  </div>
+
+  <!-- Login view — auto-pairs from the web app (works with Google sign-in) -->
+  <div id="view-login" class="view" hidden>
+    <p class="lead">Sign in to Job Hunter in your browser — the extension connects <b>automatically</b>. Works with Google sign-in too; no password needed here.</p>
+    <a id="open-app-login" class="btn primary" href="https://www.thejobhunter.app" target="_blank" style="text-decoration:none; text-align:center; display:block;">Open Job Hunter to sign in ↗</a>
+    <button id="recheck" class="btn" style="margin-top:8px;">I've signed in — connect</button>
+    <div id="login-err" class="err" hidden></div>
+  </div>
+
+  <!-- Main view -->
+  <div id="view-main" class="view" hidden>
+    <div class="user"><span class="dot"></span><span id="user-email"></span></div>
+    <button id="fill" class="btn primary big">⚡ Fill this application</button>
+    <p class="hint">Answers come from your Profile → Application Answers, learned answers, and AI drafts. Review everything before you submit.</p>
+    <div id="status" class="status" hidden></div>
+    <a id="open-app" class="link" href="https://job-hunter-production-927d.up.railway.app" target="_blank">Open Job Hunter ↗</a>
+  </div>
+
+  <div id="view-loading" class="view center"><div class="spin"></div></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

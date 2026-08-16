@@ -1,0 +1,792 @@
+// Job Hunter Autofill — content script.
+// Scans a job-application page's form fields, asks the backend to answer them
+// with the same engine the web app uses, then fills the DOM for review.
+// Nothing is submitted — the user reviews and clicks the page's own submit.
+
+(() => {
+  if (window.__jhAutofillLoaded) return;
+  window.__jhAutofillLoaded = true;
+
+  const send = (type, payload) =>
+    new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ type, payload }, (res) => {
+        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+        if (res?.error) return reject(new Error(res.error));
+        resolve(res?.data);
+      });
+    });
+
+  // ── Field scanning ─────────────────────────────────────────────────────────
+  const norm = (s) => (s || "").replace(/\s+/g, " ").trim();
+
+  function labelFor(el) {
+    // 1. <label for=id>
+    if (el.id) {
+      const l = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+      if (l) return norm(l.textContent);
+    }
+    // 2. wrapping <label>
+    const wrap = el.closest("label");
+    if (wrap) {
+      const clone = wrap.cloneNode(true);
+      clone.querySelectorAll("input,select,textarea").forEach((n) => n.remove());
+      const t = norm(clone.textContent);
+      if (t) return t;
+    }
+    // 3. aria-label / aria-labelledby
+    if (el.getAttribute("aria-label")) return norm(el.getAttribute("aria-label"));
+    const ll = el.getAttribute("aria-labelledby");
+    if (ll) {
+      const parts = ll.split(/\s+/).map((id) => document.getElementById(id)).filter(Boolean);
+      const t = norm(parts.map((n) => n.textContent).join(" "));
+      if (t) return t;
+    }
+    // 4. closest form-group label / legend / preceding text
+    const grp = el.closest("[class*='field'],[class*='question'],[class*='form-group'],fieldset,div");
+    if (grp) {
+      const lab = grp.querySelector("label,legend,.label,[class*='label']");
+      if (lab && !lab.contains(el)) {
+        const t = norm(lab.textContent);
+        if (t) return t;
+      }
+    }
+    // 5. placeholder / name
+    return norm(el.getAttribute("placeholder") || el.name || "");
+  }
+
+  function optionList(el) {
+    if (el.tagName === "SELECT") {
+      return [...el.options]
+        .filter((o) => o.value !== "" && !/^\s*(select|choose|—|-)/i.test(o.textContent))
+        .map((o) => ({ label: norm(o.textContent), value: o.value }));
+    }
+    return [];
+  }
+
+  const SKIP_TYPES = new Set(["hidden", "submit", "button", "reset", "image", "file", "password", "search"]);
+
+  // Anti-bot honeypot fields (Workday's "beecatcher"/website, generic traps).
+  // Filling these flags the applicant as a bot → the whole submit is rejected.
+  function isHoneypot(el) {
+    const name = (el.name || "").toLowerCase();
+    const aid = (el.getAttribute("data-automation-id") || "").toLowerCase();
+    if (name === "website" || aid === "beecatcher") return true;
+    // Off-screen / zero-size text traps that look normal in the DOM.
+    const r = el.getBoundingClientRect();
+    if ((r.width < 2 || r.height < 2) && el.tagName === "INPUT") return true;
+    return false;
+  }
+
+  // Custom dropdowns that are NOT native <select>: Workday button dropdowns
+  // (button[aria-haspopup=listbox]), ARIA comboboxes, react-select controls.
+  // Options live in a popup that only exists once opened, so we scan them with
+  // options:[] and resolve the choice at fill time (see fillCustomSelect).
+  function isCustomSelectTrigger(el) {
+    if (el.getAttribute("aria-haspopup") === "listbox") return true;
+    if (el.getAttribute("role") === "combobox") return true;
+    if (el.getAttribute("data-automation-id") === "multiSelectContainer") return true;
+    const cls = el.className && el.className.baseVal !== undefined ? "" : (el.className || "");
+    if (/select__control/.test(cls)) return true;
+    return false;
+  }
+
+  function customSelectLabel(el) {
+    const fc = el.closest("[data-automation-id^='formField-'],[class*='field'],[class*='question'],fieldset,div");
+    if (fc) {
+      const lab = fc.querySelector("label,legend,[id*='label']");
+      if (lab && !lab.contains(el)) {
+        const t = norm(lab.textContent);
+        if (t) return t;
+      }
+    }
+    return labelFor(el);
+  }
+
+  function scanFields() {
+    const fields = [];
+    const seenRadioName = new Set();
+    const consumed = new WeakSet(); // custom-select inner inputs already handled
+    let idx = 0;
+
+    // ── Custom dropdowns first (Workday/react-select/ARIA) ──────────────────
+    const customTriggers = [...document.querySelectorAll(
+      "button[aria-haspopup='listbox'], [role='combobox'], [class*='select__control'], [data-automation-id='multiSelectContainer']"
+    )];
+    const seenCustom = new Set();
+    for (const el of customTriggers) {
+      if (el.disabled || el.offsetParent === null) continue;
+      if (!isCustomSelectTrigger(el)) continue;
+      // Dedup nested matches (a multiSelectContainer also contains a listbox).
+      const fcWrap = el.closest("[data-automation-id^='formField-']") || el;
+      if (seenCustom.has(fcWrap)) continue;
+      seenCustom.add(fcWrap);
+      // multiselect-search = has a Search input; button-dropdown = doesn't.
+      const isMulti = el.getAttribute("data-automation-id") === "multiSelectContainer" ||
+                      !!el.querySelector?.("input[type='text']");
+      // Mark any inner input so the native pass below doesn't double-capture it.
+      el.querySelectorAll?.("input,textarea").forEach((n) => consumed.add(n));
+      const label = customSelectLabel(el);
+      if (!label || label.length < 2) continue;
+      const key = `f${idx++}`;
+      fields.push({ el, isCustomSelect: true, msSearch: isMulti, key,
+        field: { key, label, type: "select", options: [] } });
+    }
+
+    const els = [...document.querySelectorAll("input, select, textarea")];
+    for (const el of els) {
+      if (el.disabled || el.offsetParent === null) continue; // skip hidden/disabled
+      if (consumed.has(el)) continue;                        // inner input of a custom select
+      if (isHoneypot(el)) continue;                          // anti-bot trap — never fill
+      const tag = el.tagName;
+      const type = (el.type || "").toLowerCase();
+      if (tag === "INPUT" && SKIP_TYPES.has(type)) continue;
+
+      // Radio / checkbox groups — one field per name
+      if (tag === "INPUT" && (type === "radio" || type === "checkbox")) {
+        const name = el.name;
+        if (!name || seenRadioName.has(name)) continue;
+        seenRadioName.add(name);
+        const group = els.filter((e) => e.tagName === "INPUT" && e.name === name && e.type === type);
+        const options = group.map((g) => ({ label: labelFor(g) || g.value, value: g.value }));
+        // group label = nearest fieldset legend / preceding label
+        const fs = el.closest("fieldset");
+        let glabel = fs ? norm(fs.querySelector("legend")?.textContent || "") : "";
+        if (!glabel) {
+          const grp = el.closest("[class*='field'],[class*='question'],[class*='form-group'],div");
+          glabel = norm(grp?.querySelector("label,.label,[class*='label']")?.textContent || "");
+        }
+        const key = `f${idx++}`;
+        fields.push({ el: group, isGroup: true, groupType: type, key,
+          field: { key, label: glabel || name, type: type === "radio" ? "select" : "multiselect", options } });
+        continue;
+      }
+
+      const label = labelFor(el);
+      if (!label || label.length < 2) continue;
+      const options = optionList(el);
+      let ftype = "text";
+      if (tag === "TEXTAREA") ftype = "textarea";
+      else if (tag === "SELECT") ftype = "select";
+      const key = `f${idx++}`;
+      fields.push({ el, isGroup: false, key, field: { key, label, type: ftype, options } });
+    }
+    return fields;
+  }
+
+  // ── Filling ────────────────────────────────────────────────────────────────
+  function setNativeValue(el, value) {
+    const proto = el.tagName === "TEXTAREA"
+      ? window.HTMLTextAreaElement.prototype
+      : el.tagName === "SELECT"
+        ? window.HTMLSelectElement.prototype
+        : window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+    if (setter) setter.call(el, value);
+    else el.value = value;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    el.dispatchEvent(new Event("blur", { bubbles: true }));
+  }
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // Full pointer event sequence — bare .click() registers a value on Workday
+  // but can desync its framework; the real sequence keeps it stable. Proven
+  // live on Workday's button dropdowns.
+  function realClick(el) {
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+      el.dispatchEvent(new MouseEvent(type,
+        { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y }));
+    }
+  }
+
+  // Token-set match so "United States" ~ "United States of America", and the
+  // AI's phrasing matches an option without being identical.
+  function optMatches(optText, want) {
+    const a = norm(optText).toLowerCase();
+    const b = norm(String(want)).toLowerCase();
+    if (!a || !b) return false;
+    if (a === b || a.includes(b) || b.includes(a)) return true;
+    const bt = b.split(/\W+/).filter((w) => w.length > 2);
+    return bt.length > 0 && bt.every((w) => a.includes(w));
+  }
+
+  // Close any open dropdown popup. CRITICAL for sequential fields: leaving one
+  // popup open makes the next dropdown's options ambiguous (a global
+  // [role=option] query then sees the stale popup too), so every field after
+  // an unmatched one silently fails. Escape is what Workday listens for.
+  async function closeAnyPopup() {
+    if (!document.querySelector("[role='option']")) return;
+    try { document.activeElement?.blur?.(); } catch { /* ignore */ }
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", keyCode: 27, bubbles: true }));
+    try { document.body.click(); } catch { /* ignore */ }
+    await sleep(250);
+  }
+
+  // Open a custom dropdown, click the option matching `value`, verify it stuck.
+  // Guarantees the popup is closed on every exit path so the next field is clean.
+  async function fillCustomSelect(trigger, value) {
+    if (value === undefined || value === null || value === "") return false;
+    await closeAnyPopup();                  // start from a clean slate
+    try { trigger.focus(); } catch { /* ignore */ }
+    realClick(trigger);
+    await sleep(550);                       // popup renders in a portal
+    const opts = [...document.querySelectorAll("[role='option']")]
+      .filter((o) => o.offsetParent !== null && norm(o.textContent) &&
+                     !/^select one$/i.test(norm(o.textContent)));
+    if (!opts.length) { await closeAnyPopup(); return false; }
+    let opt = opts.find((o) => optMatches(o.textContent, value));
+    // No confident match: only auto-pick a generic "how did you hear" bucket,
+    // never guess an eligibility answer.
+    if (!opt && /hear about|source|referr/i.test(customSelectLabel(trigger))) {
+      opt = opts.find((o) => /other|job\s*board|website|online/i.test(o.textContent));
+    }
+    if (!opt) { await closeAnyPopup(); return false; }
+    realClick(opt);
+    await sleep(400);
+    const ok = optMatches(trigger.textContent, value) || !/^select one$/i.test(norm(trigger.textContent));
+    await closeAnyPopup();                  // ensure closed before the next field
+    return ok;
+  }
+
+  // Type into a search/text input the React-safe way, WITHOUT firing blur
+  // (blur would close the dropdown popup we're about to pick from).
+  function typeInto(el, text) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+    if (setter) setter.call(el, text); else el.value = text;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true }));
+  }
+
+  // Workday multiselect-search (chip + "Search" box + cascading options):
+  // open → type the value → click the matching option. Handles the cascading
+  // "How Did You Hear About Us?" (Job Board › / Social Media › …) since typing
+  // a leaf term (e.g. "LinkedIn") surfaces it across categories.
+  async function fillMultiSelectSearch(container, value) {
+    if (value === undefined || value === null || value === "") return false;
+    await closeAnyPopup();
+    // Open first — the Search box renders lazily once the widget is expanded.
+    const opener = container.querySelector("[data-automation-id='multiselectInputContainer']") || container;
+    realClick(opener);
+    await sleep(450);
+    const search = container.querySelector("input[type='text']")
+                || document.querySelector("input[placeholder='Search']");
+    if (search) {
+      try { search.focus(); } catch { /* ignore */ }
+      typeInto(search, String(value));
+    }
+    await sleep(700);
+    const visibleOpts = () => [...document.querySelectorAll("[role='option']")]
+      .filter((o) => o.offsetParent !== null && norm(o.textContent) &&
+                     !/^select one$/i.test(norm(o.textContent)));
+    let opts = visibleOpts();
+    let opt = opts.find((o) => optMatches(o.textContent, value));
+    // Cascading: nothing matched but category rows exist — open the best
+    // category (e.g. "Social Media ›"), then re-scan for the leaf.
+    if (!opt && opts.length) {
+      const cat = opts.find((o) => /›|>/.test(o.textContent) &&
+        optMatches(o.textContent.replace(/[›>]/g, ""), value));
+      if (cat) { realClick(cat); await sleep(500); opt = visibleOpts().find((o) => optMatches(o.textContent, value)); }
+    }
+    // "How did you hear" with no match → a safe generic leaf.
+    if (!opt && /hear about|source|referr/i.test(customSelectLabel(container))) {
+      opt = opts.find((o) => /other|job\s*board|website|online|social/i.test(o.textContent));
+    }
+    if (!opt) { await closeAnyPopup(); return false; }
+    realClick(opt);
+    await sleep(400);
+    await closeAnyPopup();
+    return true;
+  }
+
+  function fillField(entry, value) {
+    if (value === undefined || value === null || value === "") return false;
+    const { field } = entry;
+    if (entry.isGroup) {
+      const wanted = Array.isArray(value) ? value.map(String) : [String(value)];
+      let hit = false;
+      for (const input of entry.el) {
+        const match = wanted.includes(input.value) ||
+          wanted.some((w) => norm(w).toLowerCase() === norm(labelFor(input)).toLowerCase());
+        if (match && !input.checked) {
+          input.click();
+          hit = true;
+          if (entry.groupType === "radio") break;
+        }
+      }
+      return hit;
+    }
+    if (field.type === "select") {
+      const opt = [...entry.el.options].find(
+        (o) => o.value === String(value) ||
+          norm(o.textContent).toLowerCase() === norm(String(value)).toLowerCase());
+      if (opt) { setNativeValue(entry.el, opt.value); return true; }
+      return false;
+    }
+    setNativeValue(entry.el, String(value));
+    return true;
+  }
+
+  function outline(entry, ai) {
+    const nodes = entry.isGroup ? entry.el : [entry.el];
+    for (const n of nodes) {
+      const target = n.closest("[class*='field'],[class*='question'],label,div") || n;
+      target.classList.add(ai ? "jh-filled-ai" : "jh-filled");
+      setTimeout(() => target.classList.remove("jh-filled", "jh-filled-ai"), 4000);
+    }
+  }
+
+  // Read the CURRENT value the user has left in each field — used to learn
+  // manual answers when they submit.
+  function readValue(entry) {
+    if (entry.isCustomSelect) {
+      const t = norm(entry.el.textContent);
+      return /^select one$/i.test(t) ? "" : t;
+    }
+    if (entry.isGroup) {
+      const checked = entry.el.filter((i) => i.checked);
+      if (!checked.length) return "";
+      const labels = checked.map((i) => norm(labelFor(i)) || i.value);
+      return entry.groupType === "radio" ? labels[0] : labels;
+    }
+    if (entry.field.type === "select") {
+      const o = entry.el.selectedOptions?.[0];
+      return o ? norm(o.textContent) : "";
+    }
+    return norm(entry.el.value || "");
+  }
+
+  // After a fill, remember the entries so a later submit can read final values.
+  let lastEntries = null;
+  async function learnFromPage() {
+    if (!lastEntries) return;
+    const values = {};
+    for (const e of lastEntries) {
+      const v = readValue(e);
+      if (v !== "" && !(Array.isArray(v) && !v.length)) values[e.key] = v;
+    }
+    if (!Object.keys(values).length) return;
+    try {
+      await send("learn", { fields: lastEntries.map((e) => e.field), values });
+    } catch { /* non-blocking */ }
+  }
+
+  // Fire learn when the user clicks a real submit control (their final
+  // answers). Capture-phase so it runs before navigation; never blocks it.
+  document.addEventListener("click", (ev) => {
+    const t = ev.target.closest?.(
+      "button[type=submit], input[type=submit], [class*='submit'], [id*='submit']");
+    if (t && lastEntries) learnFromPage();
+  }, true);
+
+  function pageMeta() {
+    const h1 = norm(document.querySelector("h1")?.textContent || document.title);
+    return { url: location.href, title: h1.slice(0, 120), company: norm(location.hostname.replace(/^www\./, "")) };
+  }
+
+  // ── Resume attachment ──────────────────────────────────────────────────────
+  // Most ATS hide the real <input type=file> behind a styled "Attach" button, so
+  // we deliberately do NOT skip invisible inputs here (unlike scanFields) — a
+  // hidden input is still settable via DataTransfer.
+
+  const COVER_RE = /cover\s*-?\s*letter|covering\s+letter/i;
+  const RESUME_RE = /resum[eé]|\bcv\b|curriculum\s*vitae/i;
+  // Uploads that are NOT the resume — never attach the resume to these.
+  const OTHER_DOC_RE = /transcript|portfolio|photo|headshot|certificat|licen[sc]e|passport|visa\s*doc|work\s*sample|writing\s*sample|reference/i;
+
+  function fileInputContext(el) {
+    // Everything textual around the input that hints at what it wants.
+    const bits = [el.name, el.id, el.getAttribute("aria-label"), el.getAttribute("accept"), labelFor(el)];
+    const box = el.closest("[class*='field'],[class*='question'],[class*='upload'],[class*='attach'],fieldset,div");
+    if (box) bits.push(norm(box.textContent).slice(0, 300));
+    return norm(bits.filter(Boolean).join(" ")).toLowerCase();
+  }
+
+  function findResumeInput() {
+    const inputs = [...document.querySelectorAll("input[type=file]")].filter((el) => !el.disabled);
+    if (!inputs.length) return null;
+    const scored = inputs.map((el) => {
+      const ctx = fileInputContext(el);
+      let score = 0;
+      if (RESUME_RE.test(ctx)) score += 10;
+      if (COVER_RE.test(ctx)) score -= 8;         // that's the cover-letter slot
+      if (OTHER_DOC_RE.test(ctx)) score -= 10;    // transcript/portfolio/etc.
+      if (el.required) score += 2;
+      return { el, score, ctx };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    const best = scored[0];
+    if (best.score > 0) return best.el;
+    // No keyword anywhere: a lone, non-disqualified upload on an application
+    // page is the resume in practice.
+    if (inputs.length === 1 && best.score >= 0) return best.el;
+    return null;
+  }
+
+  function setFile(input, file) {
+    try {
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      return input.files && input.files.length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  // Returns "attached" | "manual" (custom uploader / no input) | "none" | "error"
+  async function attachResume(meta) {
+    const input = findResumeInput();
+    if (!input) {
+      // A drag-drop / Dropbox-style widget with no real file input — the user
+      // must attach it; JS can't fill those.
+      const hasUploadUi = /attach|upload|drag.{0,10}drop|dropbox|google drive/i
+        .test(norm(document.body.innerText).slice(0, 20000));
+      return hasUploadUi ? "manual" : "none";
+    }
+    if (input.files && input.files.length) return "attached"; // already has one
+    try {
+      const data = await send("resumeFile", meta);
+      if (!data || !data.b64) return "error";
+      const bin = atob(data.b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const file = new File([bytes], data.filename || "resume.pdf",
+        { type: data.mime || "application/pdf" });
+      if (!setFile(input, file)) return "manual";
+      const target = input.closest("[class*='field'],[class*='upload'],[class*='attach'],div") || input;
+      target.classList.add("jh-filled");
+      setTimeout(() => target.classList.remove("jh-filled"), 4000);
+      return "attached";
+    } catch {
+      return "error";
+    }
+  }
+
+  // ── Submit (confirm-gated) ──────────────────────────────────────────────────
+  // Nothing here EVER clicks submit on its own. After a fill we surface a
+  // confirm bar; the actual submit fires only when the user presses "Submit".
+  const SUBMIT_TEXT_RE = /\b(submit\s+application|submit|apply\s+now|send\s+application|finish|complete)\b/i;
+  const SUBMIT_SKIP_RE = /\b(save|draft|cancel|back|previous|add|upload|attach|sign\s*in|log\s*in)\b/i;
+
+  function findSubmitButton() {
+    const cands = [
+      ...document.querySelectorAll(
+        "button[type=submit], input[type=submit], button, [role=button], a[class*='submit'], a[class*='apply']"
+      ),
+    ].filter((el) => el.offsetParent !== null && !el.disabled);
+    let best = null, bestScore = 0;
+    for (const el of cands) {
+      const txt = norm(el.textContent || el.value || el.getAttribute("aria-label") || "");
+      if (!txt || SUBMIT_SKIP_RE.test(txt)) continue;
+      if (!SUBMIT_TEXT_RE.test(txt)) continue;
+      let score = 1;
+      if ((el.type || "").toLowerCase() === "submit") score += 3;
+      if (/submit\s+application|send\s+application/i.test(txt)) score += 3;
+      else if (/^submit$/i.test(txt)) score += 2;
+      if (score > bestScore) { bestScore = score; best = el; }
+    }
+    return best;
+  }
+
+  // Required, still-empty fields — block submit and point the user at them.
+  function unfilledRequired(entries) {
+    const missing = [];
+    for (const e of entries) {
+      const nodes = e.isGroup ? e.el : [e.el];
+      const req = nodes.some((n) => n.required || n.getAttribute("aria-required") === "true");
+      if (!req) continue;
+      const v = readValue(e);
+      if (v === "" || (Array.isArray(v) && !v.length)) missing.push(e);
+    }
+    return missing;
+  }
+
+  function submitBar(entries, submitBtn, summary) {
+    document.getElementById("jh-submit-bar")?.remove();
+    const bar = document.createElement("div");
+    bar.id = "jh-submit-bar";
+    bar.className = "jh-submit-bar";
+    const missing = unfilledRequired(entries);
+    const warn = missing.length
+      ? `<div class="jh-sb-warn">⚠ ${missing.length} required field(s) still empty — fill them first.</div>` : "";
+    bar.innerHTML =
+      `<div class="jh-sb-msg">${summary}</div>${warn}` +
+      `<div class="jh-sb-actions">` +
+      `<button class="jh-sb-cancel">Not yet</button>` +
+      `<button class="jh-sb-go"${missing.length ? " disabled" : ""}>Submit application</button>` +
+      `</div>`;
+    document.body.appendChild(bar);
+    bar.querySelector(".jh-sb-cancel").addEventListener("click", () => bar.remove());
+    const go = bar.querySelector(".jh-sb-go");
+    if (missing.length) {
+      // Let the user jump to the first missing field.
+      const first = missing[0].isGroup ? missing[0].el[0] : missing[0].el;
+      bar.querySelector(".jh-sb-warn").style.cursor = "pointer";
+      bar.querySelector(".jh-sb-warn").addEventListener("click", () => {
+        try { first.scrollIntoView({ behavior: "smooth", block: "center" }); first.focus?.(); } catch {}
+      });
+    } else {
+      go.addEventListener("click", () => {
+        bar.remove();
+        learnFromPage();               // capture final answers before navigation
+        toast("Submitting…");
+        try { submitBtn.click(); }
+        catch { toast("Could not click submit — please click it yourself.", true); }
+      });
+    }
+  }
+
+  // ── Orchestration ────────────────────────────────────────────────────────────
+  async function runFill(onStatus) {
+    const entries = scanFields();
+    if (!entries.length) { onStatus({ error: "No application form fields found on this page." }); return; }
+    lastEntries = entries; // remembered so a later submit can learn manual edits
+    onStatus({ scanning: entries.length });
+    let data;
+    try {
+      data = await send("answer", {
+        ...pageMeta(),
+        job_id: armedJobId,
+        fields: entries.map((e) => e.field),
+        ai_fill: true,
+      });
+    } catch (e) {
+      onStatus({ error: e.message });
+      return;
+    }
+    const answers = data.answers || {};
+    const aiKeys = new Set(data.ai_keys || []);
+    let filled = 0, ai = 0, firstFilled = null;
+    for (const entry of entries) {
+      const v = answers[entry.key];
+      // Custom dropdowns (Workday/react-select) need a real open→click gesture
+      // and are async; everything else fills synchronously.
+      const ok = entry.isCustomSelect
+        ? (entry.msSearch ? await fillMultiSelectSearch(entry.el, v) : await fillCustomSelect(entry.el, v))
+        : fillField(entry, v);
+      if (ok) {
+        filled++;
+        if (!firstFilled) firstFilled = entry.isGroup ? entry.el[0] : (entry.isCustomSelect ? entry.el : entry.el);
+        const isAi = aiKeys.has(entry.key);
+        if (isAi) ai++;
+        outline(entry, isAi);
+      }
+    }
+    await closeAnyPopup();  // never leave a dropdown popup hanging after the run
+    // Attach the resume PDF (tailored for this job when we have one) so the
+    // file upload isn't the one step left to do by hand.
+    const meta = pageMeta();
+    const resumeState = await attachResume({ url: meta.url, title: meta.title, company: meta.company, job_id: armedJobId });
+
+    // Bring the filled form into view — on many ATS pages it sits far below
+    // the job description, so the user wouldn't otherwise see it happened.
+    if (firstFilled) {
+      try { firstFilled.scrollIntoView({ behavior: "smooth", block: "center" }); } catch { /* ignore */ }
+    }
+    // Offer a confirm-gated submit. Never auto-clicks — the bar's "Submit
+    // application" button is the only path, and it's blocked while required
+    // fields are empty. A single-page form only; multi-step wizards (Workday)
+    // are handled separately and skip this.
+    const submitBtn = filled > 0 ? findSubmitButton() : null;
+    if (submitBtn) {
+      const rs = resumeState === "attached" ? "resume attached"
+        : resumeState === "manual" ? "attach resume yourself" : "no resume";
+      submitBar(entries, submitBtn,
+        `Filled ${filled}/${entries.length}${ai ? ` · ${ai} by AI` : ""} · ${rs}. Review, then submit.`);
+    }
+    onStatus({ done: true, total: entries.length, filled, ai, resume: data.resume_source,
+               ai_status: data.ai_status, resume_state: resumeState, has_submit: !!submitBtn });
+  }
+  window.__jhRunFill = runFill;
+
+  // Human-readable tail for the fill toast (e.g. AI key missing → essay
+  // questions stay blank). Empty string when nothing to add.
+  function fillNote(s) {
+    if (!s) return "";
+    const bits = [];
+    if (s.resume_state === "attached") bits.push("resume attached");
+    else if (s.resume_state === "manual") bits.push("attach the resume yourself (custom uploader)");
+    else if (s.resume_state === "error") bits.push("resume attach failed — add/tailor a resume first");
+    if (s.ai_status === "no_key") bits.push("add an AI key in Settings to auto-draft the open questions");
+    else if (s.ai_status === "no_resume") bits.push("add your resume in Settings to auto-draft open questions");
+    return bits.length ? " · " + bits.join(" · ") : "";
+  }
+
+  // ── Floating button ──────────────────────────────────────────────────────────
+  function looksLikeApplication() {
+    // Workday (and similar ATS) render whole steps as custom widgets with NO
+    // native inputs — e.g. an "Application Questions" step that is nothing but
+    // button-dropdowns. Counting only input/select/textarea missed those and
+    // the button never appeared. Count custom dropdowns too, and treat a
+    // Workday formField step as an application outright.
+    const wdFields = document.querySelectorAll("[data-automation-id^='formField-']").length;
+    if (wdFields >= 2) return true;
+
+    const native = [...document.querySelectorAll("input, textarea, select")].filter((el) => {
+      const t = (el.type || "").toLowerCase();
+      if (el.tagName === "INPUT" && SKIP_TYPES.has(t)) return false;
+      return el.offsetParent !== null && !el.disabled;
+    });
+    const customDD = [...document.querySelectorAll(
+      "button[aria-haspopup='listbox'], [role='combobox'], [class*='select__control'], [data-automation-id='multiSelectContainer']"
+    )].filter((el) => el.offsetParent !== null && !el.disabled);
+    const fieldCount = native.length + customDD.length;
+    if (fieldCount < 3) return false;
+
+    const hasFile = !!document.querySelector("input[type=file]");
+    const blob = native
+      .map((e) => `${labelFor(e)} ${e.name || ""} ${e.getAttribute("aria-label") || ""}`.toLowerCase())
+      .join(" | ");
+    const hasResume = hasFile || /resume|cv\b|curriculum/.test(blob);
+    const hasName = /first name|last name|full name|\bname\b|given name|surname/.test(blob);
+    const hasEmail = /e-?mail/.test(blob);
+    const strong = hasResume || (hasName && hasEmail);
+    return strong || fieldCount >= 6;
+  }
+
+  const isTop = window.top === window;
+
+  // Auto-fill trigger: the app opens the ATS with a #jh=1 hash. That arms the
+  // whole TAB in the background (via send('armTab')) so the trigger survives
+  // the posting→form navigation, where the hash would be lost. Every top-frame
+  // load asks the background whether its tab is armed, then auto-fills once the
+  // form appears and disarms.
+  let armAutofill = false;
+  let autofillDone = false;
+  let childHasForm = false;
+  let armedJobId = "";   // exact job id from the app's Fill & Apply hash (#jh=<id>)
+  if (isTop) {
+    // Accept #jh=<jobId> (new) or #jh=1 (legacy boolean arm). The job id lets
+    // the backend pick THIS job's tailored resume instead of guessing by URL.
+    const jhMatch = (location.hash || "").match(/(?:^|[#&])jh=([^&]+)/);
+    if (jhMatch) {
+      const val = decodeURIComponent(jhMatch[1]);
+      if (val && val !== "1") armedJobId = val;
+      try {
+        const cleaned = location.href.replace(/([#&])jh=[^&]+(&|$)/, (_m, p, s) => (s === "&" ? p : "")).replace(/#$/, "");
+        history.replaceState(null, "", cleaned);
+      } catch { /* ignore */ }
+      send("armTab", { jobId: armedJobId }).catch(() => {});
+      armAutofill = true;
+    }
+    // Also consult the background: a prior navigation in this tab may have armed it.
+    send("isArmed", {}).then((r) => {
+      if (r?.armed) { armAutofill = true; if (r.jobId) armedJobId = r.jobId; maybeAutofill(); }
+    }).catch(() => {});
+  }
+
+  async function maybeAutofill() {
+    if (!isTop || !armAutofill || autofillDone) return;
+    const here = looksLikeApplication();
+    if (!here && !childHasForm) return; // no form yet — wait for render
+    autofillDone = true;
+    toast("Auto-filling from Job Hunter…");
+    const handle = (s) => {
+      if (s && s.done && s.filled > 0) {
+        // A real fill happened — consume the one-shot.
+        send("disarmTab", {}).catch(() => {});
+        toast(`Filled ${s.filled}/${s.total}${s.ai ? ` · ${s.ai} by AI` : ""}${fillNote(s)} — review before submitting`);
+      } else {
+        // Nothing filled (wrong/empty form, or a later form is the real one).
+        // Stay armed and allow another attempt when a form is next detected.
+        autofillDone = false;
+        if (s && s.error) toast(s.error, true);
+      }
+    };
+    if (here) await runFill(handle);
+    else handle(await send("relayFill", {}));
+  }
+
+  // The button is ALWAYS hosted in the top frame (fixed to the real window,
+  // so it never scrolls away). A form in a child iframe registers with the
+  // background, which tells the top frame to show the button; the click is
+  // relayed back to the form frame.
+  function mountButton() {
+    if (!isTop) return;
+    if (document.getElementById("jh-fab")) return;
+    const fab = document.createElement("button");
+    fab.id = "jh-fab";
+    fab.title = "Fill this application with Job Hunter";
+    fab.innerHTML = `<span class="jh-fab-ico">⚡</span><span class="jh-fab-txt">Fill with Job Hunter</span>`;
+    const busy = (on) => {
+      fab.classList.toggle("jh-loading", on);
+      fab.querySelector(".jh-fab-txt").textContent = on ? "Filling…" : "Fill with Job Hunter";
+    };
+    fab.addEventListener("click", async () => {
+      busy(true);
+      const handle = (s) => {
+        if (!s || s.error) toast((s && s.error) || "No form fields found on this page.", true);
+        else if (s.done) toast(`Filled ${s.filled}/${s.total}${s.ai ? ` · ${s.ai} by AI` : ""}${fillNote(s)} — review before submitting`);
+      };
+      if (looksLikeApplication()) {
+        await runFill(handle);           // form is in this (top) frame
+      } else {
+        const s = await send("relayFill", {}); // form is in a child frame
+        handle(s);
+      }
+      busy(false);
+    });
+    document.body.appendChild(fab);
+  }
+
+  function unmountButton() {
+    document.getElementById("jh-fab")?.remove();
+  }
+
+  // Report to the background whether THIS frame currently has a form.
+  let lastHas = null;
+  function reportForm() {
+    const has = looksLikeApplication();
+    if (has === lastHas) return;
+    lastHas = has;
+    send("registerForm", { has }).catch(() => {});
+  }
+
+  function toast(msg, err) {
+    const t = document.createElement("div");
+    t.className = "jh-toast" + (err ? " jh-toast-err" : "");
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.classList.add("jh-show"), 10);
+    setTimeout(() => { t.classList.remove("jh-show"); setTimeout(() => t.remove(), 300); }, 5000);
+  }
+
+  chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
+    // Background asks the top frame to show/hide the button (a child frame
+    // has/lost a form).
+    if (msg?.type === "showButton") {
+      if (isTop) {
+        childHasForm = !!msg.show;
+        if (msg.show) { mountButton(); maybeAutofill(); }
+        else if (!looksLikeApplication()) unmountButton();
+      }
+      sendResponse({ ok: true });
+      return true;
+    }
+    // Direct fill request (popup, or background relay to the form frame).
+    if (msg?.type === "fillPage") {
+      if (!looksLikeApplication()) return false; // not the form frame — stay silent
+      runFill((s) => sendResponse(s));
+      return true;
+    }
+  });
+
+  // React to dynamically-loaded ATS forms: re-check this frame, and if the
+  // top frame itself has the form, mount directly.
+  let raf = 0;
+  const obs = new MutationObserver(() => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      reportForm();
+      if (isTop && looksLikeApplication()) { mountButton(); maybeAutofill(); }
+    });
+  });
+  obs.observe(document.documentElement, { childList: true, subtree: true });
+  reportForm();
+  if (isTop && looksLikeApplication()) { mountButton(); maybeAutofill(); }
+})();

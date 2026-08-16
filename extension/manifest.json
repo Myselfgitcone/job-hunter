@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "Job Hunter Autofill",
+  "version": "1.1.0",
+  "description": "Fill any job application from your Job Hunter profile — saved answers, learned answers, and AI drafts. You review, you submit.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA04suH3Md/4xzvallG/IgyFIo7YgrmZ4xIrEEt+MDO+OX7/epI7XlVvJIrNqw6hR4GQ5Xqr16k8QrEXF7x1kcylwoP0Dfy7/FQLaj8fhXgLctDdnySE+GaPgjSoIBDKwE1gEDqwh41HoE97Q1j9el1IITOog75Q06YYHCdRJ6JruZGdik0qW9767BNBWgrUEZqxtR/vDoUoRZD0O1FFLJRzqSyeTi7y3SNiMiqezxHQkNL0V42Pt9MO03X0Mad9ADqsn/77cn74ZnqDR1xAIGQr07ERS6t2+tph4RD8TNsxURwAygfaHTFNfX39/EiEvimvUk6ldM7JhKBkJe2rhgXQIDAQAB",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": [
+    "https://job-hunter-production-927d.up.railway.app/*",
+    "http://localhost:8000/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Job Hunter Autofill",
+    "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+  },
+  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "https://www.thejobhunter.app/*",
+        "https://thejobhunter.app/*",
+        "http://localhost:5173/*"
+      ],
+      "js": ["app-bridge.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

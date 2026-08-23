@@ -194,6 +194,7 @@ export const api = {
 
   revealTelegramToken: () => req<{ token: string }>("/api/settings/telegram-token"),
   revealAiKey: (provider: string) => req<{ key: string }>(`/api/settings/reveal-key/${provider}`),
+  adminUsage: (month?: string) => req<{ month: string; rows: Array<{ user: string; email: string; date: string; tailors: number; anthropic: number; google: number; openai: number; openrouter: number; total: number }> }>(`/api/admin/usage${month ? `?month=${month}` : ""}`),
 
   // ── Admin: user approval ───────────────────────────────────────────────────
   adminUsers: () =>

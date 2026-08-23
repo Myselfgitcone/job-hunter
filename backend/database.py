@@ -182,6 +182,22 @@ class Job(Base):
     qualify_result = Column(Text, default=None)          # JSON qualification analysis
 
 
+class AiUsageDaily(Base):
+    """Durable per-user, per-day AI billing ledger. Written when a tailor run
+    completes (costs are metered per call in ai/llm.py); survives job retention
+    so monthly reports stay accurate. One row per (user, day)."""
+    __tablename__ = "ai_usage_daily"
+    user_id   = Column(String, primary_key=True)
+    date      = Column(String, primary_key=True)   # "YYYY-MM-DD" (US Eastern)
+    tailors   = Column(Integer, default=0)
+    anthropic_cost  = Column(Float, default=0.0)
+    google_cost     = Column(Float, default=0.0)
+    openai_cost     = Column(Float, default=0.0)
+    openrouter_cost = Column(Float, default=0.0)
+    tokens_in  = Column(BigInteger, default=0)
+    tokens_out = Column(BigInteger, default=0)
+
+
 class Setting(Base):
     __tablename__ = "settings"
     key = Column(String, primary_key=True)

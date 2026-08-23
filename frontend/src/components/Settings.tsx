@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { api } from "../api";
 import { ROLE_GROUPS } from "./JobPreferencesModal";
 
@@ -51,6 +51,91 @@ function ScrapeFamiliesPanel({ onToast }: { onToast: (m: string, t?: any) => voi
           </button>
         ))}
       </div>
+    </section>
+  );
+}
+
+// ── Billing (admin): per-user AI spend, daily rows rolled into monthly view ──
+function BillingUsagePanel() {
+  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [rows, setRows] = useState<Array<{ user: string; email: string; date: string; tailors: number; anthropic: number; google: number; openai: number; openrouter: number; total: number }>>([]);
+  const [openUser, setOpenUser] = useState<string | null>(null);
+  useEffect(() => { api.adminUsage(month).then(r => setRows(r.rows)).catch(() => setRows([])); }, [month]);
+
+  const byUser = new Map<string, { tailors: number; anthropic: number; google: number; other: number; total: number; days: typeof rows }>();
+  for (const r of rows) {
+    const k = r.email || r.user;
+    if (!byUser.has(k)) byUser.set(k, { tailors: 0, anthropic: 0, google: 0, other: 0, total: 0, days: [] });
+    const u = byUser.get(k)!;
+    u.tailors += r.tailors; u.anthropic += r.anthropic; u.google += r.google;
+    u.other += r.openai + r.openrouter; u.total += r.total; u.days.push(r);
+  }
+  const users = [...byUser.entries()].sort((a, b) => b[1].total - a[1].total);
+  const grand = users.reduce((a, [, u]) => ({ tailors: a.tailors + u.tailors, total: a.total + u.total,
+    anthropic: a.anthropic + u.anthropic, google: a.google + u.google }), { tailors: 0, total: 0, anthropic: 0, google: 0 });
+  const $ = (n: number) => "$" + n.toFixed(2);
+
+  const th: React.CSSProperties = { textAlign: "right", padding: "6px 10px", fontSize: 11, fontWeight: 700, color: "var(--tx-3)", textTransform: "uppercase", letterSpacing: ".05em" };
+  const td: React.CSSProperties = { textAlign: "right", padding: "7px 10px", fontSize: 12.5, color: "var(--tx-2)" };
+
+  return (
+    <section className="form-section">
+      <div className="section-label" style={{ gap: 10 }}>
+        <Ic d={'<path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>'} size={16} /> AI Billing
+        <input type="month" value={month} onChange={e => setMonth(e.target.value)}
+          style={{ marginLeft: "auto", height: 30, padding: "0 8px", borderRadius: 8, border: "1px solid var(--line)",
+            background: "var(--bg-elevated)", color: "var(--tx)", fontSize: 12.5, fontFamily: "inherit" }} />
+      </div>
+      {users.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--tx-3)", padding: "14px 4px" }}>
+          No usage recorded for this month yet — rows appear as tailor runs complete.
+        </div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead><tr>
+              <th style={{ ...th, textAlign: "left" }}>User</th>
+              <th style={th}>Tailors</th><th style={th}>Claude</th><th style={th}>Gemini</th>
+              <th style={th}>Other</th><th style={th}>Total</th>
+            </tr></thead>
+            <tbody>
+              {users.map(([email, u]) => (
+                <React.Fragment key={email}>
+                  <tr onClick={() => setOpenUser(o => o === email ? null : email)}
+                    style={{ cursor: "pointer", borderTop: "1px solid var(--line)" }}>
+                    <td style={{ ...td, textAlign: "left", fontWeight: 600, color: "var(--tx)" }}>
+                      {openUser === email ? "▾ " : "▸ "}{u.days[0]?.user || email}
+                    </td>
+                    <td style={td}>{u.tailors}</td>
+                    <td style={td}>{$(u.anthropic)}</td>
+                    <td style={td}>{$(u.google)}</td>
+                    <td style={td}>{$(u.other)}</td>
+                    <td style={{ ...td, fontWeight: 700, color: "var(--tx)" }}>{$(u.total)}</td>
+                  </tr>
+                  {openUser === email && u.days.map(d => (
+                    <tr key={d.date} style={{ background: "var(--bg-elevated)" }}>
+                      <td style={{ ...td, textAlign: "left", paddingLeft: 28, fontSize: 12 }}>{d.date}</td>
+                      <td style={td}>{d.tailors}</td>
+                      <td style={td}>{$(d.anthropic)}</td>
+                      <td style={td}>{$(d.google)}</td>
+                      <td style={td}>{$(d.openai + d.openrouter)}</td>
+                      <td style={td}>{$(d.total)}</td>
+                    </tr>
+                  ))}
+                </React.Fragment>
+              ))}
+              <tr style={{ borderTop: "2px solid var(--line-hi)" }}>
+                <td style={{ ...td, textAlign: "left", fontWeight: 700, color: "var(--tx)" }}>All users</td>
+                <td style={{ ...td, fontWeight: 700 }}>{grand.tailors}</td>
+                <td style={{ ...td, fontWeight: 700 }}>{$(grand.anthropic)}</td>
+                <td style={{ ...td, fontWeight: 700 }}>{$(grand.google)}</td>
+                <td style={td}></td>
+                <td style={{ ...td, fontWeight: 700, color: "var(--tx)" }}>{$(grand.total)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }
@@ -757,6 +842,7 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
     { id: "scraping", label: "Scraping" },
     { id: "ai", label: "AI & Models" },
     { id: "notifications", label: "Notifications" },
+    { id: "billing", label: "Billing" },
     { id: "general", label: "General" },
   ];
 
@@ -795,6 +881,8 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
 
         {/* Scraping family toggles (admin) */}
         {tab === "scraping" && <ScrapeFamiliesPanel onToast={toast} />}
+
+        {tab === "billing" && <BillingUsagePanel />}
 
         {/* AI Configuration */}
         {tab === "ai" && <>

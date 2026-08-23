@@ -22,7 +22,7 @@ load_dotenv()
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from database import init_db, SessionLocal, engine, Job, Setting, User, UserSettings, UserJob, Company, AppLog, QuickTailorHistory, ChatMessage, AssistantMessage, decrypt_secret
+from database import init_db, SessionLocal, engine, Job, Setting, User, UserSettings, UserJob, Company, AppLog, QuickTailorHistory, ChatMessage, AssistantMessage, decrypt_secret, AiUsageDaily
 from auth import get_current_user_id, get_optional_user_id, hash_password, verify_password, create_token
 from scrapers import run_all_scrapers, run_group_fast, run_group_greenhouse, run_group_hiringcafe, run_group_jobo, run_group_fantasticjobs
 from scrapers.o2ten import fetch as run_group_o2ten
@@ -3118,6 +3118,63 @@ async def set_o2ten_token(body: dict, user_id: str = Depends(get_current_user_id
     return {"ok": True, "len": len(token)}
 
 
+def _provider_of_model(model: str) -> str:
+    m = (model or "").lower()
+    if "claude" in m:
+        return "anthropic"
+    if "gemini" in m:
+        return "google"
+    if m.startswith(("gpt", "o1", "o3")) or "openai" in m:
+        return "openai"
+    return "openrouter"
+
+
+async def _record_ai_usage(user_id: str, calls: list, tailors: int = 0):
+    """Upsert today's AiUsageDaily row for this user from a run's call list."""
+    from ai.llm import _rate_for
+    day = datetime.now(EST).strftime("%Y-%m-%d")
+    per = {"anthropic": 0.0, "google": 0.0, "openai": 0.0, "openrouter": 0.0}
+    ti = to = 0
+    for c in calls:
+        ri, ro = _rate_for(c.get("model") or "")
+        per[_provider_of_model(c.get("model") or "")] += c.get("in", 0) / 1e6 * ri + c.get("out", 0) / 1e6 * ro
+        ti += c.get("in", 0); to += c.get("out", 0)
+    async with SessionLocal() as db:
+        row = await db.get(AiUsageDaily, {"user_id": user_id, "date": day})
+        if not row:
+            row = AiUsageDaily(user_id=user_id, date=day)
+            db.add(row)
+        row.tailors = (row.tailors or 0) + tailors
+        row.anthropic_cost  = round((row.anthropic_cost or 0)  + per["anthropic"], 6)
+        row.google_cost     = round((row.google_cost or 0)     + per["google"], 6)
+        row.openai_cost     = round((row.openai_cost or 0)     + per["openai"], 6)
+        row.openrouter_cost = round((row.openrouter_cost or 0) + per["openrouter"], 6)
+        row.tokens_in  = (row.tokens_in or 0) + ti
+        row.tokens_out = (row.tokens_out or 0) + to
+        await db.commit()
+
+
+@app.get("/api/admin/usage")
+async def admin_usage(month: str = "", user_id: str = Depends(get_current_user_id)):
+    """Per-user daily billing rows for one month (default: current, US Eastern).
+    The frontend aggregates monthly totals from these."""
+    await _verify_admin(user_id)
+    month = month or datetime.now(EST).strftime("%Y-%m")
+    async with SessionLocal() as db:
+        rows = (await db.execute(
+            select(AiUsageDaily).where(AiUsageDaily.date.like(f"{month}-%"))
+            .order_by(AiUsageDaily.date.desc()))).scalars().all()
+        users = {u.id: u for u in (await db.execute(select(User))).scalars().all()}
+    return {"month": month, "rows": [{
+        "user": (users.get(r.user_id).name or users.get(r.user_id).email) if users.get(r.user_id) else r.user_id,
+        "email": users.get(r.user_id).email if users.get(r.user_id) else "",
+        "date": r.date, "tailors": r.tailors or 0,
+        "anthropic": round(r.anthropic_cost or 0, 4), "google": round(r.google_cost or 0, 4),
+        "openai": round(r.openai_cost or 0, 4), "openrouter": round(r.openrouter_cost or 0, 4),
+        "total": round((r.anthropic_cost or 0) + (r.google_cost or 0) + (r.openai_cost or 0) + (r.openrouter_cost or 0), 4),
+    } for r in rows]}
+
+
 @app.get("/api/admin/scrape-families")
 async def get_scrape_families(user_id: str = Depends(get_current_user_id)):
     """Admin family toggles: ON = scraped from FantasticJobs + visible in app."""
@@ -3396,6 +3453,13 @@ async def tailor_job(job_id: str, batch: bool = False, user_id: str = Depends(ge
         uj.tailor_tokens_in = _usage.get("tokens_in")
         uj.tailor_tokens_out = _usage.get("tokens_out")
         await db.commit()
+
+    # Durable billing ledger: split this run's metered calls by provider and
+    # roll them into the caller's per-day row.
+    try:
+        await _record_ai_usage(user_id, _usage.get("calls") or [], tailors=1)
+    except Exception as e:
+        print(f"[Usage] daily ledger write failed: {e}")
 
     return {
         "ats_before": ats_before,

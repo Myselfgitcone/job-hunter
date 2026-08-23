@@ -1939,6 +1939,21 @@ async def reveal_telegram_token(user_id: str = Depends(get_current_user_id)):
     return {"token": (s.telegram_bot_token or "") if s else ""}
 
 
+@app.get("/api/settings/reveal-key/{provider}")
+async def reveal_ai_key(provider: str, user_id: str = Depends(get_current_user_id)):
+    """Reveal one of the caller's own stored AI keys (UI 'Show' button) —
+    same pattern as the Telegram token reveal. Keys are masked in GET
+    /api/settings so plaintext never rides along on every settings load."""
+    field = {"anthropic": "anthropic_api_key", "google": "google_api_key",
+             "openai": "openai_api_key", "openrouter": "ai_api_key"}.get(provider)
+    if not field:
+        raise HTTPException(status_code=400, detail="unknown provider")
+    async with SessionLocal() as db:
+        result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+        s = result.scalar_one_or_none()
+    return {"key": (getattr(s, field, "") or "") if s else ""}
+
+
 @app.post("/api/telegram/test")
 async def test_telegram(body: dict = Body(...), user_id: str = Depends(get_current_user_id)):
     """Test Telegram bot connection and send a test message."""

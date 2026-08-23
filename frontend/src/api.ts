@@ -193,6 +193,7 @@ export const api = {
   clearAllJobs: () => req<{ deleted: number }>("/api/jobs/all", { method: "DELETE" }),
 
   revealTelegramToken: () => req<{ token: string }>("/api/settings/telegram-token"),
+  revealAiKey: (provider: string) => req<{ key: string }>(`/api/settings/reveal-key/${provider}`),
 
   // ── Admin: user approval ───────────────────────────────────────────────────
   adminUsers: () =>

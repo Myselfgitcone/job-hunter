@@ -811,7 +811,12 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
               </span>
               <div className="input-reveal">
                 <input type={showKey ? "text" : "password"} value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-or-…" />
-                <button onClick={() => setShowKey(s => !s)}>{showKey ? "Hide" : "Show"}</button>
+                <button onClick={async () => {
+                  if (!showKey && apiKey.includes("•")) {
+                    try { const r = await api.revealAiKey("openrouter"); if (r.key) setApiKey(r.key); } catch {}
+                  }
+                  setShowKey(s => !s);
+                }}>{showKey ? "Hide" : "Show"}</button>
               </div>
             </label>
 
@@ -822,7 +827,12 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
               </span>
               <div className="input-reveal">
                 <input type={showAnthropicKey ? "text" : "password"} value={anthropicKey} onChange={e => setAnthropicKey(e.target.value)} placeholder="sk-ant-…" />
-                <button onClick={() => setShowAnthropicKey(s => !s)}>{showAnthropicKey ? "Hide" : "Show"}</button>
+                <button onClick={async () => {
+                  if (!showAnthropicKey && anthropicKey.includes("•")) {
+                    try { const r = await api.revealAiKey("anthropic"); if (r.key) setAnthropicKey(r.key); } catch {}
+                  }
+                  setShowAnthropicKey(s => !s);
+                }}>{showAnthropicKey ? "Hide" : "Show"}</button>
               </div>
             </label>
 
@@ -833,7 +843,12 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
               </span>
               <div className="input-reveal">
                 <input type={showGoogleKey ? "text" : "password"} value={googleKey} onChange={e => setGoogleKey(e.target.value)} placeholder="AIza…" />
-                <button onClick={() => setShowGoogleKey(s => !s)}>{showGoogleKey ? "Hide" : "Show"}</button>
+                <button onClick={async () => {
+                  if (!showGoogleKey && googleKey.includes("•")) {
+                    try { const r = await api.revealAiKey("google"); if (r.key) setGoogleKey(r.key); } catch {}
+                  }
+                  setShowGoogleKey(s => !s);
+                }}>{showGoogleKey ? "Hide" : "Show"}</button>
               </div>
             </label>
 
@@ -844,7 +859,12 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
               </span>
               <div className="input-reveal">
                 <input type={showOpenaiKey ? "text" : "password"} value={openaiKey} onChange={e => setOpenaiKey(e.target.value)} placeholder="sk-…" />
-                <button onClick={() => setShowOpenaiKey(s => !s)}>{showOpenaiKey ? "Hide" : "Show"}</button>
+                <button onClick={async () => {
+                  if (!showOpenaiKey && openaiKey.includes("•")) {
+                    try { const r = await api.revealAiKey("openai"); if (r.key) setOpenaiKey(r.key); } catch {}
+                  }
+                  setShowOpenaiKey(s => !s);
+                }}>{showOpenaiKey ? "Hide" : "Show"}</button>
               </div>
             </label>
 

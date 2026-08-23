@@ -204,7 +204,6 @@ export const api = {
   adminPendingCount: () => req<{ count: number }>("/api/admin/pending-count"),
   adminDeleteUser: (id: string) => req<{ ok: boolean }>(`/api/admin/users/${id}`, { method: "DELETE" }),
   adminJobStats: () => req<any>("/api/admin/job-stats"),
-  adminBilling: () => req<any>("/api/admin/billing"),
   adminLogs: (level?: string) => req<any[]>(`/api/admin/logs${level && level !== "ALL" ? `?level=${level}` : ""}`),
   adminLogsUnseenCount: () => req<{ count: number }>("/api/admin/logs/unseen-count"),
   adminLogsMarkSeen: () => req<{ ok: boolean }>("/api/admin/logs/mark-seen", { method: "POST" }),

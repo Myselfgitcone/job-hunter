@@ -394,14 +394,6 @@ const I = {
   zap:      '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
 };
 
-// ── Toggle ────────────────────────────────────────────────────────────────────
-function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
-  return (
-    <button className={`toggle${on ? " on" : ""}`} onClick={onClick}>
-      <span className="toggle-knob" />
-    </button>
-  );
-}
 
 
 
@@ -613,103 +605,11 @@ function SystemLogsPanel({ onSeen }: { onSeen?: () => void }) {
 }
 
 
-// ── Live Billing Panel ────────────────────────────────────────────────────────
-function BillingPanel() {
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-
-  const load = async () => {
-    try {
-      setData(await api.adminBilling());
-    } catch (e: any) {
-      setErr(e?.message || "fetch failed");
-    } finally { setLoading(false); }
-  };
-
-  useEffect(() => {
-    load();
-    const t = setInterval(load, 60000);
-    return () => clearInterval(t);
-  }, []);
-
-  const orCredits = data?.or_credits;
-
-  const bar = (used: number, limit: number, color: string) => {
-    const pct = limit > 0 ? Math.min(100, Math.round(used / limit * 100)) : 0;
-    return (
-      <div style={{ height: 5, borderRadius: 3, background: "var(--bg-active)", marginTop: 6, overflow: "hidden" }}>
-        <div style={{ height: "100%", width: `${pct}%`, borderRadius: 3, background: color, transition: "width .6s" }} />
-      </div>
-    );
-  };
-
-  return (
-    <div style={{ position: "sticky", top: 28, display: "flex", flexDirection: "column", gap: 14 }}>
-      {/* header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
-        <h2 style={{ fontFamily: "var(--f-display)", fontSize: 18, fontWeight: 700, letterSpacing: "-.01em" }}>Live Billing</h2>
-        <button onClick={load} style={{ fontSize: 11, color: "var(--tx-3)", background: "none", border: "none", cursor: "pointer", padding: "3px 7px", borderRadius: 5 }}>
-          {loading ? "..." : "↻ Refresh"}
-        </button>
-      </div>
-
-      {err && <div style={{ fontSize: 11, color: "#dc2626" }}>{err}</div>}
-
-      {/* ── OpenRouter ── */}
-      <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--line)", borderRadius: 12, padding: "20px 20px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg,#7c3aed,#06b6d4)", display: "grid", placeItems: "center" }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-          </div>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--tx)" }}>OpenRouter</span>
-        </div>
-
-        {loading && !orCredits && <div style={{ fontSize: 12, color: "var(--tx-3)" }}>Loading…</div>}
-        {!loading && !orCredits && <div style={{ fontSize: 12, color: "var(--tx-3)" }}>Set OpenRouter API key in AI Configuration</div>}
-
-        {orCredits != null && (() => {
-          const balance = (orCredits.total_credits ?? 0) - (orCredits.total_usage ?? 0);
-          return (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={{ fontSize: 11, color: "var(--tx-3)", textTransform: "uppercase", letterSpacing: ".06em" }}>Balance</span>
-              <span style={{ fontFamily: "var(--f-mono)", fontSize: 28, fontWeight: 800, color: "#16a34a", lineHeight: 1 }}>
-                ${balance.toFixed(2)}
-              </span>
-            </div>
-          );
-        })()}
-      </div>
-
-      {/* ── FantasticJobs ── */}
-      <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--line)", borderRadius: 12, padding: "20px 20px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg,#ec4899,#8b5cf6)", display: "grid", placeItems: "center" }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-          </div>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--tx)" }}>FantasticJobs</span>
-        </div>
-        <div style={{ fontSize: 12, color: "var(--tx-3)", marginBottom: 10, lineHeight: 1.5 }}>
-          FJ doesn't expose usage data via API — check your dashboard directly.
-        </div>
-        <a href="https://developer.fantastic.jobs/subscriptions#manage" target="_blank" rel="noreferrer"
-          style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "var(--violet)", textDecoration: "none" }}>
-          Open FJ Dashboard →
-        </a>
-      </div>
-
-      <div style={{ fontSize: 10.5, color: "var(--tx-faint)", textAlign: "center" }}>Auto-refreshes every 60s</div>
-    </div>
-  );
-}
-
-
 export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: any) => void; onErrorsSeen?: () => void }) {
   const toast = onToast || ((m: string) => console.log(m));
 
 
   const [visaFilter, setVisaFilter] = useState(false);
-  const [applyDryRun, setApplyDryRun] = useState(true);
   const [expFilter, setExpFilter]   = useState(false);
   const [openAI, setOpenAI]           = useState(() => localStorage.getItem('settings_open_ai') !== 'false');
   const [openTelegram, setOpenTelegram] = useState(() => localStorage.getItem('settings_open_telegram') !== 'false');
@@ -750,7 +650,6 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
       if (!s) return;
       setVisaFilter(!!s.visa_filter);
       setExpFilter(!!s.level_filter);
-      setApplyDryRun(s.apply_dry_run !== false);
       setProvider(s.ai_provider || "OpenRouter");
       setModelParse(s.ai_model_parse || "google/gemini-2.5-flash-lite");
       setModelTailor(s.ai_model_tailor || "anthropic/claude-sonnet-4.6");
@@ -774,7 +673,6 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
     try {
       await api.saveSettings({
         visa_filter: visaFilter, level_filter: expFilter,
-        apply_dry_run: applyDryRun,
         ai_provider: provider, ai_api_key: apiKey,
         anthropic_api_key: anthropicKey,
         google_api_key: googleKey,

@@ -2978,32 +2978,6 @@ async def admin_job_stats(user_id: str = Depends(get_current_user_id)):
     }
 
 
-@app.get("/api/admin/billing")
-async def admin_billing(user_id: str = Depends(get_current_user_id)):
-    """Proxy FJ + OpenRouter live billing data."""
-    await _verify_admin(user_id)
-    import os
-    fj_key = os.getenv("FANTASTIC_JOBS_API_KEY", "")
-    async with SessionLocal() as db:
-        admin_s = await _get_admin_settings(db)
-        or_key = (admin_s.ai_api_key or "") if admin_s else ""
-        prov = (admin_s.ai_provider or "OpenRouter") if admin_s else "OpenRouter"
-
-    or_credits = None
-    async with httpx.AsyncClient(timeout=10) as client:
-        if or_key:
-            try:
-                r = await client.get(
-                    "https://openrouter.ai/api/v1/credits",
-                    headers={"Authorization": f"Bearer {or_key}"}
-                )
-                if r.status_code == 200:
-                    or_credits = r.json().get("data")
-            except Exception:
-                pass
-    return {"or_credits": or_credits}
-
-
 @app.get("/api/qualify/health")
 async def qualify_health(user_id: str = Depends(get_current_user_id)):
     """Admin diagnostic: why is auto-qualify (not) running?"""

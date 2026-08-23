@@ -747,6 +747,19 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
 
   const cronDesc = CRON_PRESETS[cron] || "Custom schedule";
 
+  // Tabbed layout — sections are grouped; the last-open tab is remembered.
+  const [tab, setTab] = useState<string>(() => localStorage.getItem("settings_tab") || "users");
+  useEffect(() => { localStorage.setItem("settings_tab", tab); }, [tab]);
+  const [pendingN, setPendingN] = useState(0);
+  useEffect(() => { api.adminPendingCount().then(r => setPendingN(r.count || 0)).catch(() => {}); }, []);
+  const TABS: { id: string; label: string }[] = [
+    { id: "users", label: "Users" },
+    { id: "scraping", label: "Scraping" },
+    { id: "ai", label: "AI & Models" },
+    { id: "notifications", label: "Notifications" },
+    { id: "general", label: "General" },
+  ];
+
   return (
     <div className="form-scroll">
       <div className="settings-layout">
@@ -761,13 +774,30 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
           </button>
         </div>
 
+        {/* Tab bar */}
+        <div style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--line)", marginBottom: 18, flexWrap: "wrap" }}>
+          {TABS.map(t => (
+            <button key={t.id} type="button" onClick={() => setTab(t.id)}
+              style={{ padding: "9px 16px", fontSize: 13, fontWeight: 600, fontFamily: "inherit",
+                background: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
+                border: "none", borderBottom: tab === t.id ? "2px solid var(--violet)" : "2px solid transparent",
+                color: tab === t.id ? "var(--violet)" : "var(--tx-3)", marginBottom: -1 }}>
+              {t.label}
+              {t.id === "users" && pendingN > 0 && (
+                <span style={{ background: "#dc2626", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "1px 7px" }}>{pendingN}</span>
+              )}
+            </button>
+          ))}
+        </div>
+
         {/* User approval & role assignment (admin page) */}
-        <UsersPanel onToast={toast} onChanged={() => {}} />
+        {tab === "users" && <UsersPanel onToast={toast} onChanged={() => {}} />}
 
         {/* Scraping family toggles (admin) */}
-        <ScrapeFamiliesPanel onToast={toast} />
+        {tab === "scraping" && <ScrapeFamiliesPanel onToast={toast} />}
 
         {/* AI Configuration */}
+        {tab === "ai" && <>
         <section className="form-section">
           <div className="section-label" style={{ cursor: "pointer" }} onClick={() => setOpenAI(o => !o)}>
             <Ic d={I.sparkles} size={16} /> AI Configuration<Chevron open={openAI} />
@@ -905,8 +935,11 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
           </div>
           </>}
         </section>
+        <BillingPanel />
+        </>}
 
         {/* Telegram */}
+        {tab === "notifications" && <>
         <section className="form-section">
           <div className="section-label" style={{ cursor: "pointer" }} onClick={() => setOpenTelegram(o => !o)}>
             <Ic d={I.bell} size={16} /> Telegram Notifications<Chevron open={openTelegram} />
@@ -940,8 +973,10 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
           </div>
           </>}
         </section>
+        </>}
 
         {/* Auto-Apply */}
+        {tab === "general" && <>
         <section className="form-section">
           <div className="section-label">
             <Ic d={I.zap} size={16} /> Auto-Apply
@@ -959,8 +994,11 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
             </button>
           </div>
         </section>
+        <SystemLogsPanel onSeen={onErrorsSeen} />
+        </>}
 
         {/* Scheduler */}
+        {tab === "scraping" && <>
         <section className="form-section">
           <div className="section-label" style={{ cursor: "pointer" }} onClick={() => setOpenScheduler(o => !o)}>
             <Ic d={I.clock} size={16} /> Auto-Scrape Scheduler<Chevron open={openScheduler} />
@@ -1026,10 +1064,8 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
           )}
           </>}
         </section>
-
         <JobStatsPanel />
-
-        <SystemLogsPanel onSeen={onErrorsSeen} />
+        </>}
 
         <div className="form-foot">
           <button className="save-btn" onClick={saveSettings}>
@@ -1038,9 +1074,6 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
         </div>
       </div>{/* form-inner settings-left */}
 
-      <div className="settings-right">
-        <BillingPanel />
-      </div>
       </div>{/* settings-layout */}
     </div>
   );

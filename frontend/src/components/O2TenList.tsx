@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import type { Job } from "../types";
 
-// O2Ten curated-list view: family -> color-coded collapsible category groups
-// Family → role category (collapsible group) → link rows with Apply / Applied / Skip.
-// The curated doc has no companies, so the section name (stored in j.company)
-// is the group key. Skipped rows are filtered upstream like everywhere else.
+// O2Ten curated-list view: color-coded collapsible category groups with
+// compact rows; clicking a row opens the standard detail panel. The curated
+// doc has no companies, so the section name (stored in j.company) is the
+// group key. Skipped rows are filtered upstream like everywhere else.
 
 function skillsOf(j: Job): string {
   const m = (j.description || "").match(/Skills:\s*([^\n]+)/);

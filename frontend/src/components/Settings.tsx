@@ -997,72 +997,89 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
         <SystemLogsPanel onSeen={onErrorsSeen} />
         </>}
 
-        {/* Scheduler */}
+        {/* Scraping schedule — plain-language controls; raw cron behind Advanced */}
         {tab === "scraping" && <>
         <section className="form-section">
-          <div className="section-label" style={{ cursor: "pointer" }} onClick={() => setOpenScheduler(o => !o)}>
-            <Ic d={I.clock} size={16} /> Auto-Scrape Scheduler<Chevron open={openScheduler} />
+          <div className="section-label">
+            <Ic d={I.clock} size={16} /> Scraping Schedule
           </div>
-          {openScheduler && <><div className="field-grid">
-            <label className="field">
-              <span className="field-label">Cron Expression</span>
-              <input type="text" value={cron} onChange={e => setCron(e.target.value)} style={{ fontFamily: "var(--f-mono)" }} placeholder="0 * * * *" />
-            </label>
-            <div className="field">
-              <span className="field-label">Schedule</span>
-              <div className="cron-info">
-                <span className="cron-desc">{cronDesc}</span>
-                <span className="cron-next">Next run <b>soon</b></span>
-              </div>
-            </div>
+          <div style={{ fontSize: 13, color: "var(--tx-2)", marginBottom: 10 }}>
+            How often the app fetches new jobs automatically. Current: <b style={{ color: "var(--tx)" }}>{cronDesc}</b>.
           </div>
           <div className="cron-presets">
             {Object.entries(CRON_PRESETS).map(([c, d]) => (
-              <button key={c} className={`cron-chip${cron === c ? " on" : ""}`} onClick={() => setCron(c)}>{d}</button>
+              <button key={c} className={`cron-chip${cron === c ? " on" : ""}`}
+                onClick={() => { setCron(c); setTimeout(saveSettings, 0); }}>{d}</button>
             ))}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
-            <button className="act" onClick={saveSettings}><Ic d={I.check} size={14} /> Update Schedule</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
             <button className={`act primary${scraping ? " running" : ""}`} onClick={runNow} style={scraping ? { animation: "pulseBtn 1.4s ease-in-out infinite" } : {}}>
-              <Ic d={I.skip} size={14} /> {scraping ? "Running…" : "Run Now"}
+              <Ic d={I.skip} size={14} /> {scraping ? "Fetching jobs…" : "Fetch new jobs now"}
             </button>
-            <button className="act fail" style={{ color: "var(--tx-error)", borderColor: "var(--tx-error)" }} onClick={async () => {
-              if (!confirm("Delete ALL jobs? Cannot be undone.")) return;
-              try { const r = await api.clearAllJobs(); toast("Cleared " + r.deleted + " jobs", "success"); setTimeout(() => window.location.reload(), 1500); }
-              catch (e: any) { toast(e.message, "error"); }
-            }}>
-              <Ic d={I.x} size={14} /> Clear All Jobs
-            </button>
-            <button className="act" onClick={runJdFix} disabled={!!jdFix?.running}>
-              <Ic d={I.check} size={14} /> {jdFix?.running ? `Fixing JDs… ${jdFix.done}/${jdFix.total || "?"}` : "Fix Broken JDs"}
-            </button>
-            {scraping && <span className="test-res" style={{ color: "var(--tx-3)" }}><span className="mini-spin" /> scraping sources…</span>}
+            {scraping && <span className="test-res" style={{ color: "var(--tx-3)" }}><span className="mini-spin" /> checking all sources — takes a couple of minutes</span>}
           </div>
 
-          {/* Auto-qualify health */}
+          {/* AI scoring status — one plain sentence */}
           {qualHealth && (
-            <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 10, background: "var(--bg-elevated)", border: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", fontSize: 12.5 }}>
-              <span style={{ fontWeight: 700, color: "var(--tx)" }}>Auto-Qualify</span>
-              <span style={{ color: qualHealth.api_key_set ? "#16a34a" : "#dc2626", fontWeight: 600 }}>
-                {qualHealth.api_key_set ? "✓ API key" : "✗ API key missing"}
-              </span>
-              <span style={{ color: qualHealth.profile_set ? "#16a34a" : "#dc2626", fontWeight: 600 }}>
-                {qualHealth.profile_set ? "✓ Profile" : "✗ Profile missing"}
-              </span>
-              <span style={{ color: "var(--tx-2)" }}>Scored: <b>{qualHealth.scored_jobs}</b></span>
-              <span style={{ color: "var(--tx-2)" }}>Pending: <b>{qualHealth.pending_jobs}</b></span>
-              {qualHealth.running && <span style={{ color: "var(--violet)", fontWeight: 600 }}>running…</span>}
-              <button className="act" style={{ height: 26, fontSize: 11.5 }}
-                disabled={qualHealth.running || !qualHealth.api_key_set || !qualHealth.profile_set}
-                onClick={async () => {
-                  try { await api.qualifyAll(); toast("Qualify started in background", "success"); }
-                  catch (e: any) { toast(e.message, "error"); }
-                }}>
-                Run Qualify Now
-              </button>
+            <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 10, background: "var(--bg-elevated)", border: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", fontSize: 12.5 }}>
+              <span style={{ fontWeight: 700, color: "var(--tx)" }}>AI job scoring</span>
+              {qualHealth.api_key_set && qualHealth.profile_set ? (
+                <span style={{ color: "var(--tx-2)" }}>
+                  {qualHealth.running ? "running now — " : ""}
+                  <b>{qualHealth.scored_jobs.toLocaleString()}</b> jobs scored
+                  {qualHealth.pending_jobs > 0 ? <> · <b>{qualHealth.pending_jobs}</b> waiting</> : " · all caught up"}
+                </span>
+              ) : (
+                <span style={{ color: "#dc2626", fontWeight: 600 }}>
+                  {!qualHealth.api_key_set ? "Add an AI key in the AI & Models tab to enable scoring." : "Upload a resume in Profile to enable scoring."}
+                </span>
+              )}
+              {qualHealth.pending_jobs > 0 && qualHealth.api_key_set && qualHealth.profile_set && (
+                <button className="act" style={{ height: 26, fontSize: 11.5 }} disabled={qualHealth.running}
+                  onClick={async () => {
+                    try { await api.qualifyAll(); toast("Scoring started in background", "success"); }
+                    catch (e: any) { toast(e.message, "error"); }
+                  }}>
+                  Score them now
+                </button>
+              )}
             </div>
           )}
-          </>}
+
+          {/* Advanced / maintenance — collapsed by default */}
+          <div style={{ marginTop: 14 }}>
+            <button type="button" onClick={() => setOpenScheduler(o => !o)}
+              style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
+                fontSize: 12.5, fontWeight: 600, color: "var(--tx-3)", padding: 0, display: "flex", alignItems: "center", gap: 6 }}>
+              <Chevron open={openScheduler} /> Advanced &amp; maintenance
+            </button>
+            {openScheduler && (
+              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+                <label className="field" style={{ maxWidth: 340 }}>
+                  <span className="field-label">Custom schedule (cron expression)</span>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input type="text" value={cron} onChange={e => setCron(e.target.value)} style={{ fontFamily: "var(--f-mono)" }} placeholder="0 * * * *" />
+                    <button className="act" onClick={saveSettings}><Ic d={I.check} size={14} /> Save</button>
+                  </div>
+                </label>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <button className="act" onClick={runJdFix} disabled={!!jdFix?.running}
+                    title="Re-fetches job descriptions that failed to download">
+                    <Ic d={I.check} size={14} /> {jdFix?.running ? `Repairing descriptions… ${jdFix.done}/${jdFix.total || "?"}` : "Repair missing job descriptions"}
+                  </button>
+                  <button className="act fail" style={{ color: "var(--tx-error)", borderColor: "var(--tx-error)" }}
+                    title="Deletes every job from the database — cannot be undone"
+                    onClick={async () => {
+                      if (!confirm("Delete ALL jobs from the database? This cannot be undone.")) return;
+                      try { const r = await api.clearAllJobs(); toast("Cleared " + r.deleted + " jobs", "success"); setTimeout(() => window.location.reload(), 1500); }
+                      catch (e: any) { toast(e.message, "error"); }
+                    }}>
+                    <Ic d={I.x} size={14} /> Delete all jobs
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </section>
         <JobStatsPanel />
         </>}

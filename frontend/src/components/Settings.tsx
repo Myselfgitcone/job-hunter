@@ -935,7 +935,6 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
           </div>
           </>}
         </section>
-        <BillingPanel />
         </>}
 
         {/* Telegram */}

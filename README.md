@@ -39,6 +39,49 @@ end to end. Multi-user with per-family role grants and per-user AI scoring.
 - **Telegram digests** — hourly and daily category counts, app-visible jobs
   only, plus operational alerts (expired tokens, scrape failures).
 
+## How a job flows through the system
+
+```
+hourly cron
+  └─ scrape: per-family boolean title filter (admin-composable)
+       ├─ credit guard: free count endpoint checked before paying per job
+       ├─ post-fetch filters: country, board-repost policy, clearance /
+       │  citizenship regex, per-family sponsorship + experience gates
+       ├─ dedupe: URL + title|company fingerprint (source-aware)
+       └─ insert → experience tray resolution (regex > API band > AI sweep)
+  └─ per-user qualify: each new job scored against every active user's
+     own profile (low-cost tier), cached in their user_jobs row
+  └─ telegram digest: app-visible family counts, hourly + daily
+
+user opens a job
+  └─ tailor: analyze (cheap model) → rewrite (flagship model) → QA fix →
+     three-gate score (ATS / recruiter / hiring-manager) → lint + cost record
+  └─ export: DOCX/PDF (two-page fit), cover letter, application answers
+  └─ track: applied → screening → assessment → interview rounds → final
+```
+
+## API surface (selected)
+
+| Route | Purpose |
+|---|---|
+| `GET /api/jobs` | role-scoped job list with per-user status overlay |
+| `POST /api/jobs/scrape?window=` | manual scrape; optional one-shot backfill window |
+| `POST /api/jobs/{id}/tailor?batch=` | tailoring pipeline; batch enables prompt caching |
+| `POST /api/jobs/{id}/qualify` | on-demand AI match score for one job |
+| `GET/PUT /api/admin/scrape-families` | per-family scraping toggles |
+| `GET /api/usage/today` | per-user tailoring spend (real token cost) |
+| `GET /api/analytics` | dashboards: daily activity, monthly trends |
+
+## Cost design
+
+Every AI pass is routed to the cheapest model that can do the job: bulk
+passes (qualify, experience inference, list parsing) run on a low-cost tier
+and are guarded against accidental premium-model use; tailoring uses a
+flagship model only for the rewrite step, with prompt caching enabled in
+batch mode. Scraping is billed per job returned, so filters live in the API
+request itself and a free count endpoint pre-checks volume before any paid
+call.
+
 ## Layout
 
 ```

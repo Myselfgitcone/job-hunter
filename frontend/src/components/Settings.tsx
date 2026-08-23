@@ -974,25 +974,8 @@ export function Settings({ onToast, onErrorsSeen }: { onToast?: (m: string, t?: 
         </section>
         </>}
 
-        {/* Auto-Apply */}
+        {/* General */}
         {tab === "general" && <>
-        <section className="form-section">
-          <div className="section-label">
-            <Ic d={I.zap} size={16} /> Auto-Apply
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <Toggle on={applyDryRun} onClick={() => setApplyDryRun(v => !v)} />
-            <div style={{ fontSize: 13, color: "var(--tx-2)", lineHeight: 1.5 }}>
-              <b style={{ color: "var(--tx-1)" }}>Dry-run mode {applyDryRun ? "ON" : "OFF"}</b><br />
-              {applyDryRun
-                ? "Submitting from the Auto-Apply panel validates the payload but sends nothing to the employer."
-                : "⚠ Live mode — confirming in the Auto-Apply panel sends a real application to the employer."}
-            </div>
-            <button className="act" style={{ marginLeft: "auto" }} onClick={saveSettings}>
-              <Ic d={I.check} size={14} /> Save
-            </button>
-          </div>
-        </section>
         <SystemLogsPanel onSeen={onErrorsSeen} />
         </>}
 

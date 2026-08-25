@@ -105,7 +105,7 @@ async def _llm_parse(text: str) -> list[dict]:
                      openai=s.openai_api_key or "", openrouter=s.ai_api_key or "")
     raw = await chat(system=_PARSE_SYSTEM, user=text[:60000],
                      api_key=s.ai_api_key or "", provider=s.ai_provider or "openrouter",
-                     model="google/gemini-2.5-flash-lite", max_tokens=20000,
+                     model="google/gemini-2.5-flash-lite", max_tokens=32000,
                      keys=keys, pass_name="o2ten_parse")
     m = re.search(r"\[.*\]", raw, re.DOTALL)
     return json.loads(m.group()) if m else []
@@ -190,10 +190,13 @@ async def fetch(settings: dict) -> list[dict]:
 
                 try:
                     parsed = await _llm_parse(text)
-                    if len(parsed) < 5:
-                        raise ValueError(f"LLM returned only {len(parsed)}")
+                    det = _parse_deterministic(text)
+                    # A truncated/failed LLM response loses jobs silently — if
+                    # the regex parse finds meaningfully more lines, trust it.
+                    if len(parsed) < 5 or len(det) > len(parsed) * 1.2:
+                        raise ValueError(f"LLM {len(parsed)} vs deterministic {len(det)}")
                 except Exception as e:
-                    print(f"[O2Ten] LLM parse failed ({e}) — deterministic fallback")
+                    print(f"[O2Ten] LLM parse insufficient ({e}) — using deterministic parse")
                     parsed = _parse_deterministic(text)
 
                 published = (post.get("publishedAt") or "")[:19]

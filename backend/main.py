@@ -503,19 +503,31 @@ async def _run_scrape_internal() -> dict:
 
     return {"new_jobs": total_new, "deleted_old": deleted, "scraped_at": now_iso}
 
+_auto_scrape_running = False
+
 async def _auto_scrape():
-    """Background auto-scrape task - runs on schedule."""
+    """Background auto-scrape task - runs on schedule. Guarded so two ticks can
+    never overlap — an overlapping run's timeout once cancelled the successor's
+    digest/qualify tail mid-flight."""
+    global _auto_scrape_running
+    if _auto_scrape_running:
+        print("[Scheduler] Auto-scrape skipped — previous run still in progress")
+        await log_event("WARNING", "scraper", "Auto-scrape tick skipped (previous run still in progress)")
+        return
+    _auto_scrape_running = True
     print("[Scheduler] Auto-scrape starting...")
     try:
         result = await asyncio.wait_for(_run_scrape(), timeout=3000)  # 50 min -- covers 3-group max
         print(f"[Scheduler] Auto-scrape complete: {result}")
     except asyncio.TimeoutError:
-        print("[Scheduler] Auto-scrape timed out after 30 minutes")
+        print("[Scheduler] Auto-scrape timed out after 50 minutes")
         await log_event("ERROR", "scraper", "Auto-scrape timed out after 50 minutes")
     except Exception as e:
         print(f"[Scheduler] Auto-scrape failed: {e}")
         await log_event("ERROR", "scraper", f"Auto-scrape failed: {e}")
         import traceback; traceback.print_exc()
+    finally:
+        _auto_scrape_running = False
 
 async def _strip_stale_linkedin_roles() -> int:
     """Remove '(LinkedIn)'-suffixed role items from every user's job_roles /
@@ -1121,7 +1133,7 @@ async def startup():
         print(f"[Startup] Cron setting fetch failed (using default): {e}")
 
     # All crons pinned to Eastern Time (app-wide standard)
-    _scheduler.add_job(_auto_scrape,         CronTrigger.from_crontab(cron_expr, timezone=EST),    id="auto_scrape",    replace_existing=True)
+    _scheduler.add_job(_auto_scrape,         CronTrigger.from_crontab(cron_expr, timezone=EST),    id="auto_scrape",    replace_existing=True, max_instances=1, coalesce=True, misfire_grace_time=300)
     _scheduler.add_job(_sync_expired_wrapper, CronTrigger.from_crontab("0 0 * * *", timezone=EST),  id="sync_expired",   replace_existing=True)
     _scheduler.add_job(_sync_modified_wrapper,CronTrigger.from_crontab("0 */6 * * *", timezone=EST),id="sync_modified",  replace_existing=True)
     _scheduler.start()

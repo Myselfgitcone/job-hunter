@@ -1678,6 +1678,11 @@ async def tailor_resume(base_resume: str, job_description: str,
     if yrs_fixed:
         notes.append("years guard: clamped inflated experience claim to base resume")
 
+    # Guard (f): final no-orphan sweep. Guard (c2) already trimmed once, but the
+    # tidy passes after it (list caps, dash rewrite) can erase a skill's last
+    # piece of evidence — re-measure on the FINAL text so nothing unbacked ships.
+    tailored = _drop_unevidenced_skills(tailored, notes)
+
     # ── 4. SCORE (cheap) ──────────────────────────────────────────────────
     # The score pass reads the FINAL resume + JD and also classifies each target
     # tool as present/missing BY MEANING (RAG = Retrieval-Augmented Generation,

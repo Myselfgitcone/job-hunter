@@ -1247,6 +1247,16 @@ def _experience_blob(text: str) -> str:
     return "\n".join(keep).lower()
 
 
+# Vendor/generic words that can't stand in for a whole skill name — "Apache
+# Kafka" is evidenced by "Kafka Connect", but "Microsoft Fabric" is NOT
+# evidenced by some other "Microsoft" mention.
+_SKILL_TOKEN_STOP = {
+    "apache", "microsoft", "azure", "amazon", "google", "cloud", "data",
+    "actions", "services", "service", "platform", "platforms", "tools",
+    "core", "server", "studio", "suite", "enterprise", "analytics",
+}
+
+
 def _orphan_skills(text: str) -> list[str]:
     """Skills-section items with no supporting line in EXPERIENCE/PROJECTS."""
     try:
@@ -1262,10 +1272,18 @@ def _orphan_skills(text: str) -> list[str]:
         if len(core) < 2:
             continue
         try:
-            if not re.search(_dynamic_coverage_pattern(core), blob):
-                orphans.append(item)
+            if re.search(_dynamic_coverage_pattern(core), blob):
+                continue
         except re.error:
             continue
+        # Fallback: a distinctive token of a multi-word name still counts —
+        # "Apache Kafka" is covered by a "Kafka Connect" bullet.
+        toks = [w for w in re.findall(r"[A-Za-z][\w+#.-]{4,}", core)
+                if w.lower() not in _SKILL_TOKEN_STOP]
+        if toks and any(re.search(rf"(?<![a-z0-9]){re.escape(w.lower())}(?![a-z0-9])", blob)
+                        for w in toks):
+            continue
+        orphans.append(item)
     return orphans
 
 
@@ -1309,47 +1327,52 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
     cheap model write ONLY the new bullets (one line each, job-addressed), then
     insert them in code — the model never rewrites the resume, so nothing can
     drift. Only fires when orphans exist; a clean draft costs nothing."""
-    orphans = _orphan_skills(resume)
-    if not orphans:
+    first_orphans = _orphan_skills(resume)
+    if not first_orphans:
         return resume
-    orphans = orphans[:16]  # sanity bound only — a 3rd page is acceptable
-    lines = resume.split("\n")
-    hdr_idx = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]
-    if not hdr_idx:
-        return resume
-    jobs_list = "\n".join(f"{n + 1}. {lines[i].strip()}"
-                          for n, i in enumerate(hdr_idx))
+    total_added = 0
     try:
-        out = (await chat(
-            SKILL_BULLET_SYSTEM,
-            "JOBS:\n" + jobs_list
-            + "\n\nORPHAN SKILLS (one output line each):\n"
-            + "\n".join(f"- {o}" for o in orphans)
-            + f"\n\nJOB DESCRIPTION (context):\n{job_description[:4000]}"
-            + f"\n\nRESUME (context):\n{resume}",
-            max_tokens=3000, pass_name="skill_bullets", **cheap_kw)).strip()
-        additions: dict[int, list] = {}
-        for ln in out.splitlines():
-            m = re.match(r"^\s*(\d+)\s*::\s*(.+?)\s*::\s*(.+?)\s*$", ln)
-            if not m:
-                continue
-            j = int(m.group(1)) - 1
-            skill = m.group(2).strip()
-            bullet = m.group(3).strip().lstrip("•-* ").strip()
-            bullet = re.sub(r"\s*[—–]\s*", ", ", bullet)   # belt and braces
-            if not (0 <= j < len(hdr_idx)) or not bullet:
-                continue
-            if not 6 <= len(bullet.split()) <= 34:
-                continue
-            additions.setdefault(j, []).append((skill, bullet))
-        if not additions:
-            notes.append("skill-bullet guard: model returned no usable lines")
-            return resume
-        fixed, added = _insert_skill_bullets(resume, additions)
-        left = len(_orphan_skills(fixed))
-        notes.append(f"skill-bullet guard: {len(orphans)} orphan skill(s), "
-                     f"{added} bullet(s) inserted, {left} still unevidenced")
-        return fixed
+        # Two rounds: the model occasionally skips a line — the second round
+        # re-measures and chases only what's still unevidenced.
+        for _attempt in range(2):
+            orphans = _orphan_skills(resume)[:16]
+            if not orphans:
+                break
+            lines = resume.split("\n")
+            hdr_idx = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]
+            if not hdr_idx:
+                break
+            jobs_list = "\n".join(f"{n + 1}. {lines[i].strip()}"
+                                  for n, i in enumerate(hdr_idx))
+            out = (await chat(
+                SKILL_BULLET_SYSTEM,
+                "JOBS:\n" + jobs_list
+                + "\n\nORPHAN SKILLS (one output line each):\n"
+                + "\n".join(f"- {o}" for o in orphans)
+                + f"\n\nJOB DESCRIPTION (context):\n{job_description[:4000]}"
+                + f"\n\nRESUME (context):\n{resume}",
+                max_tokens=3000, pass_name="skill_bullets", **cheap_kw)).strip()
+            additions: dict[int, list] = {}
+            for ln in out.splitlines():
+                m = re.match(r"^\s*(\d+)\s*::\s*(.+?)\s*::\s*(.+?)\s*$", ln)
+                if not m:
+                    continue
+                j = int(m.group(1)) - 1
+                skill = m.group(2).strip()
+                bullet = m.group(3).strip().lstrip("•-* ").strip()
+                bullet = re.sub(r"\s*[—–]\s*", ", ", bullet)   # belt and braces
+                if not (0 <= j < len(hdr_idx)) or not bullet:
+                    continue
+                if not 6 <= len(bullet.split()) <= 34:
+                    continue
+                additions.setdefault(j, []).append((skill, bullet))
+            if not additions:
+                break
+            resume, added = _insert_skill_bullets(resume, additions)
+            total_added += added
+        left = len(_orphan_skills(resume))
+        notes.append(f"skill-bullet guard: {len(first_orphans)} orphan skill(s), "
+                     f"{total_added} bullet(s) inserted, {left} still unevidenced")
     except Exception as exc:  # noqa: BLE001 — best effort
         notes.append(f"skill-bullet guard skipped ({exc})")
     return resume

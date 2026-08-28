@@ -60,9 +60,10 @@ def _count_pdf_pages(pdf_bytes: bytes) -> int:
 
 def generate_pdf(resume_text: str, job_title: str = "", company: str = "") -> bytes:
     """
-    Generate a 2-page PDF. If content overflows to 3+ pages, automatically
-    rebuild with progressively tighter spacing until it fits in 2 pages.
-    Three spacing tiers: normal → compact → tight.
+    Generate a 2-page PDF when the content allows it, rebuilding with
+    progressively tighter spacing (normal → compact → tight). Content that
+    cannot fit 2 pages even tight ships as 3 pages at the most readable
+    spacing that achieves it — a readable 3rd page beats a cramped 2nd.
     """
     first_line = resume_text.strip().split("\n")[0].strip()
     candidate_name = first_line.split("—")[0].strip() if "—" in first_line else first_line
@@ -80,6 +81,7 @@ def generate_pdf(resume_text: str, job_title: str = "", company: str = "") -> by
         (0.40,  9.0, 12.5, 1.5, 5),   # Tier 3 — tight
     ]
 
+    best_three = None
     for tier_idx, (margin, font_sz, leading, sp_after, sec_before) in enumerate(TIERS):
         buf = io.BytesIO()
         doc = SimpleDocTemplate(
@@ -100,9 +102,16 @@ def generate_pdf(resume_text: str, job_title: str = "", company: str = "") -> by
             if tier_idx > 0:
                 print(f"[PDF] Tier {tier_idx+1} spacing applied — {pages} page(s)")
             return pdf
+        if pages <= 3 and best_three is None:
+            best_three = (tier_idx, pdf)
 
-    # Fallback: return tightest version even if still >2 pages
-    print("[PDF] Warning: content still >2 pages after tightest spacing")
+    if best_three is not None:
+        tier_idx, pdf = best_three
+        print(f"[PDF] 3 pages at tier {tier_idx+1} spacing — content needs the room")
+        return pdf
+
+    # Fallback: return tightest version even if still >3 pages
+    print("[PDF] Warning: content still >3 pages after tightest spacing")
     return pdf
 
 

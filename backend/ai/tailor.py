@@ -132,6 +132,12 @@ SKILLS:
   With 5–7 categories there is room for all of them; that's the point.
 • Never repeat the same tool across categories, and never list two names for one
   thing (e.g. "Data Warehouse" and "Data Warehousing" — pick one).
+• EVERY SKILL EARNS A BULLET: each tool you list in SKILLS must appear in at
+  least one experience bullet, in the job where that work most plausibly
+  happened. A skill with zero bullets behind it dies in the first screening
+  question. If no bullet naturally shows it, ADD a modest scope bullet to the
+  right job — exceeding that job's ladder count for this is fine, and running
+  to a 3rd page is fine too. Full coverage beats brevity.
 
 PROFESSIONAL EXPERIENCE:
 For each job, in this exact shape — the job header line is NOT a bullet:
@@ -139,7 +145,7 @@ For each job, in this exact shape — the job header line is NOT a bullet:
 then the LADDER bullets (STYLE below), each starting with "• ",
 then ONE final line (not a bullet): `Technologies Used: <comma-separated tools for THAT job>`
 EVERY job MUST end with its own Technologies Used line — never omit it, even when
-trimming to fit two pages. No job may be left without one.
+trimming for length. No job may be left without one.
 
 PROJECTS:
 • ONLY if the base resume ALREADY lists real projects. If none, OMIT the whole
@@ -267,7 +273,9 @@ EXPERIENCE BULLET LADDER (by recency) — hard counts
 ================================================================================
 - Job 1 (most recent): 6–8 · Job 2: 5–6 · Job 3: 4–5 · Job 4: 2–3 · Job 5+: 1–2
 Merge if the source has too many; expand with real everyday work if too few.
-Keep the ENTIRE resume within 2 pages.
+A job may EXCEED its count when needed to give every listed Skill a supporting
+bullet (see EVERY SKILL EARNS A BULLET). Aim for 2 pages; running onto a 3rd
+page is acceptable when full skill coverage needs it — never past 3.
 
 ================================================================================
 CLOUD & TOOL REFRAMING  (cloud swap is ALWAYS ACTIVE — there is no toggle)
@@ -1190,6 +1198,114 @@ def _clean_lists(text: str) -> tuple[str, int]:
     return "\n".join(lines), changed
 
 
+# ── Guard: every claimed Skill must be evidenced by an experience bullet ──────
+
+SKILL_BULLET_SYSTEM = """You are a resume line writer. You receive a tailored
+resume, its job description, and a list of tools that appear in the resume's
+SKILLS section but in NO experience bullet.
+
+For EACH listed tool, ADD exactly one new bullet to the ONE past job where that
+work most plausibly happened (match the job's industry, era, and stack). One
+bullet may cover at most TWO of the listed tools when they naturally belong
+together.
+
+Each new bullet:
+- starts with "• ", past tense, reads like the job's other bullets
+- a modest scope-of-work claim — routine use of the tool, NOT a headline
+  achievement; NO numbers, no em/en dashes
+- 10–24 words, and does not open with a verb already used in that job
+- placed low among that job's existing bullets, BEFORE its Technologies Used line
+- also append the tool to that job's Technologies Used line
+
+Change NOTHING else — no rewording, no deletions; headers, titles, companies,
+dates, SUMMARY, SKILLS, and EDUCATION stay byte-identical.
+Return ONLY the full corrected resume, plain text, no commentary."""
+
+
+def _skills_claimed(text: str) -> list[str]:
+    """Items from the SKILLS section category lines."""
+    items, in_skills = [], False
+    for ln in text.splitlines():
+        s = ln.strip()
+        if _is_section_hdr(s):
+            in_skills = "skill" in s.lower()
+            continue
+        if in_skills and s.startswith(("•", "-", "*")) and ":" in s:
+            _, _, rest = s.partition(":")
+            items.extend(i.strip() for i in _split_list_items(rest) if i.strip())
+    return items
+
+
+def _experience_blob(text: str) -> str:
+    """The evidence part of the resume: everything under EXPERIENCE / PROJECTS
+    headers (bullets + Technologies Used lines), lowercased."""
+    keep, active = [], False
+    for ln in text.splitlines():
+        s = ln.strip()
+        if _is_section_hdr(s):
+            up = s.upper()
+            active = "EXPERIENCE" in up or "PROJECT" in up
+            continue
+        if active and s:
+            keep.append(s)
+    return "\n".join(keep).lower()
+
+
+def _orphan_skills(text: str) -> list[str]:
+    """Skills-section items with no supporting line in EXPERIENCE/PROJECTS."""
+    try:
+        from resume_lint import _dynamic_coverage_pattern
+    except ImportError:  # pragma: no cover — lint module optional
+        return []
+    blob = _experience_blob(text)
+    if not blob:
+        return []
+    orphans = []
+    for item in _skills_claimed(text):
+        core = re.sub(r"\s*\(.*\)\s*", " ", item).strip()
+        if len(core) < 2:
+            continue
+        try:
+            if not re.search(_dynamic_coverage_pattern(core), blob):
+                orphans.append(item)
+        except re.error:
+            continue
+    return orphans
+
+
+async def _ensure_skill_bullets(resume: str, job_description: str,
+                                notes: list, **cheap_kw) -> str:
+    """A skill listed in SKILLS with zero experience bullets behind it dies in
+    the first interview question. Detect such orphans deterministically and have
+    the cheap model write one plausible scope bullet each, in the job where that
+    work fits. Only fires when orphans exist — a clean draft costs nothing."""
+    orphans = _orphan_skills(resume)
+    if not orphans:
+        return resume
+    orphans = orphans[:16]  # sanity bound only — a 3rd page is acceptable
+    hdrs = [ln.strip() for ln in resume.splitlines() if _is_job_header_line(ln)]
+    try:
+        fixed = (await chat(
+            SKILL_BULLET_SYSTEM,
+            "ORPHAN SKILLS (one bullet each):\n  " + ", ".join(orphans)
+            + f"\n\nJOB DESCRIPTION:\n{job_description[:6000]}"
+            + f"\n\nRESUME:\n{resume}",
+            max_tokens=8000, pass_name="skill_bullets", **cheap_kw)).strip()
+        ok = (fixed
+              and _bullet_count(fixed) >= _bullet_count(resume)
+              and [ln.strip() for ln in fixed.splitlines()
+                   if _is_job_header_line(ln)] == hdrs)
+        if ok:
+            left = len(_orphan_skills(fixed))
+            notes.append(f"skill-bullet guard: {len(orphans)} orphan skill(s), "
+                         f"{len(orphans) - left if left <= len(orphans) else 0} now evidenced")
+            return fixed
+        notes.append("skill-bullet guard: fixer output rejected")
+    except Exception as exc:  # noqa: BLE001 — best effort
+        notes.append(f"skill-bullet guard skipped ({exc})")
+    return resume
+
+
 _YEARS_RE = re.compile(r"(\d{1,2})\s*\+?\s*years?", re.IGNORECASE)
 _YEAR_RE = re.compile(r"(?:19|20)\d{2}")
 
@@ -1395,7 +1511,12 @@ async def tailor_resume(base_resume: str, job_description: str,
     tailored = _guard_title_inflation(tailored, base_resume, notes)
     tailored = _headline_hybrid(tailored, base_resume, context.get("job_title", ""), notes)
 
-    # Guard (c2): bullets whose endings read as truncated. Measured with the
+    # Guard (c2): every skill claimed in SKILLS must have an experience bullet
+    # behind it — orphans get a modest scope bullet written into the job where
+    # that work plausibly happened.
+    tailored = await _ensure_skill_bullets(tailored, job_description, notes, **cheap_kw)
+
+    # Guard (c3): bullets whose endings read as truncated. Measured with the
     # same detector that drives the UI warning; only spends a call when the
     # draft actually has flagged bullets, and finishes deterministically.
     tailored = await _fix_fragment_endings(tailored, job_description, notes, **cheap_kw)

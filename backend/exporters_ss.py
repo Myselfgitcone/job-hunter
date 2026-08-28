@@ -317,8 +317,17 @@ def _split_header(elements):
 # ---------------------------------------------------------------------------
 # PDF — auto-fit: uniformly shrink type (never truncate) to cap at MAX_PAGES
 # ---------------------------------------------------------------------------
-MAX_PAGES = 2
+TARGET_PAGES = 2          # ideal length
+MAX_PAGES = 3             # acceptable when full skill coverage needs the room
+_MIN_TARGET_SCALE = 0.92  # shrink harder than this to force 2 pages = cramped;
+                          # a readable 3rd page beats squeezed type
 _SCALES = [1.0, 0.96, 0.92, 0.88, 0.84, 0.80]
+
+# ReportLab's bulletText glyph for U+2022 carries no usable ToUnicode mapping
+# (even with an embedded TTF), so PDF text extractors read every bullet as
+# "(cid:127)" garbage. The middle dot maps cleanly; rendered bold and slightly
+# larger it looks like a normal bullet.
+_BULLET_GLYPH = "·"
 
 
 def _render_pdf(elements, scale, title="Tailored Resume"):
@@ -350,7 +359,8 @@ def _render_pdf(elements, scale, title="Tailored Resume"):
     st_job_r = ps("jobr", body, bold=True, alignment=TA_RIGHT, spaceBefore=4 * sp, spaceAfter=1)
     st_body = ps("body", body, spaceAfter=2 * sp)
     st_tech = ps("tech", body, spaceAfter=3 * sp)
-    st_bullet = ps("bullet", body, leftIndent=13, bulletIndent=2, spaceAfter=2 * sp)
+    st_bullet = ps("bullet", body, leftIndent=13, bulletIndent=2, spaceAfter=2 * sp,
+                   bulletFontName=_FONT_B, bulletFontSize=body + 3)
 
     name, contact, headline, rest = _split_header(elements)
     story = []
@@ -387,9 +397,9 @@ def _render_pdf(elements, scale, title="Tailored Resume"):
         elif kind == "tech":
             story.append(Paragraph(_label_markup(text), st_tech))
         elif kind == "skillbullet":
-            story.append(Paragraph(_label_markup(text), st_bullet, bulletText="•"))
+            story.append(Paragraph(_label_markup(text), st_bullet, bulletText=_BULLET_GLYPH))
         elif kind == "bullet":
-            story.append(Paragraph(_inline(text), st_bullet, bulletText="•"))
+            story.append(Paragraph(_inline(text), st_bullet, bulletText=_BULLET_GLYPH))
         else:
             story.append(Paragraph(_inline(text), st_body))
 
@@ -401,16 +411,23 @@ def _render_pdf(elements, scale, title="Tailored Resume"):
 
 
 def _choose_scale(elements, title="Tailored Resume"):
-    """Smallest shrink that fits MAX_PAGES; else the tightest. -> (scale, bytes)."""
+    """2 pages at readable scale when possible; otherwise 3 pages at the most
+    readable scale that achieves it; tightest render as a last resort."""
     last = None
+    three = None
     for scale in _SCALES:
         data, pages = _render_pdf(elements, scale, title)
-        if pages <= MAX_PAGES:
+        if pages <= TARGET_PAGES and scale >= _MIN_TARGET_SCALE:
             if scale < 1.0:
                 print(f"[EXPORT] PDF fit at scale {scale} ({pages} page(s))")
             return scale, data
+        if pages <= MAX_PAGES and three is None:
+            three = (scale, data)
         last = (scale, data)
-    print("[EXPORT] PDF still over 2 pages at tightest scale — shipping tightest")
+    if three is not None:
+        print(f"[EXPORT] PDF at {MAX_PAGES} pages, scale {three[0]} — content needs the room")
+        return three
+    print(f"[EXPORT] PDF still over {MAX_PAGES} pages at tightest scale — shipping tightest")
     return last
 
 

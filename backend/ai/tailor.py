@@ -1200,26 +1200,22 @@ def _clean_lists(text: str) -> tuple[str, int]:
 
 # ── Guard: every claimed Skill must be evidenced by an experience bullet ──────
 
-SKILL_BULLET_SYSTEM = """You are a resume line writer. You receive a tailored
-resume, its job description, and a list of tools that appear in the resume's
-SKILLS section but in NO experience bullet.
+SKILL_BULLET_SYSTEM = """You write single resume bullets. You receive a numbered
+job list, a list of skills that appear in the resume's SKILLS section but in NO
+experience bullet, plus the job description and full resume for context.
 
-For EACH listed tool, ADD exactly one new bullet to the ONE past job where that
-work most plausibly happened (match the job's industry, era, and stack). One
-bullet may cover at most TWO of the listed tools when they naturally belong
-together.
+For EACH listed skill, output ONE line in EXACTLY this format:
+<job number> :: <skill> :: <bullet text>
 
-Each new bullet:
-- starts with "• ", past tense, reads like the job's other bullets
-- a modest scope-of-work claim — routine use of the tool, NOT a headline
-  achievement; NO numbers, no em/en dashes
-- 10–24 words, and does not open with a verb already used in that job
-- placed low among that job's existing bullets, BEFORE its Technologies Used line
-- also append the tool to that job's Technologies Used line
-
-Change NOTHING else — no rewording, no deletions; headers, titles, companies,
-dates, SUMMARY, SKILLS, and EDUCATION stay byte-identical.
-Return ONLY the full corrected resume, plain text, no commentary."""
+Rules:
+- job number = the ONE job where that work most plausibly happened (match the
+  job's era, industry, and stack).
+- bullet text: one past-tense sentence, 10–24 words, naming the skill
+  explicitly. A modest routine scope-of-work claim, NOT a headline achievement.
+  NO numbers, no em/en dashes, and do not open with a verb that job already uses.
+- One line per skill. Two closely-related skills MAY share a single line — then
+  put both in the skill field separated by " + ".
+Output ONLY these lines — no commentary, no blank-line padding."""
 
 
 def _skills_claimed(text: str) -> list[str]:
@@ -1273,34 +1269,87 @@ def _orphan_skills(text: str) -> list[str]:
     return orphans
 
 
+def _job_block_end(lines: list[str], start: int) -> int:
+    """Index one past the last line of the job whose header sits at `start`."""
+    for i in range(start + 1, len(lines)):
+        if _is_job_header_line(lines[i]) or _is_section_hdr(lines[i].strip()):
+            return i
+    return len(lines)
+
+
+def _insert_skill_bullets(resume: str, additions: dict) -> tuple[str, int]:
+    """Deterministically place {job_index: [(skill, bullet), ...]} — each bullet
+    goes just above that job's Technologies Used line (or at the block end), and
+    the skill is appended to that Technologies Used line."""
+    lines = resume.split("\n")
+    hdr_idx = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]
+    added = 0
+    for j in sorted(additions, reverse=True):   # bottom-up keeps indices valid
+        if j >= len(hdr_idx):
+            continue
+        end = _job_block_end(lines, hdr_idx[j])
+        tech_i = next((i for i in range(hdr_idx[j] + 1, end)
+                       if _TECH_LINE_RE.match(lines[i].strip())), None)
+        at = tech_i if tech_i is not None else end
+        new_lines = ["• " + b for _, b in additions[j]]
+        lines[at:at] = new_lines
+        added += len(new_lines)
+        if tech_i is not None:
+            ti = tech_i + len(new_lines)
+            skills = ", ".join(s for pair in additions[j]
+                               for s in re.split(r"\s*\+\s*", pair[0]) if s)
+            lines[ti] = lines[ti].rstrip().rstrip(",") + ", " + skills
+    return "\n".join(lines), added
+
+
 async def _ensure_skill_bullets(resume: str, job_description: str,
                                 notes: list, **cheap_kw) -> str:
     """A skill listed in SKILLS with zero experience bullets behind it dies in
-    the first interview question. Detect such orphans deterministically and have
-    the cheap model write one plausible scope bullet each, in the job where that
-    work fits. Only fires when orphans exist — a clean draft costs nothing."""
+    the first interview question. Detect orphans deterministically, have the
+    cheap model write ONLY the new bullets (one line each, job-addressed), then
+    insert them in code — the model never rewrites the resume, so nothing can
+    drift. Only fires when orphans exist; a clean draft costs nothing."""
     orphans = _orphan_skills(resume)
     if not orphans:
         return resume
     orphans = orphans[:16]  # sanity bound only — a 3rd page is acceptable
-    hdrs = [ln.strip() for ln in resume.splitlines() if _is_job_header_line(ln)]
+    lines = resume.split("\n")
+    hdr_idx = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]
+    if not hdr_idx:
+        return resume
+    jobs_list = "\n".join(f"{n + 1}. {lines[i].strip()}"
+                          for n, i in enumerate(hdr_idx))
     try:
-        fixed = (await chat(
+        out = (await chat(
             SKILL_BULLET_SYSTEM,
-            "ORPHAN SKILLS (one bullet each):\n  " + ", ".join(orphans)
-            + f"\n\nJOB DESCRIPTION:\n{job_description[:6000]}"
-            + f"\n\nRESUME:\n{resume}",
-            max_tokens=8000, pass_name="skill_bullets", **cheap_kw)).strip()
-        ok = (fixed
-              and _bullet_count(fixed) >= _bullet_count(resume)
-              and [ln.strip() for ln in fixed.splitlines()
-                   if _is_job_header_line(ln)] == hdrs)
-        if ok:
-            left = len(_orphan_skills(fixed))
-            notes.append(f"skill-bullet guard: {len(orphans)} orphan skill(s), "
-                         f"{len(orphans) - left if left <= len(orphans) else 0} now evidenced")
-            return fixed
-        notes.append("skill-bullet guard: fixer output rejected")
+            "JOBS:\n" + jobs_list
+            + "\n\nORPHAN SKILLS (one output line each):\n"
+            + "\n".join(f"- {o}" for o in orphans)
+            + f"\n\nJOB DESCRIPTION (context):\n{job_description[:4000]}"
+            + f"\n\nRESUME (context):\n{resume}",
+            max_tokens=3000, pass_name="skill_bullets", **cheap_kw)).strip()
+        additions: dict[int, list] = {}
+        for ln in out.splitlines():
+            m = re.match(r"^\s*(\d+)\s*::\s*(.+?)\s*::\s*(.+?)\s*$", ln)
+            if not m:
+                continue
+            j = int(m.group(1)) - 1
+            skill = m.group(2).strip()
+            bullet = m.group(3).strip().lstrip("•-* ").strip()
+            bullet = re.sub(r"\s*[—–]\s*", ", ", bullet)   # belt and braces
+            if not (0 <= j < len(hdr_idx)) or not bullet:
+                continue
+            if not 6 <= len(bullet.split()) <= 34:
+                continue
+            additions.setdefault(j, []).append((skill, bullet))
+        if not additions:
+            notes.append("skill-bullet guard: model returned no usable lines")
+            return resume
+        fixed, added = _insert_skill_bullets(resume, additions)
+        left = len(_orphan_skills(fixed))
+        notes.append(f"skill-bullet guard: {len(orphans)} orphan skill(s), "
+                     f"{added} bullet(s) inserted, {left} still unevidenced")
+        return fixed
     except Exception as exc:  # noqa: BLE001 — best effort
         notes.append(f"skill-bullet guard skipped ({exc})")
     return resume

@@ -27,6 +27,10 @@ BLACK = colors.HexColor("#1A1A1A")
 GRAY  = colors.HexColor("#555555")
 LGRAY = colors.HexColor("#1A1A1A")
 FONT  = "Helvetica"
+# U+2022 in the core Helvetica encoding has no ToUnicode entry, so PDF text
+# extractors read it as garbage ("(cid:127)" / 0x7f). The middle dot maps
+# cleanly; rendered bold and 2pt larger it looks like a normal bullet.
+BULLET = "·"
 
 # Matches date ranges like "Sep 2023 — Present", "Jan 2021 – Jul 2022", "Dec 2018 - Dec 2020"
 _DATE_RE = re.compile(
@@ -195,7 +199,7 @@ def _build_story(resume_text: str,
         fontName=FONT, fontSize=font_size, textColor=BLACK,
         alignment=TA_JUSTIFY, leading=leading, spaceAfter=bullet_space_after,
         leftIndent=14, bulletIndent=2,
-        bulletFontName=FONT, bulletFontSize=font_size)
+        bulletFontName=FONT + "-Bold", bulletFontSize=font_size + 4)
     tech_sty = ParagraphStyle("Tech",
         fontName=FONT, fontSize=font_size - 0.5, textColor=BLACK,
         alignment=TA_LEFT, spaceAfter=2, spaceBefore=2, leftIndent=0)
@@ -262,14 +266,14 @@ def _build_story(resume_text: str,
                 html = f"<b>{_e(label.strip())}:</b> {_e(value.strip())}"
             else:
                 html = _e(text)
-            story.append(Paragraph(html, bullet_sty, bulletText='•'))
+            story.append(Paragraph(html, bullet_sty, bulletText=BULLET))
             continue
 
         # ── Skills section: plain "Label: value" lines (no bullet prefix) ───────
         if in_skills and ":" in s and not s.startswith("•"):
             label, _, value = s.partition(":")
             html = f"<b>{_e(label.strip())}:</b> {_e(value.strip())}"
-            story.append(Paragraph(html, bullet_sty, bulletText='•'))
+            story.append(Paragraph(html, bullet_sty, bulletText=BULLET))
             continue
 
         # ── Job header ────────────────────────────────────────────────────────

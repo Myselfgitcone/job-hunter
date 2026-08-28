@@ -161,7 +161,12 @@ Each Experience bullet = take ONE responsibility or skill from the JD and rewrit
 it as something the candidate DID at that real job, in plain professional English.
 
   Shape:  [Action verb] + [the JD duty, reworded] + [tool/skill] + [brief context]
-  Length: 18–24 words. One clean past-tense sentence.
+  Length: VARIED — one clean past-tense sentence, but bullet lengths must differ.
+    Most bullets land 15–24 words. Every job with 4+ bullets MUST also contain at
+    least one SHORT bullet (8–12 words — e.g. "Mentored two junior engineers on
+    Spark tuning and code review.") and MAY run one longer bullet up to 30 words.
+    Never write three consecutive bullets within ±2 words of the same length — a
+    uniform wall of same-length bullets is the strongest machine-written tell.
 
 DO:
 - REWRITE the JD's requirement — never paste the JD sentence verbatim. Change the
@@ -215,6 +220,10 @@ VARY THE WRITING so it reads human, not machine-generated:
 - No two bullets in the SAME job may start with the same verb.
 - Vary sentence shape across bullets — don't run the identical
   "[Verb] [noun] using [tool] to [result]" template down the whole job.
+- Mix bullet LENGTHS per the Length rule above — short bullets are normal in
+  real resumes; do not pad a naturally short point out to match its neighbors.
+- Not every bullet needs a tool name. 1–2 bullets per job may be a plain duty
+  or collaboration line with no technology in it at all.
 
 DO NOT:
 - Do NOT copy JD lines word-for-word.
@@ -525,7 +534,8 @@ def tailor_prompt(resume_text: str, jd_text: str, context: dict,
         f"JOB DESCRIPTION:\n{jd_text}\n\n"
         f"ORIGINAL RESUME:\n{resume_text}\n\n"
         "Produce the fully tailored resume in the plain-text format now: plain "
-        "JD-mirroring bullets (18–24 words, no invented numbers, no 'measured via' "
+        "JD-mirroring bullets (varied lengths — mostly 15–24 words with a short "
+        "8–12-word bullet in each job, no invented numbers, no 'measured via' "
         "clauses), the exact bullet ladder, and the cloud rule (provider swap in "
         "Job 1 & 2 when a target cloud exists; tools mirrored in all jobs)."
     )

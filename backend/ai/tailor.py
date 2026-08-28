@@ -132,12 +132,17 @@ SKILLS:
   With 5–7 categories there is room for all of them; that's the point.
 • Never repeat the same tool across categories, and never list two names for one
   thing (e.g. "Data Warehouse" and "Data Warehousing" — pick one).
+• TOTAL BUDGET: at most 30 skills across ALL categories. Priority order:
+  (1) tools in BOTH the base resume and the JD, (2) JD-required tools,
+  (3) closely-transferable JD-preferred tools. Drop peripheral "a plus" /
+  mentioned-once items — a lean, defensible list beats a stuffed one.
 • EVERY SKILL EARNS A BULLET: each tool you list in SKILLS must appear in at
   least one experience bullet, in the job where that work most plausibly
   happened. A skill with zero bullets behind it dies in the first screening
-  question. If no bullet naturally shows it, ADD a modest scope bullet to the
-  right job — exceeding that job's ladder count for this is fine, and running
-  to a 3rd page is fine too. Full coverage beats brevity.
+  question. One bullet may evidence up to THREE related tools (e.g. one
+  observability bullet covering Datadog, Grafana, and alerting) — prefer that
+  over three thin single-tool bullets. If a skill cannot earn a bullet within
+  the per-job caps (see ladder), LEAVE IT OUT of SKILLS entirely.
 
 PROFESSIONAL EXPERIENCE:
 For each job, in this exact shape — the job header line is NOT a bullet:
@@ -274,8 +279,10 @@ EXPERIENCE BULLET LADDER (by recency) — hard counts
 - Job 1 (most recent): 6–8 · Job 2: 5–6 · Job 3: 4–5 · Job 4: 2–3 · Job 5+: 1–2
 Merge if the source has too many; expand with real everyday work if too few.
 A job may EXCEED its count when needed to give every listed Skill a supporting
-bullet (see EVERY SKILL EARNS A BULLET). Aim for 2 pages; running onto a 3rd
-page is acceptable when full skill coverage needs it — never past 3.
+bullet (see EVERY SKILL EARNS A BULLET), but NEVER past these hard caps:
+Job 1 ≤ 12 · Job 2 ≤ 8 · Job 3 ≤ 6 · Job 4+ ≤ 3. A skill that cannot fit
+within the caps is dropped from SKILLS, not crammed in. Aim for 2 pages;
+running onto a 3rd page is acceptable when coverage needs it — never past 3.
 
 ================================================================================
 CLOUD & TOOL REFRAMING  (cloud swap is ALWAYS ACTIVE — there is no toggle)
@@ -1213,8 +1220,12 @@ Rules:
 - bullet text: one past-tense sentence, 10–24 words, naming the skill
   explicitly. A modest routine scope-of-work claim, NOT a headline achievement.
   NO numbers, no em/en dashes, and do not open with a verb that job already uses.
-- One line per skill. Two closely-related skills MAY share a single line — then
-  put both in the skill field separated by " + ".
+- GROUP aggressively: one line may prove up to THREE related skills (same
+  category — BI tools together, quality tools together, scripting together).
+  Put all grouped names in the skill field separated by " + ". Prefer few
+  packed lines over many thin ones.
+- Jobs have bullet caps (Job 1 ≤ 12, Job 2 ≤ 8, Job 3 ≤ 6, older ≤ 3, counting
+  their existing bullets) — group enough that everything fits.
 Output ONLY these lines — no commentary, no blank-line padding."""
 
 
@@ -1295,10 +1306,20 @@ def _job_block_end(lines: list[str], start: int) -> int:
     return len(lines)
 
 
+# Hard bullet ceilings by job recency (Job 1, Job 2, Job 3; older jobs 3).
+_JOB_BULLET_CAPS = (12, 8, 6)
+
+
+def _job_cap(j: int) -> int:
+    return _JOB_BULLET_CAPS[j] if j < len(_JOB_BULLET_CAPS) else 3
+
+
 def _insert_skill_bullets(resume: str, additions: dict) -> tuple[str, int]:
     """Deterministically place {job_index: [(skill, bullet), ...]} — each bullet
     goes just above that job's Technologies Used line (or at the block end), and
-    the skill is appended to that Technologies Used line."""
+    the skill is appended to that Technologies Used line. Respects per-job
+    bullet caps; additions past a cap are dropped (the skill is then trimmed
+    from SKILLS by _drop_unevidenced_skills)."""
     lines = resume.split("\n")
     hdr_idx = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]
     added = 0
@@ -1306,18 +1327,58 @@ def _insert_skill_bullets(resume: str, additions: dict) -> tuple[str, int]:
         if j >= len(hdr_idx):
             continue
         end = _job_block_end(lines, hdr_idx[j])
+        existing = sum(1 for i in range(hdr_idx[j] + 1, end)
+                       if lines[i].lstrip().startswith("•"))
+        room = max(0, _job_cap(j) - existing)
+        take = additions[j][:room]
+        if not take:
+            continue
         tech_i = next((i for i in range(hdr_idx[j] + 1, end)
                        if _TECH_LINE_RE.match(lines[i].strip())), None)
         at = tech_i if tech_i is not None else end
-        new_lines = ["• " + b for _, b in additions[j]]
+        new_lines = ["• " + b for _, b in take]
         lines[at:at] = new_lines
         added += len(new_lines)
         if tech_i is not None:
             ti = tech_i + len(new_lines)
-            skills = ", ".join(s for pair in additions[j]
+            skills = ", ".join(s for pair in take
                                for s in re.split(r"\s*\+\s*", pair[0]) if s)
             lines[ti] = lines[ti].rstrip().rstrip(",") + ", " + skills
     return "\n".join(lines), added
+
+
+def _drop_unevidenced_skills(text: str, notes: list) -> str:
+    """Last resort for the no-orphan invariant: a skill that still has no
+    experience bullet after the guard rounds is removed from the SKILLS lines —
+    an unbacked keyword hurts more in a screen than its absence costs in ATS."""
+    orphans = _orphan_skills(text)
+    if not orphans:
+        return text
+    keys = {re.sub(r"[^a-z0-9]", "", o.lower()) for o in orphans}
+    lines = text.split("\n")
+    removed: list[str] = []
+    in_skills = False
+    for i, ln in enumerate(lines):
+        s = ln.strip()
+        if _is_section_hdr(s):
+            in_skills = "skill" in s.lower()
+            continue
+        if in_skills and s.startswith(("•", "-", "*")) and ":" in s:
+            marker = s[0]
+            label, _, rest = s.partition(":")
+            items = [it.strip() for it in _split_list_items(rest) if it.strip()]
+            kept = [it for it in items
+                    if re.sub(r"[^a-z0-9]", "", it.lower()) not in keys]
+            if len(kept) != len(items):
+                removed.extend(it for it in items if it not in kept)
+                indent = ln[: len(ln) - len(ln.lstrip())]
+                label = label.lstrip("•-* ").rstrip()
+                lines[i] = (f"{indent}{marker} {label}: {', '.join(kept)}"
+                            if kept else "")
+    if removed:
+        notes.append("skills trimmed (no supporting bullet): " + ", ".join(removed))
+        return re.sub(r"\n{3,}", "\n\n", "\n".join(lines))
+    return text
 
 
 async def _ensure_skill_bullets(resume: str, job_description: str,
@@ -1375,7 +1436,8 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
                      f"{total_added} bullet(s) inserted, {left} still unevidenced")
     except Exception as exc:  # noqa: BLE001 — best effort
         notes.append(f"skill-bullet guard skipped ({exc})")
-    return resume
+    # Whatever still lacks a bullet leaves the SKILLS list — no orphans, ever.
+    return _drop_unevidenced_skills(resume, notes)
 
 
 _YEARS_RE = re.compile(r"(\d{1,2})\s*\+?\s*years?", re.IGNORECASE)

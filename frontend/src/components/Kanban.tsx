@@ -1,9 +1,23 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Job } from "../types";
 import { JOB_STATUSES } from "../types";
 import { srcColor } from "./primitives";
 
 const COLS = JOB_STATUSES;  // shared status config (types.ts)
+
+// Hover-preview state: which job + where to float the card.
+interface Hover { job: Job; x: number; y: number; }
+
+function fmtDate(s: string): string {
+  if (!s) return "";
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit" });
+}
+
+function jdSnippet(j: Job): string {
+  const txt = (j.description || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  return txt.length > 380 ? txt.slice(0, 380) + "…" : txt;
+}
 
 interface Props {
   jobs: Job[];
@@ -14,10 +28,29 @@ interface Props {
 export function Kanban({ jobs, onStatusChange, onSelect }: Props) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [overCol, setOverCol] = useState<string | null>(null);
+  const [hover, setHover] = useState<Hover | null>(null);
+  const hoverTimer = useRef<number | null>(null);
 
-  const onDragStart = (e: React.DragEvent, id: string) => { setDraggingId(id); e.dataTransfer.effectAllowed = "move"; };
+  const onDragStart = (e: React.DragEvent, id: string) => { setDraggingId(id); setHover(null); e.dataTransfer.effectAllowed = "move"; };
   const onDragEnd = () => { setDraggingId(null); setOverCol(null); };
   const onDrop = (colId: string) => { if (draggingId) onStatusChange(draggingId, colId); setDraggingId(null); setOverCol(null); };
+
+  const startHover = (job: Job, el: HTMLElement) => {
+    if (hoverTimer.current) window.clearTimeout(hoverTimer.current);
+    hoverTimer.current = window.setTimeout(() => {
+      if (draggingId) return;
+      const r = el.getBoundingClientRect();
+      const W = 340;
+      let x = r.right + 10;
+      if (x + W > window.innerWidth - 8) x = r.left - W - 10;
+      const y = Math.max(10, Math.min(r.top, window.innerHeight - 330));
+      setHover({ job, x, y });
+    }, 300);
+  };
+  const endHover = () => {
+    if (hoverTimer.current) window.clearTimeout(hoverTimer.current);
+    setHover(null);
+  };
 
   return (
     <div style={{
@@ -70,6 +103,7 @@ export function Kanban({ jobs, onStatusChange, onSelect }: Props) {
                   key={job.id} job={job}
                   dragging={draggingId === job.id}
                   onDragStart={onDragStart} onDragEnd={onDragEnd} onOpen={onSelect}
+                  onHoverStart={startHover} onHoverEnd={endHover}
                 />
               ))}
               {showDrop && (
@@ -90,53 +124,88 @@ export function Kanban({ jobs, onStatusChange, onSelect }: Props) {
           </div>
         );
       })}
+
+      {/* Floating hover preview — appears after a short dwell, never steals the mouse */}
+      {hover && !draggingId && (
+        <div style={{
+          position: "fixed", left: hover.x, top: hover.y, width: 340, zIndex: 80,
+          pointerEvents: "none",
+          background: "var(--bg-surface)", border: "1px solid var(--line-hi)",
+          borderRadius: 12, padding: "12px 14px", boxShadow: "var(--sh-2, 0 8px 28px rgba(0,0,0,.4))",
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--tx)", lineHeight: 1.3 }}>{hover.job.title}</div>
+            {hover.job.qualify_result?.score != null && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--violet)", whiteSpace: "nowrap" }}>
+                {hover.job.qualify_result.score}%
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--tx-2)", margin: "3px 0 8px" }}>
+            {hover.job.company}{hover.job.location ? ` · ${hover.job.location}` : ""}
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+            <Chip>{hover.job.remote ? "Remote" : "Onsite / Hybrid"}</Chip>
+            {hover.job.salary && <Chip>{hover.job.salary}</Chip>}
+            {fmtDate(hover.job.posted_at) && <Chip>Posted {fmtDate(hover.job.posted_at)}</Chip>}
+            <Chip><span style={{ color: srcColor(hover.job.source), fontWeight: 600 }}>{hover.job.source}</span></Chip>
+            {hover.job.ats_score_after != null && <Chip>★ {hover.job.ats_score_after}</Chip>}
+          </div>
+          {jdSnippet(hover.job) && (
+            <div style={{ fontSize: 11.5, color: "var(--tx-3)", lineHeight: 1.55 }}>{jdSnippet(hover.job)}</div>
+          )}
+          <div style={{ fontSize: 10.5, color: "var(--tx-faint)", marginTop: 8 }}>Click card for full details</div>
+        </div>
+      )}
     </div>
   );
 }
 
-function KanbanCard({ job, dragging, onDragStart, onDragEnd, onOpen }: {
+function Chip({ children }: { children: React.ReactNode }) {
+  return (
+    <span style={{
+      fontSize: 10.5, color: "var(--tx-2)", padding: "2px 8px", borderRadius: 999,
+      border: "1px solid var(--line)", background: "var(--bg-elevated)", whiteSpace: "nowrap",
+    }}>{children}</span>
+  );
+}
+
+function KanbanCard({ job, dragging, onDragStart, onDragEnd, onOpen, onHoverStart, onHoverEnd }: {
   job: Job; dragging: boolean;
   onDragStart: (e: React.DragEvent, id: string) => void;
   onDragEnd: () => void;
   onOpen: (id: string) => void;
+  onHoverStart: (job: Job, el: HTMLElement) => void;
+  onHoverEnd: () => void;
 }) {
   return (
     <div
       draggable onDragStart={e => onDragStart(e, job.id)} onDragEnd={onDragEnd}
+      onClick={() => onOpen(job.id)}
       style={{
         margin: "6px 8px", padding: "11px 12px",
         background: "var(--bg-elevated)",
         border: "1px solid var(--line)",
         borderRadius: "var(--r-sm)",
-        cursor: "grab", position: "relative",
+        cursor: "pointer", position: "relative",
         opacity: dragging ? 0.4 : 1,
         boxShadow: "0 1px 3px rgba(0,0,0,.3)",
         transition: "border-color 120ms ease, box-shadow 120ms ease",
       }}
       onMouseEnter={e => {
-        (e.currentTarget as HTMLDivElement).style.borderColor = "var(--line-hi)";
-        (e.currentTarget as HTMLDivElement).style.boxShadow = "var(--sh-1)";
+        const el = e.currentTarget as HTMLDivElement;
+        el.style.borderColor = "var(--line-hi)";
+        el.style.boxShadow = "var(--sh-1)";
+        onHoverStart(job, el);
       }}
       onMouseLeave={e => {
-        (e.currentTarget as HTMLDivElement).style.borderColor = "var(--line)";
-        (e.currentTarget as HTMLDivElement).style.boxShadow = "0 1px 3px rgba(0,0,0,.3)";
+        const el = e.currentTarget as HTMLDivElement;
+        el.style.borderColor = "var(--line)";
+        el.style.boxShadow = "0 1px 3px rgba(0,0,0,.3)";
+        onHoverEnd();
       }}
     >
-      <button onClick={() => onOpen(job.id)}
-        style={{
-          position: "absolute", top: 9, right: 10,
-          fontSize: 10, color: "var(--tx-3)",
-          display: "flex", alignItems: "center", gap: 2,
-          padding: "2px 6px", borderRadius: 4,
-          border: "1px solid var(--line)", background: "var(--bg-surface)",
-          cursor: "pointer", transition: "all .12s",
-        }}
-        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "var(--violet)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(124,58,237,0.3)"; }}
-        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = "var(--tx-3)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--line)"; }}
-      >
-        open
-      </button>
-      <div style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.35, paddingRight: 44, marginBottom: 5, color: "var(--tx)" }}>{job.title}</div>
+      <div style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.35, marginBottom: 5, color: "var(--tx)" }}>{job.title}</div>
       <div style={{ fontSize: 12, color: "var(--tx-2)", marginBottom: 8 }}>{job.company}</div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         {job.location && <span style={{ fontSize: 10.5, color: "var(--tx-3)" }}>{job.location}</span>}

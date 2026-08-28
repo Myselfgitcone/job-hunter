@@ -2189,3 +2189,7 @@ html.light .auth-tabs { background: #f1f5f9; border-color: rgba(0,0,0,.10); }
   padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px;
   background: var(--bg-elevated); margin-bottom: 10px;
 }
+
+/* Kanban detail drawer slide-in */
+.kanban-drawer { animation: kdSlide .18s ease; }
+@keyframes kdSlide { from { transform: translateX(36px); opacity: 0; } to { transform: none; opacity: 1; } }

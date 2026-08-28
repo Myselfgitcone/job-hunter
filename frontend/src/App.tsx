@@ -172,6 +172,8 @@ export default function App() {
   const [jobs, setJobs]             = useState<Job[]>([]);
   const [allJobs, setAllJobs]       = useState<Job[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Entering kanban starts with the board, not a leftover drawer from list view.
+  useEffect(() => { if (viewMode === "kanban") setSelectedId(null); }, [viewMode]);
   const [tab, setTab]               = useState("jobdetails");
   const [loading, setLoading]       = useState(false);
   const [scraping, setScraping]     = useState(false);
@@ -1203,7 +1205,30 @@ export default function App() {
               </div>
             )}
           {viewMode === "kanban" ? (
-              <Kanban jobs={filteredJobs} onStatusChange={(id, s) => handleStatusChange(id, s as JobStatus)} onSelect={id => { setViewMode("list"); handleSelect(id); }} />
+              <>
+                <Kanban jobs={filteredJobs} onStatusChange={(id, s) => handleStatusChange(id, s as JobStatus)} onSelect={handleSelect} />
+                {/* Detail drawer — full JobDetail over the board, kanban stays put */}
+                {selectedJob && (
+                  <div onClick={() => setSelectedId(null)}
+                    style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 70 }}>
+                    <div onClick={e => e.stopPropagation()} className="kanban-drawer"
+                      style={{ position: "absolute", top: 0, right: 0, bottom: 0,
+                        width: "min(720px, 92vw)", background: "var(--bg-surface)",
+                        borderLeft: "1px solid var(--line)", boxShadow: "-16px 0 40px rgba(0,0,0,0.45)",
+                        display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                      <button onClick={() => setSelectedId(null)} title="Close"
+                        style={{ position: "absolute", top: 10, right: 12, zIndex: 5,
+                          width: 28, height: 28, borderRadius: 8, cursor: "pointer",
+                          border: "1px solid var(--line)", background: "var(--bg-elevated)",
+                          color: "var(--tx-2)", fontSize: 14, lineHeight: 1 }}>✕</button>
+                      <JobDetail job={selectedJob} tab={tab} setTab={setTab}
+                        onUpdate={(patch: Partial<Job>) => selectedJob && updateJob(selectedJob.id, patch)}
+                        onToast={toast} busy={busy} busyJobId={busyJobId} busyStartedAt={busyStartedAt}
+                        tailorRuns={tailorRuns} runAction={runAction} onCancel={cancelAction} />
+                    </div>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="jobs-body" style={{ position: "relative" }}>
                 <div className="list-pane" style={{ width: listPaneWidth, minWidth: 240, maxWidth: "70%", position: "relative" }}>

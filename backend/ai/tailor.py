@@ -216,6 +216,16 @@ IMPACT LADDER — a few standout bullets per job, most are scope:
 NEVER USE THESE (they read robotic / templated) — rephrase with a real verb:
 - "Responsible for", "Tasked with", "Utilized", "Leveraged", "Spearheaded",
   "Worked on", "Helped with", "Involved in", "In charge of".
+NO DASHES (the most recognizable AI-writing tell) — never put an em or en dash
+(— or –) inside a bullet or summary line:
+- No dash-wrapped asides: "on AWS — S3, Athena — with…" → "on AWS (S3, Athena) with…"
+- No dash-before-payoff: "…lineage tracking — to catch anomalies" →
+  "…lineage tracking to catch anomalies" or use a comma.
+- Use a comma, colon, parentheses, "including", or "such as" instead.
+- Dashes exist ONLY in the headline (Name — Title) and job-header date ranges.
+Also avoid flowery editorial phrases no human writes on a resume: "with a
+pragmatic eye toward", "with an emphasis on excellence", "seamlessly",
+"cutting-edge", "robust and scalable" as a pair. Say the plain thing.
 VARY THE WRITING so it reads human, not machine-generated:
 - No two bullets in the SAME job may start with the same verb.
 - Vary sentence shape across bullets — don't run the identical
@@ -440,6 +450,10 @@ FIX THIS CHECKLIST:
    Technologies Used line, sitting alongside the tools already there (e.g. "on AWS
    and Databricks, built dbt models…"). Do NOT add or remove bullets — only reword
    existing ones. Do NOT touch jobs not named.
+8. DASHES: if any bullet or summary line contains an em or en dash (— or –),
+   rewrite that spot with a comma, colon, parentheses, "including", or "such as"
+   so the sentence reads naturally. The headline (Name — Title) and job-header
+   date ranges keep their dashes.
 
 Output ONLY the corrected resume in the same plain-text format — no commentary,
 no code fences."""
@@ -614,6 +628,32 @@ def _is_job_header_line(ln: str) -> bool:
     return (bool(_JOB_HDR_RE.search(ln))
             and bool(re.search(r"@\s*[A-Z]", ln))
             and not ln.lstrip().startswith(_BULLET_PREFIXES))
+
+
+_DASH_PAIR_RE = re.compile(r"\s+[—–]\s+([^—–]{2,90}?)\s+[—–]\s+")
+
+
+def _strip_dash_asides(text: str) -> tuple[str, int]:
+    """Em/en dashes inside body text are the most recognizable AI-writing tell.
+    The prompt and QA fixer both forbid them, but models still slip — this makes
+    the guarantee deterministic. Paired dashes become a parenthetical, a lone
+    dash becomes a comma. The headline (line 1) and job-header date ranges are
+    left alone."""
+    lines = text.split("\n")
+    hits = 0
+    for i, ln in enumerate(lines):
+        if i == 0 or _is_job_header_line(ln) or not re.search(r"[—–]", ln):
+            continue
+        s = ln
+        while _DASH_PAIR_RE.search(s):
+            s = _DASH_PAIR_RE.sub(r" (\1) ", s, count=1)
+            hits += 1
+        remaining = len(re.findall(r"[—–]", s))
+        if remaining:
+            s = re.sub(r"\s*[—–]\s*", ", ", s)
+            hits += remaining
+        lines[i] = re.sub(r"[ \t]{2,}", " ", s).rstrip()
+    return "\n".join(lines), hits
 
 
 def _split_jobs(text: str):
@@ -1369,6 +1409,11 @@ async def tailor_resume(base_resume: str, job_description: str,
     tailored, tidied = _clean_lists(tailored)
     if tidied:
         notes.append(f"tidied {tidied} over-long / duplicate list line(s)")
+
+    # Guard (d2): no em/en dashes in body text — the classic AI-writing tell.
+    tailored, dash_hits = _strip_dash_asides(tailored)
+    if dash_hits:
+        notes.append(f"dash guard: rewrote {dash_hits} dash construction(s)")
 
     # Guard (e): years-of-experience must never inflate to meet a JD minimum.
     # If the summary claims more years than the base resume supports, clamp it

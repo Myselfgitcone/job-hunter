@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { Job, JobStatus } from "../types";
-import { STATUS_LABELS, STATUS_COLORS as ST_COLORS } from "../types";
+import { STATUS_LABELS, STATUS_COLORS as ST_COLORS, APPLIED_STAGES } from "../types";
 import { api, downloadFile } from "../api";
 import { ATSBar, Spinner, CompanyLogo, AtsLogo } from "./primitives";
 import { checkVisa } from "../utils/visaCheck";
@@ -1101,35 +1101,47 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
             )}
           </div>
 
-          {/* Actions */}
+          {/* Actions — an applied-stage job is past the apply/tailor decisions,
+              so those calls-to-action disappear; the posting link, the stage
+              dropdown, and the resume downloads remain. */}
           <div className="actions">
-            <a href={job.url} target="_blank" rel="noreferrer" className="act primary" style={{ textDecoration: "none" }}
+            <a href={job.url} target="_blank" rel="noreferrer"
+              className={APPLIED_STAGES.includes(job.status) ? "act" : "act primary"}
+              style={{ textDecoration: "none" }}
               title="Open the application page">
-              <Ic d={I.link} size={14} /> Apply
+              <Ic d={I.link} size={14} /> {APPLIED_STAGES.includes(job.status) ? "Job Posting" : "Apply"}
             </a>
-            <button onClick={() => runAction("resume")} disabled={!!tailorRuns[job.id]} className="act ai"
-              title={Object.keys(tailorRuns).length ? `${Object.keys(tailorRuns).length} tailoring in parallel` : undefined}>
-              {tailorRuns[job.id] ? <><Spinner size={13} /> Tailoring…</> : <><Ic d={I.sparkles} size={14} /> Tailor Resume</>}
-            </button>
-            {/* Middle group: status actions, gapped away from the apply/tailor pair */}
-            <button
-              className="act"
-              style={{ marginLeft: 18, ...(job.status === "applied" ? {
-                background: "rgba(16,185,129,0.12)", borderColor: "var(--st-applied)", color: "var(--st-applied)",
-              } : {}) }}
-              onClick={() => handleStatusChange(job.status === "applied" ? "new" : "applied")}
-            >
-              <Ic d={I.checkCircle} size={14} /> {job.status === "applied" ? "Applied" : "Mark Applied"}
-            </button>
-            <button
-              className="act"
-              onClick={() => handleStatusChange(job.status === "skipped" ? "new" : "skipped")}
-              style={job.status === "skipped" ? {
-                background: "rgba(93,99,112,0.15)", borderColor: "var(--st-skipped)", color: "var(--st-skipped)",
-              } : undefined}
-            >
-              <Ic d={I.xCircle} size={14} /> {job.status === "skipped" ? "Skipped" : "Skip"}
-            </button>
+            {!APPLIED_STAGES.includes(job.status) && (
+              <button onClick={() => runAction("resume")} disabled={!!tailorRuns[job.id]} className="act ai"
+                title={Object.keys(tailorRuns).length ? `${Object.keys(tailorRuns).length} tailoring in parallel` : undefined}>
+                {tailorRuns[job.id] ? <><Spinner size={13} /> Tailoring…</> : <><Ic d={I.sparkles} size={14} /> Tailor Resume</>}
+              </button>
+            )}
+            {/* Middle group: status actions, gapped away from the apply/tailor pair.
+                "Mark Applied" is hidden on stages past applied — moving back is
+                the dropdown's job, not a headline button. */}
+            {(!APPLIED_STAGES.includes(job.status) || job.status === "applied") && (
+              <button
+                className="act"
+                style={{ marginLeft: 18, ...(job.status === "applied" ? {
+                  background: "rgba(16,185,129,0.12)", borderColor: "var(--st-applied)", color: "var(--st-applied)",
+                } : {}) }}
+                onClick={() => handleStatusChange(job.status === "applied" ? "new" : "applied")}
+              >
+                <Ic d={I.checkCircle} size={14} /> {job.status === "applied" ? "Applied" : "Mark Applied"}
+              </button>
+            )}
+            {!APPLIED_STAGES.includes(job.status) && (
+              <button
+                className="act"
+                onClick={() => handleStatusChange(job.status === "skipped" ? "new" : "skipped")}
+                style={job.status === "skipped" ? {
+                  background: "rgba(93,99,112,0.15)", borderColor: "var(--st-skipped)", color: "var(--st-skipped)",
+                } : undefined}
+              >
+                <Ic d={I.xCircle} size={14} /> {job.status === "skipped" ? "Skipped" : "Skip"}
+              </button>
+            )}
             <StatusDropdown status={job.status} onChange={handleStatusChange} />
             {/* Right group: Tailored Resume downloads — only once a resume exists */}
             {job.tailored_resume && !tailorRuns[job.id] && (

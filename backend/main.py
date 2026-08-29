@@ -298,10 +298,16 @@ async def _run_scrape_internal() -> dict:
     cutoff_posted = cutoff_old
 
     async with SessionLocal() as db:
+        # A job ANY user has moved to an applied stage is part of their
+        # application history — retention must never take it (or the tailored
+        # resume riding on it), no matter how old the posting is.
+        _protected = select(UserJob.job_id).where(
+            UserJob.status.in_(["applied", "screening", "assessment", "interview", "final"]))
         old_jobs_result = await db.execute(
             select(Job).where(
                 Job.scraped_at < cutoff_old,
                 Job.status.in_(["new", "skipped", "closed"]),
+                ~Job.id.in_(_protected),
             )
         )
         old_jobs = old_jobs_result.scalars().all()
@@ -1075,7 +1081,11 @@ async def startup():
         try:
             from telegram_bot import _role_family
             async with SessionLocal() as db:
-                rows = await db.execute(select(Job.id, Job.title).where(Job.status.in_(["new", "skipped"])))
+                _protected_fam = select(UserJob.job_id).where(
+                    UserJob.status.in_(["applied", "screening", "assessment", "interview", "final"]))
+                rows = await db.execute(select(Job.id, Job.title).where(
+                    Job.status.in_(["new", "skipped"]),
+                    ~Job.id.in_(_protected_fam)))
                 victim_ids = [jid for jid, title in rows.fetchall()
                               if _role_family(title or "") in ("DevOps/SRE", "Security")]
             if victim_ids:

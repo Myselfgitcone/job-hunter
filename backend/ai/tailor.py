@@ -50,7 +50,8 @@ Return ONLY a compact JSON object, no prose, no markdown fences:
   "role_domain": "<the role's technical domain, e.g. 'Data Engineering', 'MDM / Data Architecture'>",
   "metric_style": "<credible quantified results for this role, e.g. 'pipeline throughput, data freshness, cost, uptime'>",
   "present": ["<JD tool already clearly evidenced in the resume>"],
-  "missing": ["<JD tool required but absent or weak in the resume>"]
+  "missing": ["<JD tool required but absent or weak in the resume>"],
+  "baseline_missing": ["<subset of missing that are UNIVERSAL BASELINE competencies>"]
 }
 
 Rules:
@@ -67,7 +68,16 @@ Rules:
   recruiter or ATS would scan for, not just brand-name products. Still NO soft
   skills (communication, collaboration, mentoring, stakeholder management).
 - NEVER list years-of-experience, seniority levels, or security clearances (e.g. "13+ years experience", "TS Clearance", "Secret", "Public Trust") as tools — these are NOT injectable and must not appear in target_tools/present/missing.
-- present + missing together should cover target_tools: present = evidenced in resume, missing = not."""
+- present + missing together should cover target_tools: present = evidenced in resume, missing = not.
+- baseline_missing: from the missing list, pick ONLY the universal expected
+  competencies — practices any engineer at this level genuinely performs
+  regardless of employer or stack (the CI/CD, version-control, code-review,
+  testing, monitoring, on-call, documentation, migration, tuning class of
+  work). Judge each item yourself against that test: "would every competent
+  engineer in this role have really done this, even if their resume never
+  wrote it down?" Yes → baseline_missing. A product, platform, language, or
+  domain tool the candidate may simply not know (Salesforce, Ruby, Snowflake,
+  a vendor suite) is NEVER baseline, no matter how essential the JD calls it."""
 
 
 TAILOR_SYSTEM = """You are StackShift, a professional resume writer. You rewrite a
@@ -1208,8 +1218,9 @@ def _clean_lists(text: str) -> tuple[str, int]:
 # ── Guard: every claimed Skill must be evidenced by an experience bullet ──────
 
 SKILL_BULLET_SYSTEM = """You write single resume bullets. You receive a numbered
-job list, a list of skills that appear in the resume's SKILLS section but in NO
-experience bullet, plus the job description and full resume for context.
+job list and a list of skills that need evidence — each appears in the resume's
+SKILLS section or in the job description's requirements, but in NO experience
+bullet — plus the job description and full resume for context.
 
 For EACH listed skill, output ONE line in EXACTLY this format:
 <job number> :: <skill> :: <bullet text>
@@ -1268,8 +1279,8 @@ _SKILL_TOKEN_STOP = {
 }
 
 
-def _orphan_skills(text: str) -> list[str]:
-    """Skills-section items with no supporting line in EXPERIENCE/PROJECTS."""
+def _unevidenced(items: list[str], text: str) -> list[str]:
+    """The subset of `items` with no supporting line in EXPERIENCE/PROJECTS."""
     try:
         from resume_lint import _dynamic_coverage_pattern
     except ImportError:  # pragma: no cover — lint module optional
@@ -1277,8 +1288,8 @@ def _orphan_skills(text: str) -> list[str]:
     blob = _experience_blob(text)
     if not blob:
         return []
-    orphans = []
-    for item in _skills_claimed(text):
+    out = []
+    for item in items:
         core = re.sub(r"\s*\(.*\)\s*", " ", item).strip()
         if len(core) < 2:
             continue
@@ -1294,8 +1305,15 @@ def _orphan_skills(text: str) -> list[str]:
         if toks and any(re.search(rf"(?<![a-z0-9]){re.escape(w.lower())}(?![a-z0-9])", blob)
                         for w in toks):
             continue
-        orphans.append(item)
-    return orphans
+        out.append(item)
+    return out
+
+
+def _orphan_skills(text: str) -> list[str]:
+    """Skills-section items with no supporting line in EXPERIENCE/PROJECTS."""
+    return _unevidenced(_skills_claimed(text), text)
+
+
 
 
 def _job_block_end(lines: list[str], start: int) -> int:
@@ -1382,21 +1400,33 @@ def _drop_unevidenced_skills(text: str, notes: list) -> str:
 
 
 async def _ensure_skill_bullets(resume: str, job_description: str,
-                                notes: list, **cheap_kw) -> str:
+                                notes: list, jd_missing: list | None = None,
+                                **cheap_kw) -> str:
     """A skill listed in SKILLS with zero experience bullets behind it dies in
     the first interview question. Detect orphans deterministically, have the
     cheap model write ONLY the new bullets (one line each, job-addressed), then
     insert them in code — the model never rewrites the resume, so nothing can
-    drift. Only fires when orphans exist; a clean draft costs nothing."""
-    first_orphans = _orphan_skills(resume)
-    if not first_orphans:
+    drift. Only fires when orphans exist; a clean draft costs nothing.
+
+    `jd_missing` — the analyze pass's `baseline_missing` list, i.e. the JD's
+    universal expected competencies the model itself judged honest for any
+    engineer at this level — is chased too, because leaving one out is pure
+    lost coverage. Niche missing products never reach this list and stay out
+    on purpose."""
+    baseline = [str(m) for m in (jd_missing or []) if not _is_soft_skill(str(m))]
+    if not _orphan_skills(resume) and not _unevidenced(baseline, resume):
         return resume
     total_added = 0
     try:
         # Two rounds: the model occasionally skips a line — the second round
         # re-measures and chases only what's still unevidenced.
         for _attempt in range(2):
-            orphans = _orphan_skills(resume)[:16]
+            chased = _orphan_skills(resume) + [
+                b for b in _unevidenced(baseline, resume)]
+            # dedupe, cap
+            seen: set = set()
+            orphans = [o for o in chased
+                       if not (o.lower() in seen or seen.add(o.lower()))][:16]
             if not orphans:
                 break
             lines = resume.split("\n")
@@ -1431,9 +1461,10 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
                 break
             resume, added = _insert_skill_bullets(resume, additions)
             total_added += added
-        left = len(_orphan_skills(resume))
-        notes.append(f"skill-bullet guard: {len(first_orphans)} orphan skill(s), "
-                     f"{total_added} bullet(s) inserted, {left} still unevidenced")
+        left = len(_orphan_skills(resume)) + len(_unevidenced(baseline, resume))
+        notes.append(f"skill-bullet guard: {total_added} bullet(s) inserted"
+                     + (f" (incl. JD baseline: {', '.join(baseline)})" if baseline else "")
+                     + f", {left} still unevidenced")
     except Exception as exc:  # noqa: BLE001 — best effort
         notes.append(f"skill-bullet guard skipped ({exc})")
     # Whatever still lacks a bullet leaves the SKILLS list — no orphans, ever.
@@ -1647,8 +1678,12 @@ async def tailor_resume(base_resume: str, job_description: str,
 
     # Guard (c2): every skill claimed in SKILLS must have an experience bullet
     # behind it — orphans get a modest scope bullet written into the job where
-    # that work plausibly happened.
-    tailored = await _ensure_skill_bullets(tailored, job_description, notes, **cheap_kw)
+    # that work plausibly happened. The JD's universal-baseline requirements
+    # the draft left uncovered (as judged by the analyze pass, per JD — no
+    # fixed list in code) are chased too.
+    tailored = await _ensure_skill_bullets(tailored, job_description, notes,
+                                           jd_missing=context.get("baseline_missing") or [],
+                                           **cheap_kw)
 
     # Guard (c3): bullets whose endings read as truncated. Measured with the
     # same detector that drives the UI warning; only spends a call when the

@@ -26,15 +26,13 @@ from database import init_db, SessionLocal, engine, Job, Setting, User, UserSett
 from auth import get_current_user_id, get_optional_user_id, hash_password, verify_password, create_token
 from scrapers import run_all_scrapers, run_group_fast, run_group_greenhouse, run_group_hiringcafe, run_group_jobo, run_group_fantasticjobs
 from scrapers.o2ten import fetch as run_group_o2ten
-from scrapers.jobspy_scraper import fetch as jobspy_fetch
 from ai.ats import score_ats
 from ai.tailor import tailor_resume
 from ai.llm import set_fallback_notifier
 from ai.cover_letter import generate_cover_letter
 from resume_lint import clean_jd_html
-# StackShift-style export — Arial 11/13, 0.40"/0.50" margins, ruled section
-# headers, 2-page auto-fit by shrinking type rather than truncating.
-# pdf_gen / docx_gen are kept for reference and are no longer wired in.
+# Resume export — Arial 11/13, 0.40"/0.50" margins, ruled section headers,
+# 2-page auto-fit by shrinking type (a readable 3rd page when content needs it).
 from exporters_ss import generate_pdf, generate_docx
 from jd_docx_gen import generate_jd_docx
 from jd_fetcher import fetch_full_jd
@@ -3037,49 +3035,6 @@ async def fix_descriptions_status(user_id: str = Depends(get_current_user_id)):
 
 
 # â"€â"€ Debug JobSpy â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-
-@app.get("/api/debug/jobspy")
-async def debug_jobspy(user_id: str = Depends(get_current_user_id)):
-    """Test JobSpy directly — bypasses DB, shows raw counts."""
-    jobs = await jobspy_fetch({})
-    by_source: dict = {}
-    for j in jobs:
-        s = j.get("source", "?")
-        by_source[s] = by_source.get(s, 0) + 1
-    return {"total": len(jobs), "by_source": by_source,
-            "sample": [{"title": j["title"], "company": j["company"], "source": j["source"]} for j in jobs[:5]]}
-
-
-@app.get("/api/debug/google")
-async def debug_google():
-    """Test Google Jobs with different search terms."""
-    import asyncio, traceback
-    from concurrent.futures import ThreadPoolExecutor
-
-    def _test(term: str):
-        try:
-            from jobspy import scrape_jobs
-            df = scrape_jobs(
-                site_name=["google"],
-                google_search_term=term,
-                results_wanted=10,
-                description_format="markdown",
-                verbose=0,
-            )
-            if df is None or df.empty:
-                return {"count": 0, "term": term}
-            return {"count": len(df), "term": term,
-                    "sample": df[["title","company","location"]].head(3).to_dict("records")}
-        except Exception as e:
-            return {"count": 0, "term": term, "error": str(e)[:300]}
-
-    loop = asyncio.get_event_loop()
-    ex   = ThreadPoolExecutor(max_workers=3)
-    r1 = await loop.run_in_executor(ex, _test, "data engineer USA")
-    r2 = await loop.run_in_executor(ex, _test, "data engineer")
-    r3 = await loop.run_in_executor(ex, _test, "software engineer New York")
-    return {"results": [r1, r2, r3]}
-
 
 # ————————————————————————————————————————————————————————————————————————————————
 

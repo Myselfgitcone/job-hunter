@@ -1112,6 +1112,33 @@ async def startup():
                 print(f"[Startup] Purged {res.rowcount} USA job-board reposts")
         except Exception as e:
             print(f"[Startup] USA board purge skipped: {e}")
+        # O2Ten date realign: jobs used to carry the doc's publish TIMESTAMP,
+        # which lands late-evening-ET publishes on the next UTC day — so the
+        # "Aug 27" doc's jobs showed under the 08/28 date chip. New ingests
+        # stamp the doc's own date at noon UTC; this realigns existing rows
+        # from the doc date each description already records. Idempotent.
+        try:
+            async with SessionLocal() as db:
+                rows = (await db.execute(
+                    select(Job.id, Job.description, Job.posted_at)
+                    .where(Job.source == "O2Ten"))).fetchall()
+            fixes = []
+            for jid, desc, posted in rows:
+                m = re.search(r"O2Ten curated list — (\d{4}-\d{2}-\d{2})", desc or "")
+                if not m:
+                    continue
+                want = f"{m.group(1)}T12:00:00Z"
+                if (posted or "") != want:
+                    fixes.append((jid, want))
+            if fixes:
+                async with SessionLocal() as db:
+                    for jid, want in fixes:
+                        await db.execute(update(Job).where(Job.id == jid)
+                                         .values(posted_at=want))
+                    await db.commit()
+                print(f"[Startup] O2Ten date realign: {len(fixes)} job(s) moved to their doc date")
+        except Exception as e:
+            print(f"[Startup] O2Ten date realign skipped: {e}")
         # Strip orphaned "(LinkedIn)" role items — the temporary "AI/DS Leadership
         # · LinkedIn" family was merged away, but grants saved during
         # the verify phase still hold its items. Their group is gone from the

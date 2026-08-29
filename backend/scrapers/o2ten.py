@@ -199,8 +199,16 @@ async def fetch(settings: dict) -> list[dict]:
                     print(f"[O2Ten] LLM parse insufficient ({e}) — using deterministic parse")
                     parsed = _parse_deterministic(text)
 
-                published = (post.get("publishedAt") or "")[:19]
-                posted_at = (published + "Z") if published else ""
+                # Stamp jobs with the DOC's date (what the o2ten site shows),
+                # not the publish timestamp — docs go up late evening ET, which
+                # is already the next day in UTC and lands the jobs under the
+                # wrong date chip in the app. Noon UTC keeps the day unambiguous
+                # in every US timezone.
+                if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_str or ""):
+                    posted_at = f"{date_str}T12:00:00Z"
+                else:
+                    published = (post.get("publishedAt") or "")[:19]
+                    posted_at = (published + "Z") if published else ""
                 # Old backfilled days would be dropped by the scrape-insert
                 # posted_at cutoff (60d) — blank it there; the real date stays
                 # in the description and the card shows scrape time instead.

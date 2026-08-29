@@ -60,13 +60,16 @@ Rules:
   If no cloud is explicitly named, target_cloud MUST be "None". Do NOT infer a
   cloud from the company, domain, or tools — a Spark/Flink/data role that names no
   cloud is "None". Use "Multi" only if two+ are named and weighted equally.
-- target_tools: 12–20 concrete, resume-worthy skills the JD emphasises — tools,
+- target_tools: 12–24 concrete, resume-worthy skills the JD emphasises — tools,
   services, frameworks AND named technical competencies (e.g. "dimensional
   modeling", "semantic layer design", "data governance", "query optimization",
   "A/B experimentation", "data warehousing"). This is the checklist the resume's
   keyword coverage is scored against, so be thorough: include every hard skill a
   recruiter or ATS would scan for, not just brand-name products. Still NO soft
   skills (communication, collaboration, mentoring, stakeholder management).
+  A universal competency the JD EXPLICITLY requires (an OS, CI/CD, on-call,
+  testing, scripting, monitoring class of demand) always earns a slot — never
+  crowd one out with a tenth product name.
 - NEVER list years-of-experience, seniority levels, or security clearances (e.g. "13+ years experience", "TS Clearance", "Secret", "Public Trust") as tools — these are NOT injectable and must not appear in target_tools/present/missing.
 - present + missing together should cover target_tools: present = evidenced in resume, missing = not.
 - baseline_missing: from the missing list, pick ONLY the universal expected
@@ -360,7 +363,10 @@ The goal is HONEST coverage, not a target percentage.
   coverage. Use the JD's own wording for it so it matches (if the resume shows
   "RAG pipelines" and the JD says "Retrieval-Augmented Generation", write it so
   BOTH read; if the candidate uses containers and the JD says "Docker", name
-  Docker). A candidate who truly matches the whole JD SHOULD score near-complete
+  Docker). When you cover a skill through a sibling or framework name, ALSO
+  write the JD's literal term at least once — Rails work IS Ruby, so a JD that
+  says "Ruby" gets the words "Ruby on Rails", not just "Rails"; an ATS scans
+  for the JD's exact token and a synonym scores zero. A candidate who truly matches the whole JD SHOULD score near-complete
   coverage — that is honest, not stuffing.
 
 - ALSO COVER these three classes — they are honest and candidates lose easy,

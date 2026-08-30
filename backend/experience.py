@@ -42,10 +42,13 @@ _PREFERRED_RE = re.compile(
     r"|(?:is\s+|would\s+be\s+)?a\s+plus)\b", re.I)
 _REQUIRED_RE = re.compile(r"\b(required|must\s+have|minimum\b)\b", re.I)
 # Section-header form only ("Preferred Qualifications:", "Preferred:", a
-# "Preferred Skills" line) — an INLINE "degree preferred (MBA, MS…)" ends with
-# its own clause and must not taint the requirement that follows it.
+# "Desired Skills" line) — the qualifier must START its line. An inline
+# "degree preferred or equivalent…" or "degree preferred (MBA, MS…)" belongs
+# to its own clause and must not taint the requirement that follows it, even
+# when the bullet happens to end within a few words.
 _PREFERRED_HDR_RE = re.compile(
-    r"\b(?:preferred|nice[\s-]*to[\s-]*have|desired)\b[^.\n;•]{0,40}(?::|\n|$)", re.I)
+    r"(?:^|\n)\s*[•*\-–—\s]*(?:preferred|nice[\s-]*to[\s-]*have|desired)\b"
+    r"[^\n]{0,40}(?::|\n|$)", re.I)
 
 
 def _is_preferred_context(text: str, start: int, end: int) -> bool:

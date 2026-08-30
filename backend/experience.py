@@ -41,6 +41,11 @@ _PREFERRED_RE = re.compile(
     r"\b(preferred|nice[\s-]*to[\s-]*have|good[\s-]*to[\s-]*have|desired|ideally|bonus"
     r"|(?:is\s+|would\s+be\s+)?a\s+plus)\b", re.I)
 _REQUIRED_RE = re.compile(r"\b(required|must\s+have|minimum\b)\b", re.I)
+# Section-header form only ("Preferred Qualifications:", "Preferred:", a
+# "Preferred Skills" line) — an INLINE "degree preferred (MBA, MS…)" ends with
+# its own clause and must not taint the requirement that follows it.
+_PREFERRED_HDR_RE = re.compile(
+    r"\b(?:preferred|nice[\s-]*to[\s-]*have|desired)\b[^.\n;•]{0,40}(?::|\n|$)", re.I)
 
 
 def _is_preferred_context(text: str, start: int, end: int) -> bool:
@@ -54,14 +59,17 @@ def _is_preferred_context(text: str, start: int, end: int) -> bool:
         mr = _REQUIRED_RE.search(suf)
         if mr is None or mp.start() < mr.start():
             return True
-    # Section/context: whichever qualifier appears most recently BEFORE the number
-    # wins. A "Preferred Qualifications:" header within ~250 chars suppresses it,
-    # unless a "Required" marker sits between the header and the number.
+    # Section/context: whichever qualifier appears most recently BEFORE the
+    # number wins. Only a "Preferred …:" section HEADER within ~250 chars
+    # suppresses it (unless a "Required" marker sits between the header and
+    # the number). An inline "Advanced degree preferred (MBA, MS…)" belongs to
+    # the previous clause — treating it as a section marker silently dropped
+    # real requirements like "Experience: 7–10+ years" right after it.
     before = text[:start]
     rpos = ppos = None
     for mm in _REQUIRED_RE.finditer(before):
         rpos = mm.start()
-    for mm in _PREFERRED_RE.finditer(before):
+    for mm in _PREFERRED_HDR_RE.finditer(before):
         ppos = mm.start()
     if ppos is not None and (rpos is None or ppos > rpos) and (start - ppos) <= 250:
         return True

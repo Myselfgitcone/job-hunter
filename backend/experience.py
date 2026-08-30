@@ -41,6 +41,14 @@ _PREFERRED_RE = re.compile(
     r"\b(preferred|nice[\s-]*to[\s-]*have|good[\s-]*to[\s-]*have|desired|ideally|bonus"
     r"|(?:is\s+|would\s+be\s+)?a\s+plus)\b", re.I)
 _REQUIRED_RE = re.compile(r"\b(required|must\s+have|minimum\b)\b", re.I)
+# A higher degree offered as an ALTERNATIVE with no years of its own —
+# "Master's … OR Bachelor's … + 2 yrs" — means a fresh advanced-degree grad
+# qualifies: the higher-degree path carries an implicit ZERO years.
+# Dots stay allowed inside the windows — JD abbreviations ("Econ., CS, or rel.
+# fld") would otherwise break the span; newlines/bullets still bound it.
+_ADV_DEGREE_ALT_RE = re.compile(
+    r"\b(?:master|graduate|doctora\w*|phd)\w*[^;\n•]{0,100}\bor\b"
+    r"[^;\n•]{0,80}\bbachelor[^;\n•]{0,90}?(\d{1,2})\s*\+?\s*(?:years?|yrs?)", re.I)
 # Section-header form only ("Preferred Qualifications:", "Preferred:", a
 # "Desired Skills" line) — the qualifier must START its line. An inline
 # "degree preferred or equivalent…" or "degree preferred (MBA, MS…)" belongs
@@ -163,6 +171,26 @@ def extract_experience_level(description: str) -> str:
     # Degree-substitution JDs ("Bachelor's + 10 yrs OR Master's + 8 yrs") state
     # the SAME requirement at several degree levels — the real bar is the lowest
     # path. Only applies when 2+ distinct degree-context numbers exist.
+    # "Master's OR Bachelor's + N yrs": the advanced-degree path states no
+    # number — it IS the zero-experience path. Register both paths so the
+    # min() rule below picks the zero. Guard: a master clause carrying its own
+    # years ("Master's and 6 years OR Bachelor's and 8") gets no free zero —
+    # its number already speaks for it.
+    if 0 not in degree_vals:
+        for _mm in _ADV_DEGREE_ALT_RE.finditer(text):
+            # A sentence-initial "Or …" is a new thought, not a degree
+            # alternative — don't bridge across it.
+            if re.search(r"[.!?]\s+or\b", _mm.group(0), re.I):
+                continue
+            _upto_num = _mm.group(0)[: _mm.start(1) - _mm.start(0)]
+            _head = re.split(r"\bor\b", _upto_num, flags=re.I)
+            if not re.search(r"\d", "or".join(_head[:-1])):
+                degree_vals.append(0)
+                try:
+                    degree_vals.append(int(_mm.group(1)))
+                except ValueError:
+                    pass
+                break
     if len(degree_vals) >= 2 and min(degree_vals) < max(degree_vals):
         return bucket_for_years(min(degree_vals))
     # Otherwise: JDs mention several partials ("5+ years total, 2+ years cloud")

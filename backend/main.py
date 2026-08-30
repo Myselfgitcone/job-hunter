@@ -3036,6 +3036,36 @@ async def assistant_ask(body: dict, user_id: str = Depends(get_current_user_id))
     return {"answer": answer.strip(), "remaining": max(0, ASSISTANT_DAILY_LIMIT - used - 1)}
 
 
+@app.get("/api/admin/audit-trays")
+async def admin_audit_trays(user_id: str = Depends(get_current_user_id)):
+    """Read-only full-DB check: re-run the experience regex on EVERY job and
+    report where the stored tray disagrees. Proves (or disproves) that a
+    parser fix actually landed everywhere — the backfill's silent twin."""
+    await _verify_admin(user_id)
+    async with SessionLocal() as db:
+        rows = await db.execute(
+            select(Job.id, Job.title, Job.experience_level, Job.description))
+        all_jobs = rows.fetchall()
+    checked = with_desc = agree = 0
+    mismatches = []
+    for jid, title, cur, desc in all_jobs:
+        checked += 1
+        if not desc:
+            continue
+        with_desc += 1
+        rx = extract_experience_level(desc)
+        if not rx:
+            continue
+        if rx == (cur or ""):
+            agree += 1
+        else:
+            mismatches.append({"id": jid, "title": (title or "")[:70],
+                               "stored": cur or "", "regex": rx})
+    return {"total_jobs": checked, "with_description": with_desc,
+            "regex_found_years": agree + len(mismatches), "agree": agree,
+            "mismatches": len(mismatches), "sample": mismatches[:60]}
+
+
 @app.post("/api/admin/backfill-trays")
 async def admin_backfill_trays(user_id: str = Depends(get_current_user_id)):
     await _verify_admin(user_id)

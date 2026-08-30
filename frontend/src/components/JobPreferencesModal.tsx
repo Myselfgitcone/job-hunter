@@ -53,6 +53,8 @@ export const ROLE_GROUPS: { group: string; items: string[] }[] = [
   { group: "Security / SIEM",       items: ["Splunk Analyst", "Splunk Engineer", "SIEM Analyst", "SIEM Engineer", "SOC Analyst", "Security Analytics Analyst", "Security Analyst", "Cyber Defense Analyst", "Threat Detection Analyst", "Security Monitoring Analyst", "Detection Analyst", "Cybersecurity Analyst"] },
   { group: "GenAI / RAG",           items: ["AI Analyst", "GenAI Analyst", "Generative AI Analyst", "AI Solutions Analyst", "AI Engineer", "RAG Engineer", "LLM Engineer", "Machine Learning Analyst", "AI Data Analyst", "Search Relevance Analyst", "Prompt Engineer"] },
   { group: "GRC",                   items: ["GRC Analyst", "IT Risk Analyst", "IT Compliance Analyst", "Compliance Analyst", "Risk Analyst", "Information Security Analyst", "Security Compliance Analyst", "IT Auditor", "IT Audit Analyst", "Cyber Risk Analyst", "Third Party Risk Analyst", "Vendor Risk Analyst", "TPRM Analyst"] },
+  // Epic healthcare-analytics stack (Cogito = Epic's BI/reporting suite).
+  { group: "Epic Cogito",           items: ["Cogito", "Epic Clarity", "Epic Caboodle", "Epic Radar", "Epic Reporting", "Clarity Report", "Caboodle Developer"] },
   // O2Ten curated daily list — one family, dynamic sections (matched by source).
   { group: "O2Ten Daily",           items: ["O2Ten"] },
   { group: "IAM",                   items: ["IAM Analyst", "IAM Engineer", "Identity Analyst", "Identity Governance Analyst", "Access Management Analyst", "Identity Access Analyst", "SailPoint Developer", "SailPoint Engineer", "Okta Administrator", "Okta Engineer", "IGA Analyst"] },

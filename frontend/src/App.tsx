@@ -56,6 +56,10 @@ const _ML_TERM = /machine\s+learning|mlops|\bml\s+engineer\b|analytics\s+enginee
 // "Niche roles" (user's name for them): the 4 entry-level families. Scraper
 // drops 5+yr roles for these, so the Years filter shows only the junior trays.
 const NICHE_FAMILIES = ["Security / SIEM", "GenAI / RAG", "GRC", "IAM"];
+// Epic's analytics stack — both the family's terms and its job titles match
+// this, giving a two-way wall (an "Epic Reporting Analyst" must not leak into
+// the Data Analyst family via its "reporting analyst" item).
+const _COGITO_RE = /cogito|caboodle|epic\s+(clarity|radar|reporting)|clarity\s+report/;
 
 // Master-admin account — sees all jobs and manages users/settings.
 const ADMIN_EMAIL = "jaggubhai8766@gmail.com";
@@ -513,6 +517,10 @@ export default function App() {
             // ways: O2Ten jobs belong ONLY to the O2Ten family.
             if (term === "o2ten") return (j.source || "") === "O2Ten";
             if ((j.source || "") === "O2Ten") return false;
+            // Epic Cogito two-way wall — cogito-titled jobs belong ONLY to
+            // the Epic Cogito family, and its terms match nothing else.
+            if (_COGITO_RE.test(title)) return _COGITO_RE.test(term);
+            if (_COGITO_RE.test(term)) return false;
             // Hard family wall: a leadership-titled job belongs ONLY to the
             // AI/DS Leadership family — DE items like "data platform" /
             // "data architect" must not pull in "Head of Data Architecture" etc.
@@ -551,6 +559,10 @@ export default function App() {
             // ways: O2Ten jobs belong ONLY to the O2Ten family.
             if (term === "o2ten") return (j.source || "") === "O2Ten";
             if ((j.source || "") === "O2Ten") return false;
+            // Epic Cogito two-way wall — cogito-titled jobs belong ONLY to
+            // the Epic Cogito family, and its terms match nothing else.
+            if (_COGITO_RE.test(title)) return _COGITO_RE.test(term);
+            if (_COGITO_RE.test(term)) return false;
             // Hard family wall: a leadership-titled job belongs ONLY to the
             // AI/DS Leadership family — DE items like "data platform" /
             // "data architect" must not pull in "Head of Data Architecture" etc.

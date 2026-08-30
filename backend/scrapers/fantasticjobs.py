@@ -158,6 +158,13 @@ _FAMILY_TERMS: dict[str, str] = {
         " | 'sailpoint engineer' | 'okta administrator' | 'okta engineer' | 'iga analyst')"
         " & !(senior | sr | staff | principal | lead))"
     ),
+    # Epic healthcare-analytics stack (Cogito is Epic's BI/reporting suite).
+    # Title-only, all seniority levels — the vocabulary is niche enough that
+    # volume stays low without an experience gate.
+    "Epic Cogito": (
+        "cogito | 'epic clarity' | 'epic caboodle' | 'epic radar'"
+        " | 'epic reporting' | 'clarity report' | 'caboodle developer'"
+    ),
     # 'project manager' removed — re-add as a family to re-enable.
 }
 ALL_FAMILIES = list(_FAMILY_TERMS.keys()) + ["AI/DS Leadership"]

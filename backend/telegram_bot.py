@@ -69,6 +69,10 @@ _ROLE_FAMILIES: list[tuple[str, list[str]]] = [
                           "director, data platform", "director of data engineering",
                           "head of data engineering", "vp of data engineering",
                           "director, data engineering"]),
+    # Epic's analytics stack — before the analyst/BI nets so "Epic Clarity
+    # Report Analyst" doesn't fall into Data Analyst.
+    ("Epic Cogito",     ["cogito", "epic clarity", "epic caboodle", "epic radar",
+                         "epic reporting", "clarity report", "caboodle"]),
     # Entry-level families — before Data Analyst so "AI Data
     # Analyst" / "Cyber Risk Analyst" don't fall into wider analyst nets.
     ("Security / SIEM", ["splunk", "siem", "soc analyst", "security analytics", "security analyst",

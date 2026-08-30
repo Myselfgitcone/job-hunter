@@ -69,25 +69,21 @@ _ROLE_FAMILIES: list[tuple[str, list[str]]] = [
                           "director, data platform", "director of data engineering",
                           "head of data engineering", "vp of data engineering",
                           "director, data engineering"]),
-    # Epic's analytics stack — before the analyst/BI nets so "Epic Clarity
-    # Report Analyst" doesn't fall into Data Analyst.
-    ("Epic Cogito",     ["cogito", "epic clarity", "epic caboodle", "epic radar",
-                         "epic reporting", "clarity report", "caboodle"]),
-    # Entry-level families — before Data Analyst so "AI Data
-    # Analyst" / "Cyber Risk Analyst" don't fall into wider analyst nets.
-    ("Security / SIEM", ["splunk", "siem", "soc analyst", "security analytics", "security analyst",
-                         "cyber defense", "threat detection", "security monitoring",
-                         "detection analyst", "cybersecurity analyst"]),
-    ("GenAI / RAG",     ["ai analyst", "genai", "generative ai", "ai solutions analyst",
-                         "ai engineer", "rag engineer", "llm engineer", "machine learning analyst",
-                         "ai data analyst", "search relevance", "prompt engineer"]),
+    # Niche tool-stack families — before the analyst/BI nets so "Epic Clarity
+    # Report Analyst" / "Anaplan Analyst" don't fall into wider nets.
+    ("Niche - Epic Cogito", ["cogito", "caboodle", "epic clarity", "epic radar",
+                             "epic reporting", "epic bi", "epic business intelligence",
+                             "clarity report", "slicerdicer", "slicer dicer",
+                             "reporting workbench"]),
+    ("Niche - Anaplan",     ["anaplan", "connected planning", "onestream",
+                             "adaptive planning", "workday adaptive", "pigment planning"]),
+    # Entry-level family — before Data Analyst so "Cyber Risk
+    # Analyst" doesn't fall into wider analyst nets. (Security/SIEM,
+    # GenAI/RAG, and IAM retired.)
     ("GRC",             ["grc", "it risk", "it compliance", "compliance analyst", "risk analyst",
                          "information security analyst", "security compliance", "it auditor",
                          "it audit", "cyber risk", "third party risk", "third-party risk",
                          "vendor risk", "tprm"]),
-    ("IAM",             ["iam analyst", "iam engineer", "identity analyst", "identity governance",
-                         "access management analyst", "identity access", "sailpoint", "okta",
-                         "iga analyst"]),
     ("Data Analyst",    ["data analyst", "data analytics", "analytics engineer", "reporting analyst",
                          "quantitative analyst"]),
     ("BI",              ["business intelligence", "bi developer", "bi analyst", "bi engineer", "power bi", "tableau"]),

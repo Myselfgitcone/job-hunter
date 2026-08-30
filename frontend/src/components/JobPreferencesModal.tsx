@@ -48,16 +48,14 @@ export const ROLE_GROUPS: { group: string; items: string[] }[] = [
   { group: "Cloud",                 items: ["Cloud Engineer", "Cloud Infrastructure Engineer", "Cloud Operations", "CloudOps", "Cloud Systems Engineer", "Cloud Developer", "AWS Engineer", "Azure Engineer", "GCP Engineer", "Infrastructure Engineer", "Kubernetes", "Terraform"] },
   { group: "DevOps / SRE",          items: ["DevOps", "DevOps Engineer", "DevSecOps", "SRE", "Site Reliability", "Platform Engineer", "Release Engineer", "Build Engineer", "Production Engineer", "Reliability Engineer"] },
   { group: "Business Analyst",      items: ["Business Analyst", "Business Systems Analyst", "Technical Business Analyst", "Systems Analyst", "IT Business Analyst", "Business Data Analyst", "Process Analyst", "Requirements Analyst", "Functional Analyst"] },
-  // Entry-level families — entry/associate/mid only,
-  // seniors cut at the scraper. Title-contains matching.
-  { group: "Security / SIEM",       items: ["Splunk Analyst", "Splunk Engineer", "SIEM Analyst", "SIEM Engineer", "SOC Analyst", "Security Analytics Analyst", "Security Analyst", "Cyber Defense Analyst", "Threat Detection Analyst", "Security Monitoring Analyst", "Detection Analyst", "Cybersecurity Analyst"] },
-  { group: "GenAI / RAG",           items: ["AI Analyst", "GenAI Analyst", "Generative AI Analyst", "AI Solutions Analyst", "AI Engineer", "RAG Engineer", "LLM Engineer", "Machine Learning Analyst", "AI Data Analyst", "Search Relevance Analyst", "Prompt Engineer"] },
+  // Entry-level family (Security/SIEM, GenAI/RAG, IAM retired) —
+  // entry/associate/mid only, seniors cut at the scraper.
   { group: "GRC",                   items: ["GRC Analyst", "IT Risk Analyst", "IT Compliance Analyst", "Compliance Analyst", "Risk Analyst", "Information Security Analyst", "Security Compliance Analyst", "IT Auditor", "IT Audit Analyst", "Cyber Risk Analyst", "Third Party Risk Analyst", "Vendor Risk Analyst", "TPRM Analyst"] },
-  // Epic healthcare-analytics stack (Cogito = Epic's BI/reporting suite).
-  { group: "Epic Cogito",           items: ["Cogito", "Epic Clarity", "Epic Caboodle", "Epic Radar", "Epic Reporting", "Clarity Report", "Caboodle Developer"] },
+  // Niche tool-stack families — tiny specialist markets, matched title-contains.
+  { group: "Niche - Epic Cogito",   items: ["Cogito", "Caboodle", "Epic Clarity", "Epic Radar", "Epic Reporting", "Epic BI", "Epic Business Intelligence", "Clarity Report", "SlicerDicer", "Reporting Workbench"] },
+  { group: "Niche - Anaplan",       items: ["Anaplan", "Connected Planning", "OneStream", "Adaptive Planning", "Workday Adaptive", "Pigment Planning"] },
   // O2Ten curated daily list — one family, dynamic sections (matched by source).
   { group: "O2Ten Daily",           items: ["O2Ten"] },
-  { group: "IAM",                   items: ["IAM Analyst", "IAM Engineer", "Identity Analyst", "Identity Governance Analyst", "Access Management Analyst", "Identity Access Analyst", "SailPoint Developer", "SailPoint Engineer", "Okta Administrator", "Okta Engineer", "IGA Analyst"] },
   // AI / DS Leadership —
   // Director/Head/VP/Chief/Principal of AI/DS/ML. Matched via _isAILeadership.
   { group: "AI / DS Leadership",    items: ["Director of AI", "Senior Director of AI", "Head of AI", "VP of AI", "Head of AI Engineering", "Director of AI Engineering", "Director of Data Science", "Head of Data Science", "VP of Data Science", "Director of Machine Learning", "Head of Machine Learning", "Head of Data Platform", "Director of Data Platform", "Director of Data Engineering", "Head of Data Engineering", "Chief AI Officer", "Chief Data Scientist", "Chief Data Officer", "Principal Data Scientist", "Principal Machine Learning Engineer"] },

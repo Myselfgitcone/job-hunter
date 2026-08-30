@@ -564,6 +564,54 @@ async def _strip_stale_linkedin_roles() -> int:
     return changed
 
 
+# Retired families' grant items — stripped from user selections at startup so
+# nothing keeps matching their jobs after the picker groups disappeared.
+_RETIRED_ROLE_ITEMS = {
+    "splunk analyst", "splunk engineer", "siem analyst", "siem engineer",
+    "soc analyst", "security analytics analyst", "security analyst",
+    "cyber defense analyst", "threat detection analyst",
+    "security monitoring analyst", "detection analyst", "cybersecurity analyst",
+    "ai analyst", "genai analyst", "generative ai analyst",
+    "ai solutions analyst", "ai engineer", "rag engineer", "llm engineer",
+    "machine learning analyst", "ai data analyst", "search relevance analyst",
+    "prompt engineer",
+    "iam analyst", "iam engineer", "identity analyst",
+    "identity governance analyst", "access management analyst",
+    "identity access analyst", "sailpoint developer", "sailpoint engineer",
+    "okta administrator", "okta engineer", "iga analyst",
+}
+
+
+async def _strip_retired_role_items() -> int:
+    """Remove retired-family role items (Security/SIEM, GenAI/RAG, IAM) from
+    every user's selections — their picker groups are gone, so leftover items
+    would be undeletable and keep matching stray titles."""
+    changed = 0
+    async with SessionLocal() as db:
+        rows = (await db.execute(select(UserSettings))).scalars().all()
+        for s in rows:
+            dirty = False
+            for attr in ("job_roles", "active_job_roles", "role_request"):
+                raw = getattr(s, attr, None)
+                if not raw:
+                    continue
+                try:
+                    items = json.loads(raw)
+                except Exception:
+                    continue
+                if not isinstance(items, list):
+                    continue
+                kept = [r for r in items if str(r).lower().strip() not in _RETIRED_ROLE_ITEMS]
+                if len(kept) != len(items):
+                    setattr(s, attr, json.dumps(kept))
+                    dirty = True
+            if dirty:
+                changed += 1
+        if changed:
+            await db.commit()
+    return changed
+
+
 async def _sync_expired_wrapper():
     """Fetch expired jobs (ATS + job-board) from Fantastic.jobs and mark them closed."""
     print("[Scheduler] Expired sync starting...")
@@ -1085,7 +1133,10 @@ async def startup():
                     Job.status.in_(["new", "skipped"]),
                     ~Job.id.in_(_protected_fam)))
                 victim_ids = [jid for jid, title in rows.fetchall()
-                              if _role_family(title or "") in ("DevOps/SRE", "Security")]
+                              if _role_family(title or "") in (
+                                  "DevOps/SRE", "Security",
+                                  # retired entry families — hunting stopped
+                                  "Security / SIEM", "GenAI / RAG", "IAM")]
             if victim_ids:
                 from sqlalchemy import delete as sa_delete
                 async with SessionLocal() as db:
@@ -1150,6 +1201,12 @@ async def startup():
                 print(f"[Startup] Stripped stale (LinkedIn) role items from {res} user(s)")
         except Exception as e:
             print(f"[Startup] LinkedIn-role cleanup skipped: {e}")
+        try:
+            res = await _strip_retired_role_items()
+            if res:
+                print(f"[Startup] Stripped retired-family role items from {res} user(s)")
+        except Exception as e:
+            print(f"[Startup] Retired-role cleanup skipped: {e}")
         # try:
         # from scrapers.company_seeder import seed_companies_if_empty
         # await seed_companies_if_empty()

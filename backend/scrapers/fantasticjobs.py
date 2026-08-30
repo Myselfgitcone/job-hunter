@@ -128,23 +128,11 @@ _FAMILY_TERMS: dict[str, str] = {
         " | 'data business analyst' | 'process analyst' | 'requirements analyst'"
         " | 'functional analyst'"
     ),
-    # ── 4 entry/mid-level families. Title-only, FJ quoted
+    # ── Entry/mid-level family. Title-only, FJ quoted
     # phrases = contains matching ("Senior GRC Analyst II" still matches — the
-    # per-group seniority NOT below drops the seniors). Each group carries its
+    # group's seniority NOT below drops the seniors). It carries its
     # own !(senior…) cut; director/VP/chief already cut by _GLOBAL_NOT.
-    "Security / SIEM": (
-        "(('splunk analyst' | 'splunk engineer' | 'siem analyst' | 'siem engineer'"
-        " | 'soc analyst' | 'security analytics analyst' | 'security analyst'"
-        " | 'cyber defense analyst' | 'threat detection analyst'"
-        " | 'security monitoring analyst' | 'detection analyst' | 'cybersecurity analyst')"
-        " & !(senior | sr | staff | principal | lead))"
-    ),
-    "GenAI / RAG": (
-        "(('ai analyst' | 'genai analyst' | 'generative ai analyst' | 'ai solutions analyst'"
-        " | 'ai engineer' | 'rag engineer' | 'llm engineer' | 'machine learning analyst'"
-        " | 'ai data analyst' | 'search relevance analyst' | 'prompt engineer')"
-        " & !(senior | sr | staff | principal | lead))"
-    ),
+    # Security/SIEM, GenAI/RAG, and IAM families retired — hunting stopped.
     "GRC": (
         "(('grc analyst' | 'it risk analyst' | 'it compliance analyst' | 'compliance analyst'"
         " | 'risk analyst' | 'information security analyst' | 'security compliance analyst'"
@@ -152,18 +140,19 @@ _FAMILY_TERMS: dict[str, str] = {
         " | 'third party risk analyst' | 'vendor risk analyst' | 'tprm analyst')"
         " & !(senior | sr | staff | principal | lead))"
     ),
-    "IAM": (
-        "(('iam analyst' | 'iam engineer' | 'identity analyst' | 'identity governance analyst'"
-        " | 'access management analyst' | 'identity access analyst' | 'sailpoint developer'"
-        " | 'sailpoint engineer' | 'okta administrator' | 'okta engineer' | 'iga analyst')"
-        " & !(senior | sr | staff | principal | lead))"
-    ),
+    # ── Niche families — specialist tool stacks with tiny, low-competition
+    # job markets. Title-only, all seniority levels: the vocabulary is niche
+    # enough that volume stays low without an experience gate.
     # Epic healthcare-analytics stack (Cogito is Epic's BI/reporting suite).
-    # Title-only, all seniority levels — the vocabulary is niche enough that
-    # volume stays low without an experience gate.
-    "Epic Cogito": (
-        "cogito | 'epic clarity' | 'epic caboodle' | 'epic radar'"
-        " | 'epic reporting' | 'clarity report' | 'caboodle developer'"
+    "Niche - Epic Cogito": (
+        "cogito | caboodle | 'epic clarity' | 'epic radar' | 'epic reporting'"
+        " | 'epic bi' | 'epic business intelligence' | 'clarity report'"
+        " | slicerdicer | 'slicer dicer' | 'reporting workbench'"
+    ),
+    # Connected-planning / EPM platforms (Anaplan + same-skill competitors).
+    "Niche - Anaplan": (
+        "anaplan | 'connected planning' | onestream"
+        " | 'adaptive planning' | 'workday adaptive' | 'pigment planning'"
     ),
     # 'project manager' removed — re-add as a family to re-enable.
 }
@@ -231,16 +220,9 @@ _SKIP_DESC_RE = _re.compile(
 # scrape (other families keep them + show the red flag). Runs on already-
 # fetched text — zero extra credits.
 _ENTRY_FAM_TITLE_RE = _re.compile(
-    r"splunk|siem|soc\s+analyst|security\s+analy|cyber\s+defense|threat\s+detection"
-    r"|security\s+monitoring|detection\s+analyst|cybersecurity\s+analyst"
-    r"|genai|generative\s+ai|\bai\s+analyst|\bai\s+engineer|rag\s+engineer|llm\s+engineer"
-    r"|machine\s+learning\s+analyst|ai\s+data\s+analyst|search\s+relevance|prompt\s+engineer"
-    r"|ai\s+solutions\s+analyst"
-    r"|\bgrc\b|it\s+risk|it\s+compliance|compliance\s+analyst|risk\s+analyst"
+    r"\bgrc\b|it\s+risk|it\s+compliance|compliance\s+analyst|risk\s+analyst"
     r"|information\s+security|security\s+compliance|it\s+audit|cyber\s+risk"
-    r"|third.?party\s+risk|vendor\s+risk|\btprm\b"
-    r"|\biam\b|identity\s+(governance|analyst|access)|access\s+management"
-    r"|sailpoint|okta|\biga\b",
+    r"|third.?party\s+risk|vendor\s+risk|\btprm\b",
     _re.IGNORECASE,
 )
 _NOSPON_DESC_RE = _re.compile(

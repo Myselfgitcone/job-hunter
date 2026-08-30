@@ -55,11 +55,13 @@ const _ML_TERM = /machine\s+learning|mlops|\bml\s+engineer\b|analytics\s+enginee
 
 // "Niche roles" (user's name for them): the 4 entry-level families. Scraper
 // drops 5+yr roles for these, so the Years filter shows only the junior trays.
-const NICHE_FAMILIES = ["Security / SIEM", "GenAI / RAG", "GRC", "IAM"];
+const NICHE_FAMILIES = ["GRC"];
 // Epic's analytics stack — both the family's terms and its job titles match
 // this, giving a two-way wall (an "Epic Reporting Analyst" must not leak into
 // the Data Analyst family via its "reporting analyst" item).
-const _COGITO_RE = /cogito|caboodle|epic\s+(clarity|radar|reporting)|clarity\s+report/;
+const _COGITO_RE = /cogito|caboodle|slicer\s*dicer|reporting\s+workbench|epic\s+(clarity|radar|reporting|bi|business\s+intelligence)|clarity\s+report/;
+// Connected-planning / EPM stack — same two-way wall.
+const _ANAPLAN_RE = /anaplan|connected\s+planning|onestream|adaptive\s+planning|workday\s+adaptive|pigment\s+planning/;
 
 // Master-admin account — sees all jobs and manages users/settings.
 const ADMIN_EMAIL = "jaggubhai8766@gmail.com";
@@ -521,6 +523,8 @@ export default function App() {
             // the Epic Cogito family, and its terms match nothing else.
             if (_COGITO_RE.test(title)) return _COGITO_RE.test(term);
             if (_COGITO_RE.test(term)) return false;
+            if (_ANAPLAN_RE.test(title)) return _ANAPLAN_RE.test(term);
+            if (_ANAPLAN_RE.test(term)) return false;
             // Hard family wall: a leadership-titled job belongs ONLY to the
             // AI/DS Leadership family — DE items like "data platform" /
             // "data architect" must not pull in "Head of Data Architecture" etc.
@@ -528,9 +532,6 @@ export default function App() {
             if (term === "bi")   return /\bbi\b/.test(title);
             if (term === "java") return /\bjava\b/.test(title);  // \b excludes "javascript"
             if (_AIL_TERM.test(term)) return _isAILeadership(title);   // AI/DS leadership (ATS + LinkedIn, merged)
-            // GenAI/RAG family item — exempt from the ML-exclusion below (that
-            // exclusion only means "ML is not Data Engineer").
-            if (term === "machine learning analyst") return title.includes(term);
             if (_ML_TERM.test(term)) return false;               // ML dropped from DE
             // Strict Data Engineer — real DE roles only (see _isDataEngineer).
             if (term === "data engineer" || term === "software engineer (data)") return _isDataEngineer(title);
@@ -563,6 +564,8 @@ export default function App() {
             // the Epic Cogito family, and its terms match nothing else.
             if (_COGITO_RE.test(title)) return _COGITO_RE.test(term);
             if (_COGITO_RE.test(term)) return false;
+            if (_ANAPLAN_RE.test(title)) return _ANAPLAN_RE.test(term);
+            if (_ANAPLAN_RE.test(term)) return false;
             // Hard family wall: a leadership-titled job belongs ONLY to the
             // AI/DS Leadership family — DE items like "data platform" /
             // "data architect" must not pull in "Head of Data Architecture" etc.
@@ -570,9 +573,6 @@ export default function App() {
             if (term === "bi")   return /\bbi\b/.test(title);
             if (term === "java") return /\bjava\b/.test(title);
             if (_AIL_TERM.test(term)) return _isAILeadership(title);   // AI/DS leadership (ATS + LinkedIn, merged)
-            // GenAI/RAG family item — exempt from the ML-exclusion below (that
-            // exclusion only means "ML is not Data Engineer").
-            if (term === "machine learning analyst") return title.includes(term);
             if (_ML_TERM.test(term)) return false;
             if (term === "data engineer" || term === "software engineer (data)") return _isDataEngineer(title);
             // "Data Architect" via strict gate — plain includes() matched

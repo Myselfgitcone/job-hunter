@@ -6113,7 +6113,19 @@ async def extension_learn(body: ExtLearnBody, user_id: str = Depends(get_current
     novel = {k: v for k, v in body.values.items()
              if str(v).strip() and str(auto.get(k, "")).strip() != str(v).strip()}
     learned = ats_apply.extract_memory(fields, novel)
-    if not learned:
+    # Route known-question answers into their STRUCTURED profile slot instead
+    # of the flat pile — "What is your race?" refills the one race answer, it
+    # doesn't grow a second entry. Only fills empty slots; a deliberate saved
+    # answer is never overwritten by a one-off form entry.
+    promoted: dict[str, str] = {}
+    for f in fields:
+        norm_lbl = ats_apply._norm_label(f.get("label") or "")
+        if norm_lbl not in learned:
+            continue
+        cls = ats_apply.classify_label(f.get("label") or "")
+        if cls and not str(ap.get(cls) or "").strip():
+            promoted[cls] = learned.pop(norm_lbl)
+    if not learned and not promoted:
         return {"learned": 0}
 
     async with SessionLocal() as db:
@@ -6127,8 +6139,16 @@ async def extension_learn(body: ExtLearnBody, user_id: str = Depends(get_current
             mem = {}
         mem.update(learned)
         s.apply_answers = json.dumps(mem)
+        if promoted:
+            try:
+                vals = json.loads(s.apply_profile) if s.apply_profile else {}
+            except Exception:
+                vals = {}
+            for k, v in promoted.items():
+                vals.setdefault(k, v)
+            s.apply_profile = json.dumps(vals)
         await db.commit()
-    return {"learned": len(learned)}
+    return {"learned": len(learned), "promoted": len(promoted)}
 
 
 # ── Admin: per-user analytics ─────────────────────────────────────────────────

@@ -1006,6 +1006,32 @@ def prefill(fields: list[dict], profile: dict,
     return answers
 
 
+# Known-question keys whose learned answers belong in the STRUCTURED
+# Application Answers profile, not the flat memory pile — a rephrased race /
+# salary / relocation question routes back to its one canonical slot.
+# Sponsorship/work-auth stay out: inverted phrasings would store a flipped
+# meaning. Degree stays out: it has its own guarded mapping.
+_PROMOTABLE_KEYS = frozenset({
+    "demo_gender", "demo_race", "demo_veteran", "demo_disability",
+    "salary", "start_date", "relocation", "onsite_ok", "how_heard",
+    "state", "zip", "years_experience", "pronouns", "clearance",
+    "citizenship", "currently_employed", "referral", "phone_type",
+    "background_check", "drug_test", "convicted", "noncompete",
+    "previously_worked", "age_18",
+})
+
+
+def classify_label(label: str) -> str:
+    """The structured-profile key a question belongs to, when it's a known
+    promotable type — '' otherwise."""
+    if _CONDITIONAL_LABEL.search(label or "") or _NEVER_FILL.search(label or ""):
+        return ""
+    for pat, key, _kind in _CLASS_RULES:
+        if pat.search(label or ""):
+            return key if key in _PROMOTABLE_KEYS else ""
+    return ""
+
+
 def extract_memory(fields: list[dict], answers: dict) -> dict:
     """Turn one submission's answers into memory entries: normalized question
     label → option LABEL (selects) or raw text. Option labels — not values —

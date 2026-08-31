@@ -802,6 +802,10 @@ def prefill(fields: list[dict], profile: dict,
     """
     ap = apply_profile or {}
     mem = memory or {}
+    # Application Answers is the AUTHORITATIVE source for application data —
+    # its Contact/Education fields override the resume Profile whenever set,
+    # so the user maintains ONE form instead of editing the resume profile.
+    _apv = lambda k: str(ap.get(k) or "").strip()
     # Derived: canonical degree level from the profile's education entries —
     # ATS "Degree" dropdowns want a bucket ("Master's Degree"), not the full
     # program name ("Master of Science in Information Systems").
@@ -828,32 +832,50 @@ def prefill(fields: list[dict], profile: dict,
         "graduated": "Yes", "currently_enrolled": "No", "negotiable": "Yes",
         "planned_time_off": "No", "employment_type": "Full-time",
         "hours_per_week": "40", "country_code": "+1",
-        "confirm_email": profile.get("email", ""),
+        "confirm_email": _apv("email") or profile.get("email", ""),
     }
     for _k, _v in _defaults.items():
         if _v and not ap.get(_k):
             ap = {**ap, _k: _v}
     # First education entry feeds the standard School/Discipline/Year fields.
     _edu = (profile.get("education") or [{}])[0] or {}
-    _edu_school = str(_edu.get("school") or "").strip()
-    _edu_year = str(_edu.get("year") or "").strip()
+    _edu_school = _apv("school_name") or str(_edu.get("school") or "").strip()
+    _edu_year = _apv("edu_end_year") or str(_edu.get("year") or "").strip()
+    _edu_start = _apv("edu_start_year")
     # Discipline = the "in <field>" tail of the degree name ("Master of
     # Science in Information Systems" → "Information Systems").
     _m_disc = re.search(r"\bin\s+([A-Z][\w&/ ]{2,60})$", str(_edu.get("degree") or ""))
-    _edu_discipline = _m_disc.group(1).strip() if _m_disc else ""
-    first, last = _split_name(profile.get("name", ""))
+    _edu_discipline = _apv("discipline") or (_m_disc.group(1).strip() if _m_disc else "")
+    _pf, _pl = _split_name(profile.get("name", ""))
+    first = _apv("first_name") or _pf
+    last = _apv("last_name") or _pl
+    middle = _apv("middle_name")
+    full_name = (f"{first} {last}".strip()
+                 if (_apv("first_name") or _apv("last_name"))
+                 else profile.get("name", ""))
+    email = _apv("email") or profile.get("email", "")
+    phone = _apv("phone") or profile.get("phone", "")
+    linkedin = _apv("linkedin") or profile.get("linkedin", "")
+    github = _apv("github") or profile.get("github", "")
+    website = _apv("website") or profile.get("website", "")
+    city = _apv("city") or profile.get("location", "")
+    street = _apv("street_address")
+    apt = _apv("apt_unit")
+    full_address = (", ".join(x for x in (street, apt) if x)
+                    or profile.get("address", ""))
+    country = _apv("country") or "United States"
     by_key = {
         "first_name": first, "last_name": last,
-        "email": profile.get("email", ""), "phone": profile.get("phone", ""),
-        "name": profile.get("name", ""),
-        "location": profile.get("location", ""),
+        "email": email, "phone": phone,
+        "name": full_name,
+        "location": city,
         "org": profile.get("current_company", ""),
-        "urls[LinkedIn]": profile.get("linkedin", ""),
-        "urls[GitHub]": profile.get("github", ""),
-        "urls[Portfolio]": profile.get("website", ""),
-        "_systemfield_name": profile.get("name", ""),
-        "_systemfield_email": profile.get("email", ""),
-        "_systemfield_phone": profile.get("phone", ""),
+        "urls[LinkedIn]": linkedin,
+        "urls[GitHub]": github,
+        "urls[Portfolio]": website,
+        "_systemfield_name": full_name,
+        "_systemfield_email": email,
+        "_systemfield_phone": phone,
     }
     # Label rules also cover name fields, so generic-keyed callers (the
     # browser extension, which keys fields f0/f1/… not first_name) still get
@@ -862,24 +884,30 @@ def prefill(fields: list[dict], profile: dict,
     # rules below deliberately exclude "preferred".
     _label_rules = [
         (re.compile(r"(?<!preferred )\bfirst name\b|\bgiven name\b|\bfore.?name\b", re.I), first),
+        (re.compile(r"\bmiddle\s+(name|initial)\b", re.I), middle),
         (re.compile(r"(?<!preferred )\blast name\b|\bsurname\b|\bfamily name\b", re.I), last),
-        (re.compile(r"\bfull name\b|^name$|\byour name\b|\blegal name\b", re.I), profile.get("name", "")),
-        (re.compile(r"\blocation\b|\bcity\b", re.I), profile.get("location", "")),
-        (re.compile(r"\bmailing\b|\bstreet\b|\baddress\b", re.I), profile.get("address", "")),
-        (re.compile(r"\blinkedin\b", re.I), profile.get("linkedin", "")),
-        (re.compile(r"\bgithub\b", re.I), profile.get("github", "")),
-        (re.compile(r"\b(website|portfolio)\b", re.I), profile.get("website", "")),
-        (re.compile(r"\bphone\b|\bmobile\b|\bcell\b", re.I), profile.get("phone", "")),
-        (re.compile(r"\bemail\b|\be-?mail\b", re.I), profile.get("email", "")),
+        (re.compile(r"\bfull name\b|^name$|\byour name\b|\blegal name\b", re.I), full_name),
+        (re.compile(r"\blocation\b|\bcity\b", re.I), city),
+        (re.compile(r"\bstreet\b|address\s+line\s*1", re.I), street or full_address),
+        (re.compile(r"\bapt\b|apartment|unit|suite|address\s+line\s*2", re.I), apt),
+        (re.compile(r"\bmailing\b|\baddress\b", re.I), full_address),
+        (re.compile(r"^\s*country\s*(of\s+residence)?\s*\*?\s*$", re.I), country),
+        (re.compile(r"\blinkedin\b", re.I), linkedin),
+        (re.compile(r"\bgithub\b", re.I), github),
+        (re.compile(r"\b(website|portfolio)\b", re.I), website),
+        (re.compile(r"\bphone\b|\bmobile\b|\bcell\b", re.I), phone),
+        (re.compile(r"\bemail\b|\be-?mail\b", re.I), email),
         (re.compile(r"(current|present).{0,20}(company|employer)", re.I),
          profile.get("current_company", "")),
-        # Education basics from the profile's first education entry. Anchored
-        # so "School" the field matches but "school district" questions don't.
+        # Education basics — Application Answers first, resume profile second.
+        # Anchored so "School" matches but "school district" questions don't.
         (re.compile(r"^\s*(school|university|college|institution)(\s+name)?\s*\*?\s*$", re.I),
          _edu_school),
         (re.compile(r"discipline|\bmajor\b|field\s+of\s+study", re.I), _edu_discipline),
         (re.compile(r"grad(uation)?\s+year|year\s+(of\s+)?graduat|end\s+date\s+year", re.I),
          _edu_year),
+        (re.compile(r"start\s+date\s+year", re.I), _edu_start),
+        (re.compile(r"\bgpa\b|grade\s+point", re.I), _apv("gpa")),
     ]
 
     answers: dict[str, Any] = {}

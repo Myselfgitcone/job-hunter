@@ -146,6 +146,39 @@ const US_STATES = ["Alabama","Alaska","Arizona","Arkansas","California","Colorad
 
 const AA_GROUPS: Array<{ title: string; icon: string; color: string; desc: string; fields: AAField[] }> = [
   {
+    title: "Contact & address", icon: "user", color: "#06b6d4",
+    desc: "Your application identity — used on every form. Overrides the resume profile, so set it once here.",
+    fields: [
+      { key: "first_name",     label: "First name" },
+      { key: "middle_name",    label: "Middle name", hint: "Blank if none" },
+      { key: "last_name",      label: "Last name" },
+      { key: "email",          label: "Email" },
+      { key: "phone",          label: "Phone" },
+      { key: "street_address", label: "Street address" },
+      { key: "apt_unit",       label: "Apt / Unit", hint: "Blank if none" },
+      { key: "city",           label: "City" },
+      { key: "state",          label: "State", options: US_STATES },
+      { key: "zip",            label: "Zip code" },
+      { key: "country",        label: "Country", hint: "Default: United States" },
+      { key: "linkedin",       label: "LinkedIn URL" },
+      { key: "github",         label: "GitHub URL", hint: "Blank to skip" },
+      { key: "website",        label: "Portfolio / website", hint: "Blank to skip" },
+    ],
+  },
+  {
+    title: "Education", icon: "brain", color: "#8b5cf6",
+    desc: "Fills the School / Degree / Discipline / dates blocks on every application.",
+    fields: [
+      { key: "school_name",    label: "School / University" },
+      { key: "degree_level",   label: "Degree level", options: [
+        "High School", "Associate's Degree", "Bachelor's Degree", "Master's Degree", "Doctorate"] },
+      { key: "discipline",     label: "Discipline / Major", hint: "e.g. Information Systems" },
+      { key: "edu_start_year", label: "Start year", hint: "e.g. 2022" },
+      { key: "edu_end_year",   label: "End / graduation year", hint: "e.g. 2024" },
+      { key: "gpa",            label: "GPA", hint: "Blank to skip" },
+    ],
+  },
+  {
     title: "Work eligibility", icon: "shieldCheck", color: "#3b82f6",
     desc: "Visa & work authorization — asked on almost every application.",
     fields: [
@@ -183,8 +216,6 @@ const AA_GROUPS: Array<{ title: string; icon: string; color: string; desc: strin
       { key: "salary",           label: "Expected salary", hint: "Tip: \"Open / Negotiable\"" },
       { key: "start_date",       label: "When can you start?", hint: "e.g. \"2 weeks\" or \"Immediately\"" },
       { key: "years_experience", label: "Total years of experience", hint: "Auto-filled from your resume" },
-      { key: "state",            label: "US state you live in", options: US_STATES },
-      { key: "zip",              label: "Zip code" },
       { key: "how_heard",        label: "\"How did you hear about us?\"", options: [
         "LinkedIn", "Indeed", "Company careers site", "Google search", "Referral", "Other"] },
       { key: "referral",         label: "Referral name (if any)", hint: "Usually blank" },

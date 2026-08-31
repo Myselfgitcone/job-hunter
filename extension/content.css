@@ -39,6 +39,15 @@
   font: 500 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
 .jh-submit-bar .jh-sb-msg { margin-bottom: 4px; }
 .jh-submit-bar .jh-sb-warn { margin: 6px 0 2px; color: #fbbf24; font-size: 12.5px; }
+.jh-submit-bar .jh-sb-resume {
+  margin: 8px 0 2px; padding: 7px 10px; border-radius: 8px; font-size: 12.5px;
+  font-weight: 600; display: flex; flex-direction: column; gap: 2px; }
+.jh-submit-bar .jh-sb-resume span {
+  font-weight: 500; font-size: 11.5px; opacity: .85; word-break: break-all; }
+.jh-submit-bar .jh-sb-tailored {
+  background: rgba(16,185,129,.14); color: #34d399; border: 1px solid rgba(16,185,129,.35); }
+.jh-submit-bar .jh-sb-base {
+  background: rgba(251,191,36,.14); color: #fbbf24; border: 1px solid rgba(251,191,36,.4); }
 .jh-submit-bar .jh-sb-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
 .jh-submit-bar button { padding: 8px 15px; border: none; border-radius: 9px; cursor: pointer;
   font: 600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }

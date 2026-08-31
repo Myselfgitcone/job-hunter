@@ -618,7 +618,10 @@
     }
   }
 
-  // Returns "attached" | "manual" (custom uploader / no input) | "none" | "error"
+  // -> { state, filename, source } where state is
+  // "attached" | "manual" (custom uploader / no input) | "none" | "error"
+  // and source is "tailored" | "base" — surfaced in the UI so the user can
+  // SEE which resume went on, instead of trusting that it was the right one.
   async function attachResume(meta) {
     const input = findResumeInput();
     if (!input) {
@@ -626,24 +629,27 @@
       // must attach it; JS can't fill those.
       const hasUploadUi = /attach|upload|drag.{0,10}drop|dropbox|google drive/i
         .test(norm(document.body.innerText).slice(0, 20000));
-      return hasUploadUi ? "manual" : "none";
+      return { state: hasUploadUi ? "manual" : "none" };
     }
-    if (input.files && input.files.length) return "attached"; // already has one
+    if (input.files && input.files.length) {
+      return { state: "attached", filename: input.files[0].name, source: "existing" };
+    }
     try {
       const data = await send("resumeFile", meta);
-      if (!data || !data.b64) return "error";
+      if (!data || !data.b64) return { state: "error" };
       const bin = atob(data.b64);
       const bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       const file = new File([bytes], data.filename || "resume.pdf",
         { type: data.mime || "application/pdf" });
-      if (!setFile(input, file)) return "manual";
+      if (!setFile(input, file)) return { state: "manual" };
       const target = input.closest("[class*='field'],[class*='upload'],[class*='attach'],div") || input;
       target.classList.add("jh-filled");
       setTimeout(() => target.classList.remove("jh-filled"), 4000);
-      return "attached";
+      return { state: "attached", filename: data.filename || "resume.pdf",
+               source: data.source || "" };
     } catch {
-      return "error";
+      return { state: "error" };
     }
   }
 
@@ -686,7 +692,10 @@
     return missing;
   }
 
-  function submitBar(entries, submitBtn, summary) {
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  function submitBar(entries, submitBtn, summary, resumeInfo) {
     document.getElementById("jh-submit-bar")?.remove();
     const bar = document.createElement("div");
     bar.id = "jh-submit-bar";
@@ -694,8 +703,23 @@
     const missing = unfilledRequired(entries);
     const warn = missing.length
       ? `<div class="jh-sb-warn">⚠ ${missing.length} required field(s) still empty — fill them first.</div>` : "";
+    // Name the exact file that went on, and whether it is THIS job's tailored
+    // resume or the generic base one — visible before every submit.
+    const ri = resumeInfo || {};
+    let resumeLine = "";
+    if (ri.state === "attached" && ri.source === "base") {
+      resumeLine = `<div class="jh-sb-resume jh-sb-base">⚠ BASE resume — not tailored for this job` +
+        `<span>${esc(ri.filename || "")}</span></div>`;
+    } else if (ri.state === "attached") {
+      resumeLine = `<div class="jh-sb-resume jh-sb-tailored">✓ Tailored resume attached` +
+        `<span>${esc(ri.filename || "")}</span></div>`;
+    } else if (ri.state === "manual") {
+      resumeLine = `<div class="jh-sb-resume jh-sb-base">⚠ Attach your resume manually (custom uploader)</div>`;
+    } else if (ri.state === "error") {
+      resumeLine = `<div class="jh-sb-resume jh-sb-base">⚠ Resume attach failed — tailor this job first</div>`;
+    }
     bar.innerHTML =
-      `<div class="jh-sb-msg">${summary}</div>${warn}` +
+      `<div class="jh-sb-msg">${summary}</div>${resumeLine}${warn}` +
       `<div class="jh-sb-actions">` +
       `<button class="jh-sb-cancel">Not yet</button>` +
       `<button class="jh-sb-go"${missing.length ? " disabled" : ""}>Submit application</button>` +
@@ -765,7 +789,8 @@
     // Attach the resume PDF (tailored for this job when we have one) so the
     // file upload isn't the one step left to do by hand.
     const meta = pageMeta();
-    const resumeState = await attachResume({ url: meta.url, title: meta.title, company: meta.company, job_id: armedJobId });
+    const resumeInfo = await attachResume({ url: meta.url, title: meta.title, company: meta.company, job_id: armedJobId });
+    const resumeState = resumeInfo.state;
 
     // Bring the filled form into view — on many ATS pages it sits far below
     // the job description, so the user wouldn't otherwise see it happened.
@@ -778,13 +803,14 @@
     // are handled separately and skip this.
     const submitBtn = filled > 0 ? findSubmitButton() : null;
     if (submitBtn) {
-      const rs = resumeState === "attached" ? "resume attached"
-        : resumeState === "manual" ? "attach resume yourself" : "no resume";
       submitBar(entries, submitBtn,
-        `Filled ${filled}/${entries.length}${ai ? ` · ${ai} by AI` : ""} · ${rs}. Review, then submit.`);
+        `Filled ${filled}/${entries.length}${ai ? ` · ${ai} by AI` : ""}. Review, then submit.`,
+        resumeInfo);
     }
     onStatus({ done: true, total: entries.length, filled, ai, resume: data.resume_source,
-               ai_status: data.ai_status, resume_state: resumeState, has_submit: !!submitBtn });
+               ai_status: data.ai_status, resume_state: resumeState,
+               resume_name: resumeInfo.filename || "", resume_source: resumeInfo.source || "",
+               has_submit: !!submitBtn });
   }
   window.__jhRunFill = runFill;
 
@@ -793,7 +819,10 @@
   function fillNote(s) {
     if (!s) return "";
     const bits = [];
-    if (s.resume_state === "attached") bits.push("resume attached");
+    if (s.resume_state === "attached") {
+      bits.push((s.resume_source === "base" ? "BASE resume: " : "tailored resume: ")
+                + (s.resume_name || "attached"));
+    }
     else if (s.resume_state === "manual") bits.push("attach the resume yourself (custom uploader)");
     else if (s.resume_state === "error") bits.push("resume attach failed — add/tailor a resume first");
     if (s.ai_status === "no_key") bits.push("add an AI key in Settings to auto-draft the open questions");

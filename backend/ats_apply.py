@@ -963,6 +963,16 @@ def prefill(fields: list[dict], profile: dict,
 
         val = by_key.get(key, "")
 
+        # Application Answers education years OVERRIDE learned memory — the
+        # user set them deliberately; a 2024/2024 pair learned from an old
+        # form must not outrank them.
+        if not val:
+            for _pat, _v in ((re.compile(r"start\s+date\s+year", re.I), _edu_start),
+                             (re.compile(r"end\s+date\s+year|grad(uation)?\s+year", re.I), _edu_year)):
+                if _v and _pat.search(label or ""):
+                    val = _pick_option(opts, _v) if opts else _v
+                    break
+
         # Answer memory: stored as option LABEL (portable across companies
         # whose option ids differ) or raw text for free-text questions.
         # Lookup is fuzzy — rewordings of the same ask match (see _memory_lookup).

@@ -661,9 +661,7 @@ _CONSENT_OPTION = re.compile(r"acknowledge|confirm|agree|yes", re.I)
 # otherwise get recorded at submit as a deliberate user override (live bug:
 # an old phone number kept resurrecting through memory).
 _CONTACT_LABEL_RE = re.compile(
-    r"phone|mobile|cell|e-?mail|first\s+name|last\s+name"
-    r"|full\s+name|surname|given\s+name|address|city"
-    r"|linkedin|github", re.I)
+    r"\bphone\b|\bmobile\b|\bcell\b|e-?mail|first\s+name|last\s+name|full\s+name|\bsurname\b|given\s+name|\baddress\b|\bcity\b|\blinkedin\b|\bgithub\b", re.I)
 
 _CONDITIONAL_LABEL = re.compile(r"if you (selected|answered|chose)|if other", re.I)
 

@@ -6082,6 +6082,11 @@ async def extension_resume_file(body: ExtResumeBody, user_id: str = Depends(get_
         "mime": "application/pdf",
         "b64": _b64.b64encode(pdf_bytes).decode("ascii"),
         "source": "tailored" if tailored else "base",
+        # The exact text the attached PDF was built from — the extension logs
+        # it to the console so the user can READ what is being sent, instead
+        # of trusting a filename.
+        "text": text,
+        "matched_job": {"company": job_company, "title": job_title},
     }
 
 

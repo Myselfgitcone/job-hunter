@@ -646,6 +646,17 @@
       const target = input.closest("[class*='field'],[class*='upload'],[class*='attach'],div") || input;
       target.classList.add("jh-filled");
       setTimeout(() => target.classList.remove("jh-filled"), 4000);
+      // Print the attached resume's FULL text to the console — open DevTools
+      // (F12) to read exactly what is being submitted, not just its filename.
+      try {
+        const mj = data.matched_job || {};
+        console.log(
+          `%c[Job Hunter] Attached ${data.source === "base" ? "BASE" : "TAILORED"} resume: ` +
+          `${data.filename || ""}${mj.company ? ` — matched job: ${mj.title || ""} @ ${mj.company}` : ""}`,
+          `color:${data.source === "base" ? "#f59e0b" : "#10b981"};font-weight:bold`);
+        console.log(data.text || "(no text returned)");
+        window.jhResumeText = data.text || "";   // type jhResumeText to re-read it
+      } catch { /* console unavailable */ }
       return { state: "attached", filename: data.filename || "resume.pdf",
                source: data.source || "" };
     } catch {

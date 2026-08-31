@@ -970,21 +970,25 @@ def prefill(fields: list[dict], profile: dict,
 
         val = by_key.get(key, "")
 
-        # Application Answers education years OVERRIDE learned memory — the
-        # user set them deliberately; a 2024/2024 pair learned from an old
-        # form must not outrank them.
-        if not val:
-            for _pat, _v in ((re.compile(r"start\s+date\s+year", re.I), _edu_start),
-                             (re.compile(r"end\s+date\s+year|grad(uation)?\s+year", re.I), _edu_year)):
-                if _v and _pat.search(label or ""):
-                    val = _pick_option(opts, _v) if opts else _v
+        # Identity data the user MAINTAINS (Application Answers → profile):
+        # names, contact, address, education. Deliberate answers always beat
+        # fuzzy learned memory — a stale school/phone/date captured from one
+        # company's autofill must never outrank the form the user curates.
+        # Same free-text gate as the old fallback: option-bearing selects are
+        # answered by class rules, not raw text.
+        if not val and (ftype in ("text", "textarea")
+                        or (ftype == "select" and not opts)):
+            for pat, candidate in _label_rules:
+                if candidate and pat.search(label or ""):
+                    val = candidate
                     break
 
         # Answer memory: stored as option LABEL (portable across companies
         # whose option ids differ) or raw text for free-text questions.
         # Lookup is fuzzy — rewordings of the same ask match (see _memory_lookup).
         if not val:
-            remembered = "" if _CONTACT_LABEL_RE.search(label or "")                 else _memory_lookup(label, mem)
+            remembered = ("" if _CONTACT_LABEL_RE.search(label or "")
+                          else _memory_lookup(label, mem))
             # A degree-LEVEL field must never take a remembered discipline —
             # fuzzy lookup matched "…field of study for your degree" (answer:
             # "Information Systems") onto a plain "Degree" dropdown (live bug).
@@ -997,17 +1001,6 @@ def prefill(fields: list[dict], profile: dict,
 
         if not val:
             val = _class_answer(label or "", ftype, opts, ap)
-
-        # Label-rule fallback: free-text fields, and option-LESS selects — the
-        # extension reports async typeahead comboboxes (School/City) as
-        # type=select with no options; they take a text value and resolve the
-        # matching option at fill time in the browser.
-        if not val and (ftype in ("text", "textarea")
-                        or (ftype == "select" and not opts)):
-            for pat, candidate in _label_rules:
-                if candidate and pat.search(label or ""):
-                    val = candidate
-                    break
         if val:
             answers[key] = val
     return answers

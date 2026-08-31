@@ -7,13 +7,36 @@
   if (window.__jhAutofillLoaded) return;
   window.__jhAutofillLoaded = true;
 
+  // MV3's service worker can restart mid-call, and Chrome then silently never
+  // fires the sendMessage callback ("message channel closed" in the console) —
+  // the whole fill used to hang forever on that. Timeout + one retry: a fresh
+  // sendMessage wakes the worker, and a real failure surfaces as an error
+  // toast instead of a stuck "Filling…" button.
   const send = (type, payload) =>
     new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage({ type, payload }, (res) => {
-        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
-        if (res?.error) return reject(new Error(res.error));
-        resolve(res?.data);
-      });
+      const timeoutMs = type === "answer" ? 90000 : 25000;
+      let settled = false;
+      const attempt = (retriesLeft) => {
+        const timer = setTimeout(() => {
+          if (settled) return;
+          if (retriesLeft > 0) return attempt(retriesLeft - 1);
+          settled = true;
+          reject(new Error("Job Hunter background timed out — reload the page and try again."));
+        }, timeoutMs);
+        chrome.runtime.sendMessage({ type, payload }, (res) => {
+          clearTimeout(timer);
+          if (settled) return;
+          if (chrome.runtime.lastError) {
+            if (retriesLeft > 0) return attempt(retriesLeft - 1);
+            settled = true;
+            return reject(new Error(chrome.runtime.lastError.message));
+          }
+          settled = true;
+          if (res?.error) return reject(new Error(res.error));
+          resolve(res?.data);
+        });
+      };
+      attempt(1);
     });
 
   // ── Field scanning ─────────────────────────────────────────────────────────
@@ -580,10 +603,14 @@
     for (const entry of entries) {
       const v = answers[entry.key];
       // Custom dropdowns (Workday/react-select) need a real open→click gesture
-      // and are async; everything else fills synchronously.
-      const ok = entry.isCustomSelect
-        ? (entry.msSearch ? await fillMultiSelectSearch(entry.el, v) : await fillCustomSelect(entry.el, v))
-        : fillField(entry, v);
+      // and are async; everything else fills synchronously. One misbehaving
+      // widget must never abort the rest of the form — swallow per-field.
+      let ok = false;
+      try {
+        ok = entry.isCustomSelect
+          ? (entry.msSearch ? await fillMultiSelectSearch(entry.el, v) : await fillCustomSelect(entry.el, v))
+          : fillField(entry, v);
+      } catch { ok = false; }
       if (ok) {
         filled++;
         if (!firstFilled) firstFilled = entry.isGroup ? entry.el[0] : (entry.isCustomSelect ? entry.el : entry.el);

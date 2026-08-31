@@ -209,6 +209,15 @@
       const key = `f${idx++}`;
       fields.push({ el, isGroup: false, key, field: { key, label, type: ftype, options } });
     }
+    // Fill in PAGE ORDER, top to bottom — the two scanning passes (custom
+    // dropdowns first, then natives) otherwise make the fill visibly start
+    // mid-form and jump around.
+    const nodeOf = (e) => (e.isGroup ? e.el[0] : e.el);
+    fields.sort((a, b) => {
+      const pa = nodeOf(a), pb = nodeOf(b);
+      if (pa === pb) return 0;
+      return (pa.compareDocumentPosition(pb) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1;
+    });
     return fields;
   }
 

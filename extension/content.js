@@ -912,13 +912,58 @@
     if (document.getElementById("jh-fab")) return;
     const fab = document.createElement("button");
     fab.id = "jh-fab";
-    fab.title = "Fill this application with Job Hunter";
+    fab.title = "Fill this application with Job Hunter — drag to move";
     fab.textContent = "JH";
     const busy = (on) => {
       fab.classList.toggle("jh-loading", on);
       fab.textContent = on ? "…" : "JH";
     };
+
+    // ── Position: user-draggable, remembered across every site ─────────────
+    const setPos = (left, top) => {
+      const W = 46, m = 4;
+      left = Math.min(Math.max(left, m), window.innerWidth - W - m);
+      top = Math.min(Math.max(top, m), window.innerHeight - W - m);
+      fab.style.setProperty("left", `${left}px`, "important");
+      fab.style.setProperty("top", `${top}px`, "important");
+      fab.style.setProperty("right", "auto", "important");
+      fab.style.setProperty("bottom", "auto", "important");
+      return { left, top };
+    };
+    const defaultPos = () => setPos(window.innerWidth - 66, window.innerHeight - 66);
+    try {
+      chrome.storage.local.get("jh_fab_pos", ({ jh_fab_pos }) => {
+        if (jh_fab_pos && typeof jh_fab_pos.left === "number") setPos(jh_fab_pos.left, jh_fab_pos.top);
+        else defaultPos();
+      });
+    } catch { defaultPos(); }
+
+    let dragged = false;
+    fab.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      dragged = false;
+      const startX = e.clientX, startY = e.clientY;
+      const r = fab.getBoundingClientRect();
+      const offX = startX - r.left, offY = startY - r.top;
+      const move = (ev) => {
+        if (!dragged && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 6) return;
+        dragged = true;
+        setPos(ev.clientX - offX, ev.clientY - offY);
+      };
+      const up = (ev) => {
+        window.removeEventListener("pointermove", move, true);
+        window.removeEventListener("pointerup", up, true);
+        if (dragged) {
+          const pos = setPos(ev.clientX - offX, ev.clientY - offY);
+          try { chrome.storage.local.set({ jh_fab_pos: pos }); } catch { /* ignore */ }
+        }
+      };
+      window.addEventListener("pointermove", move, true);
+      window.addEventListener("pointerup", up, true);
+    });
+
     fab.addEventListener("click", async () => {
+      if (dragged) { dragged = false; return; }   // a drag is not a fill request
       busy(true);
       const handle = (s) => {
         if (!s || s.error) toast((s && s.error) || "No form fields found on this page.", true);

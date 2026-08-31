@@ -271,11 +271,29 @@
     try { trigger.focus(); } catch { /* ignore */ }
     realClick(trigger);
     await sleep(550);                       // popup renders in a portal
-    const opts = [...document.querySelectorAll("[role='option']")]
+    const visibleOpts = () => [...document.querySelectorAll("[role='option']")]
       .filter((o) => o.offsetParent !== null && norm(o.textContent) &&
                      !/^select one$/i.test(norm(o.textContent)));
-    if (!opts.length) { await closeAnyPopup(); return false; }
+    let opts = visibleOpts();
     let opt = opts.find((o) => optMatches(o.textContent, value));
+    // Async type-to-search combobox (Greenhouse Country/School/Degree…):
+    // options only exist after typing. The trigger itself is the input, or
+    // wraps one — type the value and re-scan.
+    if (!opt) {
+      const inner = trigger.tagName === "INPUT"
+        ? trigger
+        : trigger.querySelector?.("input:not([type='hidden'])");
+      if (inner) {
+        try { inner.focus(); } catch { /* ignore */ }
+        typeInto(inner, String(value));
+        await sleep(850);
+        opts = visibleOpts();
+        opt = opts.find((o) => optMatches(o.textContent, value));
+        // Typeahead narrowed to a single plausible hit — take it.
+        if (!opt && opts.length === 1) opt = opts[0];
+      }
+    }
+    if (!opts.length && !opt) { await closeAnyPopup(); return false; }
     // No confident match: only auto-pick a generic "how did you hear" bucket,
     // never guess an eligibility answer.
     if (!opt && /hear about|source|referr/i.test(customSelectLabel(trigger))) {

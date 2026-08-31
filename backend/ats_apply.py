@@ -579,7 +579,7 @@ _CLASS_RULES: list[tuple[re.Pattern, str, str]] = [
     (re.compile(r"convicted|criminal\s+(record|history|conviction|background)|felon", re.I), "convicted", "yesno"),
     (re.compile(r"salary.{0,20}negotiab|negotiable\s*\??", re.I), "negotiable", "yesno"),
     (re.compile(r"salary|compensation|pay expectation", re.I), "salary", "text"),
-    (re.compile(r"\bzip\b|postal code", re.I), "zip", "text"),
+    (re.compile(r"\bzip\b|\bpostal\b|\bpostcode\b", re.I), "zip", "text"),
     # A "Degree" / "Highest level of education" SELECT wants the level bucket
     # (derived from profile education in prefill) — must sit BEFORE the yes/no
     # do-you-have-a-degree rule, which the bare word "degree" also matches.
@@ -932,6 +932,11 @@ def prefill(fields: list[dict], profile: dict,
         (re.compile(r"\bmiddle\s+(name|initial)\b", re.I), middle),
         (re.compile(r"(?<!preferred )\blast name\b|\bsurname\b|\bfamily name\b", re.I), last),
         (re.compile(r"\bfull name\b|^name$|\byour name\b|\blegal name\b", re.I), full_name),
+        # Email and phone come BEFORE the address rules: "Email Address"
+        # contains the word "address" and was being filled with the street
+        # address on JazzHR (live bug).
+        (re.compile(r"\bemail\b|\be-?mail\b", re.I), email),
+        (re.compile(r"\bphone\b|\bmobile\b|\bcell\b", re.I), phone),
         (re.compile(r"\blocation\b|\bcity\b", re.I), city),
         (re.compile(r"\bstreet\b|address\s+line\s*1", re.I), street or full_address),
         (re.compile(r"\bapt\b|apartment|unit|suite|address\s+line\s*2", re.I), apt),
@@ -940,8 +945,6 @@ def prefill(fields: list[dict], profile: dict,
         (re.compile(r"\blinkedin\b", re.I), linkedin),
         (re.compile(r"\bgithub\b", re.I), github),
         (re.compile(r"\b(website|portfolio)\b", re.I), website),
-        (re.compile(r"\bphone\b|\bmobile\b|\bcell\b", re.I), phone),
-        (re.compile(r"\bemail\b|\be-?mail\b", re.I), email),
         (re.compile(r"(current|present).{0,20}(company|employer)", re.I),
          profile.get("current_company", "")),
         # Education basics — Application Answers first, resume profile second.

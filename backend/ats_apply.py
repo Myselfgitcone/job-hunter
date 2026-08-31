@@ -656,6 +656,15 @@ _CONSENT_OPTION = re.compile(r"acknowledge|confirm|agree|yes", re.I)
 
 # Conditional follow-ups ("If you selected 'Other'…") depend on another
 # answer — never auto-filled from class rules.
+# Contact basics are PROFILE-owned — never learned into memory and never
+# answered from it. A site's own browser-autofill of stale data would
+# otherwise get recorded at submit as a deliberate user override (live bug:
+# an old phone number kept resurrecting through memory).
+_CONTACT_LABEL_RE = re.compile(
+    r"phone|mobile|cell|e-?mail|first\s+name|last\s+name"
+    r"|full\s+name|surname|given\s+name|address|city"
+    r"|linkedin|github", re.I)
+
 _CONDITIONAL_LABEL = re.compile(r"if you (selected|answered|chose)|if other", re.I)
 
 # Fields that must NEVER be auto-filled — not from rules, not from learned
@@ -977,7 +986,7 @@ def prefill(fields: list[dict], profile: dict,
         # whose option ids differ) or raw text for free-text questions.
         # Lookup is fuzzy — rewordings of the same ask match (see _memory_lookup).
         if not val:
-            remembered = _memory_lookup(label, mem)
+            remembered = "" if _CONTACT_LABEL_RE.search(label or "")                 else _memory_lookup(label, mem)
             # A degree-LEVEL field must never take a remembered discipline —
             # fuzzy lookup matched "…field of study for your degree" (answer:
             # "Information Systems") onto a plain "Degree" dropdown (live bug).
@@ -1045,6 +1054,8 @@ def extract_memory(fields: list[dict], answers: dict) -> dict:
         # forced an SSN/DOB out of the user must not seed the answer bank.
         if _NEVER_FILL.search(label or ""):
             continue
+        if _CONTACT_LABEL_RE.search(label or ""):
+            continue   # contact basics live in the profile, not the pile
         val = str(answers.get(key, "") or "").strip()
         if not val:
             continue

@@ -577,6 +577,7 @@ _CLASS_RULES: list[tuple[re.Pattern, str, str]] = [
     (re.compile(r"background\s+(check|screen|investigation)", re.I), "background_check", "yesno"),
     (re.compile(r"drug\s+(test|screen)", re.I), "drug_test", "yesno"),
     (re.compile(r"convicted|criminal\s+(record|history|conviction|background)|felon", re.I), "convicted", "yesno"),
+    (re.compile(r"salary.{0,20}negotiab|negotiable\s*\??", re.I), "negotiable", "yesno"),
     (re.compile(r"salary|compensation|pay expectation", re.I), "salary", "text"),
     (re.compile(r"\bzip\b|postal code", re.I), "zip", "text"),
     # A "Degree" / "Highest level of education" SELECT wants the level bucket
@@ -606,6 +607,39 @@ _CLASS_RULES: list[tuple[re.Pattern, str, str]] = [
      "start_date", "text"),
     (re.compile(r"non.?compet|non.?solicit", re.I), "noncompete", "yesno"),
     (re.compile(r"referred by.{0,30}employee|referral", re.I), "referral", "text"),
+    # ── Safe truthful constants / derived answers (taxonomy sweep) ───────────
+    (re.compile(r"related to.{0,30}(current|any)?\s*employee|relative.{0,20}(work|employ)", re.I),
+     "related_employee", "yesno"),
+    (re.compile(r"former|other|maiden.{0,15}names?\s+(used|known)", re.I), "former_names", "yesno"),
+    (re.compile(r"mailing address.{0,20}same", re.I), "mailing_same", "yesno"),
+    (re.compile(r"phone\s+type|type\s+of\s+phone", re.I), "phone_type", "text"),
+    (re.compile(r"not\s+a\s+(recruiter|staffing|agency)|confirm.{0,25}(recruiter|agency)", re.I),
+     "not_recruiter", "yesno"),
+    (re.compile(r"meet.{0,25}(minimum|basic)\s+qualifications", re.I), "meets_min_quals", "yesno"),
+    (re.compile(r"read.{0,20}job\s+description", re.I), "read_jd", "yesno"),
+    (re.compile(r"willing.{0,30}(assessment|skills?\s+test|take-?home)", re.I),
+     "willing_assessment", "yesno"),
+    (re.compile(r"willing.{0,30}in-?person\s+interview|attend.{0,20}interview", re.I),
+     "willing_interview", "yesno"),
+    (re.compile(r"reliable\s+transport", re.I), "reliable_transport", "yesno"),
+    (re.compile(r"reliable\s+(internet|wifi|connection)|home\s+(office|internet)", re.I),
+     "reliable_internet", "yesno"),
+    (re.compile(r"did you graduate|degree\s+(completed|conferred|awarded)", re.I),
+     "graduated", "yesno"),
+    (re.compile(r"currently\s+enrolled", re.I), "currently_enrolled", "yesno"),
+    (re.compile(r"planned\s+(time\s+off|vacation|pto).{0,30}(90|ninety|first)", re.I),
+     "planned_time_off", "yesno"),
+    (re.compile(r"full.?time.{0,20}(preference|position|role|employment)?\s*\??$"
+                r"|employment\s+type\s+preference|seeking\s+(full|part).?time", re.I),
+     "employment_type", "text"),
+    (re.compile(r"hours\s+(available|per week|weekly)|weekly\s+hours", re.I),
+     "hours_per_week", "text"),
+    (re.compile(r"willing.{0,20}overtime", re.I), "overtime_ok", "yesno"),
+    (re.compile(r"country\s+code|dial(ing)?\s+code", re.I), "country_code", "text"),
+    (re.compile(r"confirm\s+e-?mail|re-?enter.{0,10}e-?mail|e-?mail\s+confirmation", re.I),
+     "confirm_email", "text"),
+    (re.compile(r"languages?\s+(spoken|you\s+speak)|spoken\s+languages", re.I),
+     "languages", "text"),
     (re.compile(r"gender identity|identify.{0,20}gender|\bgender\b", re.I), "demo_gender", "option"),
     (re.compile(r"race|ethnicit", re.I), "demo_race", "option"),
     (re.compile(r"veteran", re.I), "demo_veteran", "option"),
@@ -623,6 +657,16 @@ _CONSENT_OPTION = re.compile(r"acknowledge|confirm|agree|yes", re.I)
 # Conditional follow-ups ("If you selected 'Other'…") depend on another
 # answer — never auto-filled from class rules.
 _CONDITIONAL_LABEL = re.compile(r"if you (selected|answered|chose)|if other", re.I)
+
+# Fields that must NEVER be auto-filled — not from rules, not from learned
+# memory. Sensitive identifiers a legitimate application never needs pre-offer;
+# leaking one from memory onto the wrong form would be far worse than a blank.
+_NEVER_FILL = re.compile(
+    r"\bssn\b|social\s+security|bank\s+(account|routing)|routing\s+number"
+    r"|date\s+of\s+birth|\bdob\b|birth\s*date"
+    r"|(driver'?s?\s+license|passport)\s*(number|no\.?|#)"
+    r"|salary\s+history|previous\s+(salary|compensation)|current\s+salary"
+    r"|mother'?s\s+maiden|security\s+question", re.I)
 
 # ── Years-of-experience question shapes ──────────────────────────────────────
 # A "years" class match is one of three shapes; treat them very differently.
@@ -772,6 +816,23 @@ def prefill(fields: list[dict], profile: dict,
             ap = {**ap, "degree_level": "Bachelor's Degree"}
         elif re.search(r"associate", deg_txt):
             ap = {**ap, "degree_level": "Associate's Degree"}
+    # Safe truthful defaults for near-universal questions — only where the
+    # honest answer is the same for essentially every applicant. Anything
+    # judgment-dependent (shifts, overtime, languages, travel %) stays blank
+    # until the user answers it once (Application Answers or learned memory).
+    _defaults = {
+        "related_employee": "No", "former_names": "No", "mailing_same": "Yes",
+        "phone_type": "Mobile", "not_recruiter": "Yes", "meets_min_quals": "Yes",
+        "read_jd": "Yes", "willing_assessment": "Yes", "willing_interview": "Yes",
+        "reliable_transport": "Yes", "reliable_internet": "Yes",
+        "graduated": "Yes", "currently_enrolled": "No", "negotiable": "Yes",
+        "planned_time_off": "No", "employment_type": "Full-time",
+        "hours_per_week": "40", "country_code": "+1",
+        "confirm_email": profile.get("email", ""),
+    }
+    for _k, _v in _defaults.items():
+        if _v and not ap.get(_k):
+            ap = {**ap, _k: _v}
     # First education entry feeds the standard School/Discipline/Year fields.
     _edu = (profile.get("education") or [{}])[0] or {}
     _edu_school = str(_edu.get("school") or "").strip()
@@ -827,6 +888,12 @@ def prefill(fields: list[dict], profile: dict,
         opts = f0.get("options") or []
         if ftype == "file":
             continue    # resume/cover handled separately server-side
+
+        # Sensitive identifiers: hard-refused before any source can answer —
+        # including learned memory, which must never leak an SSN/DOB/bank
+        # detail typed elsewhere onto a new form.
+        if _NEVER_FILL.search(label or ""):
+            continue
 
         val = by_key.get(key, "")
 

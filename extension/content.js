@@ -286,11 +286,23 @@
       if (inner) {
         try { inner.focus(); } catch { /* ignore */ }
         typeInto(inner, String(value));
-        await sleep(850);
+        await sleep(1100);                 // async option search (school/city APIs)
         opts = visibleOpts();
         opt = opts.find((o) => optMatches(o.textContent, value));
         // Typeahead narrowed to a single plausible hit — take it.
         if (!opt && opts.length === 1) opt = opts[0];
+        // Options exist but none text-matches (API rephrases: "Maryland
+        // Heights, Missouri, United States") — commit the highlighted first
+        // result the way a human does: ArrowDown + Enter. We typed the exact
+        // profile value, so the top result is the right one.
+        if (!opt && opts.length) {
+          for (const [key, code] of [["ArrowDown", 40], ["Enter", 13]]) {
+            inner.dispatchEvent(new KeyboardEvent("keydown", { key, keyCode: code, bubbles: true }));
+            await sleep(180);
+          }
+          await closeAnyPopup();
+          return true;
+        }
       }
     }
     if (!opts.length && !opt) { await closeAnyPopup(); return false; }

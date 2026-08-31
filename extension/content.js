@@ -766,7 +766,31 @@
   }
 
   // ── Floating button ──────────────────────────────────────────────────────────
+  // Known ATS hosts — the button belongs here. On any OTHER host the page must
+  // show strong application evidence (see below), so random login/signup/
+  // checkout forms across the web never grow a JH button.
+  const _ATS_HOST_RE = new RegExp([
+    "greenhouse\\.io", "lever\\.co", "ashbyhq\\.com", "myworkdayjobs\\.com",
+    "workday", "icims\\.com", "smartrecruiters\\.com", "jobvite\\.com",
+    "bamboohr\\.com", "taleo\\.net", "adp\\.com", "workablejobs|workable\\.com",
+    "breezy\\.hr", "jazzhr|applytojob\\.com", "recruitee\\.com",
+    "oraclecloud\\.com", "successfactors|sapsf", "paylocity\\.com",
+    "paycomonline", "ultipro|ukg\\.", "dayforcehcm", "eightfold\\.ai",
+    "phenom(people)?\\.com", "avature\\.net", "pinpointhq\\.com",
+    "teamtailor\\.com", "personio", "rippling\\.com", "gem\\.com",
+    "dover\\.com", "wellfound\\.com", "hirebridge", "clearcompany",
+    "jobs\\.apple\\.com", "careers?\\.",
+  ].join("|"), "i");
+
+  function isAtsContext() {
+    if (_ATS_HOST_RE.test(location.hostname)) return true;
+    // Unknown host: URL path or title must say this is a job application.
+    return /job|career|apply|application|position|vacanc|opening|requisition/i
+      .test(location.pathname + " " + document.title);
+  }
+
   function looksLikeApplication() {
+    if (!isAtsContext()) return false;
     // Workday (and similar ATS) render whole steps as custom widgets with NO
     // native inputs — e.g. an "Application Questions" step that is nothing but
     // button-dropdowns. Counting only input/select/textarea missed those and
@@ -793,8 +817,9 @@
     const hasResume = hasFile || /resume|cv\b|curriculum/.test(blob);
     const hasName = /first name|last name|full name|\bname\b|given name|surname/.test(blob);
     const hasEmail = /e-?mail/.test(blob);
-    const strong = hasResume || (hasName && hasEmail);
-    return strong || fieldCount >= 6;
+    // Strong evidence only — the old "any 6 fields" catch-all put the button
+    // on every long form on the internet.
+    return hasResume || (hasName && hasEmail);
   }
 
   const isTop = window.top === window;
@@ -888,10 +913,10 @@
     const fab = document.createElement("button");
     fab.id = "jh-fab";
     fab.title = "Fill this application with Job Hunter";
-    fab.innerHTML = `<span class="jh-fab-ico">⚡</span><span class="jh-fab-txt">Fill with Job Hunter</span>`;
+    fab.textContent = "JH";
     const busy = (on) => {
       fab.classList.toggle("jh-loading", on);
-      fab.querySelector(".jh-fab-txt").textContent = on ? "Filling…" : "Fill with Job Hunter";
+      fab.textContent = on ? "…" : "JH";
     };
     fab.addEventListener("click", async () => {
       busy(true);

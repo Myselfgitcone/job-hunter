@@ -579,6 +579,12 @@ _CLASS_RULES: list[tuple[re.Pattern, str, str]] = [
     (re.compile(r"convicted|criminal\s+(record|history|conviction|background)|felon", re.I), "convicted", "yesno"),
     (re.compile(r"salary|compensation|pay expectation", re.I), "salary", "text"),
     (re.compile(r"\bzip\b|postal code", re.I), "zip", "text"),
+    # A "Degree" / "Highest level of education" SELECT wants the level bucket
+    # (derived from profile education in prefill) — must sit BEFORE the yes/no
+    # do-you-have-a-degree rule, which the bare word "degree" also matches.
+    (re.compile(r"^\s*(highest\s+)?(level\s+of\s+)?(education|degree)"
+                r"(\s+(level|earned|obtained|completed|attained))?\s*\*?\s*$", re.I),
+     "degree_level", "text"),
     (re.compile(r"bachelor|higher education|degree\b", re.I), "degree", "yesno"),
     (re.compile(r"(how many|years of).{0,60}experience|experience.{0,30}years", re.I),
      "years_experience", "years"),
@@ -713,6 +719,18 @@ def _class_answer(label: str, ftype: str, options: list[dict],
                 if lead and lead[0] in ("yes", "no"):
                     picked = _pick_yes_no(options, lead[0] == "yes")
             return picked
+        if key == "degree_level" and options:
+            picked = _pick_option(options, str(stored))
+            if picked:
+                return picked
+            # "Masters" vs "Master's" vs "Master of Science" — match on the
+            # level keyword alone.
+            lvl = re.search(r"master|bachelor|doctor|associate", str(stored), re.I)
+            if lvl:
+                for o in options:
+                    if re.search(lvl.group(0), o["label"], re.I):
+                        return o["value"]
+            return ""
         if not options:   # free-text field
             return str(stored)
         return _pick_option(options, str(stored))
@@ -739,6 +757,20 @@ def prefill(fields: list[dict], profile: dict,
     """
     ap = apply_profile or {}
     mem = memory or {}
+    # Derived: canonical degree level from the profile's education entries —
+    # ATS "Degree" dropdowns want a bucket ("Master's Degree"), not the full
+    # program name ("Master of Science in Information Systems").
+    if not ap.get("degree_level"):
+        deg_txt = " ".join(str(e.get("degree", ""))
+                           for e in (profile.get("education") or [])).lower()
+        if re.search(r"ph\.?d|doctor", deg_txt):
+            ap = {**ap, "degree_level": "Doctorate"}
+        elif re.search(r"master|m\.?s\.?\b|mba", deg_txt):
+            ap = {**ap, "degree_level": "Master's Degree"}
+        elif re.search(r"bachelor|b\.?s\.?\b|b\.?tech|b\.?e\.?\b", deg_txt):
+            ap = {**ap, "degree_level": "Bachelor's Degree"}
+        elif re.search(r"associate", deg_txt):
+            ap = {**ap, "degree_level": "Associate's Degree"}
     first, last = _split_name(profile.get("name", ""))
     by_key = {
         "first_name": first, "last_name": last,

@@ -504,8 +504,17 @@
   // manual answers when they submit.
   function readValue(entry) {
     if (entry.isCustomSelect) {
-      const t = norm(entry.el.textContent);
-      return /^select one$/i.test(t) ? "" : t;
+      // A committed react-select keeps its INPUT empty and renders the choice
+      // in a single-value/multi-value chip — read the chip first, else the
+      // trigger. (Reading only textContent counted every committed dropdown
+      // as "required field still empty" and blocked the submit bar.)
+      const el = entry.el;
+      const box = el.closest("[class*='select__control']")?.parentElement
+                || el.parentElement || el;
+      const chip = box.querySelector("[class*='single-value'], [class*='multi-value']");
+      if (chip) return norm(chip.textContent);
+      const t = norm(el.value || el.textContent);
+      return /^select( one)?(\.\.\.)?$/i.test(t) ? "" : t;
     }
     if (entry.isGroup) {
       const checked = entry.el.filter((i) => i.checked);

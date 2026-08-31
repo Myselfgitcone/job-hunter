@@ -706,6 +706,37 @@ def _years_is_specific(label: str) -> bool:
     return False
 
 
+def _start_date_answer(stored: str, label: str, ftype: str,
+                       options: list[dict]) -> str:
+    """'15 days' stays text for a text question — but a DATE field gets a real
+    computed date: today + notice period, rolled forward to a MONDAY (nobody
+    starts a job on Fri/Sat/Sun)."""
+    from datetime import date, timedelta
+    wants_date = (ftype == "date"
+                  or re.search(r"mm[/\-]dd|dd[/\-]mm|yyyy|start\s+date\b|date\s+available"
+                               r"|available\s+(start\s+)?date|earliest\s+(start\s+)?date",
+                               label or "", re.I) is not None)
+    if not wants_date:
+        if options:
+            return _pick_option(options, stored)
+        return stored
+    s = stored.lower()
+    m = re.search(r"(\d+)\s*(day|week|month)", s)
+    if m:
+        n = int(m.group(1))
+        days = n * (7 if m.group(2).startswith("week") else 30 if m.group(2).startswith("month") else 1)
+    elif re.search(r"immediat|asap|now|any\s*time", s):
+        days = 3
+    else:
+        days = 14
+    d = date.today() + timedelta(days=days)
+    while d.weekday() != 0:          # roll forward to the next Monday
+        d += timedelta(days=1)
+    if ftype == "date":
+        return d.isoformat()         # <input type=date> takes YYYY-MM-DD
+    return d.strftime("%m/%d/%Y")
+
+
 def _class_answer(label: str, ftype: str, options: list[dict],
                   ap: dict) -> str:
     """Answer one question from the saved application profile. '' = no match."""
@@ -764,6 +795,8 @@ def _class_answer(label: str, ftype: str, options: list[dict],
                 if lead and lead[0] in ("yes", "no"):
                     picked = _pick_yes_no(options, lead[0] == "yes")
             return picked
+        if key == "start_date":
+            return _start_date_answer(str(stored), label, ftype, options)
         if key == "degree_level" and options:
             picked = _pick_option(options, str(stored))
             if picked:
@@ -864,6 +897,11 @@ def prefill(fields: list[dict], profile: dict,
     full_address = (", ".join(x for x in (street, apt) if x)
                     or profile.get("address", ""))
     country = _apv("country") or "United States"
+    # Preferred names default to the legal name — no separate fields to fill.
+    if first and not ap.get("preferred_first"):
+        ap = {**ap, "preferred_first": first}
+    if last and not ap.get("preferred_last"):
+        ap = {**ap, "preferred_last": last}
     by_key = {
         "first_name": first, "last_name": last,
         "email": email, "phone": phone,

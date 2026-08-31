@@ -163,6 +163,8 @@ const AA_GROUPS: Array<{ title: string; icon: string; color: string; desc: strin
       { key: "linkedin",       label: "LinkedIn URL" },
       { key: "github",         label: "GitHub URL", hint: "Blank to skip" },
       { key: "website",        label: "Portfolio / website", hint: "Blank to skip" },
+      { key: "pronouns",       label: "Pronouns", options: [
+        "he/him", "she/her", "they/them", "Prefer not to say"] },
     ],
   },
   {
@@ -219,16 +221,6 @@ const AA_GROUPS: Array<{ title: string; icon: string; color: string; desc: strin
       { key: "how_heard",        label: "\"How did you hear about us?\"", options: [
         "LinkedIn", "Indeed", "Company careers site", "Google search", "Referral", "Other"] },
       { key: "referral",         label: "Referral name (if any)", hint: "Usually blank" },
-    ],
-  },
-  {
-    title: "Name & pronouns", icon: "user", color: "#d97706",
-    desc: "Used only when a form asks for a preferred name or pronouns.",
-    fields: [
-      { key: "preferred_first",  label: "Preferred first name", hint: "Blank = use your legal name" },
-      { key: "preferred_last",   label: "Preferred last name", hint: "Blank = use your legal name" },
-      { key: "pronouns",         label: "Pronouns", options: [
-        "he/him", "she/her", "they/them", "Prefer not to say"] },
     ],
   },
   {

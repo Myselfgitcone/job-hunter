@@ -205,6 +205,7 @@
       let ftype = "text";
       if (tag === "TEXTAREA") ftype = "textarea";
       else if (tag === "SELECT") ftype = "select";
+      else if (type === "date") ftype = "date";
       const key = `f${idx++}`;
       fields.push({ el, isGroup: false, key, field: { key, label, type: ftype, options } });
     }
@@ -351,10 +352,27 @@
       }
     }
     if (!opts.length && !opt) { await closeAnyPopup(); return false; }
+    // Cascading categories ("Job Board ›", "Company Website ›"): open the
+    // best category, then re-scan for the real option inside it.
+    if (!opt && opts.length) {
+      const isHeard = /hear about|source|referr/i.test(customSelectLabel(trigger));
+      const cat = opts.find((o) => /[›>]\s*$/.test(norm(o.textContent)) &&
+        (optMatches(o.textContent.replace(/[›>]/g, ""), value) ||
+         (isHeard && /career|company|website|job\s*board|online/i.test(o.textContent))));
+      if (cat) {
+        realClick(cat);
+        await sleep(500);
+        opts = visibleOpts();
+        opt = opts.find((o) => optMatches(o.textContent, value));
+        if (!opt && isHeard) {
+          opt = opts.find((o) => /career\s*(site|page)?|company\s*(career|web)?site|website/i.test(o.textContent));
+        }
+      }
+    }
     // No confident match: only auto-pick a generic "how did you hear" bucket,
     // never guess an eligibility answer.
     if (!opt && /hear about|source|referr/i.test(customSelectLabel(trigger))) {
-      opt = opts.find((o) => /other|job\s*board|website|online/i.test(o.textContent));
+      opt = opts.find((o) => /other|job\s*board|website|online|career/i.test(o.textContent));
     }
     if (!opt) { await closeAnyPopup(); return false; }
     realClick(opt);

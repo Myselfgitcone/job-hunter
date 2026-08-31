@@ -582,8 +582,9 @@ _CLASS_RULES: list[tuple[re.Pattern, str, str]] = [
     # A "Degree" / "Highest level of education" SELECT wants the level bucket
     # (derived from profile education in prefill) — must sit BEFORE the yes/no
     # do-you-have-a-degree rule, which the bare word "degree" also matches.
-    (re.compile(r"^\s*(highest\s+)?(level\s+of\s+)?(education|degree)"
-                r"(\s+(level|earned|obtained|completed|attained))?\s*\*?\s*$", re.I),
+    (_DEGREE_LEVEL_RE := re.compile(
+        r"^\s*(highest\s+)?(level\s+of\s+)?(education|degree)"
+        r"(\s+(level|earned|obtained|completed|attained))?\s*\*?\s*$", re.I),
      "degree_level", "text"),
     (re.compile(r"bachelor|higher education|degree\b", re.I), "degree", "yesno"),
     (re.compile(r"(how many|years of).{0,60}experience|experience.{0,30}years", re.I),
@@ -819,6 +820,13 @@ def prefill(fields: list[dict], profile: dict,
         # Lookup is fuzzy — rewordings of the same ask match (see _memory_lookup).
         if not val:
             remembered = _memory_lookup(label, mem)
+            # A degree-LEVEL field must never take a remembered discipline —
+            # fuzzy lookup matched "…field of study for your degree" (answer:
+            # "Information Systems") onto a plain "Degree" dropdown (live bug).
+            if (remembered and _DEGREE_LEVEL_RE.search(label or "")
+                    and not re.search(r"master|bachelor|doctor|associate|diploma|high school",
+                                      str(remembered), re.I)):
+                remembered = ""
             if remembered:
                 val = _pick_option(opts, remembered) if opts else remembered
 

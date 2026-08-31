@@ -240,15 +240,33 @@
     }
   }
 
+  // Fold common name variants so "Saint Louis University" matches the list's
+  // "St. Louis University" and vice versa.
+  function foldName(s) {
+    return norm(String(s)).toLowerCase()
+      .replace(/\bst\.?\b/g, "saint")
+      .replace(/\bunited states of america\b/g, "united states")
+      .replace(/\busa\b/g, "united states");
+  }
+
   // Token-set match so "United States" ~ "United States of America", and the
   // AI's phrasing matches an option without being identical.
   function optMatches(optText, want) {
-    const a = norm(optText).toLowerCase();
-    const b = norm(String(want)).toLowerCase();
+    const a = foldName(optText);
+    const b = foldName(want);
     if (!a || !b) return false;
     if (a === b || a.includes(b) || b.includes(a)) return true;
     const bt = b.split(/\W+/).filter((w) => w.length > 2);
     return bt.length > 0 && bt.every((w) => a.includes(w));
+  }
+
+  // Overlap score 0..1: fraction of `want`'s meaningful tokens found in the
+  // option. Lets us take the BEST option when nothing matches perfectly.
+  function optScore(optText, want) {
+    const a = foldName(optText);
+    const bt = foldName(want).split(/\W+/).filter((w) => w.length > 2);
+    if (!bt.length) return 0;
+    return bt.filter((w) => a.includes(w)).length / bt.length;
   }
 
   // Close any open dropdown popup. CRITICAL for sequential fields: leaving one
@@ -271,37 +289,64 @@
     try { trigger.focus(); } catch { /* ignore */ }
     realClick(trigger);
     await sleep(550);                       // popup renders in a portal
-    const visibleOpts = () => [...document.querySelectorAll("[role='option']")]
-      .filter((o) => o.offsetParent !== null && norm(o.textContent) &&
-                     !/^select one$/i.test(norm(o.textContent)));
+    const visibleOpts = () =>
+      [...document.querySelectorAll("[role='option'], [class*='select__option']")]
+        .filter((o) => o.getClientRects().length > 0 && norm(o.textContent) &&
+                       !/^select one$/i.test(norm(o.textContent)));
     let opts = visibleOpts();
     let opt = opts.find((o) => optMatches(o.textContent, value));
     // Async type-to-search combobox (Greenhouse Country/School/Degree…):
-    // options only exist after typing. The trigger itself is the input, or
-    // wraps one — type the value and re-scan.
+    // options only exist after per-key typing. The trigger itself is the
+    // input, or wraps one — type the value and re-scan; if the exact text
+    // finds nothing (list spells it differently), retry with the value's most
+    // distinctive word and take the best-scoring option.
     if (!opt) {
       const inner = trigger.tagName === "INPUT"
         ? trigger
         : trigger.querySelector?.("input:not([type='hidden'])");
       if (inner) {
         try { inner.focus(); } catch { /* ignore */ }
-        typeInto(inner, String(value));
-        await sleep(1100);                 // async option search (school/city APIs)
-        opts = visibleOpts();
-        opt = opts.find((o) => optMatches(o.textContent, value));
-        // Typeahead narrowed to a single plausible hit — take it.
-        if (!opt && opts.length === 1) opt = opts[0];
-        // Options exist but none text-matches (API rephrases: "Maryland
-        // Heights, Missouri, United States") — commit the highlighted first
-        // result the way a human does: ArrowDown + Enter. We typed the exact
-        // profile value, so the top result is the right one.
-        if (!opt && opts.length) {
-          for (const [key, code] of [["ArrowDown", 40], ["Enter", 13]]) {
-            inner.dispatchEvent(new KeyboardEvent("keydown", { key, keyCode: code, bubbles: true }));
-            await sleep(180);
+        const queries = [String(value)];
+        const dw = distinctiveWord(value);
+        if (dw && dw !== foldName(value)) queries.push(dw);
+        for (const q of queries) {
+          await typeSearch(inner, q);
+          for (let tries = 0; tries < 10; tries++) {
+            await sleep(320);
+            opts = visibleOpts();
+            if (opts.length) break;
           }
-          await closeAnyPopup();
-          return true;
+          if (!opts.length) continue;
+          // Rank ALL matching options — first-match took "Maryville
+          // University of St. Louis" over the exact "St. Louis University"
+          // in live testing purely because of list order.
+          const wantFold = foldName(value);
+          const cands = opts.filter((o) => optMatches(o.textContent, value));
+          opt = cands.find((o) => foldName(o.textContent) === wantFold);
+          if (!opt && cands.length) {
+            // Prefer the candidate that adds NO extra distinguishing words —
+            // "St. Louis University" over "University of Missouri - St.
+            // Louis". A candidate with extra proper nouns is a different
+            // entity; picking it is worse than leaving the field blank.
+            const wantToks = new Set(wantFold.split(/\W+/).filter(Boolean));
+            const clean = cands.filter((o) =>
+              foldName(o.textContent).split(/\W+/).filter(Boolean)
+                .every((w) => wantToks.has(w) || _GENERIC_WORDS.has(w) || w.length <= 3));
+            opt = clean[0] || null;
+          }
+          if (!opt) {
+            // No token-subset match: best-overlap wins ONLY when it contains
+            // the value's distinctive word — generic-word overlap alone
+            // picked "Saint-Petersburg State University" for "Saint Louis
+            // University" in live testing.
+            const mustHave = distinctiveWord(value);
+            const scored = opts
+              .filter((o) => !mustHave || foldName(o.textContent).includes(mustHave))
+              .map((o) => ({ o, s: optScore(o.textContent, value) }))
+              .sort((a, b) => b.s - a.s);
+            if (scored[0] && scored[0].s >= 0.75) opt = scored[0].o;
+          }
+          if (opt) break;
         }
       }
     }
@@ -326,6 +371,37 @@
     if (setter) setter.call(el, text); else el.value = text;
     el.dispatchEvent(new Event("input", { bubbles: true }));
     el.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true }));
+  }
+
+  // Char-by-char typing — async search comboboxes (Greenhouse School/City)
+  // only fire their remote lookup on real per-key input events; a one-shot
+  // value set leaves the menu at "No options" forever. Proven live.
+  async function typeSearch(el, text) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+    if (setter) setter.call(el, ""); else el.value = "";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    await sleep(150);
+    for (const ch of String(text)) {
+      const code = ch.charCodeAt(0);
+      el.dispatchEvent(new KeyboardEvent("keydown", { key: ch, keyCode: code, which: code, bubbles: true }));
+      if (setter) setter.call(el, el.value + ch); else el.value += ch;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new KeyboardEvent("keyup", { key: ch, keyCode: code, which: code, bubbles: true }));
+      await sleep(45);
+    }
+  }
+
+  // The most distinctive word of a value — retry query when the full text
+  // finds nothing ("Saint Louis University" → "louis" surfaces the list's
+  // "St. Louis University" spelling).
+  const _GENERIC_WORDS = new Set(["university", "college", "institute", "school",
+    "state", "the", "and", "united", "states", "city", "north", "south",
+    "saint", "tech", "technical", "national", "international", "central"]);
+  function distinctiveWord(value) {
+    const words = foldName(value).split(/\W+/)
+      .filter((w) => w.length > 3 && !_GENERIC_WORDS.has(w));
+    words.sort((a, b) => b.length - a.length);
+    return words[0] || "";
   }
 
   // Workday multiselect-search (chip + "Search" box + cascading options):

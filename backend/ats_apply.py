@@ -1015,6 +1015,10 @@ def extract_memory(fields: list[dict], answers: dict) -> dict:
         key, label, ftype = f0["key"], f0["label"], f0["type"]
         if ftype == "file":
             continue
+        # Sensitive identifiers are never MEMORIZED either — a form that
+        # forced an SSN/DOB out of the user must not seed the answer bank.
+        if _NEVER_FILL.search(label or ""):
+            continue
         val = str(answers.get(key, "") or "").strip()
         if not val:
             continue

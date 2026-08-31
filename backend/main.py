@@ -5803,7 +5803,12 @@ def _ext_job_key(url: str) -> str:
     return (url or '').rstrip('/').split('/')[-1][:60]
 
 
-async def _ext_tailored_resume(user_id: str, apply_url: str, job_id: str = "") -> str | None:
+async def _ext_tailored_resume(user_id: str, apply_url: str,
+                               job_id: str = "") -> tuple[str | None, str, str]:
+    """-> (tailored_text | None, job_company, job_title) for this apply page.
+    Company/title from the MATCHED JOB name the attached file — the extension
+    only knows the page hostname, which made filenames like
+    'Jagadish_Butukuri_job_boards_greenhouse_io.pdf'."""
     # Prefer the exact job id the app handed us (via the Fill & Apply hash) —
     # URL matching is fragile across ATS formats (Ashby appends /application,
     # aggregators use redirect links, etc.). Fall back to URL match only when
@@ -5811,27 +5816,29 @@ async def _ext_tailored_resume(user_id: str, apply_url: str, job_id: str = "") -
     if job_id:
         async with SessionLocal() as db:
             res = await db.execute(
-                select(UserJob.tailored_resume)
+                select(UserJob.tailored_resume, Job.company, Job.title)
+                .join(Job, UserJob.job_id == Job.id)
                 .where(UserJob.user_id == user_id, UserJob.job_id == job_id)
                 .where(UserJob.tailored_resume.isnot(None)).limit(1))
-            hit = res.scalar_one_or_none()
-            if hit:
-                return hit
+            row = res.first()
+            if row:
+                return row[0], row[1] or "", row[2] or ""
         # job_id given but no tailored resume for it → don't silently fall back
         # to a DIFFERENT job's resume via URL guessing.
-        return None
+        return None, "", ""
     key = _ext_job_key(apply_url)
     if not key or len(key) < 4:
-        return None
+        return None, "", ""
     async with SessionLocal() as db:
         res = await db.execute(
-            select(UserJob.tailored_resume)
+            select(UserJob.tailored_resume, Job.company, Job.title)
             .join(Job, UserJob.job_id == Job.id)
             .where(UserJob.user_id == user_id)
             .where(UserJob.tailored_resume.isnot(None))
             .where(Job.url.contains(key))
             .order_by(UserJob.tailored_at.desc()).limit(1))
-        return res.scalar_one_or_none()
+        row = res.first()
+        return (row[0], row[1] or "", row[2] or "") if row else (None, "", "")
 
 
 async def _ext_job_desc(apply_url: str) -> dict:
@@ -5951,7 +5958,7 @@ async def extension_answer(body: ExtAnswerBody, user_id: str = Depends(get_curre
         if not unanswered:
             ai_status = "none_needed"
         else:
-            resume = (await _ext_tailored_resume(user_id, body.url, body.job_id)) or settings.get("resume", "")
+            resume = (await _ext_tailored_resume(user_id, body.url, body.job_id))[0] or settings.get("resume", "")
             jd_text = (jd_info.get("description") or "").strip()
             if not resume.strip():
                 ai_status = "no_resume"
@@ -6029,7 +6036,7 @@ async def extension_answer(body: ExtAnswerBody, user_id: str = Depends(get_curre
                         print(f"[EXT ANSWER] AI draft skipped: {e}")
                         ai_status = "no_key"
 
-    src = "tailored" if await _ext_tailored_resume(user_id, body.url, body.job_id) else "base"
+    src = "tailored" if (await _ext_tailored_resume(user_id, body.url, body.job_id))[0] else "base"
     return {"answers": answers, "ai_keys": ai_keys, "resume_source": src, "ai_status": ai_status}
 
 
@@ -6048,14 +6055,18 @@ async def extension_resume_file(body: ExtResumeBody, user_id: str = Depends(get_
     import base64 as _b64
 
     settings = await _get_user_settings(user_id)
-    tailored = await _ext_tailored_resume(user_id, body.url, body.job_id)
+    tailored, job_company, job_title = await _ext_tailored_resume(user_id, body.url, body.job_id)
     text = (tailored or settings.get("resume", "") or "").strip()
     if not text:
         raise HTTPException(400, "No resume on file — add one in Settings, or tailor this job first.")
 
     jd_info = await _ext_job_desc(body.url)
-    title = body.title or jd_info.get("title", "")
-    company = body.company or jd_info.get("company", "")
+    title = job_title or body.title or jd_info.get("title", "")
+    # The matched job's real company beats whatever the page reported — the
+    # extension only knows the hostname ("job-boards.greenhouse.io").
+    company = job_company or jd_info.get("company", "") or body.company or ""
+    if re.search(r"greenhouse|lever\.co|ashby|workday|icims|\.(io|com|net|org)$", company, re.I):
+        company = job_company or ""
 
     cand = _candidate_slug(settings.get("profile_name", "")) or "Resume"
     company_slug = re.sub(r"[^\w]+", "_", company or "").strip("_")

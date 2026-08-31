@@ -772,6 +772,14 @@ def prefill(fields: list[dict], profile: dict,
             ap = {**ap, "degree_level": "Bachelor's Degree"}
         elif re.search(r"associate", deg_txt):
             ap = {**ap, "degree_level": "Associate's Degree"}
+    # First education entry feeds the standard School/Discipline/Year fields.
+    _edu = (profile.get("education") or [{}])[0] or {}
+    _edu_school = str(_edu.get("school") or "").strip()
+    _edu_year = str(_edu.get("year") or "").strip()
+    # Discipline = the "in <field>" tail of the degree name ("Master of
+    # Science in Information Systems" → "Information Systems").
+    _m_disc = re.search(r"\bin\s+([A-Z][\w&/ ]{2,60})$", str(_edu.get("degree") or ""))
+    _edu_discipline = _m_disc.group(1).strip() if _m_disc else ""
     first, last = _split_name(profile.get("name", ""))
     by_key = {
         "first_name": first, "last_name": last,
@@ -804,6 +812,13 @@ def prefill(fields: list[dict], profile: dict,
         (re.compile(r"\bemail\b|\be-?mail\b", re.I), profile.get("email", "")),
         (re.compile(r"(current|present).{0,20}(company|employer)", re.I),
          profile.get("current_company", "")),
+        # Education basics from the profile's first education entry. Anchored
+        # so "School" the field matches but "school district" questions don't.
+        (re.compile(r"^\s*(school|university|college|institution)(\s+name)?\s*\*?\s*$", re.I),
+         _edu_school),
+        (re.compile(r"discipline|\bmajor\b|field\s+of\s+study", re.I), _edu_discipline),
+        (re.compile(r"grad(uation)?\s+year|year\s+(of\s+)?graduat|end\s+date\s+year", re.I),
+         _edu_year),
     ]
 
     answers: dict[str, Any] = {}
@@ -833,8 +848,12 @@ def prefill(fields: list[dict], profile: dict,
         if not val:
             val = _class_answer(label or "", ftype, opts, ap)
 
-        # Label-rule fallback fills FREE-TEXT fields only.
-        if not val and ftype in ("text", "textarea"):
+        # Label-rule fallback: free-text fields, and option-LESS selects — the
+        # extension reports async typeahead comboboxes (School/City) as
+        # type=select with no options; they take a text value and resolve the
+        # matching option at fill time in the browser.
+        if not val and (ftype in ("text", "textarea")
+                        or (ftype == "select" and not opts)):
             for pat, candidate in _label_rules:
                 if candidate and pat.search(label or ""):
                     val = candidate

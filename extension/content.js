@@ -65,6 +65,21 @@
 
   const SKIP_TYPES = new Set(["hidden", "submit", "button", "reset", "image", "file", "password", "search"]);
 
+  // Visibility that survives real ATS markup. offsetParent is null inside
+  // position:fixed containers (Workday panels) and for visually-hidden
+  // radio/checkbox inputs that ARE interactive via their visible label —
+  // both were being skipped wholesale, which is why "it only fills a few".
+  function isVisible(el) {
+    if (el.getClientRects().length > 0) return true;
+    const t = (el.type || "").toLowerCase();
+    if (t === "radio" || t === "checkbox") {
+      const lab = el.closest("label") ||
+        (el.id && document.querySelector(`label[for="${CSS.escape(el.id)}"]`));
+      return !!(lab && lab.getClientRects().length > 0);
+    }
+    return false;
+  }
+
   // Anti-bot honeypot fields (Workday's "beecatcher"/website, generic traps).
   // Filling these flags the applicant as a bot → the whole submit is rejected.
   function isHoneypot(el) {
@@ -114,7 +129,7 @@
     )];
     const seenCustom = new Set();
     for (const el of customTriggers) {
-      if (el.disabled || el.offsetParent === null) continue;
+      if (el.disabled || !isVisible(el)) continue;
       if (!isCustomSelectTrigger(el)) continue;
       // Dedup nested matches (a multiSelectContainer also contains a listbox).
       const fcWrap = el.closest("[data-automation-id^='formField-']") || el;
@@ -134,7 +149,7 @@
 
     const els = [...document.querySelectorAll("input, select, textarea")];
     for (const el of els) {
-      if (el.disabled || el.offsetParent === null) continue; // skip hidden/disabled
+      if (el.disabled || !isVisible(el)) continue; // skip hidden/disabled
       if (consumed.has(el)) continue;                        // inner input of a custom select
       if (isHoneypot(el)) continue;                          // anti-bot trap — never fill
       const tag = el.tagName;
@@ -630,11 +645,11 @@
     const native = [...document.querySelectorAll("input, textarea, select")].filter((el) => {
       const t = (el.type || "").toLowerCase();
       if (el.tagName === "INPUT" && SKIP_TYPES.has(t)) return false;
-      return el.offsetParent !== null && !el.disabled;
+      return isVisible(el) && !el.disabled;
     });
     const customDD = [...document.querySelectorAll(
       "button[aria-haspopup='listbox'], [role='combobox'], [class*='select__control'], [data-automation-id='multiSelectContainer']"
-    )].filter((el) => el.offsetParent !== null && !el.disabled);
+    )].filter((el) => isVisible(el) && !el.disabled);
     const fieldCount = native.length + customDD.length;
     if (fieldCount < 3) return false;
 
@@ -680,20 +695,37 @@
     }).catch(() => {});
   }
 
+  // Multi-step wizards (Workday, iCIMS): the tab STAYS armed across steps —
+  // each new step's field set differs from the last filled one, which re-arms
+  // an auto-fill. Disarm happens only on a real final-submit click (below) or
+  // the background TTL. The old one-shot disarm-after-page-1 is why steps 2/3
+  // never filled and the attachments step lost the tailored-resume job id.
+  let lastFilledSig = "";
+  let fillRunning = false;
+
+  function fieldSig() {
+    try {
+      return scanFields().map((e) => e.field.label).sort().join("|");
+    } catch { return ""; }
+  }
+
   async function maybeAutofill() {
-    if (!isTop || !armAutofill || autofillDone) return;
+    if (!isTop || !armAutofill || fillRunning) return;
     const here = looksLikeApplication();
     if (!here && !childHasForm) return; // no form yet — wait for render
+    // A new wizard step shows a different field set — re-allow the fill.
+    const sig = here ? fieldSig() : `child:${location.href}`;
+    if (autofillDone && sig === lastFilledSig) return;
     autofillDone = true;
+    fillRunning = true;
     toast("Auto-filling from Job Hunter…");
     const handle = (s) => {
+      fillRunning = false;
       if (s && s.done && s.filled > 0) {
-        // A real fill happened — consume the one-shot.
-        send("disarmTab", {}).catch(() => {});
+        lastFilledSig = sig;   // this step is done; the next step re-triggers
         toast(`Filled ${s.filled}/${s.total}${s.ai ? ` · ${s.ai} by AI` : ""}${fillNote(s)} — review before submitting`);
       } else {
         // Nothing filled (wrong/empty form, or a later form is the real one).
-        // Stay armed and allow another attempt when a form is next detected.
         autofillDone = false;
         if (s && s.error) toast(s.error, true);
       }
@@ -701,6 +733,17 @@
     if (here) await runFill(handle);
     else handle(await send("relayFill", {}));
   }
+
+  // Disarm only when the user clicks a FINAL submit ("Submit application",
+  // "Submit", "Finish") — "Next"/"Continue"/"Save and Continue" keep the arm.
+  document.addEventListener("click", (ev) => {
+    const t = ev.target.closest?.("button, input[type=submit], [role=button], a");
+    if (!t) return;
+    const txt = norm(t.textContent || t.value || t.getAttribute("aria-label") || "");
+    if (SUBMIT_TEXT_RE.test(txt) && !SUBMIT_SKIP_RE.test(txt) && !/next|continue/i.test(txt)) {
+      send("disarmTab", {}).catch(() => {});
+    }
+  }, true);
 
   // The button is ALWAYS hosted in the top frame (fixed to the real window,
   // so it never scrolls away). A form in a child iframe registers with the

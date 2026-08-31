@@ -34,7 +34,8 @@ const formFrames = new Map(); // tabId -> Set(frameId)
 // Keyed by tabId so it survives navigations within the tab (posting → form
 // page), where the #jh=1 hash would otherwise be lost.
 const armedTabs = new Map(); // tabId -> timestamp
-const ARM_TTL = 10 * 60 * 1000;
+// Long enough for a full Workday flow (account creation + 4-5 wizard steps).
+const ARM_TTL = 30 * 60 * 1000;
 
 const handlers = {
   // A content frame reports it has a form (or no longer does).

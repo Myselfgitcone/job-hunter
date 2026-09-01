@@ -1331,6 +1331,53 @@ def _unevidenced(items: list[str], text: str) -> list[str]:
     return out
 
 
+def _dominant_jd_tool(job_description: str, target_tools: list) -> str:
+    """The tool the JD leans on hardest — most mentions, ties broken by the
+    longer (more specific) name. Derived from the analyze pass's JD-extracted
+    tool list, so nothing is hardcoded."""
+    jd = (job_description or "").lower()
+    best, best_n = "", 0
+    for t in target_tools or []:
+        name = str(t).strip()
+        if len(name) < 3:
+            continue
+        n = len(re.findall(rf"(?<![a-z0-9]){re.escape(name.lower())}(?![a-z0-9])", jd))
+        if n > best_n or (n == best_n and n > 0 and len(name) > len(best)):
+            best, best_n = name, n
+    return best if best_n >= 3 else ""
+
+
+def _promote_tool_bullets(text: str, tool: str, notes: list) -> str:
+    """Recruiters scan the first two bullets of each job. If the JD's dominant
+    tool is already evidenced further down a job, move that bullet to the top
+    of its job. Pure REORDERING — no wording changes, nothing invented, and a
+    job that never mentions the tool is left untouched."""
+    if not tool:
+        return text
+    pat = re.compile(rf"(?<![a-z0-9]){re.escape(tool.lower())}(?![a-z0-9])")
+    lines = text.split("\n")
+    moved = 0
+    hdrs = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]
+    for h in hdrs:
+        end = _job_block_end(lines, h)
+        bullets = [i for i in range(h + 1, end) if lines[i].lstrip().startswith("•")]
+        if len(bullets) < 3:
+            continue
+        if any(pat.search(lines[i].lower()) for i in bullets[:2]):
+            continue                      # already up front
+        hit = next((i for i in bullets[2:] if pat.search(lines[i].lower())), None)
+        if hit is None:
+            continue                      # this job genuinely never used it
+        bullet = lines.pop(hit)
+        lines.insert(bullets[0], bullet)  # becomes this job's first bullet
+        moved += 1
+        hdrs = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]
+    if moved:
+        notes.append(f"lead-bullet guard: promoted {moved} '{tool}' bullet(s) "
+                     "to the top of their job")
+    return "\n".join(lines)
+
+
 def _orphan_skills(text: str) -> list[str]:
     """Skills-section items with no supporting line in EXPERIENCE/PROJECTS."""
     return _unevidenced(_skills_claimed(text), text)
@@ -1723,6 +1770,13 @@ async def tailor_resume(base_resume: str, job_description: str,
         notes.append(f"tidied {tidied} over-long / duplicate list line(s)")
 
     # Guard (d2): no em/en dashes in body text — the classic AI-writing tell.
+    # Guard (d1): the JD's dominant tool must be visible in the first bullets
+    # a recruiter reads. Live miss: an Informatica-heavy JD, with Informatica
+    # genuinely in the candidate's current job, ended up at bullet 9 behind
+    # cloud brands the JD never mentions. Reordering only — no rewriting.
+    tailored = _promote_tool_bullets(
+        tailored, _dominant_jd_tool(job_description, context.get("target_tools") or []), notes)
+
     tailored, dash_hits = _strip_dash_asides(tailored)
     if dash_hits:
         notes.append(f"dash guard: rewrote {dash_hits} dash construction(s)")

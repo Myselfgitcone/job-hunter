@@ -237,6 +237,22 @@ IMPACT LADDER — a few standout bullets per job, most are scope:
 - Put the strongest impact bullets at the TOP of the most recent job — that's
   what a recruiter reads first.
 
+LEAD WITH THE JD'S OWN VOCABULARY (recruiter-scan rule):
+- Identify the JD's DOMINANT technology/discipline — the one it names most
+  often (e.g. a JD that says "Informatica PowerCenter" ten times and never
+  says AWS). The first TWO bullets of EVERY job must speak that vocabulary.
+- A brand or platform the JD NEVER mentions must not open a bullet in the top
+  two of any job. Say the work in the JD's terms and keep the unrelated
+  product name later in the sentence, or in Technologies Used.
+  BAD  (JD is Informatica/ETL): "Architected pipelines on AWS and Databricks…"
+  GOOD: "Designed and delivered enterprise ETL workflows — source-to-target
+         mappings, transformation logic, and performance tuning — across
+         cloud and on-premise platforms."
+- Where the candidate's REAL experience with the dominant tool sits in an
+  older job, keep it there truthfully, but make sure the SUMMARY and that
+  job's FIRST bullet both carry it. Never move a tool into a job that did
+  not use it.
+
 NEVER USE THESE (they read robotic / templated) — rephrase with a real verb:
 - "Responsible for", "Tasked with", "Utilized", "Leveraged", "Spearheaded",
   "Worked on", "Helped with", "Involved in", "In charge of".

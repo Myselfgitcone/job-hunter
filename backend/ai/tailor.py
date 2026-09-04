@@ -88,7 +88,15 @@ Rules:
   (e.g. "mentoring junior engineers", "peer code review", "clarifying
   requirements with analysts", "on-call incident response", "stakeholder
   demos", "technical documentation", "writing tests"). 6–8 items, most
-  important first. These are tracked and verified like tools."""
+  important first. These are tracked and verified like tools.
+  Each item is a SHORT noun phrase of 2–6 words, never a whole JD sentence —
+  a sentence can never be matched against a bullet.
+- PROSE COUNTS AS MUCH AS BULLETS: a JD paragraph such as "you will be
+  developing conceptual design, logical database, taxonomy, capacity
+  planning, data loading plan, data maintenance plan and security policy"
+  is a checklist in disguise. Split every comma-separated list inside prose
+  into its items and treat each one exactly like a bullet-point requirement —
+  tools go to target_tools, duties go to responsibilities."""
 
 
 TAILOR_SYSTEM = """You are StackShift, a professional resume writer. You rewrite a
@@ -143,6 +151,10 @@ SUMMARY:
     rather than pad it.
 • No slot repeats a tool already named in slot 1. Plain, confident, no
   invented metrics.
+• ONE TENSE PER SLOT TYPE: capability slots (1, 3–6) are present tense
+  ("Designs…", "Partners…"); a proof slot about the CURRENT job is present
+  tense too ("Maintains a 99% SLA at Cargill"); only a proof about a PAST
+  employer is past tense. Never "Maintained … at <current employer>".
 • SUMMARY IS A PREVIEW, NOT A CLAIM LIST: every tool, platform, or duty named
   in SUMMARY must appear in at least one experience bullet. Write the bullets
   first, then the summary from them. A summary item with no bullet behind it
@@ -568,6 +580,12 @@ FIX THIS CHECKLIST:
    rewrite that spot with a comma, colon, parentheses, "including", or "such as"
    so the sentence reads naturally. The headline (Name — Title) and job-header
    date ranges keep their dashes.
+9. SUMMARY TENSE: summary lines about the current job or general capability
+   are present tense; only a line about a past employer is past tense. Fix a
+   past-tense verb that describes the current (most recent, "Present") job.
+10. INTENSIFIERS: delete "significantly", "substantially", "meaningfully",
+   "measurably", "greatly", "dramatically" wherever they appear; do not replace
+   them with a number.
 
 Output ONLY the corrected resume in the same plain-text format — no commentary,
 no code fences."""
@@ -666,7 +684,11 @@ def tailor_prompt(resume_text: str, jd_text: str, context: dict,
         f"  missing:           {_lst('missing')}\n"
         f"  baseline_missing:  {_lst('baseline_missing')}\n"
         f"  responsibilities:  {_lst('responsibilities')}\n\n"
-        "CLOUD SWAP: ALWAYS ON — if a target cloud is named above, convert BOTH "
+        + (("BASE NUMBERS TO KEEP (each stays in its own bullet's rewrite; a code "
+            "check restores any you drop and removes any you invent):\n  "
+            + "\n  ".join(_base_number_hints(resume_text)) + "\n\n")
+           if _base_number_hints(resume_text) else "")
+        + "CLOUD SWAP: ALWAYS ON — if a target cloud is named above, convert BOTH "
         "Job 1 and Job 2 to it. If it is 'None', keep every job's real cloud and "
         "layer the JD's tools on top.\n\n"
         f"JD TOOLS TO MIRROR ACROSS ALL JOBS:\n  {tools}\n{extra}\n"
@@ -1359,9 +1381,12 @@ def _skills_claimed(text: str) -> list[str]:
     return items
 
 
-def _experience_blob(text: str) -> str:
-    """The evidence part of the resume: everything under EXPERIENCE / PROJECTS
-    headers (bullets + Technologies Used lines), lowercased."""
+def _experience_blob(text: str, lower: bool = True) -> str:
+    """The evidence part of the resume: the BULLETS under EXPERIENCE / PROJECTS
+    headers, lowercased. Technologies Used lines are deliberately excluded —
+    a tool that appears only in a tools list has no story behind it, which is
+    exactly the orphan this check exists to catch (live miss: Java, Docker,
+    Kubernetes "evidenced" by nothing but a Technologies Used mention)."""
     keep, active = [], False
     for ln in text.splitlines():
         s = ln.strip()
@@ -1369,9 +1394,10 @@ def _experience_blob(text: str) -> str:
             up = s.upper()
             active = "EXPERIENCE" in up or "PROJECT" in up
             continue
-        if active and s:
+        if active and s.startswith(_BULLET_PREFIXES) and not _TECH_LINE_RE.match(s):
             keep.append(s)
-    return "\n".join(keep).lower()
+    blob = "\n".join(keep)
+    return blob.lower() if lower else blob
 
 
 # Vendor/generic words that can't stand in for a whole skill name — "Apache
@@ -1384,13 +1410,41 @@ _SKILL_TOKEN_STOP = {
 }
 
 
+_STEM_STOP = {"and", "the", "for", "with", "from", "into", "across", "using",
+              "data", "all", "our", "any", "per", "via", "own"}
+
+
+def _stems(core: str) -> list[str]:
+    """Escaped word stems of a skill/duty phrase ("organizing" -> "organiz")."""
+    words = [w for w in re.findall(r"[a-z0-9+#.]+", core.lower())
+             if len(w) >= 3 and w not in _STEM_STOP]
+    out = []
+    for w in words:
+        s = w
+        for suf in ("ing", "ies", "es", "s"):
+            if len(s) > 5 and s.endswith(suf):
+                s = s[: -len(suf)]
+                break
+        out.append(re.escape(s))
+    return out
+
+
+def _loose_pattern(core: str) -> str:
+    """Multi-word skill -> stems in order, up to two words apart."""
+    stems = _stems(core)
+    if len(stems) < 2:
+        return ""
+    return r"\b" + r"\W+(?:\w+\W+){0,2}".join(st + r"\w*" for st in stems)
+
+
 def _unevidenced(items: list[str], text: str) -> list[str]:
     """The subset of `items` with no supporting line in EXPERIENCE/PROJECTS."""
     try:
         from resume_lint import _dynamic_coverage_pattern
     except ImportError:  # pragma: no cover — lint module optional
         return []
-    blob = _experience_blob(text)
+    cased = _experience_blob(text, lower=False)
+    blob = cased.lower()
     if not blob:
         return []
     out = []
@@ -1401,14 +1455,32 @@ def _unevidenced(items: list[str], text: str) -> list[str]:
         try:
             if re.search(_dynamic_coverage_pattern(core), blob):
                 continue
+            # Loose form: the same words with up to two others between them —
+            # "Dimensional Modeling" is proven by "dimensional data models".
+            loose = _loose_pattern(core)
+            if loose and re.search(loose, blob):
+                continue
+            # A DUTY phrase ("cleansing, organizing and transforming data") is
+            # proven by one bullet that carries all but one of its stems, in
+            # any order — same line only, so scattered words never add up.
+            stems = _stems(core)
+            if len(stems) >= 3 and any(
+                    sum(1 for st in stems if re.search(rf"\b{st}", bl_line)) >= len(stems) - 1
+                    for bl_line in blob.split("\n")):
+                continue
         except re.error:
             continue
         # Fallback: a distinctive token of a multi-word name still counts —
-        # "Apache Kafka" is covered by a "Kafka Connect" bullet.
+        # "Apache Kafka" is covered by a "Kafka Connect" bullet. Distinctive
+        # means the bullets write it as a proper noun (Capitalised) somewhere;
+        # a token that only ever appears as a plain English word ("schema" for
+        # Star Schema, "management" for Metadata Management) proves nothing.
         toks = [w for w in re.findall(r"[A-Za-z][\w+#.-]{4,}", core)
                 if w.lower() not in _SKILL_TOKEN_STOP]
-        if toks and any(re.search(rf"(?<![a-z0-9]){re.escape(w.lower())}(?![a-z0-9])", blob)
-                        for w in toks):
+        if toks and any(
+                re.search(rf"(?<![A-Za-z0-9]){re.escape(w[0].upper() + w[1:].lower())}(?![a-z0-9])", cased)
+                or re.search(rf"(?<![A-Za-z0-9]){re.escape(w.upper())}(?![a-z0-9])", cased)
+                for w in toks):
             continue
         out.append(item)
     return out
@@ -1552,7 +1624,8 @@ def _job_cap(j: int) -> int:
     return _JOB_BULLET_CAPS[j] if j < len(_JOB_BULLET_CAPS) else 3
 
 
-def _insert_skill_bullets(resume: str, additions: dict) -> tuple[str, int]:
+def _insert_skill_bullets(resume: str, additions: dict,
+                          log: list | None = None) -> tuple[str, int]:
     """Deterministically place {job_index: [(skill, bullet), ...]} — each bullet
     goes just above that job's Technologies Used line (or at the block end), and
     the skill is appended to that Technologies Used line. Respects per-job
@@ -1577,6 +1650,8 @@ def _insert_skill_bullets(resume: str, additions: dict) -> tuple[str, int]:
         new_lines = ["• " + b for _, b in take]
         lines[at:at] = new_lines
         added += len(new_lines)
+        if log is not None:
+            log.extend((j, s, b) for s, b in take)
         if tech_i is not None:
             ti = tech_i + len(new_lines)
             skills = ", ".join(s for pair in take
@@ -1621,6 +1696,8 @@ def _drop_unevidenced_skills(text: str, notes: list) -> str:
 
 async def _ensure_skill_bullets(resume: str, job_description: str,
                                 notes: list, jd_missing: list | None = None,
+                                inserted: list | None = None,
+                                jd_terms: list | None = None,
                                 **cheap_kw) -> str:
     """A skill listed in SKILLS with zero experience bullets behind it dies in
     the first interview question. Detect orphans deterministically, have the
@@ -1634,6 +1711,14 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
     lost coverage. Niche missing products never reach this list and stay out
     on purpose."""
     baseline = [str(m) for m in (jd_missing or []) if not _is_soft_skill(str(m))]
+    # A duty that arrived as a whole JD sentence can never match a bullet by
+    # pattern, so it would be chased forever and waste the model's lines on
+    # the caps. Keep the chase to short phrases; report the rest.
+    long_items = [b for b in baseline if len(b.split()) > 10]
+    if long_items:
+        baseline = [b for b in baseline if b not in long_items]
+        notes.append(f"skill-bullet guard: {len(long_items)} duty item(s) too long to "
+                     "verify, skipped: " + "; ".join(x[:60] for x in long_items))
     if not _orphan_skills(resume) and not _unevidenced(baseline, resume):
         return resume
     total_added = 0
@@ -1679,7 +1764,7 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
                 additions.setdefault(j, []).append((skill, bullet))
             if not additions:
                 break
-            resume, added = _insert_skill_bullets(resume, additions)
+            resume, added = _insert_skill_bullets(resume, additions, log=inserted)
             total_added += added
         left = len(_orphan_skills(resume)) + len(_unevidenced(baseline, resume))
         notes.append(f"skill-bullet guard: {total_added} bullet(s) inserted"
@@ -1687,8 +1772,626 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
                      + f", {left} still unevidenced")
     except Exception as exc:  # noqa: BLE001 — best effort
         notes.append(f"skill-bullet guard skipped ({exc})")
+    # Caps full but skills still unbacked (live miss: Java, a JD requirement
+    # the base resume genuinely lists, dropped because every job was at its
+    # cap) — weave each into an EXISTING bullet of the right job instead.
+    for _round in range(2):
+        chase = _orphan_skills(resume) + _unevidenced(baseline, resume)
+        if not chase:
+            break
+        resume = await _weave_orphans(resume, job_description, notes, chase,
+                                      jd_terms=jd_terms, **cheap_kw)
     # Whatever still lacks a bullet leaves the SKILLS list — no orphans, ever.
     return _drop_unevidenced_skills(resume, notes)
+
+
+WEAVE_SYSTEM = """You edit existing resume bullets so that a skill the resume
+claims is named inside a bullet where that work plausibly happened. You get
+numbered bullets grouped by job, and a list of skills that currently appear in
+no bullet.
+
+For EACH skill, pick ONE bullet and output one line:
+<bullet number> :: <skill> :: <the full rewritten bullet>
+
+Rules:
+- Name the skill explicitly, as a natural part of the sentence ("in Python
+  and Java", "containerised with Docker", "tracked in Jira").
+- Add at most six words. Do not remove or change any number, tool name, or
+  claim already in the bullet. No em or en dashes. No intensifiers.
+- Choose a bullet in the job whose era, stack, and industry fit the skill.
+- A skill or duty marked NAMED IN THE JD must get a line: it is a requirement
+  of the target role and the resume claims it, so find the bullet where that
+  work realistically happened and name it there. A duty ("code review and
+  debugging", "capacity planning") is woven as routine work, not a headline.
+- Only an unmarked skill that is foreign to every job may be skipped.
+- A bullet number may be used for at most one skill.
+Output ONLY these lines."""
+
+
+async def _weave_orphans(resume: str, job_description: str, notes: list,
+                         orphans: list, jd_terms: list | None = None,
+                         **cheap_kw) -> str:
+    if not orphans:
+        return resume
+    jd_low = [str(t).lower() for t in (jd_terms or [])]
+
+    def _in_jd(o: str) -> bool:
+        ol = o.lower()
+        return any(ol in t or t in ol for t in jd_low)
+    seen: set = set()
+    orphans = [o for o in orphans if not (o.lower() in seen or seen.add(o.lower()))]
+    orphans.sort(key=lambda o: not _in_jd(o))     # JD-named first
+    lines = resume.split("\n")
+    numbered, n_to_idx = [], {}
+    n = 0
+    for j, bl in _job_bullet_lines(resume):
+        hdr = next((lines[i] for i in range(bl[0] - 1, -1, -1) if _is_job_header_line(lines[i])), "") if bl else ""
+        numbered.append(f"\nJOB {j + 1}: {hdr.strip()}")
+        for i in bl:
+            n += 1
+            n_to_idx[n] = i
+            numbered.append(f"{n}. {lines[i].lstrip()[1:].strip()}")
+    if not n_to_idx:
+        return resume
+    try:
+        out = (await chat(
+            WEAVE_SYSTEM,
+            "BULLETS:" + "\n".join(numbered)
+            + "\n\nSKILLS WITH NO BULLET:\n"
+            + "\n".join(f"- {o}" + ("  (NAMED IN THE JD: must be placed)" if _in_jd(o) else "")
+                        for o in orphans[:14])
+            + f"\n\nJOB DESCRIPTION (context):\n{job_description[:3000]}",
+            max_tokens=3000, pass_name="weave", **cheap_kw)).strip()
+    except Exception as exc:  # noqa: BLE001
+        notes.append(f"weave guard skipped ({exc})")
+        return resume
+    woven, rejected, used = [], [], set()
+    for ln in out.splitlines():
+        m = re.match(r"^\s*(\d+)\s*::\s*(.+?)\s*::\s*(.+?)\s*$", ln)
+        if not m:
+            continue
+        num, skill, body = int(m.group(1)), m.group(2).strip(), m.group(3).strip()
+        i = n_to_idx.get(num)
+        body = re.sub(r"\s*[—–]\s*", ", ", body.lstrip("•-* ").strip())
+        if i is None or i in used or not body:
+            continue
+        old = lines[i].lstrip()[1:].strip()
+        grew = len(body.split()) - len(old.split())
+        same_nums = _num_tokens(old) == _num_tokens(body)
+        proves = not _unevidenced([skill], "EXPERIENCE:\nX @ Y | Z\n• " + body)
+        if 0 <= grew <= 8 and same_nums and proves and not _INTENSIFIER_RE.search(body):
+            lines[i] = "• " + body
+            used.add(i)
+            woven.append(skill)
+        else:
+            rejected.append(f"{skill} (grew {grew}, nums {'ok' if same_nums else 'changed'}, "
+                            f"{'named' if proves else 'not named'})")
+    if woven or rejected:
+        notes.append(f"weave guard: {len(woven)} skill(s) woven into existing bullets"
+                     + (": " + ", ".join(woven) if woven else "")
+                     + (f"; rejected {len(rejected)}: " + "; ".join(rejected) if rejected else ""))
+    return "\n".join(lines)
+
+
+# ── Guard: numbers — every real base figure survives, no figure is invented ──
+
+_NUM_WORDS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+    "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "fifteen": 15,
+    "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60,
+    "seventy": 70, "eighty": 80, "ninety": 90, "hundred": 100,
+}
+_NUM_WORD_RE = re.compile(r"\b(" + "|".join(_NUM_WORDS) + r")\b(?=[\s-])", re.I)
+_NUM_TOKEN_RE = re.compile(
+    r"(?<![A-Za-z0-9.])(sub-)?(\$)?(\d[\d,]*(?:\.\d+)?)\s*"
+    r"(%|\+|[kKmMbB](?![a-z])|[xX](?![a-z])|ms\b|TB\+?|GB\+?|PB\+?|"
+    r"-?\s?(?:hours?|hrs?|hour)\b|-?\s?(?:minutes?|mins?|minute)\b|"
+    r"-?\s?seconds?\b|-?\s?(?:days?|weeks?|months?)\b)?"
+)
+_UNIT_NORM = {
+    "k": "k", "m": "m", "b": "b", "x": "x", "%": "%", "+": "+", "ms": "ms",
+    "tb": "tb", "gb": "gb", "pb": "pb", "hour": "h", "hours": "h", "hr": "h",
+    "hrs": "h", "minute": "min", "minutes": "min", "min": "min", "mins": "min",
+    "second": "s", "seconds": "s", "day": "d", "days": "d", "week": "w",
+    "weeks": "w", "month": "mo", "months": "mo",
+}
+
+
+def _num_tokens(text: str) -> set[str]:
+    """Canonical numeric figures in `text` — '40%', '$100K', '2-hour', 'six
+    hours' all become stable keys ('40%', '100k$', '2h', '6h') so a base
+    figure and its tailored rewording compare equal. Years, phone numbers,
+    version tags (Vault 2.0, SOC 2) and bare tiny counts are ignored: they are
+    labels, not claims."""
+    t = _NUM_WORD_RE.sub(lambda m: str(_NUM_WORDS[m.group(1).lower()]), text)
+    t = _YEAR_RE.sub(" ", t)
+    t = _HDR_PHONE_RE.sub(" ", t)
+    out: set[str] = set()
+    for m in _NUM_TOKEN_RE.finditer(t):
+        sub, dollar, num, unit = m.groups()
+        raw = num.replace(",", "")
+        try:
+            val = float(raw)
+        except ValueError:
+            continue
+        unit = (unit or "").strip().lstrip("-").strip().lower()
+        unit = _UNIT_NORM.get(unit, unit)
+        if not unit and not dollar and val <= 3:
+            continue                      # "SOC 2", "Vault 2.0", "two teams"
+        if val == 1 and unit not in ("%", "k", "m", "b", "x") and not dollar:
+            continue                      # "under one hour" = "under an hour"
+        key = (raw.rstrip("0").rstrip(".") if "." in raw else raw) + unit
+        if sub:
+            key = "sub" + key
+        out.add(key)
+    return out
+
+
+def _content_words(s: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z][a-z0-9+#.]{3,}", s.lower())
+            if w not in {"with", "that", "from", "across", "using", "into",
+                         "through", "over", "under", "their", "this", "data"}}
+
+
+def _job_bullet_lines(text: str) -> list[tuple[int, list[int]]]:
+    """[(job_index, [line indexes of that job's bullets])] — Technologies
+    Used lines excluded."""
+    lines = text.split("\n")
+    hdr_idx = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]
+    out = []
+    for j, h in enumerate(hdr_idx):
+        end = _job_block_end(lines, h)
+        out.append((j, [i for i in range(h + 1, end)
+                        if lines[i].lstrip().startswith("•")
+                        and not _TECH_LINE_RE.match(lines[i].strip())]))
+    return out
+
+
+def _summary_lines(text: str) -> list[int]:
+    lines, out, in_sum = text.split("\n"), [], False
+    for i, ln in enumerate(lines):
+        s = ln.strip()
+        if _is_section_hdr(s):
+            in_sum = "summary" in s.lower()
+            continue
+        if in_sum and s:
+            out.append(i)
+    return out
+
+
+def _base_number_hints(base_resume: str) -> list[str]:
+    """'Cargill: 40% (stale-data incidents)' style reminders for the tailor
+    prompt — the writer sees every real figure it must carry over."""
+    hints = []
+    for company, body in _split_jobs(base_resume):
+        for ln in body.splitlines():
+            s = ln.strip()
+            if not s.startswith(_BULLET_PREFIXES):
+                continue
+            nums = _num_tokens(s)
+            if not nums:
+                continue
+            found = [m.group(0).strip() for m in _NUM_TOKEN_RE.finditer(
+                _NUM_WORD_RE.sub(lambda m: str(_NUM_WORDS[m.group(1).lower()]), s))
+                     if _num_tokens(m.group(0))]
+            words = re.sub(r"^[•\-*\s]+", "", s).split()
+            hints.append(f"{company.title()}: {', '.join(dict.fromkeys(found))} "
+                         f"(bullet: \"{' '.join(words[:7])}…\")")
+    return hints
+
+
+def _number_audit(tailored: str, base_resume: str, job_description: str):
+    """Deterministic read of the tailored text against the base and the JD.
+    Returns (invented, dropped, removed_bullets):
+      invented  — [(line_idx, {figures})]  figures in neither base nor JD
+      dropped   — [(line_idx, {figures})]  base figures missing from the
+                  tailored bullet that clearly descends from that base bullet
+      removed   — [str] base bullets carrying figures with no descendant at all
+    """
+    allowed = _num_tokens(base_resume) | _num_tokens(job_description)
+    base_all = _num_tokens(base_resume)
+    lines = tailored.split("\n")
+    body_idx = _summary_lines(tailored) + [i for _, bl in _job_bullet_lines(tailored) for i in bl]
+    invented = []
+    for i in body_idx:
+        bad = _num_tokens(lines[i]) - allowed
+        if bad:
+            invented.append((i, bad))
+
+    dropped, removed = [], []
+    t_jobs = {c: b for c, b in _split_jobs(tailored)}
+    # map company -> tailored line indexes of its bullets
+    t_lines: dict[str, list[int]] = {}
+    hdr_idx = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]
+    for h in hdr_idx:
+        c = _JOB_HDR_RE.search(lines[h]).group(1).strip().lower()
+        end = _job_block_end(lines, h)
+        t_lines[c] = [i for i in range(h + 1, end)
+                      if lines[i].lstrip().startswith("•")
+                      and not _TECH_LINE_RE.match(lines[i].strip())]
+    for company, body in _split_jobs(base_resume):
+        if company not in t_lines:
+            continue
+        job_nums = _num_tokens(t_jobs.get(company, ""))
+        for ln in body.splitlines():
+            s = ln.strip()
+            if not s.startswith(_BULLET_PREFIXES):
+                continue
+            nums = _num_tokens(s) & base_all
+            if not nums or nums <= job_nums:
+                continue
+            bw = _content_words(s)
+            best, best_i = 0.0, None
+            for i in t_lines[company]:
+                tw = _content_words(lines[i])
+                if not bw or not tw:
+                    continue
+                jac = len(bw & tw) / len(bw | tw)
+                if jac > best:
+                    best, best_i = jac, i
+            missing = nums - job_nums
+            if best >= 0.22 and best_i is not None:
+                if not (_num_tokens(lines[best_i]) & allowed):
+                    dropped.append((best_i, missing))
+                # descendant already carries a figure: one-figure rule wins
+            else:
+                removed.append(re.sub(r"^[•\-*\s]+", "", s)[:90])
+    return invented, dropped, removed
+
+
+_INTENSIFIER_RE = re.compile(
+    r"\s*\b(?:significantly|substantially|meaningfully|measurably|greatly|"
+    r"drastically|dramatically|materially|considerably|tremendously|vastly)\b",
+    re.I)
+
+
+def _strip_intensifiers(text: str) -> tuple[str, int]:
+    """Vague intensifiers are the filler a writer reaches for when it deleted
+    a real number. Deleting the word alone leaves a grammatical sentence in
+    every live case ("cut runtime significantly and…" -> "cut runtime and…"),
+    so this is a pure deterministic strip on summary + bullet lines."""
+    lines = text.split("\n")
+    body_idx = set(_summary_lines(text)) | {i for _, bl in _job_bullet_lines(text) for i in bl}
+    hits = 0
+    for i in body_idx:
+        s, n = _INTENSIFIER_RE.subn("", lines[i])
+        if n:
+            s = re.sub(r"\s+([,.;])", r"\1", s)
+            s = re.sub(r"[ \t]{2,}", " ", s)
+            lines[i] = s
+            hits += n
+    return "\n".join(lines), hits
+
+
+_SHORT_MAX = 16          # a bullet at or under this many words counts as "short"
+_LONG_RUN = 25           # three consecutive bullets over this = a wall
+
+
+def _length_flags(text: str, inserted_texts: set[str]) -> dict[int, str]:
+    """Per job: if no bullet is short, pick one to compress (a guard-inserted
+    bullet first, else the shortest number-free one); and break any run of
+    three long bullets by trimming the middle one."""
+    lines = text.split("\n")
+    flags: dict[int, str] = {}
+    for _, bl in _job_bullet_lines(text):
+        if len(bl) < 4:
+            continue
+        wc = {i: len(lines[i].split()) - 1 for i in bl}
+        if min(wc.values()) > _SHORT_MAX:
+            cand = [i for i in bl if lines[i].lstrip()[1:].strip() in inserted_texts]
+            if not cand:
+                cand = [i for i in bl if not _num_tokens(lines[i])] or bl
+            tgt = min(cand, key=lambda i: wc[i])
+            figs = _num_tokens(lines[tgt])
+            flags[tgt] = ("Compress to 8-12 words: keep every tool name and the "
+                          "core action, drop the context clause."
+                          + (f" Keep the figure {', '.join(sorted(figs))}." if figs else ""))
+        # a bullet past 40 words is a paragraph, not a bullet: always trimmed
+        for i in bl:
+            if wc[i] > 40 and i not in flags:
+                figs = _num_tokens(lines[i])
+                flags[i] = ("Tighten to 22-30 words: keep the tools"
+                            + (f" and the figure {', '.join(sorted(figs))}" if figs else "")
+                            + ", remove the weakest clause.")
+        # one wall-breaker per job: the model rewrites few lines, code verifies each
+        for a, b, c in zip(bl, bl[1:], bl[2:]):
+            if wc[a] > _LONG_RUN and wc[b] > _LONG_RUN and wc[c] > _LONG_RUN and b not in flags:
+                flags[b] = ("Tighten to 15-20 words: keep the tools and the "
+                            "figure if any, remove the weakest clause.")
+                break
+    return flags
+
+
+_PHRASE_STOP = {"and", "the", "for", "with", "across", "from", "into", "that",
+                "data", "using", "all", "our", "per", "over", "under", "of",
+                "in", "on", "to", "a", "an", "by", "as", "at"}
+
+
+def _overused_phrases(text: str, job_description: str, target_tools: list) -> dict[int, list[str]]:
+    """Phrases the draft leans on: a hyphenated compound or a two-word phrase
+    appearing 4+ times across SUMMARY + bullets while the JD itself uses it
+    at most twice. Tool names are exempt (a Spark job is a Spark job). The
+    first summary use and the first bullet use stay; the rest are flagged
+    per line for rewording."""
+    lines = text.split("\n")
+    sum_idx = _summary_lines(text)
+    bul_idx = [i for _, bl in _job_bullet_lines(text) for i in bl]
+    counts: dict[str, list[int]] = {}
+    cased: dict[str, int] = {}     # phrase -> occurrences written Title Case
+    for i in sum_idx + bul_idx:
+        raw = lines[i]
+        low = raw.lower()
+        seen_here = set()
+        for m in re.finditer(r"\b[a-z]+(?:-[a-z]+)+\b", low):
+            seen_here.add(m.group(0))
+        toks = re.findall(r"[A-Za-z]+", raw)
+        for a, b in zip(toks, toks[1:]):
+            al, bl_ = a.lower(), b.lower()
+            if al in _PHRASE_STOP or bl_ in _PHRASE_STOP or len(al) < 4 or len(bl_) < 4:
+                continue
+            p = f"{al} {bl_}"
+            seen_here.add(p)
+            if a[0].isupper() and b[0].isupper():
+                cased[p] = cased.get(p, 0) + 1
+        for p in seen_here:
+            counts.setdefault(p, []).append(i)
+    jd_low = job_description.lower()
+    flags: dict[int, list[str]] = {}
+    for p, idxs in counts.items():
+        if len(idxs) < 4:
+            continue
+        # a product name is written Title Case ("Great Expectations", "Lake
+        # Formation") — repeating a product is not an echo, skip it
+        if cased.get(p, 0) * 2 >= len(idxs):
+            continue
+        # the JD's own drumbeat may be echoed; a phrase the JD says once may not
+        if len(idxs) <= 2 * len(re.findall(re.escape(p), jd_low)):
+            continue
+        keep = set()
+        first_sum = next((i for i in idxs if i in sum_idx), None)
+        first_bul = next((i for i in idxs if i in bul_idx), None)
+        keep.update(x for x in (first_sum, first_bul) if x is not None)
+        for i in idxs:
+            if i not in keep:
+                flags.setdefault(i, []).append(p)
+    return flags
+
+
+LINE_FIX_SYSTEM = """You repair individual resume lines. Each input line is
+numbered and followed by an instruction in [brackets]. Return EXACTLY one
+output line per input line in the form:
+<number> :: <fixed line text>
+
+Rules:
+- Obey the instruction for that line and change nothing else about its meaning.
+- Keep every tool name that is already in the line.
+- Never add a number the instruction did not give you. Never use an em or en
+  dash. Never use vague intensifiers (significantly, substantially,
+  meaningfully, greatly, dramatically).
+- One numeric figure per line at most; when told to restore a figure into a
+  line that has none, place it where the base wording had it ("cutting stale-data
+  incidents by roughly 40%").
+- When told to remove a figure, replace it with a plain qualitative outcome or a
+  scale word (terabytes, millions of rows), not another number.
+- When told to reword a phrase, use a natural synonym ("multi-tenant" ->
+  "tenant-isolated", "per-client", "segregated"); do not repeat the phrase.
+- Do not start the line with the bullet character; output the text only.
+Output ONLY the numbered lines."""
+
+
+async def _fix_lines(text: str, jobs: dict[int, str], notes: list, label: str,
+                     **cheap_kw) -> str:
+    """One cheap call that rewrites only the flagged lines; each result is
+    accepted line-by-line by the caller's verifier (never by trust)."""
+    if not jobs:
+        return text
+    lines = text.split("\n")
+    order = sorted(jobs)
+    payload = "\n".join(
+        f"{n + 1}. {lines[i].lstrip()[1:].strip() if lines[i].lstrip().startswith('•') else lines[i].strip()}"
+        f"  [{jobs[i]}]" for n, i in enumerate(order))
+    try:
+        out = (await chat(LINE_FIX_SYSTEM, payload, max_tokens=3000,
+                          pass_name=label, **cheap_kw)).strip()
+    except Exception as exc:  # noqa: BLE001 — best effort
+        notes.append(f"{label}: skipped ({exc})")
+        return text
+    fixes: dict[int, str] = {}
+    for ln in out.splitlines():
+        m = re.match(r"^\s*(\d+)\s*(?:::|[.)])\s*(.+?)\s*$", ln)
+        if m and 1 <= int(m.group(1)) <= len(order):
+            body = m.group(2).lstrip("•-* ").strip()
+            body = re.sub(r"\s*[—–]\s*", ", ", body)
+            fixes[order[int(m.group(1)) - 1]] = body
+    for i, body in fixes.items():
+        if not body:
+            continue
+        lines[i] = ("• " + body) if lines[i].lstrip().startswith("•") else body
+    return "\n".join(lines)
+
+
+async def _polish_numbers_and_length(tailored: str, base_resume: str,
+                                     job_description: str, target_tools: list,
+                                     inserted: list, notes: list,
+                                     **cheap_kw) -> str:
+    """Guards measured in code, repaired by the cheap model, re-measured in
+    code: invented figures out, dropped base figures back, one short bullet
+    per job, no phrase echoed four times. Anything the model fails to fix is
+    reverted line-by-line and reported."""
+    invented, dropped, removed = _number_audit(tailored, base_resume, job_description)
+    inserted_texts = {b for _, _, b in inserted}
+    length = _length_flags(tailored, inserted_texts)
+    phrases = _overused_phrases(tailored, job_description, target_tools)
+    if removed:
+        notes.append(f"number guard: {len(removed)} base bullet(s) with figures were "
+                     "dropped by the writer: " + " | ".join(removed))
+
+    jobs: dict[int, str] = {}
+    for i, figs in invented:
+        jobs[i] = f"Remove the figure(s) {', '.join(sorted(figs))} (not in the base resume)."
+    for i, figs in dropped:
+        jobs[i] = (jobs.get(i, "") + f" Restore the base resume's figure(s) "
+                   f"{', '.join(sorted(figs))} that this bullet originally carried.").strip()
+    numbered = {i for i, _ in invented} | {i for i, _ in dropped}
+    length = {i: v for i, v in length.items() if i not in numbered}
+    for i, instr in length.items():
+        jobs[i] = (jobs.get(i, "") + " " + instr).strip()
+    for i, ps in phrases.items():
+        jobs[i] = (jobs.get(i, "") + " Reword so the phrase(s) "
+                   + ", ".join(f"'{p}'" for p in ps) + " no longer appear.").strip()
+    if not jobs:
+        return tailored
+
+    before = tailored.split("\n")
+    fixed = await _fix_lines(tailored, jobs, notes, "line_fix", **cheap_kw)
+    after = fixed.split("\n")
+    if len(after) != len(before):
+        notes.append("line fix rejected (line count changed)")
+        return tailored
+
+    allowed = _num_tokens(base_resume) | _num_tokens(job_description)
+    ok: dict[str, int] = {"invented": 0, "restored": 0, "short": 0, "phrase": 0}
+    bad: list[str] = []
+    retry: dict[int, str] = {}
+    for i in jobs:
+        new = after[i]
+        verdict = True
+        if any(i == x for x, _ in invented):
+            if _num_tokens(new) - allowed:
+                verdict = False; bad.append(f"line {i}: invented figure still present")
+            else:
+                ok["invented"] += 1
+        for x, figs in dropped:
+            if x == i:
+                if figs & _num_tokens(new):
+                    ok["restored"] += 1
+                else:
+                    verdict = False; bad.append(f"line {i}: figure not restored")
+        if i in length:
+            wc = len(new.split()) - (1 if new.lstrip().startswith("•") else 0)
+            lim = _SHORT_MAX if "8-12" in length[i] else 32 if "22-30" in length[i] else 21
+            kept_figs = (_num_tokens(before[i]) & allowed) <= _num_tokens(new)
+            if 5 <= wc <= lim and kept_figs:
+                ok["short"] += 1
+            else:
+                verdict = False
+                bad.append(f"line {i}: {wc} words after trim"
+                           + ("" if kept_figs else ", figure lost"))
+        if i in phrases:
+            if any(p in new.lower() for p in phrases[i]):
+                verdict = False; bad.append(f"line {i}: phrase still present")
+            else:
+                ok["phrase"] += 1
+        if not verdict:
+            after[i] = before[i]
+            if i in length and i not in phrases:
+                figs = _num_tokens(before[i]) & allowed
+                retry[i] = ("HARD LIMIT 12 words. Keep only the verb, the object, "
+                            "the tool names" + (f", and the figure {', '.join(sorted(figs))}" if figs else "")
+                            + "; delete every other clause.")
+    # One stricter pass for the length lines the model left too long.
+    if retry:
+        text2 = await _fix_lines("\n".join(after), retry, notes, "line_fix_retry", **cheap_kw)
+        after2 = text2.split("\n")
+        if len(after2) == len(after):
+            for i in retry:
+                new = after2[i]
+                wc = len(new.split()) - (1 if new.lstrip().startswith("•") else 0)
+                if 5 <= wc <= _SHORT_MAX and (_num_tokens(before[i]) & allowed) <= _num_tokens(new):
+                    after[i] = new
+                    ok["short"] += 1
+                    bad = [b for b in bad if not b.startswith(f"line {i}:")]
+    notes.append("line fix: " + ", ".join(f"{k} {v}" for k, v in ok.items() if v)
+                 + (f"; reverted {len(bad)}: " + "; ".join(bad) if bad else ""))
+    return "\n".join(after)
+
+
+# ── Guard: total length follows tenure ────────────────────────────────────────
+
+_WORDS_PER_PAGE = 500   # what the exporter fits on one page at full type size
+
+
+def _page_budget(base_resume: str) -> int:
+    """Pages the tenure ladder allows (the prompt's LENGTH FOLLOWS TENURE
+    rule): 0-3 years -> 1, 4-11 -> 2, 12+ -> 3."""
+    _, years = _base_years_claim(base_resume)
+    if years is None:
+        return 2
+    return 1 if years <= 3 else 2 if years <= 11 else 3
+
+
+def _trim_to_budget(text: str, inserted: list, base_resume: str, notes: list,
+                    protect: list | None = None, job_description: str = "") -> str:
+    """When the draft runs past the tenure page budget, remove guard-inserted
+    coverage bullets first (the prompt's own trim order), oldest job first.
+    Base-derived bullets are never touched here — that is a writing decision,
+    not a length one. Reports what is still over budget."""
+    budget = _page_budget(base_resume) * _WORDS_PER_PAGE
+    words = len(text.split())
+    if words <= budget or not inserted:
+        if words > budget:
+            notes.append(f"length guard: {words} words vs {budget} budget "
+                         f"({_page_budget(base_resume)} page(s)); nothing generated to trim")
+        return text
+    lines = text.split("\n")
+    removed: list[str] = []
+    gone: set[int] = set()
+    # oldest job first (highest index), latest-inserted first within a job
+    # Only a generated bullet that backs nothing the JD asks for is fair game
+    # (a Scala or PL/SQL line written for a base-only skill). One that proves
+    # a JD tool or duty is coverage — it stays even if the page runs long.
+    prot = [str(p).lower() for p in (protect or [])]
+    jd_low = (job_description or "").lower()
+
+    def _named_in_jd(sk: str) -> bool:
+        if not jd_low:
+            return False
+        try:
+            from resume_lint import _dynamic_coverage_pattern
+            if re.search(_dynamic_coverage_pattern(sk), jd_low):
+                return True
+        except Exception:  # noqa: BLE001
+            pass
+        head = next((w for w in re.findall(r"[a-z][a-z0-9+#.]{2,}", sk.lower())
+                     if w not in _SKILL_TOKEN_STOP), "")
+        return bool(head) and bool(re.search(rf"(?<![a-z0-9]){re.escape(head)}(?![a-z0-9])", jd_low))
+
+    def _wanted(t):
+        parts = [x.strip().lower() for x in re.split(r"\s*\+\s*", t[1]) if x.strip()]
+        return any(sk in p or p in sk for sk in parts for p in prot)             or any(_named_in_jd(sk) for sk in parts)
+    order = [t for _, t in sorted(enumerate(inserted), key=lambda p: (-p[1][0], -p[0]))
+             if not _wanted(t)]
+    kept_wanted = len(inserted) - len(order)
+    for j, skill, bullet in order:
+        live = " ".join(ln for i, ln in enumerate(lines) if i not in gone)
+        if len(live.split()) <= budget:
+            break
+        for i, ln in enumerate(lines):
+            if i in gone or not ln.lstrip().startswith("•"):
+                continue
+            if ln.lstrip()[1:].strip() != bullet:
+                continue
+            gone.add(i)
+            removed.append(skill)
+            # take the skill back out of that job's Technologies Used line
+            for k in range(i, min(i + 20, len(lines))):
+                m = _TECH_LINE_RE.match(lines[k].strip())
+                if m:
+                    items = [x.strip() for x in _split_list_items(m.group(2))]
+                    drop = {s.strip().lower() for s in re.split(r"\s*\+\s*", skill)}
+                    kept = [x for x in items if x.lower() not in drop]
+                    lines[k] = f"{m.group(1).rstrip(':')}: {', '.join(kept)}"
+                    break
+            break
+    out = "\n".join(ln for i, ln in enumerate(lines) if i not in gone)
+    final = len(out.split())
+    notes.append(f"length guard: {words} -> {final} words (budget {budget}, "
+                 f"{_page_budget(base_resume)} page(s)); dropped generated bullet(s): "
+                 + (", ".join(removed) if removed else "none")
+                 + (f"; kept {kept_wanted} JD-coverage bullet(s)" if kept_wanted else "")
+                 + ("" if final <= budget else
+                    "; still over budget (JD-coverage and base bullets are never cut here)"))
+    return out
 
 
 _YEARS_RE = re.compile(r"(\d{1,2})\s*\+?\s*years?", re.IGNORECASE)
@@ -1858,7 +2561,11 @@ async def tailor_resume(base_resume: str, job_description: str,
 
     missing = context.get("missing") or []
     print(f"[TAILOR] target_cloud={context.get('target_cloud')!r} "
-          f"missing_tools={len(missing)} company={company or context.get('company', '')!r}")
+          f"target_tools={len(context.get('target_tools') or [])} "
+          f"present={len(context.get('present') or [])} missing_tools={len(missing)} "
+          f"baseline_missing={len(context.get('baseline_missing') or [])} "
+          f"responsibilities={len(context.get('responsibilities') or [])} "
+          f"company={company or context.get('company', '')!r}")
 
     # ── 2. TAILOR (main model) ────────────────────────────────────────────
     tailored = (await chat(
@@ -1915,9 +2622,12 @@ async def tailor_resume(base_resume: str, job_description: str,
     # that work plausibly happened. Also chased: the JD's universal-baseline
     # requirements and its RESPONSIBILITIES the draft left unevidenced (both
     # judged by the analyze pass, per JD — no fixed list in code).
+    inserted: list = []          # (job_index, skill, bullet) the guard wrote
     tailored = await _ensure_skill_bullets(
         tailored, job_description, notes,
         jd_missing=(context.get("baseline_missing") or []) + (context.get("responsibilities") or []),
+        inserted=inserted,
+        jd_terms=(context.get("target_tools") or []) + (context.get("responsibilities") or []),
         **cheap_kw)
 
     # Guard (c3): bullets whose endings read as truncated. Measured with the
@@ -1934,6 +2644,14 @@ async def tailor_resume(base_resume: str, job_description: str,
     tailored, tidied = _clean_lists(tailored)
     if tidied:
         notes.append(f"tidied {tidied} over-long / duplicate list line(s)")
+
+    # Guard (d0): length follows tenure. Generated coverage bullets are the
+    # first thing to go when the draft outgrows its page budget (live miss:
+    # a 5-year resume shipped at 0.92 type scale to squeeze into 2 pages).
+    tailored = _trim_to_budget(
+        tailored, inserted, base_resume, notes,
+        protect=(context.get("target_tools") or []) + (context.get("responsibilities") or []),
+        job_description=job_description)
 
     # Guard (d2): no em/en dashes in body text — the classic AI-writing tell.
     # Guard (d1): the JD's dominant tool must be visible in the first bullets
@@ -1954,6 +2672,23 @@ async def tailor_resume(base_resume: str, job_description: str,
     tailored, yrs_fixed = _clamp_years(tailored, base_resume)
     if yrs_fixed:
         notes.append("years guard: clamped inflated experience claim to base resume")
+
+    # Guard (g): figures, bullet-length variety, phrase echo — measured in
+    # code, repaired by the cheap model only where flagged, verified in code.
+    # Live misses: "roughly 25%" and "40%" deleted from base bullets, no
+    # short bullet in any job, "multi-tenant" four times.
+    tailored = await _polish_numbers_and_length(
+        tailored, base_resume, job_description, context.get("target_tools") or [],
+        inserted, notes, **cheap_kw)
+    tailored, dash_hits2 = _strip_dash_asides(tailored)
+    if dash_hits2:
+        notes.append(f"dash guard (post-fix): rewrote {dash_hits2} dash construction(s)")
+
+    # Guard (h): vague intensifiers never ship — the prompt forbids them, the
+    # fixer is told again, and this strip is the deterministic last word.
+    tailored, intens = _strip_intensifiers(tailored)
+    if intens:
+        notes.append(f"intensifier guard: removed {intens} vague intensifier(s)")
 
     # Guard (f): final no-orphan sweep. Guard (c2) already trimmed once, but the
     # tidy passes after it (list caps, dash rewrite) can erase a skill's last
@@ -2023,6 +2758,11 @@ async def tailor_resume(base_resume: str, job_description: str,
         usage = get_run_usage()
     except Exception:  # noqa: BLE001
         usage = {"cost": 0.0, "tokens_in": 0, "tokens_out": 0, "calls": []}
+
+    # Every guard's verdict goes to the server log too, so a log-only review
+    # can see what ran (the notes were UI-only before).
+    for n in notes:
+        print(f"[TAILOR GUARDS] {n[:300]}")
 
     review = {
         "needs_review": bool(reasons),

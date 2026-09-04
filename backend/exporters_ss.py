@@ -373,7 +373,7 @@ def _render_pdf(elements, scale, title="Tailored Resume"):
     if name or headline:
         head = "<b>" + _inline(name or "") + "</b>"
         if headline:
-            head += "&nbsp;&nbsp;<b>-</b>&nbsp;&nbsp;<b>" + _inline(headline) + "</b>"
+            head += " &mdash; <b>" + _inline(headline) + "</b>"
         story.append(Paragraph(head, st_name))
     if contact:
         story.append(Paragraph(escape(_clean_contact(contact)), st_contact))
@@ -424,7 +424,10 @@ def _choose_scale(elements, title="Tailored Resume"):
     for scale in _SCALES:
         data, pages = _render_pdf(elements, scale, title)
         if pages <= TARGET_PAGES and scale >= _MIN_TARGET_SCALE:
-            if scale < 1.0:
+            if scale < 0.95:
+                print(f"[EXPORT] WARNING dense page: type scaled to {scale} to fit "
+                      f"{pages} page(s) — the tailor length guard should have trimmed")
+            elif scale < 1.0:
                 print(f"[EXPORT] PDF fit at scale {scale} ({pages} page(s))")
             return scale, data
         if pages <= MAX_PAGES and three is None:
@@ -515,7 +518,7 @@ def generate_docx(resume_text: str, job_title: str = "", company: str = "") -> b
         p.paragraph_format.space_after = Pt(1)
         runs(p, name or "", name_sz, bold=True)
         if headline:
-            runs(p, "     -     " + headline, name_sz, bold=True)
+            runs(p, " — " + headline, name_sz, bold=True)
     if contact:
         p = doc.add_paragraph()
         p.paragraph_format.space_after = Pt(4 * scale)

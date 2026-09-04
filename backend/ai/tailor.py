@@ -51,7 +51,8 @@ Return ONLY a compact JSON object, no prose, no markdown fences:
   "metric_style": "<credible quantified results for this role, e.g. 'pipeline throughput, data freshness, cost, uptime'>",
   "present": ["<JD tool already clearly evidenced in the resume>"],
   "missing": ["<JD tool required but absent or weak in the resume>"],
-  "baseline_missing": ["<subset of missing that are UNIVERSAL BASELINE competencies>"]
+  "baseline_missing": ["<subset of missing that are UNIVERSAL BASELINE competencies>"],
+  "responsibilities": ["<6–8 non-tool DUTIES the JD names, in the JD's own nouns>"]
 }
 
 Rules:
@@ -80,7 +81,14 @@ Rules:
   engineer in this role have really done this, even if their resume never
   wrote it down?" Yes → baseline_missing. A product, platform, language, or
   domain tool the candidate may simply not know (Salesforce, Ruby, Snowflake,
-  a vendor suite) is NEVER baseline, no matter how essential the JD calls it."""
+  a vendor suite) is NEVER baseline, no matter how essential the JD calls it.
+- responsibilities: what the JD says the person DOES, not what they use.
+  Include a duty if it appears in the title, the summary, or the first three
+  responsibility lines, or repeats twice anywhere. Use the JD's own nouns
+  (e.g. "mentoring junior engineers", "peer code review", "clarifying
+  requirements with analysts", "on-call incident response", "stakeholder
+  demos", "technical documentation", "writing tests"). 6–8 items, most
+  important first. These are tracked and verified like tools."""
 
 
 TAILOR_SYSTEM = """You are StackShift, a professional resume writer. You rewrite a
@@ -89,8 +97,17 @@ and required skills in the candidate's own voice, mapped onto their REAL jobs.
 The goal is a clean, human, ATS-strong resume that reads like it was hand-written
 for this exact role. Follow every rule EXACTLY.
 
-You receive: the original resume, the JD, the detected TARGET CLOUD, and the
-MISSING TOOLS list.
+You receive: the original resume, the JD, and the ANALYSIS block — one shared
+reading of the JD that every stage uses. Use each field:
+- job_title      → headline (Line 1).
+- target_cloud   → the cloud rules.
+- industry       → the summary's domain phrase; emphasize base jobs in that industry.
+- role_domain    → verb register and which duties lead each job.
+- metric_style   → decides which REAL base numbers go first.
+- present        → tools already in the resume that MUST keep their bullets. Never drop one.
+- missing        → tools to cover via category-equivalent, bridge, or omit.
+- baseline_missing → universal duties to weave in (CI/CD, code review, monitoring, on-call).
+- responsibilities → EVERY RESPONSIBILITY EARNS A BULLET (below).
 
 ================================================================================
 OUTPUT FORMAT (plain text — NOT markdown. No #, no **, no code fences.)
@@ -105,15 +122,31 @@ Line 1:  `<Candidate Full Name> — <Exact Job Title from the JD>`
          - Postings often pad the title ("Data Migration Engineer – SQL Server to
            Snowflake & Matillion"). Take only the part before the suffix:
            "Data Migration Engineer".
-Line 2:  `<phone> | <email>`   (phone FIRST, then email; NO city/state, no linkedin)
+Line 2:  `<phone> | <email> | <City, ST>`   (phone FIRST, then email, then the
+         candidate's city and state from the base resume — omit the city part
+         if the base has none. No street address, no linkedin.)
 
 Then these sections, in this exact order. Section headers are UPPERCASE with a
 trailing colon on their own line. Every bullet starts with "• ".
 
 SUMMARY:
-• 4–6 bullets. Reframe the candidate AS the JD's role. Each bullet echoes the JD's
-  core requirements/qualifications in the candidate's words, positioning them as
-  the obvious match. Plain, confident, no invented metrics.
+• 4 minimum, 6 maximum. Fixed SLOT ORDER, free sentence shape — vary the
+  syntax from resume to resume; never the same sentence skeleton twice.
+  Slot 1 (identity): the JD's title, the candidate's REAL years from base
+    dates, the JD's most-repeated tools they genuinely have, and the industries
+    from the base — in whatever natural sentence carries them.
+  Slot 2 (proof): the single strongest REAL achievement from the base, with
+    its number if the base has one.
+  Slot 3 (lead duty): the top item from `responsibilities`, written as work
+    the candidate has done, at their tenure level.
+  Slots 4–6 (coverage): one remaining core JD requirement each. Skip a slot
+    rather than pad it.
+• No slot repeats a tool already named in slot 1. Plain, confident, no
+  invented metrics.
+• SUMMARY IS A PREVIEW, NOT A CLAIM LIST: every tool, platform, or duty named
+  in SUMMARY must appear in at least one experience bullet. Write the bullets
+  first, then the summary from them. A summary item with no bullet behind it
+  either gets its bullet (within the job caps) or leaves the summary.
 
 SKILLS:
 • 5–7 category lines, each as `• <Dynamic Category Name>: skill, skill, ...`
@@ -145,7 +178,9 @@ SKILLS:
   With 5–7 categories there is room for all of them; that's the point.
 • Never repeat the same tool across categories, and never list two names for one
   thing (e.g. "Data Warehouse" and "Data Warehousing" — pick one).
-• TOTAL BUDGET: at most 30 skills across ALL categories. Priority order:
+• TOTAL BUDGET: at most 36 skills across ALL categories, and never fewer than
+  every `present` tool plus the category-equivalent additions — a real JD
+  match is never cut to hit a number; the cap only trims padding. Priority:
   (1) tools in BOTH the base resume and the JD, (2) JD-required tools,
   (3) closely-transferable JD-preferred tools. Drop peripheral "a plus" /
   mentioned-once items — a lean, defensible list beats a stuffed one.
@@ -156,6 +191,13 @@ SKILLS:
   observability bullet covering Datadog, Grafana, and alerting) — prefer that
   over three thin single-tool bullets. If a skill cannot earn a bullet within
   the per-job caps (see ladder), LEAVE IT OUT of SKILLS entirely.
+• EVERY RESPONSIBILITY EARNS A BULLET: each item in `responsibilities` (at most
+  8) must appear in at least one experience bullet, in the job where it most
+  plausibly happened, in the form the candidate's tenure allows (see VERB
+  REGISTER). These are the no-tool bullets already permitted per job. One
+  bullet may cover two related duties. A duty that cannot fit within the job
+  caps, or has no credible form at this tenure, is dropped — and never
+  appears in SUMMARY or SKILLS without a bullet.
 
 PROFESSIONAL EXPERIENCE:
 For each job, in this exact shape — the job header line is NOT a bullet:
@@ -169,6 +211,9 @@ PROJECTS:
 • ONLY if the base resume ALREADY lists real projects. If none, OMIT the whole
   section including its header. NEVER invent a project. If present: keep the real
   ones (up to 3), one polished bullet each, same bullet style.
+• If the base has NO job history, PROJECTS becomes the main evidence section:
+  keep up to 4 real projects, 2 bullets each, same bullet style as experience.
+  Still never invent one.
 
 EDUCATION:
 `<Degree and Major>, <University/School>` on its own line (not a bullet).
@@ -198,6 +243,9 @@ DO:
   to the job's real context.
 - Cover the JD's key responsibilities across the bullets; weave in the JD's tools.
 - Vary wording so the SAME duty phrased in two jobs never reads identically.
+- The FIRST use of any acronym writes both forms — "Retrieval-Augmented
+  Generation (RAG)", "continuous integration/continuous delivery (CI/CD)" —
+  so the ATS matches whichever token the JD uses. After that, either form.
 
 VERB REGISTER — match the JD's seniority (critical):
 - Read the verbs the JD uses and mirror that LEVEL. Do not default to builder verbs.
@@ -210,6 +258,13 @@ VERB REGISTER — match the JD's seniority (critical):
        "Architected an entity-resolution framework that deduplicated…".
 - If the JD is an IC / hands-on engineer role: builder verbs (Built, Developed,
   Implemented, Optimized) are correct — do not force architect verbs.
+- TENURE CEILING: the register is the LOWER of the JD's level and what the
+  candidate's real years support. Compute years from the base resume's
+  earliest job start to latest end (internships at half weight). Roughly:
+  ~1 year owns tasks, ~5 owns pipelines, ~10 owns platforms, ~15 owns strategy
+  and teams. A 2-year candidate on a Senior JD gets the Senior HEADLINE and a
+  2-year BODY — builder verbs, peer-level duties (onboarding, pairing) instead
+  of "mentored the team". The JD's seniority never overrides tenure.
 - Either way, vary the opening verbs so bullets don't read repetitively.
 
 HOW A BULLET MUST END (it is checked by an automated truncation detector):
@@ -283,14 +338,22 @@ DO NOT:
 - Do NOT metric-stuff.
 
 ================================================================================
-METRIC POLICY — numbers are the exception, never invented
+METRIC POLICY — real numbers survive, invented numbers never exist
 ================================================================================
-- Use a number ONLY when (a) the JD itself states one (mirror it — e.g. JD says
-  "100+ pipelines" → "supported over 100 data pipelines"), or (b) the candidate's
-  BASE RESUME already contains that number (keep it).
-- NEVER invent a percentage, count, dollar, or time figure. If you have no real
-  number, end the bullet on a plain qualitative outcome instead.
-- At most ONE number per bullet. Expect 0–3 numbers in the WHOLE resume.
+- KEEP EVERY number the base resume states. Never drop a real number to hit a
+  count or to make room.
+- Invented numbers: ZERO. Never a percentage, count, dollar, or time figure
+  that the base does not state. If you have no real number, end the bullet on a
+  plain qualitative outcome instead. Do NOT copy a figure from the JD into the
+  candidate's history — the JD's "100+ pipelines" is the employer's scale, not
+  the candidate's achievement.
+- Scale words (terabytes, millions of rows, dozens of feeds, multi-region) are
+  not numbers — use them whenever the base supports them.
+- One numeric figure per bullet. If a base bullet carries two, keep the
+  stronger and convert the other to a scale word.
+- Put each job's strongest REAL number within its first three bullets — but the
+  dominant-tool / JD-vocabulary rule for the top bullets comes first; a number
+  never displaces the JD's core tool from the opening line.
 
 ================================================================================
 "NOT IN THE JD" LOGIC (fill order)
@@ -310,8 +373,11 @@ Merge if the source has too many; expand with real everyday work if too few.
 A job may EXCEED its count when needed to give every listed Skill a supporting
 bullet (see EVERY SKILL EARNS A BULLET), but NEVER past these hard caps:
 Job 1 ≤ 12 · Job 2 ≤ 8 · Job 3 ≤ 6 · Job 4+ ≤ 3. A skill that cannot fit
-within the caps is dropped from SKILLS, not crammed in. Aim for 2 pages;
-running onto a 3rd page is acceptable when coverage needs it — never past 3.
+within the caps is dropped from SKILLS, not crammed in.
+LENGTH FOLLOWS TENURE: 0–3 years → 1 page · 4–11 years → 2 pages · 12+ years
+→ up to 3. If coverage needs more than that, trim in this order: generated
+coverage bullets first, then the oldest jobs down to their minimum ladder
+count. Never trim an impact bullet or a `present` tool to fit.
 
 ================================================================================
 CLOUD & TOOL REFRAMING  (cloud swap is ALWAYS ACTIVE — there is no toggle)
@@ -397,10 +463,14 @@ The goal is HONEST coverage, not a target percentage.
     production on call; "data migration" → their SQL Server→Snowflake move IS a
     migration). These are expected competencies, not fabrication.
   * CATEGORY-EQUIVALENT tools: when the JD names a specific product in a category
-    the candidate ALREADY works in, include it. JD wants Splunk and the candidate
-    uses Datadog/Grafana (same observability category) → include Splunk. JD wants
-    a specific message queue and they use Kafka → fine. Same product family = fair
-    to claim.
+    the candidate ALREADY works in, write the JD's product name DIRECTLY — in
+    bullets and in SKILLS, no "similar to" / "transferable to" phrasing. JD wants
+    Splunk and the candidate uses Datadog/Grafana (same observability category)
+    → Splunk. JD wants a specific message queue and they use Kafka → fine. Same
+    product family = fair to claim. CAP each swap at what the base's real work
+    in that category supports: one observability bullet covers ONE observability
+    product swap, not three. BRIDGE phrasing is reserved for tools with NO
+    category match in the base at all.
   * COMMON AI-DEV tools the candidate plausibly uses (GitHub Copilot) when the JD
     lists them — include. (Genuinely niche ones they don't use — Windsurf, a
     proprietary IDE — stay out.)
@@ -419,11 +489,8 @@ responsibilities vs buried in a list, wording ("strong / must / hands-on" = core
 "exposure to / a plus / or similar / or equivalent" = peripheral; in an
 "X, Y, or equivalent" group one member covers the group), and role-centrality.
 
-WHERE THE "DON'T LOOK 100% PERFECT" RULE APPLIES: it is about not FAKING or
-bridging every foreign tool — never about dropping tools the candidate really
-has. If the honest result covers 75% because the candidate lacks several JD
-tools, that is correct. If it covers 95% because they genuinely match, that is
-also correct. Do not manufacture gaps by omitting real skills.
+Never manufacture gaps by omitting skills the candidate really has; the only
+honest gaps are tools they lack and cannot bridge.
 
 ================================================================================
 GLOBAL RULES
@@ -434,8 +501,8 @@ GLOBAL RULES
   in background checks; a mismatch rescinds offers. The JD's role belongs ONLY in
   the headline (Line 1) — never in any experience entry's title. Company,
   location, and dates never change either.
-- Do NOT invent employers, dates, degrees, or certifications, and never fabricate
-  or alter any experience title. (Projects MAY be invented.)
+- Do NOT invent employers, dates, degrees, certifications, or projects, and never
+  fabricate or alter any experience title.
 - YEARS OF EXPERIENCE: state exactly what the base resume supports. NEVER inflate
   to match the JD. If the resume shows 5+ years and the JD asks for 13+, write
   "5+ years" — do not bump it. Ignore any years/seniority value in the missing-tools list.
@@ -585,9 +652,20 @@ def tailor_prompt(resume_text: str, jd_text: str, context: dict,
     if profile_skills:
         extra = ("\nCANDIDATE'S OWN DECLARED SKILLS (treat as genuinely held):\n  "
                  + ", ".join(profile_skills) + "\n")
+    def _lst(k: str) -> str:
+        v = context.get(k) or []
+        return ", ".join(str(x) for x in v) if v else "(none)"
     return (
-        f"TARGET CLOUD: {context.get('target_cloud', 'None')}\n"
-        f"INDUSTRY:     {context.get('industry', '')}\n\n"
+        "ANALYSIS (one shared reading of the JD — use every field as the rules say):\n"
+        f"  job_title:         {context.get('job_title', '')}\n"
+        f"  target_cloud:      {context.get('target_cloud', 'None')}\n"
+        f"  industry:          {context.get('industry', '')}\n"
+        f"  role_domain:       {context.get('role_domain', '')}\n"
+        f"  metric_style:      {context.get('metric_style', '')}\n"
+        f"  present (KEEP — never drop): {_lst('present')}\n"
+        f"  missing:           {_lst('missing')}\n"
+        f"  baseline_missing:  {_lst('baseline_missing')}\n"
+        f"  responsibilities:  {_lst('responsibilities')}\n\n"
         "CLOUD SWAP: ALWAYS ON — if a target cloud is named above, convert BOTH "
         "Job 1 and Job 2 to it. If it is 'None', keep every job's real cloud and "
         "layer the JD's tools on top.\n\n"
@@ -1259,6 +1337,11 @@ Rules:
   packed lines over many thin ones.
 - Jobs have bullet caps (Job 1 ≤ 12, Job 2 ≤ 8, Job 3 ≤ 6, older ≤ 3, counting
   their existing bullets) — group enough that everything fits.
+- Match the register of the job's existing bullets: a builder-level job gets a
+  builder-level bullet (Built, Configured, Supported), never "Led" or
+  "Architected" that the rest of the job does not carry.
+- A listed item may be a DUTY rather than a tool ("peer code review", "on-call
+  incident response") — write it as routine work the candidate did in that job.
 Output ONLY these lines — no commentary, no blank-line padding."""
 
 
@@ -1375,6 +1458,74 @@ def _promote_tool_bullets(text: str, tool: str, notes: list) -> str:
     if moved:
         notes.append(f"lead-bullet guard: promoted {moved} '{tool}' bullet(s) "
                      "to the top of their job")
+    return "\n".join(lines)
+
+
+def _restore_present_tools(text: str, present: list, base_resume: str,
+                           notes: list) -> str:
+    """`present` = tools the analyze pass saw in the BASE resume that the JD
+    wants. They are the candidate's real, defensible keywords; a draft that
+    drops one silently loses ATS credit. Restore any that vanished to the
+    SKILLS row whose label/items share a word with it (else the last row).
+    Only tools actually in the base resume qualify — this never adds a tool
+    the candidate does not have."""
+    if not present:
+        return text
+    try:
+        from resume_lint import _dynamic_coverage_pattern
+    except ImportError:  # pragma: no cover
+        return text
+    low_all = text.lower()
+    base_low = (base_resume or "").lower()
+    lost = []
+    for t in present:
+        name = str(t).strip()
+        if len(name) < 2:
+            continue
+        try:
+            pat = _dynamic_coverage_pattern(name)
+            if re.search(pat, low_all):
+                continue                         # still there
+            if not re.search(pat, base_low):
+                continue                         # analyze overclaimed — not ours to add
+        except re.error:
+            continue
+        lost.append(name)
+    if not lost:
+        return text
+    lines = text.split("\n")
+    rows = []                                    # (index, label, items)
+    in_skills = False
+    for i, ln in enumerate(lines):
+        s = ln.strip()
+        if _is_section_hdr(s):
+            in_skills = "skill" in s.lower()
+            continue
+        if in_skills and s.startswith(("•", "-", "*")) and ":" in s:
+            label, _, rest = s.partition(":")
+            rows.append((i, label.lstrip("•-* ").strip(), rest))
+    if not rows:
+        return text
+    _tok = lambda s: set(re.findall(r"[a-z0-9]{3,}", s.lower()))
+    # The base resume's own skills row for this tool tells us its category —
+    # its label and sibling tools ("ETL: Informatica, Ab Initio") are the
+    # best hint for which tailored row it belongs in.
+    base_rows = [ln.strip() for ln in base_low.split("\n")
+                 if ln.strip().startswith(("•", "-", "*")) and ":" in ln]
+    for name in lost:
+        hint = _tok(name)
+        for br in base_rows:
+            if name.lower() in br:
+                hint |= _tok(br)
+                break
+        best, best_n = None, 0
+        for i, label, rest in rows:
+            n = len(hint & _tok(label + " " + rest))
+            if n > best_n:
+                best, best_n = i, n
+        i = best if best is not None else rows[-1][0]
+        lines[i] = lines[i].rstrip().rstrip(",") + ", " + name
+    notes.append("present guard: restored " + ", ".join(lost) + " to SKILLS")
     return "\n".join(lines)
 
 
@@ -1678,7 +1829,8 @@ async def tailor_resume(base_resume: str, job_description: str,
 
     if not context:
         context = {"target_cloud": "None", "target_tools": [], "industry": "",
-                   "present": [], "missing": []}
+                   "present": [], "missing": [], "baseline_missing": [],
+                   "responsibilities": []}
 
     # Guard (a): a cloud swap only fires when the JD LITERALLY names that cloud.
     # Kills phantom swaps (e.g. GCP invented for a cloud-agnostic JD).
@@ -1692,6 +1844,12 @@ async def tailor_resume(base_resume: str, job_description: str,
     # skills, not "collaboration", and soft terms are trivially "covered" so they
     # inflate the coverage score toward a suspicious 100. Prompt-only exclusion
     # slips, so filter deterministically here.
+    # Duties are a checklist too — cap at 8 (most important first per the
+    # analyze prompt) so they can't crowd the bullet caps; no soft-skill
+    # filter here, a duty like "clarifying requirements with analysts" IS the
+    # kind of thing recruiters search for.
+    _resp = [str(r).strip() for r in (context.get("responsibilities") or []) if str(r).strip()]
+    context["responsibilities"] = _resp[:8]
     for _k in ("target_tools", "present", "missing"):
         _orig = context.get(_k) or []
         _kept = [t for t in _orig if not _is_soft_skill(str(t))]
@@ -1745,14 +1903,22 @@ async def tailor_resume(base_resume: str, job_description: str,
     tailored = _guard_title_inflation(tailored, base_resume, notes)
     tailored = _headline_hybrid(tailored, base_resume, context.get("job_title", ""), notes)
 
+    # Guard (c1): `present` is a hard keep-list — a tool the analyze pass found
+    # in the BASE resume and the JD asks for must not vanish from the tailored
+    # text. If the writer dropped one, restore it to the fitting SKILLS row
+    # (the parity guard below then earns it a bullet).
+    tailored = _restore_present_tools(tailored, context.get("present") or [],
+                                      base_resume, notes)
+
     # Guard (c2): every skill claimed in SKILLS must have an experience bullet
     # behind it — orphans get a modest scope bullet written into the job where
-    # that work plausibly happened. The JD's universal-baseline requirements
-    # the draft left uncovered (as judged by the analyze pass, per JD — no
-    # fixed list in code) are chased too.
-    tailored = await _ensure_skill_bullets(tailored, job_description, notes,
-                                           jd_missing=context.get("baseline_missing") or [],
-                                           **cheap_kw)
+    # that work plausibly happened. Also chased: the JD's universal-baseline
+    # requirements and its RESPONSIBILITIES the draft left unevidenced (both
+    # judged by the analyze pass, per JD — no fixed list in code).
+    tailored = await _ensure_skill_bullets(
+        tailored, job_description, notes,
+        jd_missing=(context.get("baseline_missing") or []) + (context.get("responsibilities") or []),
+        **cheap_kw)
 
     # Guard (c3): bullets whose endings read as truncated. Measured with the
     # same detector that drives the UI warning; only spends a call when the

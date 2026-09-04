@@ -1495,8 +1495,9 @@ For EACH listed item, output ONE line, in this priority order:
 
   W <bullet number> :: <skill> :: <the full rewritten bullet>
       Weave the skill into an EXISTING bullet of the job where that work
-      plausibly happened. Add at most six words; keep every number, tool
-      and claim already there. This is the default — prefer it.
+      plausibly happened. Prefer the SHORTEST fitting bullet; never one
+      marked FULL. Add as few words as the exact wording needs; keep every
+      number, tool and claim already there. This is the default — prefer it.
 
   N <job number> :: <skill> :: <new bullet>
       Only when no existing bullet of the fitting job can carry it honestly
@@ -1505,14 +1506,38 @@ For EACH listed item, output ONE line, in this priority order:
       related skills in one new bullet, names joined by " + ".
 
 Rules:
-- Name the skill explicitly ("in Python and Java", "tracked in Jira").
+- The item's EXACT words must appear in the bullet, verbatim (case may
+  change): "data transformation" is proven by the words "data transformation",
+  not by "transformed data". An ATS matches tokens, not meaning.
 - An item marked NAMED IN THE JD must get a line. Only an unmarked item that
   is foreign to every job may be skipped.
 - Match the job's era, industry, stack and verb level. A duty ("code review
   and debugging") is written as routine work, not a headline.
+- A bullet number may appear in ONE W line only. To place several items in
+  the same bullet, write ONE W line with the items joined by " + " in the
+  skill field and all of them named in the text.
 - No em or en dashes. No intensifiers. Do not open a new bullet with a verb
-  that job already uses. A bullet number is used by at most one W line.
+  that job already uses.
 Output ONLY these lines."""
+
+
+_COST_CAP = 0.080      # dollars; optional passes are skipped past this spend
+_WEAVE_MAX_WORDS = 30  # a bullet already this long takes no more weaving
+
+
+def _under_cost_cap(notes: list, label: str) -> bool:
+    """Optional passes (second coverage round, line-fix retry, fragment fix)
+    only run while the current run's spend is under the cap, so a cold run
+    (rules block not cached) never drifts past ~8.5c."""
+    try:
+        from ai.llm import get_run_usage
+        spent = float(get_run_usage().get("cost") or 0.0)
+    except Exception:  # noqa: BLE001
+        return True
+    if spent >= _COST_CAP:
+        notes.append(f"cost cap: skipped {label} (spent {spent * 100:.1f}c of {_COST_CAP * 100:.0f}c)")
+        return False
+    return True
 
 
 async def _ensure_skill_bullets(resume: str, job_description: str,
@@ -1521,14 +1546,15 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
                                 jd_terms: list | None = None,
                                 **cheap_kw) -> str:
     """A skill listed in SKILLS with zero experience bullets behind it dies in
-    the first interview question. Orphans are detected in code; ONE cheap
+    the first interview question. Orphans are detected in code; one cheap
     call weaves each into an existing bullet of the right job or, when no
     bullet fits and the job has room, writes a new one; code applies and
     verifies every line. `jd_missing` (the analyze pass's baseline duties and
-    responsibilities) is chased the same way; JD-named items are mandatory
-    for the model, and whatever still lacks evidence leaves SKILLS."""
+    responsibilities) is chased the same way. JD-named items still lacking
+    evidence after the first round get one more, smaller round (under the
+    cost cap); whatever is left leaves SKILLS."""
     baseline = [str(m) for m in (jd_missing or []) if not _is_soft_skill(str(m))]
-    long_items = [b for b in baseline if len(b.split()) > 10]
+    long_items = [b for b in baseline if len(b.split()) > 14]
     if long_items:
         baseline = [b for b in baseline if b not in long_items]
         notes.append(f"coverage guard: {len(long_items)} duty item(s) too long to "
@@ -1539,81 +1565,97 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
         ol = o.lower()
         return any(ol in t or t in ol for t in jd_low)
 
-    chase = _orphan_skills(resume) + _unevidenced(baseline, resume)
-    seen: set = set()
-    chase = [o for o in chase if not (o.lower() in seen or seen.add(o.lower()))]
-    chase.sort(key=lambda o: not _in_jd(o))
-    if not chase:
-        return resume
+    def _chase(text: str) -> list[str]:
+        items = _orphan_skills(text) + _unevidenced(baseline, text)
+        seen: set = set()
+        items = [o for o in items if not (o.lower() in seen or seen.add(o.lower()))]
+        items.sort(key=lambda o: not _in_jd(o))
+        return items
 
-    lines = resume.split("\n")
-    jobs = _job_bullet_lines(resume)
-    if not jobs:
-        return resume
-    hdr_idx = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]
-    numbered, n_to_idx, n = [], {}, 0
-    for j, bl in jobs:
-        room = max(0, _job_cap(j) - len(bl))
-        numbered.append(f"\nJOB {j + 1} (room for {room} new bullet(s)): {lines[hdr_idx[j]].strip()}")
-        for i in bl:
-            n += 1
-            n_to_idx[n] = i
-            numbered.append(f"{n}. {lines[i].lstrip()[1:].strip()}")
-    try:
-        out = (await chat(
-            COVERAGE_SYSTEM,
-            "BULLETS:" + "\n".join(numbered)
-            + "\n\nITEMS WITH NO BULLET:\n"
-            + "\n".join(f"- {o}" + ("  (NAMED IN THE JD: must be placed)" if _in_jd(o) else "")
-                        for o in chase[:16])
-            + f"\n\nJOB DESCRIPTION (context):\n{job_description[:3000]}",
-            max_tokens=3000, pass_name="coverage", **cheap_kw)).strip()
-    except Exception as exc:  # noqa: BLE001 — best effort
-        notes.append(f"coverage guard skipped ({exc})")
-        return _drop_unevidenced_skills(resume, notes)
+    async def _round(text: str, chase: list[str], label: str) -> str:
+        lines = text.split("\n")
+        jobs = _job_bullet_lines(text)
+        if not jobs:
+            return text
+        hdr_idx = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]
+        numbered, n_to_idx, n = [], {}, 0
+        for j, bl in jobs:
+            room = max(0, _job_cap(j) - len(bl))
+            numbered.append(f"\nJOB {j + 1} (room for {room} new bullet(s)): {lines[hdr_idx[j]].strip()}")
+            for i in bl:
+                n += 1
+                n_to_idx[n] = i
+                body_txt = lines[i].lstrip()[1:].strip()
+                full = "  [FULL: do not weave here]" if len(body_txt.split()) > _WEAVE_MAX_WORDS else ""
+                numbered.append(f"{n}. {body_txt}{full}")
+        try:
+            out = (await chat(
+                COVERAGE_SYSTEM,
+                "BULLETS:" + "\n".join(numbered)
+                + "\n\nITEMS WITH NO BULLET:\n"
+                + "\n".join(f"- {o}" + ("  (NAMED IN THE JD: must be placed)" if _in_jd(o) else "")
+                            for o in chase[:16])
+                + f"\n\nJOB DESCRIPTION (context):\n{job_description[:3000]}",
+                max_tokens=3000, pass_name=label, **cheap_kw)).strip()
+        except Exception as exc:  # noqa: BLE001 — best effort
+            notes.append(f"{label} skipped ({exc})")
+            return text
 
-    woven, rejected, used = [], [], set()
-    additions: dict[int, list] = {}
-    for ln in out.splitlines():
-        m = re.match(r"^\s*([WN])\s*(\d+)\s*::\s*(.+?)\s*::\s*(.+?)\s*$", ln, re.I)
-        if not m:
-            continue
-        kind, num, skill, body = m.group(1).upper(), int(m.group(2)), m.group(3).strip(), m.group(4)
-        body = re.sub(r"\s*[—–]\s*", ", ", body.strip().lstrip("•-* ").strip())
-        if not body or _INTENSIFIER_RE.search(body):
-            rejected.append(f"{skill} (empty or intensifier)")
-            continue
-        if kind == "W":
-            i = n_to_idx.get(num)
-            if i is None or i in used:
-                rejected.append(f"{skill} (bad or reused bullet number)")
+        woven, rejected, used = [], [], set()
+        additions: dict[int, list] = {}
+        for ln in out.splitlines():
+            m = re.match(r"^\s*([WN])\s*(\d+)\s*::\s*(.+?)\s*::\s*(.+?)\s*$", ln, re.I)
+            if not m:
                 continue
-            old = lines[i].lstrip()[1:].strip()
-            grew = len(body.split()) - len(old.split())
-            same_nums = _num_tokens(old) == _num_tokens(body)
-            proves = not _unevidenced([skill], "EXPERIENCE:\nX @ Y | Z\n• " + body)
-            if 0 <= grew <= 8 and same_nums and proves:
-                lines[i] = "• " + body
-                used.add(i)
-                woven.append(skill)
+            kind, num, skill, body = m.group(1).upper(), int(m.group(2)), m.group(3).strip(), m.group(4)
+            body = re.sub(r"\s*[—–]\s*", ", ", body.strip().lstrip("•-* ").strip())
+            if not body or _INTENSIFIER_RE.search(body):
+                rejected.append(f"{skill} (empty or intensifier)")
+                continue
+            if kind == "W":
+                i = n_to_idx.get(num)
+                if i is None or i in used:
+                    rejected.append(f"{skill} (bad or reused bullet number)")
+                    continue
+                old = lines[i].lstrip()[1:].strip()
+                parts = [p.strip() for p in re.split(r"\s*\+\s*", skill) if p.strip()]
+                grew = len(body.split()) - len(old.split())
+                same_nums = _num_tokens(old) == _num_tokens(body)
+                proves = not _unevidenced(parts, "EXPERIENCE:\nX @ Y | Z\n• " + body)
+                room_ok = len(old.split()) <= _WEAVE_MAX_WORDS
+                grow_ok = 0 <= grew <= max(4 * len(parts) + 4, len(skill.split()) + 3)
+                if room_ok and grow_ok and same_nums and proves:
+                    lines[i] = "• " + body
+                    used.add(i)
+                    woven.append(skill)
+                else:
+                    rejected.append(f"{skill} (grew {grew}, nums {'ok' if same_nums else 'changed'}, "
+                                    f"{'named' if proves else 'not named'})")
             else:
-                rejected.append(f"{skill} (grew {grew}, nums {'ok' if same_nums else 'changed'}, "
-                                f"{'named' if proves else 'not named'})")
-        else:
-            j = num - 1
-            if not (0 <= j < len(jobs)) or not 6 <= len(body.split()) <= 34 or _num_tokens(body):
-                rejected.append(f"{skill} (new bullet: bad job, length, or has a figure)")
-                continue
-            additions.setdefault(j, []).append((skill, body))
-    resume = "\n".join(lines)
-    added = 0
-    if additions:
-        resume, added = _insert_skill_bullets(resume, additions, log=inserted)
-    left = len(_orphan_skills(resume)) + len(_unevidenced(baseline, resume))
-    notes.append(f"coverage guard: {len(chase)} chased, {len(woven)} woven"
-                 + (" (" + ", ".join(woven) + ")" if woven else "")
-                 + f", {added} new bullet(s), {left} still unevidenced"
-                 + (f"; rejected {len(rejected)}: " + "; ".join(rejected) if rejected else ""))
+                j = num - 1
+                if not (0 <= j < len(jobs)) or not 6 <= len(body.split()) <= 34 or _num_tokens(body):
+                    rejected.append(f"{skill} (new bullet: bad job, length, or has a figure)")
+                    continue
+                additions.setdefault(j, []).append((skill, body))
+        text = "\n".join(lines)
+        added = 0
+        if additions:
+            text, added = _insert_skill_bullets(text, additions, log=inserted)
+        left = len(_chase(text))
+        notes.append(f"{label}: {len(chase)} chased, {len(woven)} woven"
+                     + (" (" + ", ".join(woven) + ")" if woven else "")
+                     + f", {added} new bullet(s), {left} still unevidenced"
+                     + (f"; rejected {len(rejected)}: " + "; ".join(rejected) if rejected else ""))
+        return text
+
+    chase = _chase(resume)
+    if chase:
+        resume = await _round(resume, chase, "coverage")
+        # JD-named leftovers get one more, smaller round: the first call
+        # places ~8 items; a JD duty left unbacked is lost coverage.
+        leftovers = [o for o in _chase(resume) if _in_jd(o)]
+        if leftovers and _under_cost_cap(notes, "second coverage round"):
+            resume = await _round(resume, leftovers, "coverage_2")
     # Whatever still lacks a bullet leaves the SKILLS list — no orphans, ever.
     return _drop_unevidenced_skills(resume, notes)
 
@@ -1936,11 +1978,18 @@ _SHORT_MAX = 16          # a bullet at or under this many words counts as "short
 _LONG_RUN = 25           # three consecutive bullets over this = a wall
 
 
+def _line_skills(line: str, claimed: list[str]) -> list[str]:
+    """Claimed SKILLS items this one bullet evidences."""
+    wrap = "EXPERIENCE:\nX @ Y | Z\n• " + line.lstrip("• ").strip()
+    return [sk for sk in claimed if not _unevidenced([sk], wrap)]
+
+
 def _length_flags(text: str, inserted_texts: set[str]) -> dict[int, str]:
     """Per job: if no bullet is short, pick one to compress (a guard-inserted
     bullet first, else the shortest number-free one); and break any run of
     three long bullets by trimming the middle one."""
     lines = text.split("\n")
+    claimed = _skills_claimed(text)
     flags: dict[int, str] = {}
     for _, bl in _job_bullet_lines(text):
         if len(bl) < 4:
@@ -1950,11 +1999,15 @@ def _length_flags(text: str, inserted_texts: set[str]) -> dict[int, str]:
             cand = [i for i in bl if lines[i].lstrip()[1:].strip() in inserted_texts]
             if not cand:
                 cand = [i for i in bl if not _num_tokens(lines[i])] or bl
-            tgt = min(cand, key=lambda i: wc[i])
+            # the bullet carrying the fewest claimed skills is the safest to
+            # shorten — compressing an evidence-heavy one loses skills
+            tgt = min(cand, key=lambda i: (len(_line_skills(lines[i], claimed)), wc[i]))
             figs = _num_tokens(lines[tgt])
-            flags[tgt] = ("Compress to 8-12 words: keep every tool name and the "
-                          "core action, drop the context clause."
-                          + (f" Keep the figure {', '.join(sorted(figs))}." if figs else ""))
+            keep = _line_skills(lines[tgt], claimed)
+            flags[tgt] = ("Compress to 8-12 words: keep the core action, drop the "
+                          "context clause."
+                          + (f" Keep the figure {', '.join(sorted(figs))}." if figs else "")
+                          + (f" These names must stay: {', '.join(keep)}." if keep else ""))
         # a bullet past 40 words is a paragraph, not a bullet: always trimmed
         for i in bl:
             if wc[i] > 40 and i not in flags:
@@ -2119,6 +2172,7 @@ async def _polish_numbers_and_length(tailored: str, base_resume: str,
         return tailored
 
     allowed = _num_tokens(base_resume) | _num_tokens(job_description)
+    claimed = _skills_claimed(tailored)
     ok: dict[str, int] = {"invented": 0, "restored": 0, "short": 0, "phrase": 0}
     bad: list[str] = []
     retry: dict[int, str] = {}
@@ -2140,12 +2194,14 @@ async def _polish_numbers_and_length(tailored: str, base_resume: str,
             wc = len(new.split()) - (1 if new.lstrip().startswith("•") else 0)
             lim = _SHORT_MAX if "8-12" in length[i] else 32 if "22-30" in length[i] else 21
             kept_figs = (_num_tokens(before[i]) & allowed) <= _num_tokens(new)
-            if 5 <= wc <= lim and kept_figs:
+            lost = [sk for sk in _line_skills(before[i], claimed) if sk not in _line_skills(new, claimed)]
+            if 5 <= wc <= lim and kept_figs and not lost:
                 ok["short"] += 1
             else:
                 verdict = False
                 bad.append(f"line {i}: {wc} words after trim"
-                           + ("" if kept_figs else ", figure lost"))
+                           + ("" if kept_figs else ", figure lost")
+                           + (f", dropped {', '.join(lost)}" if lost else ""))
         if i in phrases:
             if any(p in new.lower() for p in phrases[i]):
                 verdict = False; bad.append(f"line {i}: phrase still present")
@@ -2155,18 +2211,21 @@ async def _polish_numbers_and_length(tailored: str, base_resume: str,
             after[i] = before[i]
             if i in length and i not in phrases:
                 figs = _num_tokens(before[i]) & allowed
-                retry[i] = ("HARD LIMIT 12 words. Keep only the verb, the object, "
-                            "the tool names" + (f", and the figure {', '.join(sorted(figs))}" if figs else "")
+                keep = _line_skills(before[i], claimed)
+                retry[i] = ("HARD LIMIT 12 words. Keep only the verb, the object"
+                            + (f", these names: {', '.join(keep)}" if keep else "")
+                            + (f", and the figure {', '.join(sorted(figs))}" if figs else "")
                             + "; delete every other clause.")
     # One stricter pass for the length lines the model left too long.
-    if retry:
+    if retry and _under_cost_cap(notes, "line-fix retry"):
         text2 = await _fix_lines("\n".join(after), retry, notes, "line_fix_retry", **cheap_kw)
         after2 = text2.split("\n")
         if len(after2) == len(after):
             for i in retry:
                 new = after2[i]
                 wc = len(new.split()) - (1 if new.lstrip().startswith("•") else 0)
-                if 5 <= wc <= _SHORT_MAX and (_num_tokens(before[i]) & allowed) <= _num_tokens(new):
+                if (5 <= wc <= _SHORT_MAX and (_num_tokens(before[i]) & allowed) <= _num_tokens(new)
+                        and set(_line_skills(before[i], claimed)) <= set(_line_skills(new, claimed))):
                     after[i] = new
                     ok["short"] += 1
                     bad = [b for b in bad if not b.startswith(f"line {i}:")]
@@ -2646,7 +2705,8 @@ async def tailor_resume(base_resume: str, job_description: str,
     # Guard (c3): bullets whose endings read as truncated. Measured with the
     # same detector that drives the UI warning; only spends a call when the
     # draft actually has flagged bullets, and finishes deterministically.
-    tailored = await _fix_fragment_endings(tailored, job_description, notes, **cheap_kw)
+    if _under_cost_cap(notes, "fragment fix"):
+        tailored = await _fix_fragment_endings(tailored, job_description, notes, **cheap_kw)
 
     # Guard (d): tidy the Skills rows and Technologies Used lines. Keyword
     # coverage is handled by the tailor prompt (which keeps every base+JD shared
@@ -2730,7 +2790,7 @@ async def tailor_resume(base_resume: str, job_description: str,
             f"recruiter {(scores.get('recruiter') or {}).get('score')}, "
             f"hiring_manager {(scores.get('hiring_manager') or {}).get('score')})"
         )
-        if overall < 80:
+        if overall < 70:          # code score is literal; 70 = review-worthy
             reasons.extend(str(f) for f in (scores.get("top_fixes") or [])[:3])
 
     try:

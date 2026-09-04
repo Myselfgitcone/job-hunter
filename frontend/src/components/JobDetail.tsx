@@ -1040,6 +1040,22 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
   const circumference = 2 * Math.PI * 26;
   const offset = scoreNum != null ? circumference * (1 - scoreNum / 100) : circumference;
 
+  // Which resume formats have already been pulled for THIS job. Mirrors the
+  // Apply → Applied feedback: a glance shows what you already downloaded.
+  // Per-browser (localStorage) — a download is a local act, not app state.
+  const [grabbed, setGrabbed] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    try { setGrabbed(JSON.parse(localStorage.getItem(`jh_dl_${job.id}`) || "{}")); }
+    catch { setGrabbed({}); }
+  }, [job.id]);
+  const markGrabbed = (fmt: string) => {
+    setGrabbed(g => {
+      const next = { ...g, [fmt]: true };
+      try { localStorage.setItem(`jh_dl_${job.id}`, JSON.stringify(next)); } catch { /* private mode */ }
+      return next;
+    });
+  };
+
   // On-demand qualify: jobs outside the auto-qualify scope show "–" — click
   // the ring to score just this one (single cheap model call).
   const [qualifying, setQualifying] = useState(false);
@@ -1153,25 +1169,33 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
                   <Ic d={I.download} size={12} color="#7c3aed" /> Tailored Resume
                 </span>
                 {([
-                  ["PDF",  () => downloadFile(api.pdfUrl(job.id), "resume.pdf").catch(e => onToast(e.message, "error"))],
-                  ["DOCX", () => downloadFile(api.docxUrl(job.id), "resume.docx").catch(e => onToast(e.message, "error"))],
-                ] as [string, () => void][]).map(([label, fn]) => (
-                  <button key={label} onClick={fn}
-                    style={{ padding: "0 11px", fontSize: 11.5, fontWeight: 600, cursor: "pointer", background: "transparent",
-                      color: "var(--tx-2)", border: "none", borderRight: "1px solid rgba(124,58,237,0.18)" }}
-                    onMouseOver={e => { e.currentTarget.style.background = "rgba(124,58,237,0.14)"; e.currentTarget.style.color = "#7c3aed"; }}
-                    onMouseOut={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--tx-2)"; }}>
-                    {label}
-                  </button>
-                ))}
-                <button onClick={() => { navigator.clipboard.writeText(job.tailored_resume || ""); onToast("Resume copied", "success"); }}
-                  title="Copy resume text"
-                  style={{ padding: "0 11px", fontSize: 11.5, fontWeight: 600, cursor: "pointer", background: "transparent",
-                    color: "var(--tx-2)", border: "none",
+                  ["PDF",  () => downloadFile(api.pdfUrl(job.id), "resume.pdf").then(() => markGrabbed("PDF")).catch(e => onToast(e.message, "error"))],
+                  ["DOCX", () => downloadFile(api.docxUrl(job.id), "resume.docx").then(() => markGrabbed("DOCX")).catch(e => onToast(e.message, "error"))],
+                ] as [string, () => void][]).map(([label, fn]) => {
+                  const done = !!grabbed[label];
+                  return (
+                    <button key={label} onClick={fn}
+                      title={done ? `${label} already downloaded for this job — click to download again` : `Download ${label}`}
+                      style={{ padding: "0 11px", fontSize: 11.5, fontWeight: 600, cursor: "pointer",
+                        background: done ? "rgba(16,185,129,0.14)" : "transparent",
+                        color: done ? "#10b981" : "var(--tx-2)", border: "none",
+                        borderRight: "1px solid rgba(124,58,237,0.18)",
+                        display: "inline-flex", alignItems: "center", gap: 4 }}
+                      onMouseOver={e => { e.currentTarget.style.background = done ? "rgba(16,185,129,0.22)" : "rgba(124,58,237,0.14)"; if (!done) e.currentTarget.style.color = "#7c3aed"; }}
+                      onMouseOut={e => { e.currentTarget.style.background = done ? "rgba(16,185,129,0.14)" : "transparent"; if (!done) e.currentTarget.style.color = "var(--tx-2)"; }}>
+                      {done && <Ic d={I.checkCircle} size={12} />}{label}
+                    </button>
+                  );
+                })}
+                <button onClick={() => { navigator.clipboard.writeText(job.tailored_resume || ""); markGrabbed("Copy"); onToast("Resume copied", "success"); }}
+                  title={grabbed.Copy ? "Already copied for this job — click to copy again" : "Copy resume text"}
+                  style={{ padding: "0 11px", fontSize: 11.5, fontWeight: 600, cursor: "pointer",
+                    background: grabbed.Copy ? "rgba(16,185,129,0.14)" : "transparent",
+                    color: grabbed.Copy ? "#10b981" : "var(--tx-2)", border: "none",
                     display: "inline-flex", alignItems: "center", gap: 4 }}
-                  onMouseOver={e => { e.currentTarget.style.background = "rgba(124,58,237,0.14)"; e.currentTarget.style.color = "#7c3aed"; }}
-                  onMouseOut={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--tx-2)"; }}>
-                  <Ic d={I.copy} size={13} /> Copy
+                  onMouseOver={e => { e.currentTarget.style.background = grabbed.Copy ? "rgba(16,185,129,0.22)" : "rgba(124,58,237,0.14)"; if (!grabbed.Copy) e.currentTarget.style.color = "#7c3aed"; }}
+                  onMouseOut={e => { e.currentTarget.style.background = grabbed.Copy ? "rgba(16,185,129,0.14)" : "transparent"; if (!grabbed.Copy) e.currentTarget.style.color = "var(--tx-2)"; }}>
+                  <Ic d={grabbed.Copy ? I.checkCircle : I.copy} size={13} /> {grabbed.Copy ? "Copied" : "Copy"}
                 </button>
               </div>
             )}

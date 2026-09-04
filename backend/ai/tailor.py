@@ -54,6 +54,8 @@ Return ONLY a compact JSON object, no prose, no markdown fences:
   "present": ["<JD tool already clearly evidenced in the resume>"],
   "missing": ["<JD tool required but absent or weak in the resume>"],
   "baseline_missing": ["<subset of missing that are UNIVERSAL BASELINE competencies>"],
+  "equivalent": ["<subset of missing that are a same-category swap for a tool the resume already shows, written as 'JD tool <- base tool', e.g. 'Splunk <- Datadog'>"],
+  "bridge_only": ["<subset of missing with NO category match in the resume at all — may only be bridged inside a bullet, never owned>"],
   "responsibilities": ["<6–8 non-tool DUTIES the JD names, in the JD's own nouns>"]
 }
 
@@ -84,6 +86,12 @@ Rules:
   wrote it down?" Yes → baseline_missing. A product, platform, language, or
   domain tool the candidate may simply not know (Salesforce, Ruby, Snowflake,
   a vendor suite) is NEVER baseline, no matter how essential the JD calls it.
+- equivalent vs bridge_only: split the rest of `missing` (after baseline) by
+  whether the resume shows a tool of the SAME product category. Datadog ->
+  Splunk is equivalent; Kafka -> a message queue is equivalent. A CAD tool,
+  an ERP, a domain practice (bill of materials) for a data engineer has no
+  category match: bridge_only. Nothing in bridge_only may ever appear in the
+  SKILLS section or the headline; a code guard removes it.
 - responsibilities: what the JD says the person DOES, not what they use.
   Include a duty if it appears in the title, the summary, or the first three
   responsibility lines, or repeats twice anywhere. Use the JD's own nouns
@@ -529,6 +537,8 @@ def tailor_prompt(resume_text: str, jd_text: str, context: dict,
         f"  present (KEEP — never drop): {_lst('present')}\n"
         f"  missing:           {_lst('missing')}\n"
         f"  baseline_missing:  {_lst('baseline_missing')}\n"
+        f"  equivalent (may be named directly, once): {_lst('equivalent')}\n"
+        f"  bridge_only (bullet bridge phrasing ONLY, never SKILLS or headline): {_lst('bridge_only')}\n"
         f"  responsibilities:  {_lst('responsibilities')}\n\n"
         + (("BASE NUMBERS TO KEEP (each stays in its own bullet's rewrite; a code "
             "check restores any you drop and removes any you invent):\n  "
@@ -1159,8 +1169,10 @@ def _clean_lists(text: str) -> tuple[str, int]:
 
 # ── Guard: every claimed Skill must be evidenced by an experience bullet ──────
 
-def _skills_claimed(text: str) -> list[str]:
-    """Items from the SKILLS section category lines."""
+def _skills_claimed(text: str, expand: bool = False) -> list[str]:
+    """Items from the SKILLS section category lines. With expand=True the
+    members of a parenthesised group are claims too: 'Azure (ADF, Microsoft
+    Fabric)' claims Azure, ADF and Microsoft Fabric — each must earn a bullet."""
     items, in_skills = [], False
     for ln in text.splitlines():
         s = ln.strip()
@@ -1169,7 +1181,15 @@ def _skills_claimed(text: str) -> list[str]:
             continue
         if in_skills and s.startswith(("•", "-", "*")) and ":" in s:
             _, _, rest = s.partition(":")
-            items.extend(i.strip() for i in _split_list_items(rest) if i.strip())
+            for it in _split_list_items(rest):
+                it = it.strip()
+                if not it:
+                    continue
+                items.append(it)
+                if expand:
+                    m = re.search(r"\((.*?)\)", it)
+                    if m:
+                        items.extend(x.strip() for x in _split_list_items(m.group(1)) if x.strip())
     return items
 
 
@@ -1229,8 +1249,11 @@ def _loose_pattern(core: str) -> str:
     return r"\b" + r"\W+(?:\w+\W+){0,2}".join(st + r"\w*" for st in stems)
 
 
-def _unevidenced(items: list[str], text: str) -> list[str]:
-    """The subset of `items` with no supporting line in EXPERIENCE/PROJECTS."""
+def _unevidenced(items: list[str], text: str, strict: bool = False) -> list[str]:
+    """The subset of `items` with no supporting line in EXPERIENCE/PROJECTS.
+    strict=True keeps only the literal and in-order loose matches plus the
+    acronym form ("MDM" proves "Master Data Management") — used for the
+    ownership check, where a shared plain word must prove nothing."""
     try:
         from resume_lint import _dynamic_coverage_pattern
     except ImportError:  # pragma: no cover — lint module optional
@@ -1251,6 +1274,14 @@ def _unevidenced(items: list[str], text: str) -> list[str]:
             # "Dimensional Modeling" is proven by "dimensional data models".
             loose = _loose_pattern(core)
             if loose and re.search(loose, blob):
+                continue
+            words = re.findall(r"[A-Za-z]+", core)
+            if len(words) >= 3:
+                acro = "".join(w[0] for w in words).upper()
+                if re.search(rf"(?<![A-Za-z0-9]){re.escape(acro)}(?![A-Za-z0-9])", cased):
+                    continue
+            if strict:
+                out.append(item)
                 continue
             # A DUTY phrase ("cleansing, organizing and transforming data") is
             # proven by one bullet that carries all but one of its stems, in
@@ -1396,7 +1427,7 @@ def _restore_present_tools(text: str, present: list, base_resume: str,
 
 def _orphan_skills(text: str) -> list[str]:
     """Skills-section items with no supporting line in EXPERIENCE/PROJECTS."""
-    return _unevidenced(_skills_claimed(text), text)
+    return _unevidenced(_skills_claimed(text, expand=True), text)
 
 
 
@@ -1453,6 +1484,50 @@ def _insert_skill_bullets(resume: str, additions: dict,
     return "\n".join(lines), added
 
 
+def _rewrite_skill_lines(text: str, drop: set[str]) -> tuple[str, list[str]]:
+    """Remove every SKILLS item (or parenthesised member) whose normalised
+    key is in `drop`. Returns (text, removed_names)."""
+    lines = text.split("\n")
+    removed: list[str] = []
+    in_skills = False
+    norm = lambda x: re.sub(r"[^a-z0-9]", "", x.lower())
+    for i, ln in enumerate(lines):
+        s = ln.strip()
+        if _is_section_hdr(s):
+            in_skills = "skill" in s.lower()
+            continue
+        if not (in_skills and s.startswith(("•", "-", "*")) and ":" in s):
+            continue
+        marker = s[0]
+        label, _, rest = s.partition(":")
+        kept: list[str] = []
+        changed = False
+        for it in _split_list_items(rest):
+            it = it.strip()
+            if not it:
+                continue
+            m = re.search(r"^(.*?)\s*\((.*?)\)\s*$", it)
+            if m:
+                head, inner = m.group(1).strip(), m.group(2)
+                if norm(head) in drop:
+                    removed.append(it); changed = True
+                    continue
+                members = [x.strip() for x in _split_list_items(inner) if x.strip()]
+                keep_m = [x for x in members if norm(x) not in drop]
+                if len(keep_m) != len(members):
+                    removed.extend(x for x in members if x not in keep_m); changed = True
+                kept.append(f"{head} ({', '.join(keep_m)})" if keep_m else head)
+            elif norm(it) in drop:
+                removed.append(it); changed = True
+            else:
+                kept.append(it)
+        if changed:
+            indent = ln[: len(ln) - len(ln.lstrip())]
+            label = label.lstrip("•-* ").rstrip()
+            lines[i] = f"{indent}{marker} {label}: {', '.join(kept)}" if kept else ""
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)), removed
+
+
 def _drop_unevidenced_skills(text: str, notes: list) -> str:
     """Last resort for the no-orphan invariant: a skill that still has no
     experience bullet after the guard rounds is removed from the SKILLS lines —
@@ -1461,29 +1536,10 @@ def _drop_unevidenced_skills(text: str, notes: list) -> str:
     if not orphans:
         return text
     keys = {re.sub(r"[^a-z0-9]", "", o.lower()) for o in orphans}
-    lines = text.split("\n")
-    removed: list[str] = []
-    in_skills = False
-    for i, ln in enumerate(lines):
-        s = ln.strip()
-        if _is_section_hdr(s):
-            in_skills = "skill" in s.lower()
-            continue
-        if in_skills and s.startswith(("•", "-", "*")) and ":" in s:
-            marker = s[0]
-            label, _, rest = s.partition(":")
-            items = [it.strip() for it in _split_list_items(rest) if it.strip()]
-            kept = [it for it in items
-                    if re.sub(r"[^a-z0-9]", "", it.lower()) not in keys]
-            if len(kept) != len(items):
-                removed.extend(it for it in items if it not in kept)
-                indent = ln[: len(ln) - len(ln.lstrip())]
-                label = label.lstrip("•-* ").rstrip()
-                lines[i] = (f"{indent}{marker} {label}: {', '.join(kept)}"
-                            if kept else "")
+    out, removed = _rewrite_skill_lines(text, keys)
     if removed:
         notes.append("skills trimmed (no supporting bullet): " + ", ".join(removed))
-        return re.sub(r"\n{3,}", "\n\n", "\n".join(lines))
+        return out
     return text
 
 
@@ -1782,6 +1838,182 @@ def _code_score(tailored: str, base_resume: str, job_description: str,
         "present": present,
         "missing": missing,
     }
+
+
+# ── Guard: a SKILLS item must be something the candidate owns ────────────────
+
+def _base_wrapped(base_resume: str) -> str:
+    """Whole base resume as one evidence blob for _unevidenced (every
+    non-header line counts, the base is the candidate's own truth)."""
+    return "EXPERIENCE:\nX @ Y | Z\n" + "\n".join(
+        "• " + ln.strip().lstrip("• ") for ln in base_resume.split("\n")
+        if ln.strip() and not _is_section_hdr(ln.strip()) and not _is_job_header_line(ln))
+
+
+def _strip_unowned_skills(text: str, base_resume: str, context: dict, notes: list) -> str:
+    """The writer may bridge a JD tool inside a bullet ("analogous to BoM
+    management") but may never list it as an owned skill. Live miss: an
+    aerospace JD produced a SKILLS row of Engineering BoM, Manufacturing BoM,
+    Change Management — none anywhere in the base. Allowed in SKILLS: what
+    the base resume states, a universal baseline duty, or a same-category
+    swap the analyze pass named. Everything else leaves SKILLS."""
+    base_blob = _base_wrapped(base_resume)
+    allowed_lists = [str(x).lower() for x in
+                     (context.get("baseline_missing") or []) + (context.get("equivalent") or [])]
+    drop: set[str] = set()
+    names: list[str] = []
+    for it in _skills_claimed(text, expand=True):
+        core = re.sub(r"\s*\(.*\)\s*", " ", it).strip()
+        if not core:
+            continue
+        if not _unevidenced([core], base_blob, strict=True):
+            continue
+        cl = core.lower()
+        if any(cl in a or a in cl for a in allowed_lists):
+            continue
+        drop.add(re.sub(r"[^a-z0-9]", "", core.lower()))
+        names.append(core)
+    if not drop:
+        return text
+    out, removed = _rewrite_skill_lines(text, drop)
+    if removed:
+        notes.append("owned-skill guard: removed from SKILLS (not in base, not baseline, "
+                     "not an equivalent swap): " + ", ".join(removed))
+    return out
+
+
+# ── Guard: a tool stays in the jobs where the base says it was used ──────────
+
+def _base_tool_list(base_resume: str) -> list[str]:
+    """The base resume's own skills list — the flat comma list under its
+    SKILLS header — plus any '• Category: a, b' rows it may use."""
+    tools: list[str] = []
+    in_skills = False
+    for ln in base_resume.split("\n"):
+        s = ln.strip()
+        if _is_section_hdr(s):
+            in_skills = "skill" in s.lower()
+            continue
+        if not in_skills or not s:
+            continue
+        rest = s.partition(":")[2] if (s.startswith(("•", "-", "*")) and ":" in s) else s
+        for it in _split_list_items(rest):
+            it = it.strip()
+            if it:
+                tools.append(it)
+                m = re.search(r"\((.*?)\)", it)
+                if m:
+                    tools.extend(x.strip() for x in _split_list_items(m.group(1)) if x.strip())
+    return tools
+
+
+def _base_job_blocks(base_resume: str) -> dict[str, str]:
+    """{company_key: lowercased bullets of that job} — stops at the next job
+    or section header, so the skills list never counts as a job."""
+    lines = base_resume.split("\n")
+    out: dict[str, str] = {}
+    for i, ln in enumerate(lines):
+        if not _is_job_header_line(ln):
+            continue
+        m = _JOB_HDR_RE.search(ln)
+        if not m:
+            continue
+        end = _job_block_end(lines, i)
+        out[m.group(1).strip().lower()] = "\n".join(lines[i + 1:end]).lower()
+    return out
+
+
+def _scope_leaks(text: str, base_resume: str, context: dict) -> dict[int, list[str]]:
+    """{tailored line index: [tools]} where a bullet names a tool the base
+    resume uses at OTHER jobs but not at this one. Tools the base lists only
+    in its skills section (no job) float freely. Under an active cloud swap
+    the target cloud's services are exempt in the two swapped jobs."""
+    base_jobs = _base_job_blocks(base_resume)
+    if not base_jobs:
+        return {}
+    target = (context.get("target_cloud") or "None")
+    swap = target in _CLOUD_SIG
+    universe = {str(t) for t in (context.get("target_tools") or [])}
+    universe.update(_base_tool_list(base_resume))
+    universe.update(_skills_claimed(text, expand=True))
+
+    def _hits(tool: str, blob: str) -> bool:
+        try:
+            from resume_lint import _dynamic_coverage_pattern
+            return bool(re.search(_dynamic_coverage_pattern(tool), blob))
+        except Exception:  # noqa: BLE001
+            return tool.lower() in blob
+
+    anchored: dict[str, set[str]] = {}
+    for tool in universe:
+        core = re.sub(r"\s*\(.*\)\s*", " ", tool).strip()
+        if len(core) < 3 or _is_soft_skill(core):
+            continue
+        where = {c for c, b in base_jobs.items() if _hits(core, b)}
+        if where:
+            anchored[core] = where
+    lines = text.split("\n")
+    hdr_idx = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]
+    leaks: dict[int, list[str]] = {}
+    for j, h in enumerate(hdr_idx):
+        m = _JOB_HDR_RE.search(lines[h])
+        company = m.group(1).strip().lower() if m else ""
+        if company not in base_jobs:
+            continue
+        end = _job_block_end(lines, h)
+        for i in range(h + 1, end):
+            s = lines[i].strip()
+            if not s.startswith("•") or _TECH_LINE_RE.match(s):
+                continue
+            low = s.lower()
+            for tool, where in anchored.items():
+                if company in where or not _hits(tool, low):
+                    continue
+                if swap and j < 2 and any(sig.strip() in tool.lower() for sig in _CLOUD_SIG[target]):
+                    continue
+                leaks.setdefault(i, []).append(tool)
+    return leaks
+
+
+async def _fix_scope_leaks(text: str, base_resume: str, context: dict, notes: list,
+                           **cheap_kw) -> str:
+    leaks = _scope_leaks(text, base_resume, context)
+    if not leaks:
+        return text
+    jobs = {i: ("Remove " + ", ".join(f"'{t}'" for t in ts)
+                + " from this bullet: the candidate did not use "
+                + ("it" if len(ts) == 1 else "them") + " in this job. Keep every other tool, "
+                "number and claim; if the bullet was only about that tool, describe the "
+                "same work with the tools that remain.")
+            for i, ts in leaks.items()}
+    before = text.split("\n")
+    fixed = await _fix_lines(text, jobs, notes, "scope_fix", **cheap_kw)
+    after = fixed.split("\n")
+    if len(after) != len(before):
+        notes.append("scope guard: fix rejected (line count changed)")
+        return text
+    claimed = _skills_claimed(text, expand=True)
+    ok, bad = 0, []
+    for i, ts in leaks.items():
+        new = after[i]
+        still = [t for t in ts if not _unevidenced([t], "EXPERIENCE:\nX @ Y | Z\n" + new)]
+        gone_low = [t.lower() for t in ts]
+        lost = [sk for sk in _line_skills(before[i], claimed)
+                if sk not in _line_skills(new, claimed)
+                and not any(g in sk.lower() or sk.lower() in g for g in gone_low)]
+        nums_ok = _num_tokens(before[i]) == _num_tokens(new)
+        if not still and not lost and nums_ok and len(new.split()) >= 6:
+            ok += 1
+        else:
+            after[i] = before[i]
+            bad.append(f"line {i}: " + (f"still names {', '.join(still)}" if still else
+                                        f"dropped {', '.join(lost)}" if lost else
+                                        "figure changed" if not nums_ok else "too short"))
+    notes.append(f"scope guard: {sum(len(v) for v in leaks.values())} tool mention(s) outside "
+                 f"the job the base places them in; {ok} bullet(s) fixed"
+                 + (f"; unresolved {len(bad)}: " + "; ".join(bad) if bad else "")
+                 + " — " + "; ".join(f"line {i}: {', '.join(ts)}" for i, ts in leaks.items()))
+    return "\n".join(after)
 
 
 # ── Guard: numbers — every real base figure survives, no figure is invented ──
@@ -2689,6 +2921,11 @@ async def tailor_resume(base_resume: str, job_description: str,
     tailored = _restore_present_tools(tailored, context.get("present") or [],
                                       base_resume, notes)
 
+    # Guard (c1b): SKILLS may only claim what the base states, a universal
+    # baseline duty, or a same-category swap — a bridged JD tool lives in a
+    # bullet's bridge phrasing, never as an owned skill.
+    tailored = _strip_unowned_skills(tailored, base_resume, context, notes)
+
     # Guard (c2): every skill claimed in SKILLS must have an experience bullet
     # behind it — orphans get a modest scope bullet written into the job where
     # that work plausibly happened. Also chased: the JD's universal-baseline
@@ -2750,6 +2987,11 @@ async def tailor_resume(base_resume: str, job_description: str,
     # code, repaired by the cheap model only where flagged, verified in code.
     # Live misses: "roughly 25%" and "40%" deleted from base bullets, no
     # short bullet in any job, "multi-tenant" four times.
+    # Guard (g0): a tool the base anchors to specific jobs must not migrate
+    # into another job's bullets (live miss: Snowflake, real only at JPMC,
+    # written into two Cargill bullets for a Snowflake JD).
+    tailored = await _fix_scope_leaks(tailored, base_resume, context, notes, **cheap_kw)
+
     tailored = await _polish_numbers_and_length(
         tailored, base_resume, job_description, context.get("target_tools") or [],
         inserted, notes, **cheap_kw)

@@ -1335,8 +1335,9 @@ def _unevidenced(items: list[str], text: str) -> list[str]:
             # proven by one bullet that carries all but one of its stems, in
             # any order — same line only, so scattered words never add up.
             stems = _stems(core)
+            need = max(2, -(-len(stems) * 3 // 5))      # ceil(60%), at least 2
             if len(stems) >= 3 and any(
-                    sum(1 for st in stems if re.search(rf"\b{st}", bl_line)) >= len(stems) - 1
+                    sum(1 for st in stems if re.search(rf"\b{st}", bl_line)) >= need
                     for bl_line in blob.split("\n")):
                 continue
         except re.error:

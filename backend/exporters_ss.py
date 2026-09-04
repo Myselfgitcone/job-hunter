@@ -125,11 +125,17 @@ _SECTION_LINE = re.compile(r"^[A-Z][A-Z &/,\-']{3,}:?$")
 
 
 def _clean_contact(text: str) -> str:
-    """Phone first, email second, drop city/state and everything else."""
+    """Phone first, email second, then a City, ST if present; drop links and
+    street addresses (recruiter platforms filter by location, so the city
+    stays — nothing more personal than that goes on the page)."""
     parts = [p.strip() for p in re.split(r"[|•]", text) if p.strip()]
     phone = next((p for p in parts if re.search(r"\d{3}[)\s.\-]*\d{3}[\s.\-]*\d{4}", p)), None)
     email = next((p for p in parts if "@" in p), None)
-    keep = [x for x in (phone, email) if x]
+    # "Maryland Heights, MO" / "Austin, Texas": has a comma, no digits, no URL.
+    city = next((p for p in parts
+                 if "," in p and not re.search(r"\d|@|http|linkedin|github|www\.", p, re.I)
+                 and len(p) <= 40), None)
+    keep = [x for x in (phone, email, city) if x]
     return " | ".join(keep) if keep else text
 
 

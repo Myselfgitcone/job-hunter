@@ -104,9 +104,9 @@ _DEFAULT_RATE = (3.0, 15.0)   # unknown model → assume Sonnet-tier (never unde
 
 _usage_sink: contextvars.ContextVar = contextvars.ContextVar("_usage_sink", default=None)
 
-# Prompt caching is opt-in per request: ONLY the checkbox batch-tailor flow turns
-# it on (many calls close together → cache pays). A single/manual tailor leaves
-# it off → always baseline cost, never the 1.25x write premium.
+# Prompt caching is per request context; the tailor endpoint turns it on for
+# every run (manual or batch) since the system prompt repeats verbatim and a
+# cache read costs 0.1x. Other callers leave it off.
 _cache_ok: contextvars.ContextVar = contextvars.ContextVar("_cache_ok", default=False)
 
 
@@ -363,9 +363,8 @@ async def _call_anthropic(system: str, user: str, api_key: str,
     client = anthropic.AsyncAnthropic(api_key=api_key, timeout=timeout, max_retries=1)
     label = f"[{pass_name}]" if pass_name else "[anthropic]"
     start = time.perf_counter()
-    # Cache the big static system prompt ONLY when the batch flow opted in
-    # (_cache_ok). Single/manual tailors never cache → always baseline cost,
-    # no 1.25x write premium. Batches save (prime warms, rest read at 0.1x).
+    # Cache the big static system prompt when the caller opted in (_cache_ok):
+    # first call writes at 1.25x, later calls in the window read at 0.1x.
     _system_param: object = system
     if system and len(system) > 4000 and _cache_ok.get():
         _system_param = [{"type": "text", "text": system,

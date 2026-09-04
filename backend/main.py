@@ -3430,10 +3430,11 @@ async def get_daily_usage(user_id: str = Depends(get_current_user_id)):
 
 @app.post("/api/jobs/{job_id}/tailor")
 async def tailor_job(job_id: str, batch: bool = False, user_id: str = Depends(get_current_user_id)):
-    # Prompt caching only for the checkbox batch flow (?batch=1) — many calls
-    # close together make it pay. Single/manual tailors stay at baseline cost.
+    # Prompt caching always on: the tailor system prompt is the same ~5k tokens
+    # every run, so a second tailor within the cache window reads it at 0.1x.
+    # A lone run pays the 1.25x write once (~+0.4c); a burst saves ~2c each.
     from ai.llm import set_cache_enabled
-    set_cache_enabled(batch)
+    set_cache_enabled(True)
     async with SessionLocal() as db:
         used = await _get_daily_tailor_count(user_id, db)
         if used >= DAILY_TAILOR_LIMIT:

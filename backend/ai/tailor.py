@@ -6,8 +6,10 @@ Replaces the legacy multi-pass engine (kept at ai/tailor_legacy.py.bak).
 Pipeline — 4 AI calls:
   1. ANALYZE  (cheap model)  -> target cloud, company, JD tools, present/missing
   2. TAILOR   (main model)   -> the full rewritten resume
-  3. QA FIXER (cheap model)  -> Technologies Used, metric de-stacking, junk
-                                strip, dropped-cloud restoration
+  3. QA (code flags lines, cheap model rewrites only those) -> clichés,
+                                repeated verbs, stacked figures, summary tense,
+                                dropped-cloud restoration; junk strip and
+                                Technologies Used lines are pure code
   4. SCORE    (cheap model)  -> ATS / recruiter / hiring-manager gates
 
 Plus 3 deterministic (free) code steps:
@@ -120,16 +122,9 @@ reading of the JD that every stage uses. Use each field:
 ================================================================================
 OUTPUT FORMAT (plain text — NOT markdown. No #, no **, no code fences.)
 ================================================================================
-Line 1:  `<Candidate Full Name> — <Exact Job Title from the JD>`
-         - Separate the name and the title with an EM-DASH (—). Never a hyphen,
-           en-dash, pipe, or colon — those are reserved for posting suffixes.
-         - Use ONLY the clean, short job title exactly as the JD states it
-           (e.g. "Analytics Engineer", "Senior Database Developer", "Enterprise
-           Database Consultant"). Do NOT append domains, tools, seniority, or extra
-           qualifiers ("– Geospatial & ArcGIS", "| Snowflake", "(Senior)"). Just the title.
-         - Postings often pad the title ("Data Migration Engineer – SQL Server to
-           Snowflake & Matillion"). Take only the part before the suffix:
-           "Data Migration Engineer".
+Line 1:  `<Candidate Full Name> — <Exact Job Title from the JD>` — em-dash between
+         them; the clean, short title only (no suffix, tool, domain, or seniority
+         the JD's posting title padded on).
 Line 2:  `<phone> | <email> | <City, ST>`   (phone FIRST, then email, then the
          candidate's city and state from the base resume — omit the city part
          if the base has none. No street address, no linkedin.)
@@ -215,9 +210,7 @@ PROFESSIONAL EXPERIENCE:
 For each job, in this exact shape — the job header line is NOT a bullet:
 `<Job Title> @ <Company> | <Location> <Month Year> – <Month Year or Present>`
 then the LADDER bullets (STYLE below), each starting with "• ",
-then ONE final line (not a bullet): `Technologies Used: <comma-separated tools for THAT job>`
-EVERY job MUST end with its own Technologies Used line — never omit it, even when
-trimming for length. No job may be left without one.
+then ONE final line (not a bullet): `Technologies Used: <comma-separated tools for THAT job>`.
 
 PROJECTS:
 • ONLY if the base resume ALREADY lists real projects. If none, OMIT the whole
@@ -242,12 +235,9 @@ Each Experience bullet = take ONE responsibility or skill from the JD and rewrit
 it as something the candidate DID at that real job, in plain professional English.
 
   Shape:  [Action verb] + [the JD duty, reworded] + [tool/skill] + [brief context]
-  Length: VARIED — one clean past-tense sentence, but bullet lengths must differ.
-    Most bullets land 15–24 words. Every job with 4+ bullets MUST also contain at
-    least one SHORT bullet (8–12 words — e.g. "Mentored two junior engineers on
-    Spark tuning and code review.") and MAY run one longer bullet up to 30 words.
-    Never write three consecutive bullets within ±2 words of the same length — a
-    uniform wall of same-length bullets is the strongest machine-written tell.
+  Length: one clean past-tense sentence, mostly 15–24 words, never past 30;
+    every job with 4+ bullets carries one SHORT 8–12-word bullet, and lengths
+    vary bullet to bullet.
 
 DO:
 - REWRITE the JD's requirement — never paste the JD sentence verbatim. Change the
@@ -279,15 +269,8 @@ VERB REGISTER — match the JD's seniority (critical):
   of "mentored the team". The JD's seniority never overrides tenure.
 - Either way, vary the opening verbs so bullets don't read repetitively.
 
-HOW A BULLET MUST END (it is checked by an automated truncation detector):
-- Never end on a bare "-ing" word: "...using adaptive query execution and
-  caching." reads as cut off. Finish the thought — "...and caching strategies."
-- If you close with a ", <verb>ing ..." clause, give it at least THREE words
-  after the gerund. "...orchestration, improving pipeline reliability." trips
-  the detector; "...orchestration, improving reliability across production
-  workloads." does not.
-- Never end on a preposition or connective (of, for, with, and, to, in, across).
-- Every bullet ends on a complete noun phrase and reads as a finished sentence.
+Every bullet ends on a complete noun phrase — never on a bare "-ing" word, a
+preposition, or a two-word ", improving reliability." tail.
 
 IMPACT LADDER — a few standout bullets per job, most are scope:
 - Real strong resumes do NOT make every bullet a heroic achievement (that reads
@@ -304,68 +287,34 @@ IMPACT LADDER — a few standout bullets per job, most are scope:
 - Put the strongest impact bullets at the TOP of the most recent job — that's
   what a recruiter reads first.
 
-LEAD WITH THE JD'S OWN VOCABULARY (recruiter-scan rule):
-- Identify the JD's DOMINANT technology/discipline — the one it names most
-  often (e.g. a JD that says "Informatica PowerCenter" ten times and never
-  says AWS). The first TWO bullets of EVERY job must speak that vocabulary.
-- A brand or platform the JD NEVER mentions must not open a bullet in the top
-  two of any job. Say the work in the JD's terms and keep the unrelated
-  product name later in the sentence, or in Technologies Used.
-  BAD  (JD is Informatica/ETL): "Architected pipelines on AWS and Databricks…"
-  GOOD: "Designed and delivered enterprise ETL workflows — source-to-target
-         mappings, transformation logic, and performance tuning — across
-         cloud and on-premise platforms."
-- Where the candidate's REAL experience with the dominant tool sits in an
-  older job, keep it there truthfully, but make sure the SUMMARY and that
-  job's FIRST bullet both carry it. Never move a tool into a job that did
-  not use it.
+LEAD WITH THE JD'S OWN VOCABULARY: the first TWO bullets of every job speak the
+JD's dominant technology/discipline (the one it names most); a brand the JD never
+mentions does not open a top-two bullet. Where the candidate's real experience
+with that dominant tool sits in an older job, keep it there truthfully and make
+the SUMMARY and that job's first bullet carry it — never move a tool into a job
+that did not use it.
 
-NEVER USE THESE (they read robotic / templated) — rephrase with a real verb:
-- "Responsible for", "Tasked with", "Utilized", "Leveraged", "Spearheaded",
-  "Worked on", "Helped with", "Involved in", "In charge of".
-NO DASHES (the most recognizable AI-writing tell) — never put an em or en dash
-(— or –) inside a bullet or summary line:
-- No dash-wrapped asides: "on AWS — S3, Athena — with…" → "on AWS (S3, Athena) with…"
-- No dash-before-payoff: "…lineage tracking — to catch anomalies" →
-  "…lineage tracking to catch anomalies" or use a comma.
-- Use a comma, colon, parentheses, "including", or "such as" instead.
-- Dashes exist ONLY in the headline (Name — Title) and job-header date ranges.
-Also avoid flowery editorial phrases no human writes on a resume: "with a
-pragmatic eye toward", "with an emphasis on excellence", "seamlessly",
-"cutting-edge", "robust and scalable" as a pair. Say the plain thing.
-VARY THE WRITING so it reads human, not machine-generated:
-- No two bullets in the SAME job may start with the same verb.
-- Vary sentence shape across bullets — don't run the identical
-  "[Verb] [noun] using [tool] to [result]" template down the whole job.
-- Mix bullet LENGTHS per the Length rule above — short bullets are normal in
-  real resumes; do not pad a naturally short point out to match its neighbors.
-- Not every bullet needs a tool name. 1–2 bullets per job may be a plain duty
-  or collaboration line with no technology in it at all.
+WRITE LIKE A HUMAN:
+- Open with a real action verb — never "Responsible for", "Tasked with",
+  "Utilized", "Leveraged", "Spearheaded", "Worked on", "Helped with",
+  "Involved in", "In charge of".
+- No em or en dash inside a bullet or summary line (comma, colon, parentheses,
+  "including", "such as" instead); dashes live only in the headline and date ranges.
+- No flowery editorial phrases ("with a pragmatic eye toward", "seamlessly",
+  "cutting-edge", "robust and scalable" as a pair). Say the plain thing.
+- No two bullets in the SAME job start with the same verb; vary sentence shape
+  rather than running one "[Verb] [noun] using [tool] to [result]" template.
+- 1–2 bullets per job may be a plain duty or collaboration line with no tool in it.
+- Do NOT copy JD lines word-for-word. Do NOT append measurement-tool clauses
+  ("as measured in PagerDuty", "tracked via CloudWatch"). No vague intensifiers
+  (significantly, substantially, meaningfully). Do NOT metric-stuff.
 
-DO NOT:
-- Do NOT copy JD lines word-for-word.
-- Do NOT append measurement-tool clauses ("as measured in PagerDuty", "tracked via
-  CloudWatch", "confirmed via billing dashboards"). Ever.
-- Do NOT use vague intensifiers (significantly, substantially, measurably, greatly).
-- Do NOT metric-stuff.
-
-================================================================================
-METRIC POLICY — real numbers survive, invented numbers never exist
-================================================================================
-- KEEP EVERY number the base resume states. Never drop a real number to hit a
-  count or to make room.
-- Invented numbers: ZERO. Never a percentage, count, dollar, or time figure
-  that the base does not state. If you have no real number, end the bullet on a
-  plain qualitative outcome instead. Do NOT copy a figure from the JD into the
-  candidate's history — the JD's "100+ pipelines" is the employer's scale, not
-  the candidate's achievement.
-- Scale words (terabytes, millions of rows, dozens of feeds, multi-region) are
-  not numbers — use them whenever the base supports them.
-- One numeric figure per bullet. If a base bullet carries two, keep the
-  stronger and convert the other to a scale word.
-- Put each job's strongest REAL number within its first three bullets — but the
-  dominant-tool / JD-vocabulary rule for the top bullets comes first; a number
-  never displaces the JD's core tool from the opening line.
+METRIC POLICY: keep EVERY number the base resume states, in its own bullet's
+rewrite; invent NONE (no percentage, count, dollar, or time figure the base lacks,
+and never a figure copied from the JD); one figure per bullet — a second one
+becomes a scale word (terabytes, millions of rows, dozens of feeds). Each job's
+strongest real number sits within its first three bullets, behind the JD's
+dominant tool.
 
 ================================================================================
 "NOT IN THE JD" LOGIC (fill order)
@@ -508,16 +457,11 @@ honest gaps are tools they lack and cannot bridge.
 GLOBAL RULES
 ================================================================================
 - Preserve real employers, dates, locations, education, and certifications EXACTLY.
-- JOB TITLES — EVERY job in PROFESSIONAL EXPERIENCE keeps its EXACT base-resume
-  title, unchanged, on every application. Employment-history titles are verified
-  in background checks; a mismatch rescinds offers. The JD's role belongs ONLY in
-  the headline (Line 1) — never in any experience entry's title. Company,
-  location, and dates never change either.
-- Do NOT invent employers, dates, degrees, certifications, or projects, and never
-  fabricate or alter any experience title.
-- YEARS OF EXPERIENCE: state exactly what the base resume supports. NEVER inflate
-  to match the JD. If the resume shows 5+ years and the JD asks for 13+, write
-  "5+ years" — do not bump it. Ignore any years/seniority value in the missing-tools list.
+- EVERY experience entry keeps its EXACT base-resume title (background checks
+  verify them); the JD's role belongs ONLY in the headline.
+- Do NOT invent employers, dates, degrees, certifications, or projects.
+- YEARS OF EXPERIENCE: state exactly what the base resume supports, never the
+  JD's minimum.
 - SECURITY CLEARANCE: NEVER claim or imply a clearance (Top Secret, TS, TS/SCI,
   Secret, Public Trust, "TS-clearable", "clearance-eligible") unless the BASE
   resume explicitly states it. If the JD requires one and the resume lacks it,
@@ -525,70 +469,11 @@ GLOBAL RULES
 - SCOPE vs TENURE: keep the number of major initiatives realistic for the role's
   duration and level. Do NOT cram 8 architect-level initiatives into a <2-year
   IC "Engineer" role, and do NOT imply Architect scope under an IC title.
-- List each employer/role ONCE. Never output a duplicate job entry or a stub like
-  "(See above)" / "consolidated under…". If the same company appears twice, merge
-  into a single entry.
-- If a field (location, dates) is unknown, OMIT it entirely. Never write filler
-  like "Location Not Listed", "N/A", or "Not Specified".
+- List each employer/role ONCE; never a duplicate entry or a "(See above)" stub.
+- If a field (location, dates) is unknown, OMIT it — never "Location Not
+  Listed" / "N/A" filler.
 - Output plain text only, in the format above. No markdown headers, no asterisks,
   no horizontal rules, no commentary, no code fences."""
-
-
-QA_FIXER_SYSTEM = """You are a resume QA fixer. You receive a finished resume and
-fix a fixed checklist of issues, then return the FULL corrected resume. This is a
-surgical pass — do NOT rewrite good content.
-
-HARD CONSTRAINTS (never violate):
-- Keep EVERY bullet. Do NOT delete, merge, or split bullets. The bullet count per
-  job must stay the same.
-- Do NOT change names, job titles, companies, dates, education, or the section order.
-- Do NOT add new numbers or new claims.
-- Keep the exact same plain-text format: UPPERCASE section headers with a colon,
-  "• " bullets, job headers as "Title @ Company | Location Dates". No markdown.
-
-FIX THIS CHECKLIST:
-1. TECHNOLOGIES USED: every job under PROFESSIONAL EXPERIENCE MUST end with a
-   `Technologies Used: ...` line. If a job is missing one, ADD it — build the
-   list from the tools already named in THAT job's own bullets (you may include a
-   couple of closely-related tools from the resume's SKILLS section). Never remove
-   an existing Technologies Used line.
-2. NUMBERS: at most ONE number per bullet. If a bullet has two or more, keep the
-   single strongest and reword the others as plain words. Do not invent numbers.
-3. JUNK: delete any leaked/internal instruction text, placeholder text
-   ("Location Not Listed", "N/A", "See above", "Fabricated…"), bulletless duplicate
-   job stubs, stray horizontal rules (---), and any leftover markdown (#, **).
-4. EMPTY SECTIONS: delete any section header that has nothing under it.
-5. TRUNCATED-LOOKING ENDINGS: an automated detector flags any experience bullet
-   that ends on a bare "-ing" word ("...and caching."), on a preposition or
-   connective, or on a short ", <verb>ing <one or two words>." tail with no
-   number in it. Rewrite ONLY the ending of such bullets so they close on a
-   complete noun phrase — extend the closing clause to three or more words
-   after the gerund, or reword it. Do not add numbers and do not change the
-   bullet's meaning or its tools.
-6. TEMPLATED WORDING: rewrite any bullet that starts with a cliché — "Responsible
-   for", "Tasked with", "Utilized", "Leveraged", "Spearheaded", "Worked on",
-   "Helped with", "Involved in", "In charge of" — to lead with a real action verb
-   (Built, Designed, Architected, Migrated, Optimized, Automated, Led…). Also, if
-   two bullets in the SAME job start with the same verb, change one so no verb
-   repeats within a job. Reword only; keep the meaning, tools, and any number.
-7. CLOUD RESTORATION (only if a note below names jobs + clouds): for each named
-   job, WEAVE that cloud naturally into 1–2 of its existing bullets AND into its
-   Technologies Used line, sitting alongside the tools already there (e.g. "on AWS
-   and Databricks, built dbt models…"). Do NOT add or remove bullets — only reword
-   existing ones. Do NOT touch jobs not named.
-8. DASHES: if any bullet or summary line contains an em or en dash (— or –),
-   rewrite that spot with a comma, colon, parentheses, "including", or "such as"
-   so the sentence reads naturally. The headline (Name — Title) and job-header
-   date ranges keep their dashes.
-9. SUMMARY TENSE: summary lines about the current job or general capability
-   are present tense; only a line about a past employer is past tense. Fix a
-   past-tense verb that describes the current (most recent, "Present") job.
-10. INTENSIFIERS: delete "significantly", "substantially", "meaningfully",
-   "measurably", "greatly", "dramatically" wherever they appear; do not replace
-   them with a number.
-
-Output ONLY the corrected resume in the same plain-text format — no commentary,
-no code fences."""
 
 
 FRAGMENT_FIX_SYSTEM = """You are a resume line editor. Each input line is a
@@ -701,13 +586,6 @@ def tailor_prompt(resume_text: str, jd_text: str, context: dict,
         "Job 1 & 2 when a target cloud exists; tools mirrored in all jobs)."
     )
 
-
-def qa_fixer_prompt(tailored: str, cloud_directive: str = "") -> str:
-    extra = f"\n\n{cloud_directive}" if cloud_directive else ""
-    return (
-        "Fix the checklist issues in this resume and return the full corrected "
-        "text. Keep every bullet." + extra + "\n\n" + tailored
-    )
 
 
 def score_prompt(jd_text: str, tailored: str, target_tools: list | None = None) -> str:
@@ -839,13 +717,6 @@ def _missing_native_clouds(tailored: str, base_resume: str, target: str) -> dict
         missing[company] = real
     return missing
 
-
-def _cloud_directive(missing: dict) -> str:
-    if not missing:
-        return ""
-    parts = "; ".join(f"{c.title()} used {cl}" for c, cl in missing.items())
-    return ("CLOUD RESTORATION NOTE — these jobs used a real cloud the draft dropped; "
-            "weave it into their bullets and Technologies Used per rule 5: " + parts + ".")
 
 
 def _backstop_native_clouds(tailored: str, missing: dict) -> str:
@@ -1775,10 +1646,8 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
     # Caps full but skills still unbacked (live miss: Java, a JD requirement
     # the base resume genuinely lists, dropped because every job was at its
     # cap) — weave each into an EXISTING bullet of the right job instead.
-    for _round in range(2):
-        chase = _orphan_skills(resume) + _unevidenced(baseline, resume)
-        if not chase:
-            break
+    chase = _orphan_skills(resume) + _unevidenced(baseline, resume)
+    if chase:
         resume = await _weave_orphans(resume, job_description, notes, chase,
                                       jd_terms=jd_terms, **cheap_kw)
     # Whatever still lacks a bullet leaves the SKILLS list — no orphans, ever.
@@ -2394,6 +2263,152 @@ def _trim_to_budget(text: str, inserted: list, base_resume: str, notes: list,
     return out
 
 
+# ── Guard: targeted QA — code finds the lines, the cheap model fixes only them ─
+
+_JUNK_LINE_RE = re.compile(
+    r"^\s*(?:•\s*)?(?:location not listed|n/?a|not specified|see above|"
+    r"\(?consolidated under[^)]*\)?|fabricated[^\n]*|\[?end of resume\]?)\s*\.?\s*$", re.I)
+_CLICHE_RE = re.compile(
+    r"^(?:responsible for|tasked with|utilized|leveraged|spearheaded|worked on|"
+    r"helped with|involved in|in charge of)\b", re.I)
+
+
+def _strip_junk_lines(text: str) -> tuple[str, int]:
+    lines = text.split("\n")
+    kept = [ln for ln in lines if not _JUNK_LINE_RE.match(ln)]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)), len(lines) - len(kept)
+
+
+def _ensure_tech_lines(text: str) -> tuple[str, int]:
+    """A job without a Technologies Used line gets one built from the SKILLS
+    items that its own bullets actually name — nothing the job never used."""
+    lines = text.split("\n")
+    skills = _skills_claimed(text)
+    hdr_idx = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]
+    added = 0
+    for h in reversed(hdr_idx):
+        end = _job_block_end(lines, h)
+        block = lines[h + 1:end]
+        if any(_TECH_LINE_RE.match(ln.strip()) for ln in block):
+            continue
+        bullets = "\n".join(ln for ln in block if ln.lstrip().startswith("•"))
+        if not bullets:
+            continue
+        found = [sk for sk in skills
+                 if not _unevidenced([sk], "EXPERIENCE:\nX @ Y | Z\n" + bullets)]
+        if not found:
+            continue
+        # insert after the last non-empty line of the block
+        at = end
+        while at > h + 1 and not lines[at - 1].strip():
+            at -= 1
+        lines.insert(at, "Technologies Used: " + ", ".join(dict.fromkeys(found[:_TECH_MAX])))
+        added += 1
+    return "\n".join(lines), added
+
+
+def _qa_flags(text: str, missing_clouds: dict) -> dict[int, str]:
+    lines = text.split("\n")
+    flags: dict[int, str] = {}
+
+    def _add(i: int, instr: str) -> None:
+        flags[i] = (flags.get(i, "") + " " + instr).strip()
+
+    # cliché openers, repeated opening verbs, stacked figures — per job
+    for _, bl in _job_bullet_lines(text):
+        seen_verbs: dict[str, int] = {}
+        for i in bl:
+            body = lines[i].lstrip()[1:].strip()
+            if _CLICHE_RE.match(body):
+                _add(i, "Open with a real action verb instead of this templated phrase.")
+            first = re.match(r"[A-Za-z][A-Za-z-]*", body)
+            verb = first.group(0).lower() if first else ""
+            if verb:
+                if verb in seen_verbs:
+                    _add(i, f"Start with a different verb than '{first.group(0)}' (already used in this job); keep the meaning.")
+                else:
+                    seen_verbs[verb] = i
+            figs = _num_tokens(body)
+            if len(figs) >= 2:
+                _add(i, f"Keep only the strongest one of the figures {', '.join(sorted(figs))}; write the others as plain words.")
+    # summary: past tense about the current employer
+    hdr_idx = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]
+    cur = ""
+    if hdr_idx and re.search(r"\bpresent\b", lines[hdr_idx[0]], re.I):
+        m = _JOB_HDR_RE.search(lines[hdr_idx[0]])
+        cur = m.group(1).strip() if m else ""
+    for i in _summary_lines(text):
+        body = lines[i].lstrip("• ").strip()
+        first = re.match(r"[A-Za-z]+", body)
+        if cur and first and first.group(0).lower().endswith("ed") \
+                and re.search(rf"\b{re.escape(cur)}\b", body, re.I):
+            _add(i, f"Present tense: this describes the current employer ({cur}).")
+    # dropped real cloud: weave into the job's first two bullets + its tools line
+    for company, cloud in (missing_clouds or {}).items():
+        for h in hdr_idx:
+            m = _JOB_HDR_RE.search(lines[h])
+            if not m or m.group(1).strip().lower() != company:
+                continue
+            end = _job_block_end(lines, h)
+            bl = [i for i in range(h + 1, end) if lines[i].lstrip().startswith("•")
+                  and not _TECH_LINE_RE.match(lines[i].strip())]
+            for i in bl[:2]:
+                _add(i, f"Weave {cloud} naturally into this bullet alongside the tools already there (e.g. 'on {cloud} and ...').")
+            for i in range(h + 1, end):
+                if _TECH_LINE_RE.match(lines[i].strip()):
+                    _add(i, f"Add {cloud} to this list.")
+    return flags
+
+
+async def _targeted_qa(text: str, missing_clouds: dict, notes: list, **cheap_kw) -> str:
+    flags = _qa_flags(text, missing_clouds)
+    if not flags:
+        return text
+    before = text.split("\n")
+    fixed = await _fix_lines(text, flags, notes, "qa_fix", **cheap_kw)
+    after = fixed.split("\n")
+    if len(after) != len(before):
+        notes.append("qa fix rejected (line count changed)")
+        return text
+    kept, reverted = 0, []
+    for i, instr in flags.items():
+        old, new = before[i], after[i]
+        ob = old.lstrip()[1:].strip() if old.lstrip().startswith("•") else old.strip()
+        nb = new.lstrip()[1:].strip() if new.lstrip().startswith("•") else new.strip()
+        ok = bool(nb)
+        wc_old, wc_new = len(ob.split()), len(nb.split())
+        if ok and not (0.5 * wc_old <= wc_new <= 1.6 * wc_old + 4):
+            ok = False
+        if ok and "templated" in instr and _CLICHE_RE.match(nb):
+            ok = False
+        if ok and "different verb" in instr:
+            want = re.search(r"than '([^']+)'", instr)
+            f_new = re.match(r"[A-Za-z][A-Za-z-]*", nb)
+            if want and f_new and f_new.group(0).lower() == want.group(1).lower():
+                ok = False
+        if ok and "strongest one" in instr:
+            if len(_num_tokens(nb)) > 1 or not _num_tokens(nb) <= _num_tokens(ob):
+                ok = False
+        if ok and "Present tense" in instr:
+            f_new = re.match(r"[A-Za-z]+", nb)
+            if f_new and f_new.group(0).lower().endswith("ed"):
+                ok = False
+        if ok and ("Weave" in instr or "Add " in instr):
+            cloud = re.search(r"(?:Weave|Add) (\w+)", instr).group(1)
+            if not any(t in nb.lower() for t in _CLOUD_TERMS.get(cloud, (cloud.lower(),))):
+                ok = False
+        if ok and _num_tokens(nb) - _num_tokens(ob) and "Weave" not in instr:
+            ok = False                      # a fix never introduces a figure
+        if ok:
+            kept += 1
+        else:
+            after[i] = old
+            reverted.append(f"line {i}: {instr[:40]}")
+    notes.append(f"qa fix: {kept} line(s) repaired of {len(flags)} flagged"
+                 + (f"; reverted {len(reverted)}: " + "; ".join(reverted) if reverted else ""))
+    return "\n".join(after)
+
+
 _YEARS_RE = re.compile(r"(\d{1,2})\s*\+?\s*years?", re.IGNORECASE)
 _YEAR_RE = re.compile(r"(?:19|20)\d{2}")
 
@@ -2582,22 +2597,19 @@ async def tailor_resume(base_resume: str, job_description: str,
         notes.append("cloud restore requested: "
                      + ", ".join(f"{c}={cl}" for c, cl in missing_clouds.items()))
 
-    # ── 3. QA FIXER (cheap) ───────────────────────────────────────────────
-    try:
-        fixed = (await chat(
-            QA_FIXER_SYSTEM,
-            qa_fixer_prompt(tailored, _cloud_directive(missing_clouds)),
-            max_tokens=8000, pass_name="qa_fix", **cheap_kw,
-        )).strip()
-        fixed = _normalize_format(fixed)
-        if (fixed.count("\n") > 5
-                and len(fixed) > 0.6 * len(tailored)
-                and _bullet_count(fixed) == _bullet_count(tailored)):
-            tailored = fixed
-        else:
-            notes.append("qa fixer output rejected (bullet count or length changed)")
-    except Exception as exc:  # noqa: BLE001 — best effort
-        notes.append(f"qa fixer skipped ({exc})")
+    # ── 3. QA (code flags the lines, cheap model rewrites only those) ────
+    # Replaces the old whole-resume QA rewrite (2k output tokens per run):
+    # junk lines and missing Technologies Used lines are fixed in code; cliché
+    # openers, repeated verbs, stacked figures, past tense on the current
+    # employer, and dropped-cloud restoration go to the line fixer, each
+    # verified in code before it is kept.
+    tailored, junk = _strip_junk_lines(tailored)
+    if junk:
+        notes.append(f"qa: removed {junk} junk/placeholder line(s)")
+    tailored, tech_added = _ensure_tech_lines(tailored)
+    if tech_added:
+        notes.append(f"qa: built {tech_added} missing Technologies Used line(s) from the job's own bullets")
+    tailored = await _targeted_qa(tailored, missing_clouds, notes, **cheap_kw)
 
     # Guard (c): still missing after the fixer -> force into Technologies Used.
     still_missing = _missing_native_clouds(tailored, base_resume, target)

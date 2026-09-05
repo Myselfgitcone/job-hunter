@@ -1999,7 +1999,7 @@ def _code_score(tailored: str, base_resume: str, job_description: str,
         ti_pts = 0
         fixes.append("Headline does not carry the JD title")
 
-    orphans = _orphan_skills(tailored)
+    orphans = _orphan_skills(tailored, keep=may_skip)      # the Skills-only tail is by design
     o_pts = max(0, 10 - 2 * len(orphans))
     if orphans:
         fixes.append("Skills without a bullet: " + ", ".join(orphans[:5]))
@@ -2500,26 +2500,36 @@ def _split_long_bullets(text: str, notes: list, max_words: int = _SPLIT_MAX_WORD
     lines = text.split("\n")
     out: list[str] = []
     n_split = 0
-    bullet_idx = {i for _, bl in _job_bullet_lines(text) for i in bl}
+    jobs = _job_bullet_lines(text)
+    bullet_idx = {i for _, bl in jobs for i in bl}
+    job_of = {i: j for j, bl in jobs for i in bl}
+    extra: dict[int, int] = {}           # bullets added per job by splitting
+    # the writer's own opening verbs: a split half may only start with one of
+    # these or with a past-tense word, never with a bare noun ("Operational…")
+    verbs = {lines[i].lstrip()[1:].strip().split()[0].lower()
+             for i in bullet_idx if lines[i].lstrip()[1:].strip()}
     for i, ln in enumerate(lines):
         if i not in bullet_idx:
             out.append(ln)
             continue
         body = ln.lstrip()[1:].strip()
-        if len(body.split()) <= max_words:
+        if len(body.split()) <= max_words or extra.get(job_of[i], 0) >= 2:
             out.append(ln)
             continue
         queue, pieces = [body], []
         while queue:                       # keep cutting until every piece fits
             cur = queue.pop(0)
-            if len(cur.split()) <= max_words:
+            if len(cur.split()) <= max_words or extra.get(job_of[i], 0) >= 2:
                 pieces.append(cur)
                 continue
             cands = []
             for m in re.finditer(r";\s+|,\s+(?:and|while|which|then|plus)\s+", cur):
                 tail = cur[m.end():]
                 first = re.match(r"[A-Za-z]+", tail)
-                if not first or first.group(0).lower().endswith("ing"):
+                if not first:
+                    continue
+                fw = first.group(0).lower()
+                if fw.endswith("ing") or not (fw.endswith("ed") or fw in verbs):
                     continue
                 head_w, tail_w = len(cur[:m.start()].split()), len(tail.split())
                 if head_w < 8 or tail_w < 8:
@@ -2536,6 +2546,7 @@ def _split_long_bullets(text: str, notes: list, max_words: int = _SPLIT_MAX_WORD
                 tail += "."
             queue = [head, tail] + queue
             n_split += 1
+            extra[job_of[i]] = extra.get(job_of[i], 0) + 1
         out.extend("• " + p for p in pieces)
     if n_split:
         notes.append(f"length guard: split {n_split} bullet(s) over {max_words} words at a clause boundary")
@@ -2560,7 +2571,7 @@ def _strip_intensifiers(text: str) -> tuple[str, int]:
     return "\n".join(lines), hits
 
 
-_SHORT_MAX = 16          # a bullet at or under this many words counts as "short"
+_SHORT_MAX = 18          # a bullet at or under this many words counts as "short"
 _LONG_RUN = 25           # three consecutive bullets over this = a wall
 
 
@@ -3384,6 +3395,9 @@ async def tailor_resume(base_resume: str, job_description: str,
 
     # Guard (g1): no paragraph bullets — split past 38 words, nothing lost.
     tailored = _split_long_bullets(tailored, notes)
+    # the split halves and the weaves can repeat an opening verb: one more
+    # targeted QA pass (only calls the model when something is flagged)
+    tailored = await _targeted_qa(tailored, {}, notes, **cheap_kw)
 
     tailored, intens = _strip_intensifiers(tailored)
     if intens:

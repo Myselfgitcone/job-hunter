@@ -1600,7 +1600,10 @@ For EACH listed item, output ONE line — every item, no skipping. Priority:
 Rules:
 - The item's EXACT words must appear in the bullet, verbatim (case may
   change): "data transformation" is proven by the words "data transformation",
-  not by "transformed data". An ATS matches tokens, not meaning.
+  not by "transformed data". An ATS matches tokens, not meaning. Every
+  listed item is ABSENT as an exact phrase right now, even when the idea is
+  already there — "dbt models" does not contain "dbt Core"; write "dbt Core"
+  ("dbt Core models…"). Returning a bullet unchanged is a failed line.
 - An item marked NAMED IN THE JD must get a line. Only an unmarked item that
   is foreign to every job may be skipped.
 - Match the job's era, industry, stack and verb level. A duty ("code review
@@ -1674,7 +1677,7 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
 
     _placed = [0]           # items placed across rounds (closure counter)
 
-    async def _round(text: str, chase: list[str], label: str) -> str:
+    async def _round(text: str, chase: list[str], label: str, loud: bool = False) -> str:
         lines = text.split("\n")
         jobs = _job_bullet_lines(text)
         if not jobs:
@@ -1694,6 +1697,9 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
             out = (await chat(
                 COVERAGE_SYSTEM,
                 "BULLETS:" + "\n".join(numbered)
+                + ("\n\nYOUR LAST ANSWER RETURNED EVERY BULLET UNCHANGED. None of these "
+                   "phrases appears verbatim anywhere. Rewrite each chosen bullet so the "
+                   "exact phrase is IN the text.\n" if loud else "")
                 + "\n\nITEMS WITH NO BULLET:\n"
                 + "\n".join(f"- {o}" + ("  (FOREIGN: one new bullet in one job, or weave into that job's scope bullet)"
                                         if o.lower() in foreign_low else
@@ -1774,7 +1780,12 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
         placed_before = _placed[0]
         resume = await _round(resume, chase[:12], f"coverage_{rnd}" if rnd > 1 else "coverage")
         if _placed[0] == placed_before:
-            break
+            # The model sometimes hands every bullet back untouched because it
+            # judged the idea "already there". One louder retry, then stop.
+            if rnd == 1:
+                resume = await _round(resume, chase[:12], "coverage_retry", loud=True)
+            if _placed[0] == placed_before:
+                break
     # Whatever still lacks a bullet leaves the SKILLS list — no orphans, ever.
     return _drop_unevidenced_skills(resume, notes)
 
@@ -2037,6 +2048,12 @@ def _scope_leaks(text: str, base_resume: str, context: dict,
         return {}
     target = (context.get("target_cloud") or "None")
     swap = target in _CLOUD_SIG
+    # the target cloud's own services, read from the base's "AWS (S3, EMR, …)"
+    # style groups: legitimate in the two swapped jobs
+    family: set[str] = set()
+    if swap:
+        for m in re.finditer(rf"\b{re.escape(target)}\b[^(\n]{{0,20}}\(([^)]*)\)", base_resume, re.I):
+            family.update(x.strip().lower() for x in _split_list_items(m.group(1)) if x.strip())
     universe = {str(t) for t in (context.get("target_tools") or [])}
     universe.update(_base_tool_list(base_resume))
     universe.update(_skills_claimed(text, expand=True))
@@ -2078,7 +2095,8 @@ def _scope_leaks(text: str, base_resume: str, context: dict,
             for tool, where in anchored.items():
                 if company in where or not _hits(tool, low):
                     continue
-                if swap and j < 2 and any(sig.strip() in tool.lower() for sig in _CLOUD_SIG[target]):
+                if swap and j < 2 and (any(sig.strip() in tool.lower() for sig in _CLOUD_SIG[target])
+                                       or tool.lower() in family):
                     continue
                 # A short all-caps acronym the JD itself uses is ambiguous
                 # vocabulary, not a product (EMR = electronic medical records

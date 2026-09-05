@@ -66,6 +66,12 @@ Rules:
   If no cloud is explicitly named, target_cloud MUST be "None". Do NOT infer a
   cloud from the company, domain, or tools — a Spark/Flink/data role that names no
   cloud is "None". Use "Multi" only if two+ are named and weighted equally.
+- target_tools are the JD's OWN WORDS, copied verbatim ("ETL/ELT", "testing
+  frameworks", "batch and real-time data architectures", "Git-based
+  development"). Never a paraphrased label: no "Batch architecture" for a JD
+  that says "batch and real-time data architectures", no "Infrastructure as
+  Code" unless the JD says it. An ATS scans for the JD's tokens; a label the
+  JD never used earns nothing and a code check removes it.
 - target_tools is RANKED, most important first: required beats preferred,
   in the title or summary beats buried in a list, repeated beats mentioned
   once, "must / strong / hands-on" beats "exposure / a plus / or similar".
@@ -1249,6 +1255,36 @@ def _stems(core: str) -> list[str]:
     return out
 
 
+def _stems_in_text(phrase: str, low_text: str) -> bool:
+    """Every word stem of `phrase` occurs somewhere in `low_text` (any order,
+    any distance). Single-token phrases fall back to a word-boundary match."""
+    stems = _stems(phrase)
+    if not stems:
+        tok = re.escape(phrase.lower().strip())
+        return bool(tok) and bool(re.search(rf"(?<![a-z0-9]){tok}(?![a-z0-9])", low_text))
+    return all(re.search(rf"\b{st}", low_text) for st in stems)
+
+
+def _phrase_in_jd(phrase: str, jd: str) -> bool:
+    """The JD says this, in these words: literal or in-order loose match
+    anywhere, or every word stem inside ONE sentence. A single token (or a
+    slash form like PL/SQL) must appear as written."""
+    low = jd.lower()
+    try:
+        from resume_lint import _dynamic_coverage_pattern
+        if re.search(_dynamic_coverage_pattern(phrase), low):
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+    if "/" in phrase or len(_stems(phrase)) < 2:
+        tok = re.escape(phrase.lower().strip())
+        return bool(re.search(rf"(?<![a-z0-9]){tok}(?![a-z0-9])", low))
+    loose = _loose_pattern(phrase)
+    if loose and re.search(loose, low):
+        return True
+    return any(_stems_in_text(phrase, sent) for sent in re.split(r"[.!?;\n•]", low))
+
+
 def _loose_pattern(core: str) -> str:
     """Multi-word skill -> stems in order, up to two words apart."""
     stems = _stems(core)
@@ -1613,6 +1649,8 @@ Rules:
   skill field and all of them named in the text.
 - No em or en dashes. No intensifiers. Do not open a new bullet with a verb
   that job already uses.
+- Never return a bullet unchanged. If an item truly cannot be placed
+  honestly, output exactly:  SKIP :: <item>
 Output ONLY these lines."""
 
 
@@ -1716,6 +1754,13 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
         originals: dict[int, str] = {}
         additions: dict[int, list] = {}
         for ln in out.splitlines():
+            sk = re.match(r"^\s*SKIP\s*::\s*(.+?)\s*$", ln, re.I)
+            if sk:
+                for p in re.split(r"\s*\+\s*", sk.group(1)):
+                    if p.strip():
+                        given_up.add(p.strip().lower())
+                rejected.append(f"{sk.group(1).strip()} (model skipped)")
+                continue
             m = re.match(r"^\s*([WN])\s*(\d+)\s*::\s*(.+?)\s*::\s*(.+?)\s*$", ln, re.I)
             if not m:
                 continue
@@ -1740,14 +1785,25 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
                 need = parts + [p for p in used.get(i, []) if p not in parts]
                 grew = len(body.split()) - len(old.split())
                 same_nums = _num_tokens(old) == _num_tokens(body)
-                proves = not _unevidenced(need, "EXPERIENCE:\nX @ Y | Z\n• " + body)
+                # a product name must appear as written; a competency phrase
+                # ("streaming architecture") is proven by its word stems in any
+                # order ("streaming … architectures")
+                proves = all(
+                    not _unevidenced([p], "EXPERIENCE:\nX @ Y | Z\n• " + body)
+                    or (not p[0].isupper() and _stems_in_text(p, body.lower()))
+                    for p in need)
                 room_ok = len(old.split()) <= _WEAVE_MAX_WORDS
-                grow_ok = 0 <= grew <= max(6 * len(need) + 4, len(" ".join(need).split()) + 6)
+                grow_ok = 0 <= grew <= max(6 * len(need) + 4, len(" ".join(need).split()) + 10)
                 if room_ok and grow_ok and same_nums and proves:
                     lines[i] = "• " + body
                     used[i] = need
                     woven.append(skill)
                 else:
+                    if grew == 0:            # an echo: the model will not place this
+                        for p in parts:
+                            echoes[p.lower()] = echoes.get(p.lower(), 0) + 1
+                            if echoes[p.lower()] >= 2:
+                                given_up.add(p.lower())
                     rejected.append(f"{skill} (grew {grew}, nums {'ok' if same_nums else 'changed'}, "
                                     f"{'named' if proves else 'not named'})")
             else:
@@ -1771,21 +1827,24 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
     # Batches of 12 in importance order, as many rounds as the target needs.
     # Coverage is what the run is for, so these rounds are never cost-capped;
     # a batch that places nothing ends the loop.
+    given_up: set = set()          # items the model skipped or echoed twice
+    echoes: dict[str, int] = {}
     for rnd in range(1, 5):
-        chase = _chase(resume)
+        chase = [o for o in _chase(resume) if o.lower() not in given_up]
         if rnd > 1:
             chase = [o for o in chase if _in_jd(o)]
         if not chase:
             break
         placed_before = _placed[0]
         resume = await _round(resume, chase[:12], f"coverage_{rnd}" if rnd > 1 else "coverage")
-        if _placed[0] == placed_before:
+        if _placed[0] == placed_before and rnd == 1:
             # The model sometimes hands every bullet back untouched because it
-            # judged the idea "already there". One louder retry, then stop.
-            if rnd == 1:
+            # judged the idea "already there". One louder retry.
+            chase = [o for o in chase if o.lower() not in given_up]
+            if chase:
                 resume = await _round(resume, chase[:12], "coverage_retry", loud=True)
-            if _placed[0] == placed_before:
-                break
+        if _placed[0] - placed_before < 2:
+            break                      # a round that barely moves is not worth another
     # Whatever still lacks a bullet leaves the SKILLS list — no orphans, ever.
     return _drop_unevidenced_skills(resume, notes)
 
@@ -3023,6 +3082,16 @@ async def tailor_resume(base_resume: str, job_description: str,
         _kept = [t for t in _orig if not _is_soft_skill(str(t))]
         if len(_kept) != len(_orig):
             context[_k] = _kept
+    # A tool label whose words the JD never uses is the analyzer's paraphrase,
+    # not a keyword — an ATS would never match it and the coverage model can
+    # only fail on it. Keep only labels whose word stems all occur in the JD.
+    _not_literal = [str(t) for t in (context.get("target_tools") or [])
+                    if not _phrase_in_jd(str(t), job_description)]
+    if _not_literal:
+        context["target_tools"] = [t for t in context["target_tools"] if str(t) not in _not_literal]
+        for _k in ("present", "missing", "bridge_only", "equivalent"):
+            context[_k] = [t for t in (context.get(_k) or []) if str(t).split(" <-")[0] not in _not_literal]
+        notes.append("analyze: dropped labels the JD never says: " + ", ".join(_not_literal))
 
     missing = context.get("missing") or []
     print(f"[TAILOR] target_cloud={context.get('target_cloud')!r} "

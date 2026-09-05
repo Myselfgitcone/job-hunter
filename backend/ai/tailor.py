@@ -1277,8 +1277,10 @@ def _phrase_in_jd(phrase: str, jd: str) -> bool:
     except Exception:  # noqa: BLE001
         pass
     if "/" in phrase or len(_stems(phrase)) < 2:
-        tok = re.escape(phrase.lower().strip())
-        return bool(re.search(rf"(?<![a-z0-9]){tok}(?![a-z0-9])", low))
+        # case-insensitive token; a glued capitalised neighbour ("AirflowAirbyte",
+        # a scraper artifact) still counts, a lowercase continuation does not
+        tok = re.escape(phrase.strip())
+        return bool(re.search(rf"(?<![A-Za-z0-9])(?i:{tok})(?![a-z0-9])", jd))
     loose = _loose_pattern(phrase)
     if loose and re.search(loose, low):
         return True
@@ -1660,7 +1662,7 @@ Output ONLY these lines."""
 
 
 _COST_CAP = 0.080      # dollars; optional passes are skipped past this spend
-_WEAVE_MAX_WORDS = 44  # a bullet already this long takes no more weaving
+_WEAVE_MAX_WORDS = 38  # a bullet already this long takes no more weaving
 
 
 def _under_cost_cap(notes: list, label: str) -> bool:
@@ -2417,6 +2419,60 @@ _INTENSIFIER_RE = re.compile(
     r"\s*\b(?:significantly|substantially|meaningfully|measurably|greatly|"
     r"drastically|dramatically|materially|considerably|tremendously|vastly)\b",
     re.I)
+
+
+_SPLIT_MAX_WORDS = 38
+
+
+def _split_long_bullets(text: str, notes: list, max_words: int = _SPLIT_MAX_WORDS) -> str:
+    """A bullet past `max_words` is a paragraph. Cut it in two at the clause
+    boundary nearest its middle (";" first, then ", and / , while / , which /
+    , then"), keeping every name and figure; the second half starts with its
+    own capitalised verb. No model, so nothing can be lost. A bullet with no
+    safe boundary (a gerund tail would become a fragment) is left alone."""
+    lines = text.split("\n")
+    out: list[str] = []
+    n_split = 0
+    bullet_idx = {i for _, bl in _job_bullet_lines(text) for i in bl}
+    for i, ln in enumerate(lines):
+        if i not in bullet_idx:
+            out.append(ln)
+            continue
+        body = ln.lstrip()[1:].strip()
+        if len(body.split()) <= max_words:
+            out.append(ln)
+            continue
+        queue, pieces = [body], []
+        while queue:                       # keep cutting until every piece fits
+            cur = queue.pop(0)
+            if len(cur.split()) <= max_words:
+                pieces.append(cur)
+                continue
+            cands = []
+            for m in re.finditer(r";\s+|,\s+(?:and|while|which|then|plus)\s+", cur):
+                tail = cur[m.end():]
+                first = re.match(r"[A-Za-z]+", tail)
+                if not first or first.group(0).lower().endswith("ing"):
+                    continue
+                head_w, tail_w = len(cur[:m.start()].split()), len(tail.split())
+                if head_w < 8 or tail_w < 8:
+                    continue
+                cands.append((abs(head_w - tail_w), m.start(), m.end()))
+            if not cands:
+                pieces.append(cur)
+                continue
+            _, a, b = min(cands)
+            head = cur[:a].rstrip(" ,;") + "."
+            tail = cur[b:].strip()
+            tail = tail[0].upper() + tail[1:]
+            if not tail.endswith("."):
+                tail += "."
+            queue = [head, tail] + queue
+            n_split += 1
+        out.extend("• " + p for p in pieces)
+    if n_split:
+        notes.append(f"length guard: split {n_split} bullet(s) over {max_words} words at a clause boundary")
+    return "\n".join(out)
 
 
 def _strip_intensifiers(text: str) -> tuple[str, int]:
@@ -3254,6 +3310,9 @@ async def tailor_resume(base_resume: str, job_description: str,
     # line fixes so nothing they reintroduce survives.
     tailored = await _fix_scope_leaks(tailored, base_resume, context, notes,
                                       jd_text=job_description, **cheap_kw)
+
+    # Guard (g1): no paragraph bullets — split past 38 words, nothing lost.
+    tailored = _split_long_bullets(tailored, notes)
 
     tailored, intens = _strip_intensifiers(tailored)
     if intens:

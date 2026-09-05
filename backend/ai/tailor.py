@@ -355,8 +355,9 @@ bullet (see EVERY SKILL EARNS A BULLET), but NEVER past these hard caps:
 Job 1 ≤ 10 · Job 2 ≤ 7 · Job 3 ≤ 5 · Job 4+ ≤ 4. A skill that cannot fit
 within the caps is dropped from SKILLS, not crammed in.
 COVERAGE TARGET: at least 90% of `target_tools` (ranked, most important
-first) must be named in an experience bullet; only the LAST 10% of the list
-may be left out. When the JD names more tools than the ladder has bullets,
+first) must be named in an experience bullet; the LAST 10% of the list may
+skip the bullet but MUST still be listed in SKILLS — 100% of the JD's tools
+appear on the page. When the JD names more tools than the ladder has bullets,
 fill every job to its cap and let each bullet carry 2–3 JD tools ("Built
 streaming pipelines with Kafka, Flink, and Spark Structured Streaming…") —
 density beats count.
@@ -552,7 +553,7 @@ def tailor_prompt(resume_text: str, jd_text: str, context: dict,
         f"  baseline_missing:  {_lst('baseline_missing')}\n"
         f"  equivalent (may be named directly, once): {_lst('equivalent')}\n"
         f"  bridge_only (claim ONCE: one modest bullet in one job + SKILLS; never headline): {_lst('bridge_only')}\n"
-        f"  coverage target: name at least {_must_count(context)} of the {len(context.get('target_tools') or [])} ranked tools in bullets; only the last {len(context.get('target_tools') or []) - _must_count(context)} may be skipped\n"
+        f"  coverage target: name at least {_must_count(context)} of the {len(context.get('target_tools') or [])} ranked tools in bullets; the last {len(context.get('target_tools') or []) - _must_count(context)} need no bullet but MUST appear in SKILLS — every JD tool is on the page\n"
         f"  responsibilities:  {_lst('responsibilities')}\n\n"
         + (("BASE NUMBERS TO KEEP (each stays in its own bullet's rewrite; a code "
             "check restores any you drop and removes any you invent):\n  "
@@ -1475,9 +1476,62 @@ def _restore_present_tools(text: str, present: list, base_resume: str,
     return "\n".join(lines)
 
 
-def _orphan_skills(text: str) -> list[str]:
-    """Skills-section items with no supporting line in EXPERIENCE/PROJECTS."""
-    return _unevidenced(_skills_claimed(text, expand=True), text)
+def _ensure_skills_row(text: str, tools: list, notes: list) -> str:
+    """The JD keywords that need no bullet (the bottom 10% of the ranked
+    list) still belong on the page: an ATS scans the Skills row too. Any of
+    them missing from the whole resume is appended to the Skills row whose
+    label or items share a word with it, else the last row."""
+    want = [str(t).strip() for t in (tools or []) if str(t).strip()]
+    if not want:
+        return text
+    try:
+        from resume_lint import _dynamic_coverage_pattern
+    except ImportError:  # pragma: no cover
+        return text
+    low_all = text.lower()
+    missing = []
+    for name in want:
+        try:
+            if not re.search(_dynamic_coverage_pattern(name), low_all) \
+                    and not _stems_in_text(name, low_all):
+                missing.append(name)
+        except re.error:
+            continue
+    if not missing:
+        return text
+    lines = text.split("\n")
+    rows, in_skills = [], False
+    for i, ln in enumerate(lines):
+        s = ln.strip()
+        if _is_section_hdr(s):
+            in_skills = "skill" in s.lower()
+            continue
+        if in_skills and s.startswith(("•", "-", "*")) and ":" in s:
+            label, _, rest = s.partition(":")
+            rows.append((i, label.lstrip("•-* ").strip(), rest))
+    if not rows:
+        return text
+    _tok = lambda s: set(re.findall(r"[a-z0-9]{3,}", s.lower()))
+    for name in missing:
+        hint = _tok(name)
+        best, best_n = None, 0
+        for i, label, rest in rows:
+            n = len(hint & _tok(label + " " + rest))
+            if n > best_n:
+                best, best_n = i, n
+        i = best if best is not None else rows[-1][0]
+        lines[i] = lines[i].rstrip().rstrip(",") + ", " + name
+    notes.append("skills-only keywords (JD tail, no bullet needed): " + ", ".join(missing))
+    return "\n".join(lines)
+
+
+def _orphan_skills(text: str, keep: list | None = None) -> list[str]:
+    """Skills-section items with no supporting line in EXPERIENCE/PROJECTS.
+    `keep` = items allowed to stand without a bullet (the JD's 10% tail)."""
+    allowed = {str(k).lower() for k in (keep or [])}
+    return [o for o in _unevidenced(_skills_claimed(text, expand=True), text)
+            if o.lower() not in allowed
+            and re.sub(r"\s*\(.*\)\s*", " ", o).strip().lower() not in allowed]
 
 
 
@@ -1607,11 +1661,12 @@ def _rewrite_skill_lines(text: str, drop: set[str]) -> tuple[str, list[str]]:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)), removed
 
 
-def _drop_unevidenced_skills(text: str, notes: list) -> str:
+def _drop_unevidenced_skills(text: str, notes: list, keep: list | None = None) -> str:
     """Last resort for the no-orphan invariant: a skill that still has no
     experience bullet after the guard rounds is removed from the SKILLS lines —
-    an unbacked keyword hurts more in a screen than its absence costs in ATS."""
-    orphans = _orphan_skills(text)
+    an unbacked keyword hurts more in a screen than its absence costs in ATS.
+    `keep` = the JD's bottom-10% keywords, which live in SKILLS by design."""
+    orphans = _orphan_skills(text, keep)
     if not orphans:
         return text
     keys = {re.sub(r"[^a-z0-9]", "", re.sub(r"\s*\(.*\)\s*", " ", o).lower()) for o in orphans}
@@ -1686,6 +1741,7 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
                                 jd_terms: list | None = None,
                                 must_tools: list | None = None,
                                 foreign: list | None = None,
+                                skills_only: list | None = None,
                                 **cheap_kw) -> str:
     """A skill listed in SKILLS with zero experience bullets behind it dies in
     the first interview question. Orphans are detected in code; one cheap
@@ -1852,8 +1908,9 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
                 resume = await _round(resume, chase[:12], "coverage_retry", loud=True)
         if _placed[0] - placed_before < 2:
             break                      # a round that barely moves is not worth another
-    # Whatever still lacks a bullet leaves the SKILLS list — no orphans, ever.
-    return _drop_unevidenced_skills(resume, notes)
+    # Whatever still lacks a bullet leaves the SKILLS list — except the JD's
+    # own 10% tail, which is listed there on purpose.
+    return _drop_unevidenced_skills(resume, notes, keep=skills_only)
 
 
 def _enforce_caps(text: str, base_resume: str, notes: list, keep_tool: str = "") -> str:
@@ -3245,7 +3302,11 @@ async def tailor_resume(base_resume: str, job_description: str,
         jd_terms=(context.get("target_tools") or []) + (context.get("responsibilities") or []),
         must_tools=_coverage_plan(context)[0],
         foreign=context.get("bridge_only") or [],
+        skills_only=_coverage_plan(context)[1],
         **cheap_kw)
+    # The bottom 10% of the ranked JD keywords need no bullet but must still
+    # be on the page for the ATS: make sure each sits in the Skills row.
+    tailored = _ensure_skills_row(tailored, _coverage_plan(context)[1], notes)
 
     # Guard (c3): bullets whose endings read as truncated. Measured with the
     # same detector that drives the UI warning; only spends a call when the
@@ -3321,7 +3382,7 @@ async def tailor_resume(base_resume: str, job_description: str,
     # Guard (f): final no-orphan sweep. Guard (c2) already trimmed once, but the
     # tidy passes after it (list caps, dash rewrite) can erase a skill's last
     # piece of evidence — re-measure on the FINAL text so nothing unbacked ships.
-    tailored = _drop_unevidenced_skills(tailored, notes)
+    tailored = _drop_unevidenced_skills(tailored, notes, keep=_coverage_plan(context)[1])
 
     # ── 4. SCORE (code, no model call) ────────────────────────────────────
     # 100 points: tools 40, duties 15, title 5, orphans 10, numbers 10,

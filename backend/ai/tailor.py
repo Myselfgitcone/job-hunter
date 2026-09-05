@@ -1773,8 +1773,18 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
         items = [o for o in items if not (o.lower() in seen or seen.add(o.lower()))]
         # ranked JD tools first (in JD importance order), then duties, then
         # the writer's own SKILLS items that the JD never asked for
-        items.sort(key=lambda o: rank.get(o.lower(), 10_000 if _in_jd(o) else 20_000))
-        return items
+        # ranked JD tools and JD duties interleaved (a duty after every two
+        # tools) so the first batch carries the top duties too — chasing all
+        # tools first left duties for the rounds the model no longer answers
+        duties = [o for o in items if o.lower() not in rank and _in_jd(o)]
+        tools_r = sorted([o for o in items if o.lower() in rank], key=lambda o: rank[o.lower()])
+        rest = [o for o in items if o.lower() not in rank and not _in_jd(o)]
+        merged: list[str] = []
+        while tools_r or duties:
+            merged.extend(tools_r[:2]); tools_r = tools_r[2:]
+            if duties:
+                merged.append(duties.pop(0))
+        return merged + rest
 
     _placed = [0]           # items placed across rounds (closure counter)
 

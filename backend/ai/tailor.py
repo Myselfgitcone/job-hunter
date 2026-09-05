@@ -2224,7 +2224,10 @@ def _scope_leaks(text: str, base_resume: str, context: dict,
         if not core[0].isupper():
             continue
         where = {c for c, b in base_jobs.items() if _hits(core, b)}
-        if where:
+        # a tool the base uses at two or more jobs (Python, SQL, Spark) is
+        # part of the candidate's everyday kit and may appear in any job;
+        # only a tool tied to ONE job is anchored there
+        if where and len(where) == 1:
             anchored[core] = where
     lines = text.split("\n")
     hdr_idx = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]

@@ -352,13 +352,14 @@ EXPERIENCE BULLET LADDER (by recency) — hard counts
 Merge if the source has too many; expand with real everyday work if too few.
 A job may EXCEED its count when needed to give every listed Skill a supporting
 bullet (see EVERY SKILL EARNS A BULLET), but NEVER past these hard caps:
-Job 1 ≤ 10 · Job 2 ≤ 7 · Job 3 ≤ 5 · Job 4+ ≤ 4. A skill that cannot fit
+Job 1 ≤ 12 · Job 2 ≤ 8 · Job 3 ≤ 6 · Job 4+ ≤ 3. A skill that cannot fit
 within the caps is dropped from SKILLS, not crammed in.
 COVERAGE TARGET: at least 90% of `target_tools` (ranked, most important
 first) must be named in an experience bullet; the LAST 10% of the list may
 skip the bullet but MUST still be listed in SKILLS — 100% of the JD's tools
 appear on the page. When the JD names more tools than the ladder has bullets,
-fill every job to its cap and let each bullet carry 2–3 JD tools ("Built
+fill every job to its cap; each bullet carries ONE or TWO JD tools and stays
+15–24 words — never a paragraph ("Built
 streaming pipelines with Kafka, Flink, and Spark Structured Streaming…") —
 density beats count.
 LENGTH FOLLOWS TENURE: 0–3 years → 1 page · 4–11 years → 2 pages · 12+ years
@@ -1545,7 +1546,7 @@ def _job_block_end(lines: list[str], start: int) -> int:
 
 
 # Hard bullet ceilings by job recency (Job 1, Job 2, Job 3; older jobs 4).
-_JOB_BULLET_CAPS = (10, 7, 5)
+_JOB_BULLET_CAPS = (12, 8, 6)
 
 
 _COVERAGE_TARGET = 0.90   # share of the ranked JD tool list that must earn a bullet
@@ -1578,7 +1579,7 @@ def _coverage_plan(context: dict) -> tuple[list[str], list[str]]:
 
 
 def _job_cap(j: int) -> int:
-    return _JOB_BULLET_CAPS[j] if j < len(_JOB_BULLET_CAPS) else 4
+    return _JOB_BULLET_CAPS[j] if j < len(_JOB_BULLET_CAPS) else 3
 
 
 def _insert_skill_bullets(resume: str, additions: dict,
@@ -1685,15 +1686,14 @@ For EACH listed item, output ONE line — every item, no skipping. Priority:
 
   W <bullet number> :: <skill> :: <the full rewritten bullet>
       Weave the skill into an EXISTING bullet of the job where that work
-      plausibly happened. Prefer the SHORTEST fitting bullet; never one
-      marked FULL. Add as few words as the exact wording needs; keep every
-      number, tool and claim already there. This is the default — prefer it.
+      plausibly happened, only when that bullet stays under 24 words after
+      the weave; never one marked FULL. Keep every number, tool and claim
+      already there.
 
   N <job number> :: <skill> :: <new bullet>
-      Only when no existing bullet of the fitting job can carry it honestly
-      AND that job still has ROOM (shown per job). A modest routine
-      scope-of-work sentence, 10-22 words, no numbers. Group up to THREE
-      related skills in one new bullet, names joined by " + ".
+      The default whenever the fitting job still has ROOM (shown per job):
+      a modest routine scope-of-work sentence, 12-22 words, no numbers,
+      naming ONE or TWO related skills (names joined by " + ").
 
 Rules:
 - The item's EXACT words must appear in the bullet, verbatim (case may
@@ -1717,7 +1717,7 @@ Output ONLY these lines."""
 
 
 _COST_CAP = 0.080      # dollars; optional passes are skipped past this spend
-_WEAVE_MAX_WORDS = 38  # a bullet already this long takes no more weaving
+_WEAVE_MAX_WORDS = 24  # a bullet already this long takes no more weaving
 
 
 def _under_cost_cap(notes: list, label: str) -> bool:
@@ -2488,7 +2488,7 @@ _INTENSIFIER_RE = re.compile(
     re.I)
 
 
-_SPLIT_MAX_WORDS = 38
+_SPLIT_MAX_WORDS = 30
 
 
 def _split_long_bullets(text: str, notes: list, max_words: int = _SPLIT_MAX_WORDS) -> str:

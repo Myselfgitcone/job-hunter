@@ -57,7 +57,7 @@ Return ONLY a compact JSON object, no prose, no markdown fences:
   "equivalent": ["<subset of missing that are a same-category swap for a tool the resume already shows, written as 'JD tool <- base tool', e.g. 'Splunk <- Datadog'>"],
   "bridge_only": ["<subset of missing with NO category match in the resume at all — may only be bridged inside a bullet, never owned>"],
   "responsibilities": ["<6–8 non-tool DUTIES the JD names, in the JD's own nouns>"],
-  "jd_tail_starts": "<the first 6-10 words, copied EXACTLY from the JD, of the first paragraph where the posting stops describing the role and starts pay tables, benefits, EEO, legal, about-us or how-to-apply text; '' if the JD has no such tail>"
+  "jd_tail_starts": "<the first 6-10 words, copied EXACTLY from the JD, of the first paragraph where the posting stops describing the role and starts pay tables, benefits, EEO, legal, about-us or how-to-apply text; '' if the JD has no such tail. Preferred / bonus / nice-to-have skills are PART OF THE ROLE, never the tail>"
 }
 
 Rules:
@@ -1509,8 +1509,13 @@ def _coverage_plan(context: dict) -> tuple[list[str], list[str]]:
     if skip_n <= 0:
         return tools, []
     foreign = {str(x).lower() for x in (context.get("bridge_only") or [])}
+    owned = {str(x).lower() for x in (context.get("present") or [])}
+    # spend the skip budget on foreign tools first, then the lowest-ranked
+    # ones the candidate lacks; a tool the base already has is free coverage
+    # and is skipped only when nothing else is left
     order = sorted(range(len(tools)),
-                   key=lambda i: (tools[i].lower() in foreign, i), reverse=True)
+                   key=lambda i: (tools[i].lower() in foreign,
+                                  tools[i].lower() not in owned, i), reverse=True)
     skip_idx = set(order[:skip_n])
     return [t for i, t in enumerate(tools) if i not in skip_idx], \
            [t for i, t in enumerate(tools) if i in skip_idx]
@@ -1916,7 +1921,8 @@ def _code_score(tailored: str, base_resume: str, job_description: str,
     first = tailored.split("\n", 1)[0]
     head_title = first.partition("—")[2].strip().lower()
     jd_title = (context.get("job_title") or "").strip().lower()
-    if jd_title and head_title == jd_title:
+    jd_core = re.split(r"\s+–\s+|\s+-\s+|\s*\|\s*|\s*:\s+|\s*\(|,\s+", jd_title, maxsplit=1)[0].strip()
+    if jd_title and head_title in (jd_title, jd_core):
         ti_pts = 5
     elif jd_title and _role_family(head_title) and _role_family(head_title) == _role_family(jd_title):
         ti_pts = 3
@@ -1987,10 +1993,12 @@ def _code_score(tailored: str, base_resume: str, job_description: str,
 
 # ── Guard: a SKILLS item must be something the candidate owns ────────────────
 
-def _trim_jd_tail(jd: str, marker) -> tuple[str, int]:
+def _trim_jd_tail(jd: str, marker, tools: list | None = None) -> tuple[str, int]:
     """Cut the JD at the analyze pass's tail marker, but only when the marker
     is a real quote sitting in the back half of the text — a mis-quote or a
-    marker near the top leaves the JD untouched."""
+    marker near the top leaves the JD untouched. The cut can never remove a
+    line that names one of the JD's own tools (live miss: "Bonus Points"
+    taken as the tail, SSIS / Power BI / Jira cut away before tailoring)."""
     m = re.sub(r"\s+", " ", str(marker or "")).strip()
     if len(m.split()) < 2:
         return jd, 0
@@ -1999,6 +2007,18 @@ def _trim_jd_tail(jd: str, marker) -> tuple[str, int]:
     if not hit:
         return jd, 0
     pos = hit.start()
+    # never cut above the last line that mentions a target tool
+    low = jd.lower()
+    last_tool_end = 0
+    for t in (tools or []):
+        core = re.sub(r"\s*\(.*\)\s*", " ", str(t)).strip().lower()
+        if len(core) < 3:
+            continue
+        for mm in re.finditer(rf"(?<![a-z0-9]){re.escape(core)}(?![a-z0-9])", low):
+            last_tool_end = max(last_tool_end, mm.end())
+    if last_tool_end > pos:
+        nl = jd.find("\n", last_tool_end)
+        pos = len(jd) if nl < 0 else nl
     if pos < len(jd) * 0.30 or pos < 1200 or len(jd) - pos < 200:
         return jd, 0
     return jd[:pos].rstrip(), len(jd) - pos
@@ -3071,7 +3091,8 @@ async def tailor_resume(base_resume: str, job_description: str,
     # The JD's pay tables, benefits, EEO and about-us tail is billed on every
     # later pass (Sonnet included) and teaches the writer nothing. The analyze
     # pass points at where it starts; cut there for everything downstream.
-    job_description, _cut = _trim_jd_tail(job_description, context.get("jd_tail_starts"))
+    job_description, _cut = _trim_jd_tail(job_description, context.get("jd_tail_starts"),
+                                          context.get("target_tools") or [])
     if _cut:
         notes.append(f"jd trimmed: dropped {_cut} chars of pay/benefits/legal tail")
 

@@ -56,7 +56,8 @@ Return ONLY a compact JSON object, no prose, no markdown fences:
   "baseline_missing": ["<subset of missing that are UNIVERSAL BASELINE competencies>"],
   "equivalent": ["<subset of missing that are a same-category swap for a tool the resume already shows, written as 'JD tool <- base tool', e.g. 'Splunk <- Datadog'>"],
   "bridge_only": ["<subset of missing with NO category match in the resume at all — may only be bridged inside a bullet, never owned>"],
-  "responsibilities": ["<6–8 non-tool DUTIES the JD names, in the JD's own nouns>"]
+  "responsibilities": ["<6–8 non-tool DUTIES the JD names, in the JD's own nouns>"],
+  "jd_tail_starts": "<the first 6-10 words, copied EXACTLY from the JD, of the first paragraph where the posting stops describing the role and starts pay tables, benefits, EEO, legal, about-us or how-to-apply text; '' if the JD has no such tail>"
 }
 
 Rules:
@@ -1299,8 +1300,12 @@ def _unevidenced(items: list[str], text: str, strict: bool = False) -> list[str]
         # means the bullets write it as a proper noun (Capitalised) somewhere;
         # a token that only ever appears as a plain English word ("schema" for
         # Star Schema, "management" for Metadata Management) proves nothing.
+        # Only a VENDOR-prefixed name gets this fallback ("Apache Kafka",
+        # "Microsoft Fabric"); "Key Vault" must not pass on "Data Vault".
+        first = re.findall(r"[A-Za-z]+", core)
+        vendor_led = bool(first) and first[0].lower() in _SKILL_TOKEN_STOP and len(first) > 1
         toks = [w for w in re.findall(r"[A-Za-z][\w+#.-]{4,}", core)
-                if w.lower() not in _SKILL_TOKEN_STOP]
+                if w.lower() not in _SKILL_TOKEN_STOP] if vendor_led else []
         if toks and any(
                 re.search(rf"(?<![A-Za-z0-9]){re.escape(w[0].upper() + w[1:].lower())}(?![a-z0-9])", cased)
                 or re.search(rf"(?<![A-Za-z0-9]){re.escape(w.upper())}(?![a-z0-9])", cased)
@@ -1535,7 +1540,7 @@ def _drop_unevidenced_skills(text: str, notes: list) -> str:
     orphans = _orphan_skills(text)
     if not orphans:
         return text
-    keys = {re.sub(r"[^a-z0-9]", "", o.lower()) for o in orphans}
+    keys = {re.sub(r"[^a-z0-9]", "", re.sub(r"\s*\(.*\)\s*", " ", o).lower()) for o in orphans}
     out, removed = _rewrite_skill_lines(text, keys)
     if removed:
         notes.append("skills trimmed (no supporting bullet): " + ", ".join(removed))
@@ -1716,19 +1721,23 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
     return _drop_unevidenced_skills(resume, notes)
 
 
-def _enforce_caps(text: str, base_resume: str, notes: list) -> str:
+def _enforce_caps(text: str, base_resume: str, notes: list, keep_tool: str = "") -> str:
     """The writer is told the per-job caps but overshoots; trim from the end
-    of the job, keeping any bullet that carries a real base figure as long
-    as a figure-free one is available."""
+    of the job, keeping any bullet that carries a real base figure or names
+    the JD's dominant tool as long as another one is available."""
     lines = text.split("\n")
     base_nums = _num_tokens(base_resume)
     gone: set[int] = set()
+
+    def _precious(i: int) -> bool:
+        if _num_tokens(lines[i]) & base_nums:
+            return True
+        return bool(keep_tool) and not _unevidenced([keep_tool], "EXPERIENCE:\nX @ Y | Z\n" + lines[i])
     for j, bl in _job_bullet_lines(text):
         cap = _job_cap(j)
         live = list(bl)
         while len(live) > cap:
-            victim = next((i for i in reversed(live) if not (_num_tokens(lines[i]) & base_nums)),
-                          live[-1])
+            victim = next((i for i in reversed(live) if not _precious(i)), live[-1])
             gone.add(victim)
             live.remove(victim)
     if gone:
@@ -1842,6 +1851,23 @@ def _code_score(tailored: str, base_resume: str, job_description: str,
 
 # ── Guard: a SKILLS item must be something the candidate owns ────────────────
 
+def _trim_jd_tail(jd: str, marker) -> tuple[str, int]:
+    """Cut the JD at the analyze pass's tail marker, but only when the marker
+    is a real quote sitting in the back half of the text — a mis-quote or a
+    marker near the top leaves the JD untouched."""
+    m = re.sub(r"\s+", " ", str(marker or "")).strip()
+    if len(m.split()) < 2:
+        return jd, 0
+    words = [re.escape(w) for w in m.split()[:8]]
+    hit = re.search(r"\s+".join(words), re.sub(r"[ \t]+", " ", jd), re.I)
+    if not hit:
+        return jd, 0
+    pos = hit.start()
+    if pos < len(jd) * 0.45 or len(jd) - pos < 200:
+        return jd, 0
+    return jd[:pos].rstrip(), len(jd) - pos
+
+
 def _base_wrapped(base_resume: str) -> str:
     """Whole base resume as one evidence blob for _unevidenced (every
     non-header line counts, the base is the candidate's own truth)."""
@@ -1867,6 +1893,13 @@ def _strip_unowned_skills(text: str, base_resume: str, context: dict, notes: lis
         if not core:
             continue
         if not _unevidenced([core], base_blob, strict=True):
+            continue
+        # "Amazon Redshift" is owned when the base says "Redshift": drop the
+        # vendor prefix and look again.
+        words = core.split()
+        while len(words) > 1 and words[0].lower() in _SKILL_TOKEN_STOP:
+            words = words[1:]
+        if len(words) < len(core.split()) and not _unevidenced([" ".join(words)], base_blob, strict=True):
             continue
         cl = core.lower()
         if any(cl in a or a in cl for a in allowed_lists):
@@ -1923,7 +1956,8 @@ def _base_job_blocks(base_resume: str) -> dict[str, str]:
     return out
 
 
-def _scope_leaks(text: str, base_resume: str, context: dict) -> dict[int, list[str]]:
+def _scope_leaks(text: str, base_resume: str, context: dict,
+                 jd_text: str = "") -> dict[int, list[str]]:
     """{tailored line index: [tools]} where a bullet names a tool the base
     resume uses at OTHER jobs but not at this one. Tools the base lists only
     in its skills section (no job) float freely. Under an active cloud swap
@@ -1949,6 +1983,11 @@ def _scope_leaks(text: str, base_resume: str, context: dict) -> dict[int, list[s
         core = re.sub(r"\s*\(.*\)\s*", " ", tool).strip()
         if len(core) < 3 or _is_soft_skill(core):
             continue
+        # Only proper nouns are products that belong to a job ("Snowflake",
+        # "Data Vault 2.0"); a lowercase practice ("data contracts", "schema
+        # enforcement") is vocabulary and may describe any job.
+        if not core[0].isupper():
+            continue
         where = {c for c, b in base_jobs.items() if _hits(core, b)}
         if where:
             anchored[core] = where
@@ -1971,13 +2010,18 @@ def _scope_leaks(text: str, base_resume: str, context: dict) -> dict[int, list[s
                     continue
                 if swap and j < 2 and any(sig.strip() in tool.lower() for sig in _CLOUD_SIG[target]):
                     continue
+                # A short all-caps acronym the JD itself uses is ambiguous
+                # vocabulary, not a product (EMR = electronic medical records
+                # in a hospital JD, RBAC = a practice): never a leak.
+                if re.fullmatch(r"[A-Z0-9]{2,4}", tool) and re.search(rf"\b{re.escape(tool)}\b", jd_text):
+                    continue
                 leaks.setdefault(i, []).append(tool)
     return leaks
 
 
 async def _fix_scope_leaks(text: str, base_resume: str, context: dict, notes: list,
-                           **cheap_kw) -> str:
-    leaks = _scope_leaks(text, base_resume, context)
+                           jd_text: str = "", **cheap_kw) -> str:
+    leaks = _scope_leaks(text, base_resume, context, jd_text)
     if not leaks:
         return text
     jobs = {i: ("Remove " + ", ".join(f"'{t}'" for t in ts)
@@ -2857,6 +2901,13 @@ async def tailor_resume(base_resume: str, job_description: str,
     # analyze prompt) so they can't crowd the bullet caps; no soft-skill
     # filter here, a duty like "clarifying requirements with analysts" IS the
     # kind of thing recruiters search for.
+    # The JD's pay tables, benefits, EEO and about-us tail is billed on every
+    # later pass (Sonnet included) and teaches the writer nothing. The analyze
+    # pass points at where it starts; cut there for everything downstream.
+    job_description, _cut = _trim_jd_tail(job_description, context.get("jd_tail_starts"))
+    if _cut:
+        notes.append(f"jd trimmed: dropped {_cut} chars of pay/benefits/legal tail")
+
     _resp = [str(r).strip() for r in (context.get("responsibilities") or []) if str(r).strip()]
     context["responsibilities"] = _resp[:8]
     for _k in ("target_tools", "present", "missing"):
@@ -2880,7 +2931,8 @@ async def tailor_resume(base_resume: str, job_description: str,
         max_tokens=8000, pass_name="tailor", **main_kw,
     )).strip()
     tailored = _clean_header_title(_ensure_header(_normalize_format(tailored), base_resume))
-    tailored = _enforce_caps(tailored, base_resume, notes)
+    tailored = _enforce_caps(tailored, base_resume, notes,
+                             keep_tool=_dominant_jd_tool(job_description, context.get("target_tools") or []))
 
     # Guard (b): which non-swapped jobs lost their real base cloud?
     target = context.get("target_cloud", "None")
@@ -2987,11 +3039,6 @@ async def tailor_resume(base_resume: str, job_description: str,
     # code, repaired by the cheap model only where flagged, verified in code.
     # Live misses: "roughly 25%" and "40%" deleted from base bullets, no
     # short bullet in any job, "multi-tenant" four times.
-    # Guard (g0): a tool the base anchors to specific jobs must not migrate
-    # into another job's bullets (live miss: Snowflake, real only at JPMC,
-    # written into two Cargill bullets for a Snowflake JD).
-    tailored = await _fix_scope_leaks(tailored, base_resume, context, notes, **cheap_kw)
-
     tailored = await _polish_numbers_and_length(
         tailored, base_resume, job_description, context.get("target_tools") or [],
         inserted, notes, **cheap_kw)
@@ -3001,6 +3048,13 @@ async def tailor_resume(base_resume: str, job_description: str,
 
     # Guard (h): vague intensifiers never ship — the prompt forbids them, the
     # fixer is told again, and this strip is the deterministic last word.
+    # Guard (g0): a tool the base anchors to specific jobs must not migrate
+    # into another job's bullets (live miss: Snowflake, real only at JPMC,
+    # written into two Cargill bullets for a Snowflake JD). Runs after the
+    # line fixes so nothing they reintroduce survives.
+    tailored = await _fix_scope_leaks(tailored, base_resume, context, notes,
+                                      jd_text=job_description, **cheap_kw)
+
     tailored, intens = _strip_intensifiers(tailored)
     if intens:
         notes.append(f"intensifier guard: removed {intens} vague intensifier(s)")

@@ -174,6 +174,12 @@ export interface GateScores {
   hiring_manager?: GateScore;
   overall?: number;
   top_fixes?: string[];
+  /** 100-point breakdown: tools 40, duties 15, title 5, orphans 10, numbers 10, readability 10, page_fit 10. */
+  points?: Record<string, number>;
+  /** 90% coverage target: how many ranked JD tools earned a bullet, and which are Skills-only by design. */
+  coverage_target?: { need: number; have: number; met: boolean; skipped_by_design?: string[] };
+  present?: string[];
+  missing?: string[];
 }
 
 /** What the analyze pass detected about the JD, surfaced for transparency. */

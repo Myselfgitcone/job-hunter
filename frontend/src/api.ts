@@ -223,7 +223,8 @@ export const api = {
     req<{ running: boolean; total: number; done: number; fixed: number; failed: number }>("/api/jobs/fix-descriptions/status"),
 
   quickTailor: (jd: string, company: string) =>
-    req<{ tailored_resume: string; gate_scores?: import("./types").GateScores | null; tailor_context?: import("./types").TailorContext | null; ats_after?: { score: number } }>(
+    req<{ tailored_resume: string; gate_scores?: import("./types").GateScores | null; tailor_context?: import("./types").TailorContext | null;
+          ats_after?: { score: number }; needs_review?: boolean; review_reasons?: string[]; review_notes?: string[] }>(
       "/api/quick-tailor", { method: "POST", body: JSON.stringify({ jd, company }) }),
 
   quickTailorPdfUrl: () => `${BASE}/api/quick-tailor/pdf`,

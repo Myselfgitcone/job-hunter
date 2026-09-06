@@ -23,7 +23,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from database import init_db, SessionLocal, engine, Job, Setting, User, UserSettings, UserJob, Company, AppLog, QuickTailorHistory, ChatMessage, AssistantMessage, decrypt_secret, AiUsageDaily
 from auth import get_current_user_id, hash_password, verify_password, create_token
-from scrapers import run_all_scrapers, run_group_fast, run_group_greenhouse, run_group_hiringcafe, run_group_jobo, run_group_fantasticjobs
+from scrapers import run_all_scrapers, run_group_fast, run_group_greenhouse, run_group_hiringcafe, run_group_jobo, run_group_fantasticjobs  # noqa: F401 — groups A-D are disabled for the FantasticJobs trial (see _run_scrape); kept importable
 from scrapers.o2ten import fetch as run_group_o2ten
 from ai.ats import score_ats
 from ai.tailor import tailor_resume
@@ -5752,7 +5752,7 @@ async def _run_qualify_all_inner(new_job_ids: list | None = None):
             # 402 = out of credits. Abort immediately — no point retrying 1000+ jobs.
             if "402" in err_str or "Insufficient credits" in err_str:
                 print("[Qualify] ⚠️  HTTP 402 — AI credits exhausted. Aborting qualify run. "
-                      f"Top up credits at openrouter.ai or change ai_model_qualify in Settings.")
+                      "Top up credits at openrouter.ai or change ai_model_qualify in Settings.")
                 break
         await asyncio.sleep(0.3)
 

@@ -4286,6 +4286,9 @@ async def quick_tailor_extract_jd(file: UploadFile = File(...), user_id: str = D
 
 @app.post("/api/quick-tailor")
 async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_current_user_id)):
+    # Same pipeline and the same prompt cache as the per-job tailor button.
+    from ai.llm import set_cache_enabled
+    set_cache_enabled(True)
     async with SessionLocal() as db:
         used = await _get_daily_tailor_count(user_id, db)
     if used >= DAILY_TAILOR_LIMIT:
@@ -4354,6 +4357,8 @@ async def quick_tailor_pdf(body: QuickTailorRequest, user_id: str = Depends(get_
     if body.tailored_resume and body.tailored_resume.strip():
         tailored = body.tailored_resume
     else:
+        from ai.llm import set_cache_enabled
+        set_cache_enabled(True)
         base_resume = user_cfg.get("resume", "")
         if not base_resume:
             raise HTTPException(400, "No base resume saved. Upload one in Settings first.")
@@ -4392,6 +4397,8 @@ async def quick_tailor_docx(body: QuickTailorRequest, user_id: str = Depends(get
     if body.tailored_resume and body.tailored_resume.strip():
         tailored = body.tailored_resume
     else:
+        from ai.llm import set_cache_enabled
+        set_cache_enabled(True)
         base_resume = user_cfg.get("resume", "")
         if not base_resume:
             raise HTTPException(400, "No base resume saved. Upload one in Settings first.")

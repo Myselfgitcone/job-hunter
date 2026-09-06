@@ -113,3 +113,15 @@ def test_symbol_edged_names_are_evidenced():
     assert t._unevidenced(["KDB"], "EXPERIENCE:\nX @ Y | Z\n• Used KDBX only.") == ["KDB"]
     present, missing = t._covered_anywhere(["KDB+", "Python"], "• Databases: Snowflake, KDB+, Oracle\n• Built Python jobs.")
     assert present == ["KDB+", "Python"] and missing == []
+
+
+def test_headline_mirrors_same_family_but_never_inflates():
+    base = ("Jane Doe — Senior Data Engineer\n\nEXPERIENCE:\nSenior Data Engineer @ Acme | 2021 - Present\n"
+            "• Leading a staff of analysts through a platform migration.\n")
+    def head(jt):
+        return t._headline_hybrid("Jane Doe — " + jt + "\nrest", base, jt, []).splitlines()[0].split("—")[1].strip()
+    assert head("ETL Data Engineer") == "ETL Data Engineer"            # same family: mirror
+    assert head("Senior ETL Data Engineer") == "Senior ETL Data Engineer"   # Senior is a real base title
+    assert head("Lead Data Engineer") == "Data Engineer"               # "leading" in a bullet is not a title
+    assert head("Staff Data Engineer") == "Data Engineer"              # "staff of analysts" is not a title
+    assert head("Software Engineer") == "Senior Data Engineer"        # other family: real title

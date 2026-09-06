@@ -837,6 +837,26 @@ def _role_family(title: str) -> str:
     return ""
 
 
+def _base_title_text(base_resume: str) -> str:
+    """The base's OWN titles (headline + every 'Title @ Company' line), lower.
+    A seniority word must come from here, not from bullet prose: 'leading a
+    migration' does not make someone a Lead, 'care management staff' not a
+    Staff engineer."""
+    parts = []
+    lines = (base_resume or "").splitlines()
+    if lines and "—" in lines[0]:
+        parts.append(lines[0].partition("—")[2])
+    for ln in lines:
+        if " @ " in ln and not ln.lstrip().startswith(("•", "-", "*")):
+            parts.append(ln.split(" @ ", 1)[0])
+    return " | ".join(p.strip() for p in parts).lower()
+
+
+def _title_has_word(base_titles: str, word: str) -> bool:
+    w = word.lower().rstrip(".")
+    return bool(re.search(rf"(?<![a-z]){re.escape(w)}\.?(?![a-z])", base_titles))
+
+
 def _headline_hybrid(result: str, base_resume: str, jd_title: str, notes: list) -> str:
     """Hybrid headline rule: mirror the JD role in the headline ONLY when it is
     the same role family as the candidate's real latest job title; otherwise fall
@@ -865,10 +885,11 @@ def _headline_hybrid(result: str, base_resume: str, jd_title: str, notes: list) 
     fam_real = _role_family(real_title)
 
     if fam_jd and fam_jd == fam_real:
-        # Same family → mirror is fine, but never inflate seniority in it.
-        base_low = base_resume.lower()
+        # Same family → mirror is fine, but never inflate seniority in it:
+        # a level word survives only if one of the base's own titles has it.
+        base_titles = _base_title_text(base_resume)
         deinf = _SENIORITY_RE.sub(
-            lambda m: m.group(0) if m.group(0).lower() in base_low else "", cur_title)
+            lambda m: m.group(0) if _title_has_word(base_titles, m.group(0)) else "", cur_title)
         deinf = re.sub(r"\s{2,}", " ", deinf).strip(" -–—|")
         if deinf and deinf != cur_title:
             lines[0] = f"{name.strip()} — {deinf}"

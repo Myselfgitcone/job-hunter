@@ -827,13 +827,17 @@ _F_ENGINEER = re.compile(r"\bengineer\b", re.I)
 def _role_family(title: str) -> str:
     """Coarse family for a job/JD title. Empty string = unknown/off-domain."""
     t = (title or "").lower()
-    for fam, kws in _FAMILY_KWS:
-        if any(k in t for k in kws):
-            return fam
+    # "data" + "engineer" in the title is a data role whatever sits between
+    # them: "Data Infrastructure Engineer" matched the Cloud list's
+    # "infrastructure engineer" first and the headline fell back to the real
+    # title (live: TBC/Lyric, recruiter 72 for a title miss)
     if _F_DATA.search(t) and _F_ANALYST.search(t):
         return "Data Analyst"
     if _F_DATA.search(t) and _F_ENGINEER.search(t):
         return "Data Engineer"
+    for fam, kws in _FAMILY_KWS:
+        if any(k in t for k in kws):
+            return fam
     return ""
 
 

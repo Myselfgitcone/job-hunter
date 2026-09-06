@@ -132,3 +132,13 @@ def test_headline_level_not_invented_for_plain_base():
     base = "Jane Doe — Data Engineer\n\nEXPERIENCE:\nData Engineer @ Acme | 2021 - Present\n• Built pipelines.\n"
     out = t._headline_hybrid("Jane Doe — Senior Data Engineer\nrest", base, "Senior Data Engineer", [])
     assert out.splitlines()[0].split("—")[1].strip() == "Data Engineer"
+
+
+def test_role_family_data_plus_engineer_beats_generic_keywords():
+    assert t._role_family("Senior Data Infrastructure Engineer") == "Data Engineer"
+    assert t._role_family("Senior Cloud Data Engineer") == "Data Engineer"
+    assert t._role_family("Sr. Cloud Engineer") == "Cloud"
+    assert t._role_family("Data Analyst") == "Data Analyst"
+    base = ("Jane Doe — Senior Data Engineer\n\nEXPERIENCE:\nSenior Data Engineer @ Acme | 2021 - Present\n• Built pipelines.\n")
+    out = t._headline_hybrid("Jane Doe — Senior Data Infrastructure Engineer\nrest", base, "Senior Data Infrastructure Engineer", [])
+    assert out.splitlines()[0].split("—")[1].strip() == "Senior Data Infrastructure Engineer"

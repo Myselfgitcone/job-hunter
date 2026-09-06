@@ -338,12 +338,14 @@ WRITE LIKE A HUMAN:
   ("as measured in PagerDuty", "tracked via CloudWatch"). No vague intensifiers
   (significantly, substantially, meaningfully). Do NOT metric-stuff.
 
-METRIC POLICY: keep EVERY number the base resume states, in its own bullet's
-rewrite; invent NONE (no percentage, count, dollar, or time figure the base lacks,
-and never a figure copied from the JD); one figure per bullet — a second one
-becomes a scale word (terabytes, millions of rows, dozens of feeds). Each job's
-strongest real number sits within its first three bullets, behind the JD's
-dominant tool.
+METRIC POLICY: each job carries TWO or THREE real base figures, no more — the
+ones whose bullets back this JD's tools; every other bullet of that job ends on
+a plain outcome or a scale word (terabytes, millions of rows, dozens of feeds)
+with no number. Invent NONE (no percentage, count, dollar, or time figure the
+base lacks, and never a figure copied from the JD); one figure per bullet. Each
+job's strongest kept number sits within its first three bullets, behind the JD's
+dominant tool. A code check trims a job past three figures and restores one
+below two.
 
 ================================================================================
 "NOT IN THE JD" LOGIC (fill order)
@@ -586,8 +588,8 @@ def tailor_prompt(resume_text: str, jd_text: str, context: dict,
         f"bullets; the last {n_tools - _must_count(context)} need no bullet but MUST appear in SKILLS "
         "— every JD tool is on the page\n"
         f"  responsibilities:  {_lst('responsibilities')}\n\n"
-        + (("BASE NUMBERS TO KEEP (each stays in its own bullet's rewrite; a code "
-            "check restores any you drop and removes any you invent):\n  "
+        + (("BASE NUMBERS AVAILABLE (keep 2-3 per job, the ones behind this JD's tools; "
+            "the rest become plain outcomes; a code check removes anything you invent):\n  "
             + "\n  ".join(_base_number_hints(resume_text)) + "\n\n")
            if _base_number_hints(resume_text) else "")
         + _anchor_hints(resume_text, context, jd_text)
@@ -1949,6 +1951,7 @@ Output ONLY these lines."""
 
 
 _WEAVE_MAX_WORDS = 24  # a bullet already this long takes no more weaving
+_FIGURES_PER_JOB = (2, 3)  # (floor, cap) real base figures per job; the rest read as plain outcomes
 
 
 async def _ensure_skill_bullets(resume: str, job_description: str,
@@ -2117,11 +2120,16 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
                 # the RESULT must read as one bullet (three words of slack past
                 # the weave limit); a 25-word bullet is not off limits
                 slack = 6 if any(len(p.split()) >= 4 for p in parts) else 3
-                room_ok = len(body.split()) <= _WEAVE_MAX_WORDS + slack
-                # a shrink is fine when every tool the bullet already named
-                # survives (checked below); a shrink that loses one is not
+                # the result must not be longer than the limit OR than the bullet
+                # already was: a long bullet the compressor could not shorten still
+                # takes a keyword as long as it does not grow (live: eight "named,
+                # grew 2" rejections in a row on a 28-word bullet)
+                room_ok = len(body.split()) <= max(_WEAVE_MAX_WORDS + slack, len(old.split()))
+                # any shrink is fine when every tool the bullet already named survives
+                # (checked here) and a sentence is left
                 kept_old = set(_line_skills(old, claimed_now)) <= set(_line_skills(body, claimed_now))
-                grow_ok = (0 <= grew or (grew >= -12 and kept_old))                     and grew <= max(6 * len(need) + 4, len(" ".join(need).split()) + 10)
+                grow_ok = ((0 <= grew or (kept_old and len(body.split()) >= 8))
+                           and grew <= max(6 * len(need) + 4, len(" ".join(need).split()) + 10))
                 if room_ok and grow_ok and same_nums and proves:
                     lines[i] = "• " + body
                     used[i] = need
@@ -2276,8 +2284,12 @@ def _code_score(tailored: str, base_resume: str, job_description: str,
     if orphans:
         fixes.append("Skills without a bullet: " + ", ".join(orphans[:5]))
 
-    invented, dropped, removed = _number_audit(tailored, base_resume, job_description)
-    n_pts = max(0, 10 - 3 * len(invented) - 2 * len(dropped) - len(removed))
+    invented, dropped, removed = _number_audit(tailored, base_resume, job_description,
+                                               floor=_FIGURES_PER_JOB[0])
+    over = _figure_cap_plan(tailored, tools, _FIGURES_PER_JOB[1])
+    n_pts = max(0, 10 - 3 * len(invented) - 2 * len(dropped) - len(removed) - len(over))
+    if over:
+        fixes.append(f"{len(over)} bullet(s) over the {_FIGURES_PER_JOB[1]}-figures-per-job cap")
     if invented:
         fixes.append("Figures not in the base resume: " + ", ".join(sorted(set().union(*[f for _, f in invented])))[:80])
     if dropped:
@@ -2682,13 +2694,18 @@ def _base_number_hints(base_resume: str) -> list[str]:
     return hints
 
 
-def _number_audit(tailored: str, base_resume: str, job_description: str):
+def _number_audit(tailored: str, base_resume: str, job_description: str,
+                  floor: int | None = None):
     """Deterministic read of the tailored text against the base and the JD.
     Returns (invented, dropped, removed_bullets):
       invented  — [(line_idx, {figures})]  figures in neither base nor JD
       dropped   — [(line_idx, {figures})]  base figures missing from the
                   tailored bullet that clearly descends from that base bullet
       removed   — [str] base bullets carrying figures with no descendant at all
+    With `floor` set (the per-job figure floor), dropped/removed are reported
+    only for a job that still carries fewer than `floor` figures — under the
+    2-3-per-job policy a figure left out of a well-covered job is a choice,
+    not a loss. Invented figures are always reported.
     """
     allowed = _num_tokens(base_resume) | _num_tokens(job_description)
     base_all = _num_tokens(base_resume)
@@ -2714,6 +2731,10 @@ def _number_audit(tailored: str, base_resume: str, job_description: str):
     for company, body in _split_jobs(base_resume):
         if company not in t_lines:
             continue
+        if floor is not None:
+            have = sum(1 for i in t_lines[company] if _num_tokens(lines[i]) & allowed)
+            if have >= floor:
+                continue
         job_nums = _num_tokens(t_jobs.get(company, ""))
         for ln in body.splitlines():
             s = ln.strip()
@@ -3095,6 +3116,60 @@ async def _fix_lines(text: str, jobs: dict[int, str], notes: list, label: str,
     return "\n".join(lines)
 
 
+def _figure_cap_plan(text: str, jd_tools: list, cap: int) -> dict[int, set]:
+    """Bullets whose figure has to go so the job keeps at most `cap`. Kept:
+    the bullets naming the most JD tools (the figure that backs this JD's
+    stack is the strongest one for this JD), ties to the earlier bullet
+    (the writer's own ranking). Returns {line_idx: {figures}}."""
+    lines = text.split("\n")
+    tools = [str(t) for t in (jd_tools or [])]
+    plan: dict[int, set] = {}
+    for _, bl in _job_bullet_lines(text):
+        with_fig = [i for i in bl if _num_tokens(lines[i])]
+        if len(with_fig) <= cap:
+            continue
+        ranked = sorted(with_fig, key=lambda i: (-len(_line_skills(lines[i], tools)), i))
+        for i in ranked[cap:]:
+            plan[i] = _num_tokens(lines[i])
+    return plan
+
+
+async def _cap_figures_per_job(text: str, jd_tools: list, notes: list, **cheap_kw) -> str:
+    """A job carries at most three figures: the extras are rewritten as plain
+    outcomes by one cheap call, each line accepted only if no figure remains,
+    every tool name survives and the length stays sane; otherwise it reverts."""
+    plan = _figure_cap_plan(text, jd_tools, _FIGURES_PER_JOB[1])
+    if not plan:
+        return text
+    lines = text.split("\n")
+    claimed = list(dict.fromkeys(_skills_claimed(text, expand=True) + [str(t) for t in (jd_tools or [])]))
+    jobs = {i: f"Remove the figure(s) {', '.join(sorted(figs))}; state the outcome in plain words "
+               "or a scale word, keep every tool name, no new number, same length or shorter."
+            for i, figs in plan.items()}
+    out = await _fix_lines(text, jobs, notes, "figure_cap", **cheap_kw)
+    after = out.split("\n")
+    if len(after) != len(lines):
+        notes.append(f"figure cap: {len(plan)} line(s) flagged; result misaligned, kept original")
+        return text
+    ok, bad = 0, []
+    for i in plan:
+        old = lines[i].lstrip()[1:].strip()
+        new = after[i].lstrip()[1:].strip() if after[i].lstrip().startswith("•") else after[i].strip()
+        wc_old, wc_new = len(old.split()), len(new.split())
+        lost = [s for s in _line_skills(old, claimed) if s not in _line_skills(new, claimed)]
+        if new and not _num_tokens(new) and not lost and 0.5 * wc_old <= wc_new <= wc_old + 2 \
+                and not _INTENSIFIER_RE.search(new):
+            ok += 1
+        else:
+            after[i] = lines[i]
+            bad.append(f"line {i}: " + ("figure still there" if _num_tokens(new) else
+                                        f"dropped {', '.join(lost)}" if lost else "length"))
+    notes.append(f"figure cap: {ok} of {len(plan)} extra figure(s) rewritten as plain outcomes "
+                 f"(max {_FIGURES_PER_JOB[1]} per job)"
+                 + (f"; reverted {len(bad)}: " + "; ".join(bad) if bad else ""))
+    return "\n".join(after)
+
+
 async def _polish_numbers_and_length(tailored: str, base_resume: str,
                                      job_description: str, target_tools: list,
                                      inserted: list, notes: list,
@@ -3103,7 +3178,8 @@ async def _polish_numbers_and_length(tailored: str, base_resume: str,
     code: invented figures out, dropped base figures back, one short bullet
     per job, no phrase echoed four times. Anything the model fails to fix is
     reverted line-by-line and reported."""
-    invented, dropped, removed = _number_audit(tailored, base_resume, job_description)
+    invented, dropped, removed = _number_audit(tailored, base_resume, job_description,
+                                               floor=_FIGURES_PER_JOB[0])
     inserted_texts = {b for _, _, b in inserted}
     length = _length_flags(tailored, inserted_texts)
     phrases = _overused_phrases(tailored, job_description, target_tools)
@@ -3746,7 +3822,8 @@ async def tailor_resume(base_resume: str, job_description: str,
     # Guard (c1c): no bullet over 24 words (and no 150-word summary) goes any
     # further — a long bullet is FULL for the coverage weave and dense on the
     # page; the QA pass right after this sees the final wording.
-    tailored = await _compress_long_bullets(tailored, notes, context.get("target_tools") or [], **cheap_kw)
+    _jd_keep_words = (context.get("target_tools") or []) + (context.get("responsibilities") or [])
+    tailored = await _compress_long_bullets(tailored, notes, _jd_keep_words, **cheap_kw)
     tailored = await _targeted_qa(tailored, missing_clouds, notes,
                                   jd_tools=context.get("target_tools") or [], **cheap_kw)
 
@@ -3844,6 +3921,9 @@ async def tailor_resume(base_resume: str, job_description: str,
     tailored = await _polish_numbers_and_length(
         tailored, base_resume, job_description, context.get("target_tools") or [],
         inserted, notes, **cheap_kw)
+    # Guard (g2): two to three real figures per job — the ones behind this JD's
+    # tools stay, the rest read as plain outcomes (the policy chosen 2026-09-06).
+    tailored = await _cap_figures_per_job(tailored, _jd_keep_words, notes, **cheap_kw)
     tailored, dash_hits2 = _strip_dash_asides(tailored)
     if dash_hits2:
         notes.append(f"dash guard (post-fix): rewrote {dash_hits2} dash construction(s)")
@@ -3862,6 +3942,17 @@ async def tailor_resume(base_resume: str, job_description: str,
     # the split halves and the weaves can repeat an opening verb: one more
     # targeted QA pass (only calls the model when something is flagged)
     tailored = await _targeted_qa(tailored, {}, notes, jd_tools=context.get("target_tools") or [], **cheap_kw)
+
+    # Guard (g3): the page is measured the way the reader sees it. Dense after
+    # everything above (type shrunk 8%+) -> the longest bullets get one more,
+    # tighter compression; measured again so the note is the truth.
+    _fit, _why = _page_fit_points(tailored, base_resume)
+    if _fit < 9:
+        tailored = await _compress_long_bullets(tailored, notes, _jd_keep_words,
+                                                max_words=20, target=18, summary_max=70, summary_target=60,
+                                                **cheap_kw)
+        _fit2, _why2 = _page_fit_points(tailored, base_resume)
+        notes.append(f"page fit: {_why or 'dense'} -> " + (_why2 or "fits at full size") + " after a tighter compress")
 
     tailored, intens = _strip_intensifiers(tailored)
     if intens:

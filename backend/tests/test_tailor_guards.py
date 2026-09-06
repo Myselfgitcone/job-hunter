@@ -175,3 +175,33 @@ def test_keyword_pattern_tolerates_forms_and_hyphens():
     assert t._unevidenced(["lakehouses", "alerting", "Infrastructure-as-Code", "near-real-time", "Kubernetes"], body) == []
     assert t._unevidenced(["AWS"], "EXPERIENCE:\nX @ Y | Z\n• Said aw shucks.") == ["AWS"]
     assert t._unevidenced(["Redis"], "EXPERIENCE:\nX @ Y | Z\n• Used Redis caches.") == []
+
+
+def test_figure_cap_keeps_jd_backed_bullets():
+    text = ("Jane Doe — Data Engineer\n\nEXPERIENCE:\nData Engineer @ Acme | 2021 - Present\n"
+            "• Built Snowflake models cutting cost by 40%.\n"
+            "• Wrote docs for 8 teams.\n"
+            "• Tuned Airflow DAGs, saving $100K a year.\n"
+            "• Ran Kafka streams at sub-100ms latency.\n"
+            "• Cleaned 15+ vendor feeds.\n")
+    plan = t._figure_cap_plan(text, ["Snowflake", "Airflow", "Kafka"], 3)
+    lines = text.split("\n")
+    gone = {lines[i].strip() for i in plan}
+    assert gone == {"• Wrote docs for 8 teams.", "• Cleaned 15+ vendor feeds."}   # the two with no JD tool
+    assert t._figure_cap_plan(text, ["Snowflake"], 5) == {}
+
+
+def test_number_audit_floor_waives_drops_in_covered_jobs():
+    base = ("Jane Doe — Data Engineer\n\nEXPERIENCE:\nData Engineer @ Acme | 2021 - Present\n"
+            "• Built Snowflake models cutting cost by 40%.\n• Tuned Airflow DAGs saving $100K.\n"
+            "• Wrote docs for 8 teams across the org.\n")
+    tailored = ("Jane Doe — Data Engineer\n\nEXPERIENCE:\nData Engineer @ Acme | 2021 - Present\n"
+                "• Built Snowflake models cutting cost by 40%.\n• Tuned Airflow DAGs saving $100K.\n"
+                "• Wrote docs for every team across the org.\n")
+    inv, dropped, removed = t._number_audit(tailored, base, "")
+    assert not inv and (dropped or removed)                       # strict read: the 8 is gone
+    inv, dropped, removed = t._number_audit(tailored, base, "", floor=2)
+    assert not inv and not dropped and not removed                # job still has 2 figures: a choice
+    one = tailored.replace("saving $100K", "saving money")
+    inv, dropped, removed = t._number_audit(one, base, "", floor=2)
+    assert dropped or removed                                     # below the floor: reported again

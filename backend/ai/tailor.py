@@ -891,9 +891,15 @@ def _headline_hybrid(result: str, base_resume: str, jd_title: str, notes: list) 
         deinf = _SENIORITY_RE.sub(
             lambda m: m.group(0) if _title_has_word(base_titles, m.group(0)) else "", cur_title)
         deinf = re.sub(r"\s{2,}", " ", deinf).strip(" -–—|")
+        # ...and never DOWNGRADED: a JD that says "Data Engineer" to a candidate
+        # whose latest title is "Senior Data Engineer" gets "Senior Data Engineer"
+        # (the JD's own words, "ETL Data Engineer", become "Senior ETL Data Engineer")
+        lvl = _SENIORITY_RE.search(real_title)
+        if deinf and lvl and not _SENIORITY_RE.search(deinf):
+            deinf = f"{lvl.group(0)} {deinf}"
         if deinf and deinf != cur_title:
             lines[0] = f"{name.strip()} — {deinf}"
-            notes.append(f"headline de-inflated: {cur_title!r} -> {deinf!r}")
+            notes.append(f"headline level follows the base title: {cur_title!r} -> {deinf!r}")
         return "\n".join(lines)
 
     # Different family / off-domain JD → use the real latest job title.
@@ -2239,7 +2245,8 @@ def _code_score(tailored: str, base_resume: str, job_description: str,
     head_title = first.partition("—")[2].strip().lower()
     jd_title = (context.get("job_title") or "").strip().lower()
     jd_core = re.split(r"\s+–\s+|\s+-\s+|\s*\|\s*|\s*:\s+|\s*\(|,\s+", jd_title, maxsplit=1)[0].strip()
-    if jd_title and head_title in (jd_title, jd_core):
+    _lvl = lambda s: re.sub(r"\s{2,}", " ", _SENIORITY_RE.sub("", s or "")).strip()
+    if jd_title and (head_title in (jd_title, jd_core) or _lvl(head_title) in (_lvl(jd_title), _lvl(jd_core))):
         ti_pts = 5
     elif jd_title and _role_family(head_title) and _role_family(head_title) == _role_family(jd_title):
         ti_pts = 3

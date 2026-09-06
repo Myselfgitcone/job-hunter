@@ -120,8 +120,15 @@ def test_headline_mirrors_same_family_but_never_inflates():
             "• Leading a staff of analysts through a platform migration.\n")
     def head(jt):
         return t._headline_hybrid("Jane Doe — " + jt + "\nrest", base, jt, []).splitlines()[0].split("—")[1].strip()
-    assert head("ETL Data Engineer") == "ETL Data Engineer"            # same family: mirror
+    assert head("ETL Data Engineer") == "Senior ETL Data Engineer"    # JD words + the base's level
+    assert head("Data Engineer") == "Senior Data Engineer"            # never downgraded
     assert head("Senior ETL Data Engineer") == "Senior ETL Data Engineer"   # Senior is a real base title
-    assert head("Lead Data Engineer") == "Data Engineer"               # "leading" in a bullet is not a title
-    assert head("Staff Data Engineer") == "Data Engineer"              # "staff of analysts" is not a title
+    assert head("Lead Data Engineer") == "Senior Data Engineer"        # "leading" in a bullet is not a title
+    assert head("Staff Data Engineer") == "Senior Data Engineer"       # "staff of analysts" is not a title
     assert head("Software Engineer") == "Senior Data Engineer"        # other family: real title
+
+
+def test_headline_level_not_invented_for_plain_base():
+    base = "Jane Doe — Data Engineer\n\nEXPERIENCE:\nData Engineer @ Acme | 2021 - Present\n• Built pipelines.\n"
+    out = t._headline_hybrid("Jane Doe — Senior Data Engineer\nrest", base, "Senior Data Engineer", [])
+    assert out.splitlines()[0].split("—")[1].strip() == "Data Engineer"

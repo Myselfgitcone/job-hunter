@@ -13,7 +13,6 @@ import json
 import re
 import uuid
 import uuid as _uuid
-from pathlib import Path
 from datetime import datetime, timezone as _UTC, timedelta
 from dotenv import load_dotenv
 
@@ -23,7 +22,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from database import init_db, SessionLocal, engine, Job, Setting, User, UserSettings, UserJob, Company, AppLog, QuickTailorHistory, ChatMessage, AssistantMessage, decrypt_secret, AiUsageDaily
-from auth import get_current_user_id, get_optional_user_id, hash_password, verify_password, create_token
+from auth import get_current_user_id, hash_password, verify_password, create_token
 from scrapers import run_all_scrapers, run_group_fast, run_group_greenhouse, run_group_hiringcafe, run_group_jobo, run_group_fantasticjobs
 from scrapers.o2ten import fetch as run_group_o2ten
 from ai.ats import score_ats
@@ -111,7 +110,6 @@ app.add_middleware(
 # â"€â"€ Global exception handlers — always include CORS headers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 from fastapi import Request as _Request
 from fastapi.responses import JSONResponse as _JSONResponse
-from fastapi.exception_handlers import http_exception_handler as _default_http_handler
 
 @app.exception_handler(Exception)
 async def _global_exc_handler(_req: _Request, exc: Exception):
@@ -684,7 +682,7 @@ async def _auto_fetch_jds_for_new(new_jobs: list[dict]):
 
     print(f"[AutoFetch] Fetching full JDs for {len(targets)} new jobs...")
     await asyncio.gather(*[fetch_one(jid, url) for jid, url in targets], return_exceptions=True)
-    print(f"[AutoFetch] Done — running AI sweep for remaining empty trays")
+    print("[AutoFetch] Done — running AI sweep for remaining empty trays")
     await _run_exp_ai_sweep()
 
 
@@ -1055,7 +1053,6 @@ async def startup():
                 row = await db.get(Setting, "last_scraped_at")
             if row and row.value:
                 last_dt = datetime.fromisoformat(row.value)
-                from datetime import timezone as _tz2
                 now_aware = datetime.now(last_dt.tzinfo) if last_dt.tzinfo else datetime.now(_UTC.utc)
                 stale_min = (now_aware - last_dt).total_seconds() / 60
                 if stale_min > 65:
@@ -1365,7 +1362,7 @@ async def forgot_password(body: ForgotPasswordBody):
 
         # Generate fresh token (valid 1 hour)
         token = _secrets.token_urlsafe(40)
-        from datetime import timezone, timedelta
+        from datetime import timedelta
         expires_at = (datetime.now(_UTC.utc) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
         now_iso = datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         db.add(_PRT(
@@ -4357,6 +4354,9 @@ async def quick_tailor_pdf(body: QuickTailorRequest, user_id: str = Depends(get_
     if body.tailored_resume and body.tailored_resume.strip():
         tailored = body.tailored_resume
     else:
+        base_resume = user_cfg.get("resume", "")
+        if not base_resume:
+            raise HTTPException(400, "No base resume saved. Upload one in Settings first.")
         api_key = user_cfg.get("ai_api_key", "")
         provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
         model    = user_cfg.get("ai_model_tailor", "anthropic/claude-opus-4-8")
@@ -4392,6 +4392,9 @@ async def quick_tailor_docx(body: QuickTailorRequest, user_id: str = Depends(get
     if body.tailored_resume and body.tailored_resume.strip():
         tailored = body.tailored_resume
     else:
+        base_resume = user_cfg.get("resume", "")
+        if not base_resume:
+            raise HTTPException(400, "No base resume saved. Upload one in Settings first.")
         api_key = user_cfg.get("ai_api_key", "")
         provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
         model    = user_cfg.get("ai_model_tailor", "anthropic/claude-opus-4-8")
@@ -5040,7 +5043,7 @@ async def search_jobs(
 @app.get("/api/reminders")
 async def get_reminders(user_id: str = Depends(get_current_user_id)):
     """Return jobs with upcoming deadlines or interview dates within 7 days."""
-    from datetime import timezone, timedelta
+    from datetime import timedelta
     now = datetime.now(EST)
     cutoff = (now + timedelta(days=7)).isoformat()
 
@@ -5748,7 +5751,7 @@ async def _run_qualify_all_inner(new_job_ids: list | None = None):
             errors += 1
             # 402 = out of credits. Abort immediately — no point retrying 1000+ jobs.
             if "402" in err_str or "Insufficient credits" in err_str:
-                print(f"[Qualify] ⚠️  HTTP 402 — AI credits exhausted. Aborting qualify run. "
+                print("[Qualify] ⚠️  HTTP 402 — AI credits exhausted. Aborting qualify run. "
                       f"Top up credits at openrouter.ai or change ai_model_qualify in Settings.")
                 break
         await asyncio.sleep(0.3)

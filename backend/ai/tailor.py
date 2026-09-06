@@ -562,6 +562,7 @@ def _anchor_hints(resume_text: str, context: dict, jd_text: str) -> str:
 def tailor_prompt(resume_text: str, jd_text: str, context: dict,
                   missing_tools: list, profile_skills: list | None = None) -> str:
     tools = ", ".join(missing_tools) if missing_tools else "(none detected)"
+    n_tools = len(context.get("target_tools") or [])
     extra = ""
     if profile_skills:
         extra = ("\nCANDIDATE'S OWN DECLARED SKILLS (treat as genuinely held):\n  "
@@ -581,7 +582,9 @@ def tailor_prompt(resume_text: str, jd_text: str, context: dict,
         f"  baseline_missing:  {_lst('baseline_missing')}\n"
         f"  equivalent (may be named directly, once): {_lst('equivalent')}\n"
         f"  bridge_only (claim ONCE: one modest bullet in one job + SKILLS; never headline): {_lst('bridge_only')}\n"
-        f"  coverage target: name at least {_must_count(context)} of the {len(context.get('target_tools') or [])} ranked tools in bullets; the last {len(context.get('target_tools') or []) - _must_count(context)} need no bullet but MUST appear in SKILLS — every JD tool is on the page\n"
+        f"  coverage target: name at least {_must_count(context)} of the {n_tools} ranked tools in "
+        f"bullets; the last {n_tools - _must_count(context)} need no bullet but MUST appear in SKILLS "
+        "— every JD tool is on the page\n"
         f"  responsibilities:  {_lst('responsibilities')}\n\n"
         + (("BASE NUMBERS TO KEEP (each stays in its own bullet's rewrite; a code "
             "check restores any you drop and removes any you invent):\n  "
@@ -960,10 +963,6 @@ def _ensure_header(result: str, base_resume: str) -> str:
         return first_line + "\n" + contact_line + "\n\n" + body
     print("[HEADER MISSING] Full header missing — restoring from base resume.")
     return (base_lines[0] if base_lines else "") + "\n" + contact_line + "\n\n" + body
-
-
-def _bullet_count(text: str) -> int:
-    return sum(1 for ln in text.splitlines() if ln.lstrip().startswith(_BULLET_PREFIXES))
 
 
 _KNOWN_SECTIONS = (
@@ -1780,8 +1779,9 @@ def _coverage_anchors(base_resume: str, context: dict, text: str, jd_text: str) 
 
 
 def _must_count(context: dict) -> int:
+    """How many of the ranked JD tools must earn a bullet: ceil(90%)."""
     n = len(context.get("target_tools") or [])
-    return -(-n * 9 // 10) if n else 0          # ceil(90%)
+    return int(-(-n * _COVERAGE_TARGET // 1)) if n else 0
 
 
 def _coverage_plan(context: dict) -> tuple[list[str], list[str]]:
@@ -1948,23 +1948,7 @@ Rules:
 Output ONLY these lines."""
 
 
-_COST_CAP = 0.080      # dollars; optional passes are skipped past this spend
 _WEAVE_MAX_WORDS = 24  # a bullet already this long takes no more weaving
-
-
-def _under_cost_cap(notes: list, label: str) -> bool:
-    """Gate for a truly optional pass: it runs only while the current run's
-    spend is under the cap. Coverage rounds, the line-fix retry and the
-    fragment fix are NOT gated — each is ~0.1-0.4c and each buys score."""
-    try:
-        from ai.llm import get_run_usage
-        spent = float(get_run_usage().get("cost") or 0.0)
-    except Exception:  # noqa: BLE001
-        return True
-    if spent >= _COST_CAP:
-        notes.append(f"cost cap: skipped {label} (spent {spent * 100:.1f}c of {_COST_CAP * 100:.0f}c)")
-        return False
-    return True
 
 
 async def _ensure_skill_bullets(resume: str, job_description: str,

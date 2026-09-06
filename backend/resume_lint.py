@@ -18,7 +18,6 @@ CLI:
 
 import re
 import sys
-from dataclasses import dataclass, field
 from typing import Optional
 
 
@@ -2052,7 +2051,6 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
 
     for raw in lines:
         line    = raw.strip()
-        line_lo = line.lower()
         if not line:
             prev_verb = None
             continue
@@ -2194,7 +2192,6 @@ def lint_resume(text: str, job_description: str = "", base_resume: str = "",
     # ── Aggregate checks ──────────────────────────────────────────────────────
 
     # Required sections present?
-    text_upper = text.upper()
     for req in _REQUIRED_HEADERS[role_type]:
         # Flexible match — check if any found header contains the required phrase
         if not any(req in h for h in found_headers):

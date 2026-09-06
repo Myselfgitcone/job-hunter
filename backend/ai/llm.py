@@ -19,7 +19,7 @@ import asyncio
 import time
 import httpx
 import contextvars
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 # ── Direct provider URLs ──────────────────────────────────────────────────────

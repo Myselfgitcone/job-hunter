@@ -77,6 +77,9 @@ Rules:
   "Dagster", "dbt" — never the whole phrase: no bullet can hold nine words in
   order, so the whole phrase always scores as missing. No parentheses, no
   "e.g.", no "or similar" inside an entry; an entry is 1-4 words.
+- A prose JD with few product names still yields 12+ entries: the competency
+  nouns it literally uses are keywords ("API design", "CRMs", "distributed",
+  "customers", "connectors"). Copy the JD's word, not a synonym.
 - target_tools is RANKED, most important first: required beats preferred,
   in the title or summary beats buried in a list, repeated beats mentioned
   once, "must / strong / hands-on" beats "exposure / a plus / or similar".
@@ -1620,6 +1623,26 @@ _LABEL_CUT_STOP = {"for", "to", "with", "using", "via", "including", "like", "ot
                    "equivalent", "any", "etc"}
 
 
+def _literal_subspan(label: str, jd_text: str) -> str:
+    """The longest run of the label's words the JD literally says, or "".
+    "distributed systems" on a JD that says "distributed, cloud-scale" ->
+    "distributed"; "database performance optimization" on "optimizing
+    database performance" -> "database performance". A single salvaged word
+    must be a real term (not a stop word, not a vendor/generic token)."""
+    words = label.split()
+    for n in range(len(words) - 1, 0, -1):
+        for k in range(0, len(words) - n + 1):
+            span = words[k:k + n]
+            if span[0].lower() in _LABEL_LEAD_STOP or span[-1].lower() in _LABEL_CUT_STOP:
+                continue
+            cand = " ".join(span)
+            if n == 1 and (len(cand) < 5 or cand.lower() in _SKILL_TOKEN_STOP or cand.lower() in _STEM_STOP):
+                continue
+            if _phrase_in_jd(cand, jd_text):
+                return cand
+    return ""
+
+
 def _split_compound_labels(context: dict, jd_text: str, base_resume: str) -> list[str]:
     """One JD keyword per entry. The analyzer copies the JD verbatim, which is
     right for "Git-based development" and wrong for "orchestration tools (e.g.,
@@ -1639,8 +1662,9 @@ def _split_compound_labels(context: dict, jd_text: str, base_resume: str) -> lis
     seen = {t.lower() for t in tools}
     for t in tools:
         low = t.lower()
+        literal = _phrase_in_jd(t, jd_text)
         compound = ("(" in t or "e.g." in low or "such as" in low or "or similar" in low
-                    or len(t.split()) > 6)
+                    or len(t.split()) > 6 or not literal)
         if not compound:
             words = t.split()
             cut = next((k for k, w in enumerate(words) if k > 0 and w.lower() in _LABEL_CUT_STOP), len(words))
@@ -1670,6 +1694,11 @@ def _split_compound_labels(context: dict, jd_text: str, base_resume: str) -> lis
             if p.lower() in seen or p.lower() in {x.lower() for x in pieces}:
                 continue
             pieces.append(p)
+        if not pieces and not literal:
+            # a paraphrase: keep whatever part of it the JD does say
+            sub = _literal_subspan(t, jd_text)
+            if sub and sub.lower() not in seen:
+                pieces = [sub]
         if not pieces:
             new_tools.append(t)          # nothing usable came out; keep the label
             continue
@@ -2097,10 +2126,10 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
                 # a product name must appear as written; a competency phrase
                 # ("streaming architecture") is proven by its word stems in any
                 # order ("streaming … architectures")
-                proves = all(
-                    not _unevidenced([p], "EXPERIENCE:\nX @ Y | Z\n• " + body)
-                    or (not p[0].isupper() and _stems_in_text(p, body.lower()))
-                    for p in need)
+                # the SAME test the final score uses — a looser fallback here
+                # accepted "lakehouse" for "lakehouses" four rounds running and
+                # the scorer still counted it missing
+                proves = all(not _unevidenced([p], "EXPERIENCE:\nX @ Y | Z\n• " + body) for p in need)
                 # the RESULT must read as one bullet (three words of slack past
                 # the weave limit); a 25-word bullet is not off limits
                 slack = 6 if any(len(p.split()) >= 4 for p in parts) else 3
@@ -3345,7 +3374,16 @@ def _ensure_tech_lines(text: str) -> tuple[str, int]:
     return "\n".join(lines), added
 
 
-def _qa_flags(text: str, missing_clouds: dict) -> dict[int, str]:
+def _verb_form(word: str) -> str:
+    w = (word or "").lower()
+    if w.endswith("ed"):
+        return "past-tense"
+    if w.endswith("s") and not w.endswith("ss"):
+        return "third-person"
+    return "base-form"
+
+
+def _qa_flags(text: str, missing_clouds: dict, jd_tools: list | None = None) -> dict[int, str]:
     lines = text.split("\n")
     flags: dict[int, str] = {}
 
@@ -3387,6 +3425,31 @@ def _qa_flags(text: str, missing_clouds: dict) -> dict[int, str]:
         if cur and first and first.group(0).lower().endswith("ed") \
                 and re.search(rf"\b{re.escape(cur)}\b", body, re.I):
             _add(i, f"Present tense: this describes the current employer ({cur}).")
+    # summary voice: every line after the first opens the same way (live: "Architect…",
+    # "Builds…", "Partner…", "Strengthen…" in one summary read as four writers)
+    sum_idx = _summary_lines(text)
+    forms = {}
+    for i in sum_idx[1:]:
+        first = re.match(r"[A-Za-z]+", lines[i].lstrip("• ").strip())
+        if first:
+            forms[i] = (_verb_form(first.group(0)), first.group(0))
+    if len(forms) >= 2:
+        tally: dict[str, int] = {}
+        for f, _ in forms.values():
+            tally[f] = tally.get(f, 0) + 1
+        want = max(tally, key=lambda k: (tally[k], k == "third-person"))
+        example = next(w for f, w in forms.values() if f == want)
+        for i, (f, _) in forms.items():
+            if f != want:
+                _add(i, f"Summary voice: open with a {want} verb like '{example}' so every summary line reads the same way; keep the meaning.")
+    # summary density: a line naming four or more JD terms is a keyword list, not a sentence
+    if jd_tools:
+        for i in sum_idx:
+            body = lines[i].lstrip("• ").strip()
+            named = _line_skills(body, [str(t) for t in jd_tools])
+            if len(named) >= 4:
+                _add(i, f"Too many JD terms in one line ({len(named)}): keep at most two of "
+                        f"{', '.join(named)} and say the rest in plain words.")
     # dropped real cloud: weave into the job's first two bullets + its tools line
     for company, cloud in (missing_clouds or {}).items():
         for h in hdr_idx:
@@ -3404,8 +3467,9 @@ def _qa_flags(text: str, missing_clouds: dict) -> dict[int, str]:
     return flags
 
 
-async def _targeted_qa(text: str, missing_clouds: dict, notes: list, **cheap_kw) -> str:
-    flags = _qa_flags(text, missing_clouds)
+async def _targeted_qa(text: str, missing_clouds: dict, notes: list,
+                       jd_tools: list | None = None, **cheap_kw) -> str:
+    flags = _qa_flags(text, missing_clouds, jd_tools)
     if not flags:
         return text
     before = text.split("\n")
@@ -3447,6 +3511,14 @@ async def _targeted_qa(text: str, missing_clouds: dict, notes: list, **cheap_kw)
         if ok and "Present tense" in instr:
             f_new = re.match(r"[A-Za-z]+", nb)
             if f_new and f_new.group(0).lower().endswith("ed"):
+                ok = False
+        if ok and "Summary voice" in instr:
+            want = re.search(r"open with a (\S+) verb", instr)
+            f_new = re.match(r"[A-Za-z]+", nb)
+            if not (want and f_new and _verb_form(f_new.group(0)) == want.group(1)):
+                ok = False
+        if ok and "Too many JD terms" in instr:
+            if len(_line_skills(nb, [str(t) for t in (jd_tools or [])])) > 3:
                 ok = False
         if ok and ("Weave" in instr or "Add " in instr):
             cloud = re.search(r"(?:Weave|Add) (\w+)", instr).group(1)
@@ -3639,6 +3711,9 @@ async def tailor_resume(base_resume: str, job_description: str,
     # A tool label whose words the JD never uses is the analyzer's paraphrase,
     # not a keyword — an ATS would never match it and the coverage model can
     # only fail on it. Keep only labels whose word stems all occur in the JD.
+    _split_log = _split_compound_labels(context, job_description, base_resume)
+    if _split_log:
+        notes.append("analyze: split compound labels: " + "; ".join(_split_log))
     _not_literal = [str(t) for t in (context.get("target_tools") or [])
                     if not _phrase_in_jd(str(t), job_description)]
     if _not_literal:
@@ -3646,9 +3721,6 @@ async def tailor_resume(base_resume: str, job_description: str,
         for _k in ("present", "missing", "bridge_only", "equivalent"):
             context[_k] = [t for t in (context.get(_k) or []) if str(t).split(" <-")[0] not in _not_literal]
         notes.append("analyze: dropped labels the JD never says: " + ", ".join(_not_literal))
-    _split_log = _split_compound_labels(context, job_description, base_resume)
-    if _split_log:
-        notes.append("analyze: split compound labels: " + "; ".join(_split_log))
 
     missing = context.get("missing") or []
     print(f"[TAILOR] target_cloud={context.get('target_cloud')!r} "
@@ -3687,7 +3759,12 @@ async def tailor_resume(base_resume: str, job_description: str,
     tailored, tech_added = _ensure_tech_lines(tailored)
     if tech_added:
         notes.append(f"qa: built {tech_added} missing Technologies Used line(s) from the job's own bullets")
-    tailored = await _targeted_qa(tailored, missing_clouds, notes, **cheap_kw)
+    # Guard (c1c): no bullet over 24 words (and no 150-word summary) goes any
+    # further — a long bullet is FULL for the coverage weave and dense on the
+    # page; the QA pass right after this sees the final wording.
+    tailored = await _compress_long_bullets(tailored, notes, context.get("target_tools") or [], **cheap_kw)
+    tailored = await _targeted_qa(tailored, missing_clouds, notes,
+                                  jd_tools=context.get("target_tools") or [], **cheap_kw)
 
     # Guard (c): still missing after the fixer -> force into Technologies Used.
     still_missing = _missing_native_clouds(tailored, base_resume, target)
@@ -3717,10 +3794,6 @@ async def tailor_resume(base_resume: str, job_description: str,
     # that work plausibly happened. Also chased: the JD's universal-baseline
     # requirements and its RESPONSIBILITIES the draft left unevidenced (both
     # judged by the analyze pass, per JD — no fixed list in code).
-    # Guard (c1c): no bullet over 24 words goes into the coverage rounds —
-    # a long bullet is FULL for the weave and dense on the page.
-    tailored = await _compress_long_bullets(tailored, notes, context.get("target_tools") or [], **cheap_kw)
-
     inserted: list = []          # (job_index, skill, bullet) the guard wrote
     tailored = await _ensure_skill_bullets(
         tailored, job_description, notes,
@@ -3804,7 +3877,7 @@ async def tailor_resume(base_resume: str, job_description: str,
     tailored = _split_long_bullets(tailored, notes)
     # the split halves and the weaves can repeat an opening verb: one more
     # targeted QA pass (only calls the model when something is flagged)
-    tailored = await _targeted_qa(tailored, {}, notes, **cheap_kw)
+    tailored = await _targeted_qa(tailored, {}, notes, jd_tools=context.get("target_tools") or [], **cheap_kw)
 
     tailored, intens = _strip_intensifiers(tailored)
     if intens:

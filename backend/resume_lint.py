@@ -1685,17 +1685,32 @@ def _dynamic_coverage_pattern(skill: str) -> str:
         a, sep, b = re.split(r'([/&])', s)
         escaped_sep = re.escape(sep)
         return rf"{L}({re.escape(a)}{escaped_sep}{re.escape(b)}|{re.escape(b)}{escaped_sep}{re.escape(a)}){R}"
+    # a hyphenated label matches the spaced spelling too: "Infrastructure-as-Code"
+    # is also written "infrastructure as code", "near-real-time" as "near real time"
+    esc = lambda w: re.escape(w).replace(r"\-", r"[-\s]?")
     words = s.split()
+    product = (skill.strip()[:1].isupper() and " " not in skill.strip())   # "Kubernetes", "AWS": exact
     if len(words) == 1:
-        return rf"{L}{re.escape(s)}{R}"
-    interior = r"\s+".join(re.escape(w) for w in words[:-1])
+        w = words[0]
+        if product:
+            return rf"{L}{esc(w)}{R}"
+        # a competency word is tolerant of its own forms: "alerting" -> alerts/alerted,
+        # "lakehouses" -> lakehouse (live: woven as "lakehouse", scored missing as "lakehouses")
+        if w.endswith("ing") and len(w) > 4:
+            return rf"{L}{esc(w[:-3])}\w*{R}"
+        if w.endswith("s") and not w.endswith("ss") and len(w) > 4:
+            return rf"{L}{esc(w[:-1])}s?{R}"
+        return rf"{L}{esc(w)}s?{R}"
+    interior = r"\s+".join(esc(w) for w in words[:-1])
     last = words[-1]
     if last.endswith("ing") and len(last) > 4:
         # Gerund: strip 'ing' to get stem, match stem + any word chars
         # "modeling" -> "model", "warehousing" -> "warehous", "learning" -> "learn"
-        stem = re.escape(last[:-3])
+        stem = esc(last[:-3])
         return rf"{L}{interior}\s+{stem}\w*{R}"
-    return rf"{L}{interior}\s+{re.escape(last)}s?{R}"
+    if last.endswith("s") and not last.endswith("ss") and len(last) > 4:
+        return rf"{L}{interior}\s+{esc(last[:-1])}s?{R}"
+    return rf"{L}{interior}\s+{esc(last)}s?{R}"
 
 
 def skill_coverage_report(

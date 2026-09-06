@@ -142,3 +142,36 @@ def test_role_family_data_plus_engineer_beats_generic_keywords():
     base = ("Jane Doe — Senior Data Engineer\n\nEXPERIENCE:\nSenior Data Engineer @ Acme | 2021 - Present\n• Built pipelines.\n")
     out = t._headline_hybrid("Jane Doe — Senior Data Infrastructure Engineer\nrest", base, "Senior Data Infrastructure Engineer", [])
     assert out.splitlines()[0].split("—")[1].strip() == "Senior Data Infrastructure Engineer"
+
+
+def test_paraphrased_label_keeps_its_literal_part():
+    jd = "Deep experience with high-performance software in a distributed, cloud-scale environment. Demonstrated experience optimizing database performance."
+    assert t._literal_subspan("distributed systems", jd) == "distributed"
+    assert t._literal_subspan("database performance optimization", jd) == "database performance"
+    assert t._literal_subspan("Infrastructure as Code", jd) == ""
+    ctx = {"target_tools": ["distributed systems", "SQL"], "present": [], "missing": ["distributed systems"],
+           "bridge_only": [], "equivalent": []}
+    t._split_compound_labels(ctx, jd + " Strong SQL skills.", BASE)
+    assert ctx["target_tools"] == ["distributed", "SQL"]
+
+
+def test_summary_voice_and_density_flags():
+    text = ("Jane Doe — Senior Data Engineer\n\nSUMMARY:\nSenior Data Engineer with 6 years.\n"
+            "Builds CDC connectors for relational databases.\nPartner with product teams on connector design.\n"
+            "Strengthens CDC infrastructure with checkpointing.\n"
+            "Designs Kafka, Debezium, Snowflake, Airflow and dbt pipelines with schema drift handling.\n\n"
+            "EXPERIENCE:\nSenior Data Engineer @ Acme | 2021 - Present\n• Built pipelines.\n")
+    flags = t._qa_flags(text, {}, jd_tools=["Kafka", "Debezium", "Snowflake", "Airflow", "dbt", "schema drift"])
+    msgs = " || ".join(flags.values())
+    assert "third-person verb like 'Builds'" in msgs          # the lone "Partner" line is flagged
+    assert msgs.count("Summary voice") == 1
+    assert "Too many JD terms in one line (6)" in msgs
+    assert t._verb_form("Builds") == "third-person" and t._verb_form("Led") == "past-tense" and t._verb_form("Partner") == "base-form"
+
+
+def test_keyword_pattern_tolerates_forms_and_hyphens():
+    body = ("EXPERIENCE:\nX @ Y | Z\n• Modeled the lakehouse and set up alerts on freshness; "
+            "wrote infrastructure as code in Terraform; near real time loads; ran Kubernetes.")
+    assert t._unevidenced(["lakehouses", "alerting", "Infrastructure-as-Code", "near-real-time", "Kubernetes"], body) == []
+    assert t._unevidenced(["AWS"], "EXPERIENCE:\nX @ Y | Z\n• Said aw shucks.") == ["AWS"]
+    assert t._unevidenced(["Redis"], "EXPERIENCE:\nX @ Y | Z\n• Used Redis caches.") == []

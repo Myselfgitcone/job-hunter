@@ -1679,22 +1679,23 @@ def _dynamic_coverage_pattern(skill: str) -> str:
         "AWS Certified"  -> r'\baws\s+certifieds?\b'
     """
     s = skill.lower().strip()
+    L, R = r"(?<![a-z0-9])", r"(?![a-z0-9])"     # word edges that also work for "kdb+", "c#", ".net"
     # Slash/ampersand notation (ETL/ELT, CI/CD, ELT/ETL): match either ordering
     if re.match(r'^[a-z]+[/&][a-z]+$', s):
         a, sep, b = re.split(r'([/&])', s)
         escaped_sep = re.escape(sep)
-        return rf"\b({re.escape(a)}{escaped_sep}{re.escape(b)}|{re.escape(b)}{escaped_sep}{re.escape(a)})\b"
+        return rf"{L}({re.escape(a)}{escaped_sep}{re.escape(b)}|{re.escape(b)}{escaped_sep}{re.escape(a)}){R}"
     words = s.split()
     if len(words) == 1:
-        return rf"\b{re.escape(s)}\b"
+        return rf"{L}{re.escape(s)}{R}"
     interior = r"\s+".join(re.escape(w) for w in words[:-1])
     last = words[-1]
     if last.endswith("ing") and len(last) > 4:
         # Gerund: strip 'ing' to get stem, match stem + any word chars
         # "modeling" -> "model", "warehousing" -> "warehous", "learning" -> "learn"
         stem = re.escape(last[:-3])
-        return rf"\b{interior}\s+{stem}\w*\b"
-    return rf"\b{interior}\s+{re.escape(last)}s?\b"
+        return rf"{L}{interior}\s+{stem}\w*{R}"
+    return rf"{L}{interior}\s+{re.escape(last)}s?{R}"
 
 
 def skill_coverage_report(

@@ -50,7 +50,8 @@ export const ROLE_GROUPS: { group: string; items: string[] }[] = [
   { group: "Business Analyst",      items: ["Business Analyst", "Business Systems Analyst", "Technical Business Analyst", "Systems Analyst", "IT Business Analyst", "Business Data Analyst", "Process Analyst", "Requirements Analyst", "Functional Analyst"] },
   // Entry-level family (Security/SIEM, GenAI/RAG, IAM retired) —
   // entry/associate/mid only, seniors cut at the scraper.
-  { group: "GRC",                   items: ["GRC Analyst", "IT Risk Analyst", "IT Compliance Analyst", "Compliance Analyst", "Risk Analyst", "Information Security Analyst", "Security Compliance Analyst", "IT Auditor", "IT Audit Analyst", "Cyber Risk Analyst", "Third Party Risk Analyst", "Vendor Risk Analyst", "TPRM Analyst"] },
+  // GRC retired 2026-09-07 (scrape family toggled off; re-add here to re-enable the card).
+  // { group: "GRC",                   items: ["GRC Analyst", "IT Risk Analyst", "IT Compliance Analyst", "Compliance Analyst", "Risk Analyst", "Information Security Analyst", "Security Compliance Analyst", "IT Auditor", "IT Audit Analyst", "Cyber Risk Analyst", "Third Party Risk Analyst", "Vendor Risk Analyst", "TPRM Analyst"] },
   // Niche tool-stack families — tiny specialist markets, matched title-contains.
   { group: "Niche - Epic Cogito",   items: ["Cogito", "Caboodle", "Epic Clarity", "Epic Radar", "Epic Reporting", "Epic BI", "Epic Business Intelligence", "Clarity Report", "SlicerDicer", "Reporting Workbench"] },
   // Items mirror every spelling the scraper's ServiceNow title filter accepts

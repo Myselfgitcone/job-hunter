@@ -811,6 +811,8 @@ def _guard_title_inflation(result: str, base_resume: str, notes: list) -> str:
 
 # Role families for the hybrid headline rule. Keyword hit → that family.
 _FAMILY_KWS: list[tuple[str, list[str]]] = [
+    ("ServiceNow",       ["servicenow", "service now", "now platform", "itsm", "itom", "hrsd",
+                          "cmdb", "itam", "service mapping", "integrationhub"]),
     ("Data Engineer",    ["data engineer", "etl", "elt", "databricks", "snowflake", "spark",
                           "mlops", "machine learning", "data platform", "data warehouse",
                           "data architect", "database engineer", "database developer", "big data"]),

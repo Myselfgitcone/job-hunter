@@ -53,6 +53,7 @@ export const ROLE_GROUPS: { group: string; items: string[] }[] = [
   { group: "GRC",                   items: ["GRC Analyst", "IT Risk Analyst", "IT Compliance Analyst", "Compliance Analyst", "Risk Analyst", "Information Security Analyst", "Security Compliance Analyst", "IT Auditor", "IT Audit Analyst", "Cyber Risk Analyst", "Third Party Risk Analyst", "Vendor Risk Analyst", "TPRM Analyst"] },
   // Niche tool-stack families — tiny specialist markets, matched title-contains.
   { group: "Niche - Epic Cogito",   items: ["Cogito", "Caboodle", "Epic Clarity", "Epic Radar", "Epic Reporting", "Epic BI", "Epic Business Intelligence", "Clarity Report", "SlicerDicer", "Reporting Workbench"] },
+  { group: "ServiceNow",            items: ["ServiceNow", "ServiceNow Developer", "ServiceNow Administrator", "ServiceNow Platform Engineer", "ServiceNow Architect", "ServiceNow Consultant", "ServiceNow Business Analyst", "ServiceNow Technical Lead", "ITSM", "ITOM", "HRSD", "CMDB", "ITAM", "SAM Pro", "Service Mapping", "IntegrationHub", "Flow Designer"] },
   { group: "Niche - Anaplan",       items: ["Anaplan", "Connected Planning", "OneStream", "Adaptive Planning", "Workday Adaptive", "Pigment Planning"] },
   // O2Ten curated daily list — one family, dynamic sections (matched by source).
   { group: "O2Ten Daily",           items: ["O2Ten"] },

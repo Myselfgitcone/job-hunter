@@ -18,7 +18,7 @@ from datetime import datetime, timezone, timedelta
 
 import httpx
 
-from scrapers.base import JobData, detect_country, is_relevant_title, CUTOFF_HOURS
+from scrapers.base import JobData, detect_country, is_relevant_title
 
 # ── Endpoint URLs ─────────────────────────────────────────────────────────────
 BASE_ATS        = "https://data.fantastic.jobs/v1/active-ats"
@@ -153,6 +153,20 @@ _FAMILY_TERMS: dict[str, str] = {
     "Niche - Anaplan": (
         "anaplan | 'connected planning' | onestream"
         " | 'adaptive planning' | 'workday adaptive' | 'pigment planning'"
+    ),
+    # ServiceNow platform roles: developer / admin / platform engineer /
+    # consultant / BA / lead, and the module titles that omit the platform
+    # name (ITSM, ITOM, HRSD, CMDB, ITAM, SAM Pro). Bare "csm" and "irm" are
+    # left out: they collide with sales (Customer Success Manager) and
+    # finance titles. "ServiceNow Architect" passes; the org-level architect
+    # tracks in _GLOBAL_NOT still do not.
+    "ServiceNow": (
+        "servicenow | 'service now' | 'now platform' | 'service-now'"
+        " | itsm | 'it service management' | itom | 'it operations management'"
+        " | hrsd | 'hr service delivery' | cmdb | 'configuration management database'"
+        " | itam | 'it asset management' | 'sam pro' | 'service mapping'"
+        " | 'integrationhub' | 'integration hub' | 'flow designer'"
+        " | ('customer service management' & servicenow)"
     ),
     # 'project manager' removed — re-add as a family to re-enable.
 }

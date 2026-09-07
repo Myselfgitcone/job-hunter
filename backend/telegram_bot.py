@@ -2,8 +2,6 @@
 Telegram bot for Job Hunter.
 Sends job alerts, daily digests, and supports basic commands.
 """
-import asyncio
-import html
 import logging
 import re
 from typing import Optional
@@ -77,6 +75,11 @@ _ROLE_FAMILIES: list[tuple[str, list[str]]] = [
                              "reporting workbench"]),
     ("Niche - Anaplan",     ["anaplan", "connected planning", "onestream",
                              "adaptive planning", "workday adaptive", "pigment planning"]),
+    ("ServiceNow",          ["servicenow", "service now", "service-now", "now platform",
+                             "itsm", "it service management", "itom", "it operations management",
+                             "hrsd", "hr service delivery", "cmdb", "itam", "it asset management",
+                             "sam pro", "service mapping", "integrationhub", "integration hub",
+                             "flow designer"]),
     # Entry-level family — before Data Analyst so "Cyber Risk
     # Analyst" doesn't fall into wider analyst nets. (Security/SIEM,
     # GenAI/RAG, and IAM retired.)

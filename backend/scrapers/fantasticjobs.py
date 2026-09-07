@@ -50,7 +50,8 @@ MAX_PAGES = 200   # safety cap only; natural break = last page < PAGE_SIZE
 # Caps scale with the window: hourly runs see <200 jobs in practice (500 is
 # generous); a 24h catch-up after downtime can legitimately reach a few K.
 MAX_EXPECTED_BY_WINDOW = {"1h": 500, "6h": 1500, "24h": 3000, "48h": 5000,
-                          "2d": 6000, "3d": 9000, "4d": 12000, "5d": 14000, "7d": 18000}
+                          "2d": 6000, "3d": 9000, "4d": 12000, "5d": 14000, "7d": 18000,
+                          "1m": 20000}   # a 30-day pull is family-limited; 20k keeps the jobs meter safe
 
 # FantasticJobs accepts ONLY these time_frame values (confirmed via 400 error).
 # Our UI/legacy windows (48h/2d/…) must be translated to the nearest valid frame

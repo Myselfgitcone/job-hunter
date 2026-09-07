@@ -3288,7 +3288,7 @@ async def scrape_jobs(background_tasks: BackgroundTasks, window: str | None = No
         if not window:
             raise HTTPException(status_code=400, detail="families needs a window (e.g. window=7d)")
     if window:
-        allowed = {"1h", "6h", "24h", "48h", "2d", "3d", "4d", "5d", "7d"}
+        allowed = {"1h", "6h", "24h", "48h", "2d", "3d", "4d", "5d", "7d", "1m"}   # 1m = 30 days, the widest backfill
         if window not in allowed:
             raise HTTPException(status_code=400, detail=f"window must be one of {sorted(allowed)}")
         forced = window

@@ -57,7 +57,8 @@ export const ROLE_GROUPS: { group: string; items: string[] }[] = [
   // (backend/scrapers/fantasticjobs.py) — the app matches titles by substring,
   // so a spelling missing here hides a job the scraper pulled (live: 510 saved, 360 shown).
   { group: "ServiceNow",            items: ["ServiceNow", "Service Now", "Service-Now", "Now Platform", "ITSM", "IT Service Management", "ITOM", "IT Operations Management", "HRSD", "HR Service Delivery", "CMDB", "Configuration Management Database", "ITAM", "IT Asset Management", "SAM Pro", "Service Mapping", "IntegrationHub", "Integration Hub", "Flow Designer"] },
-  { group: "Niche - Anaplan",       items: ["Anaplan", "Connected Planning", "OneStream", "Adaptive Planning", "Workday Adaptive", "Pigment Planning"] },
+  // Anaplan retired 2026-09-07 (scrape family toggled off; re-add here to re-enable the card).
+  // { group: "Niche - Anaplan",       items: ["Anaplan", "Connected Planning", "OneStream", "Adaptive Planning", "Workday Adaptive", "Pigment Planning"] },
   // O2Ten curated daily list — one family, dynamic sections (matched by source).
   { group: "O2Ten Daily",           items: ["O2Ten"] },
   // AI / DS Leadership —

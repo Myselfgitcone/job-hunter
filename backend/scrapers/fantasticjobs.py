@@ -51,14 +51,14 @@ MAX_PAGES = 200   # safety cap only; natural break = last page < PAGE_SIZE
 # generous); a 24h catch-up after downtime can legitimately reach a few K.
 MAX_EXPECTED_BY_WINDOW = {"1h": 500, "6h": 1500, "24h": 3000, "48h": 5000,
                           "2d": 6000, "3d": 9000, "4d": 12000, "5d": 14000, "7d": 18000,
-                          "1m": 20000}   # a 30-day pull is family-limited; 20k keeps the jobs meter safe
+                          "6m": 3000}    # six months is only ever family-limited; above 3k the run stops at the free count
 
 # FantasticJobs accepts ONLY these time_frame values (confirmed via 400 error).
 # Our UI/legacy windows (48h/2d/…) must be translated to the nearest valid frame
 # that COVERS the request, else FJ 400s and returns zero jobs.
-_FJ_VALID_TF = {"1h", "24h", "7d", "1m", "6m"}
+_FJ_VALID_TF = {"1h", "24h", "7d", "6m"}   # the data endpoint rejects 1m (only the free count accepts it)
 _FJ_WINDOW_MAP = {"6h": "24h", "48h": "7d", "2d": "7d", "3d": "7d",
-                  "4d": "7d", "5d": "7d"}
+                  "4d": "7d", "5d": "7d", "1m": "6m"}
 def _to_fj_window(w: str) -> str:
     if w in _FJ_VALID_TF:
         return w

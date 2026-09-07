@@ -586,6 +586,7 @@ async def fetch(settings: dict) -> list[dict]:
     # added role families. Consumed immediately so it fires exactly once, and
     # it bypasses the min-interval guard below.
     force_window: str | None = None
+    force_families: set | None = None
     global _ENABLED_FAMILIES
     try:
         from database import SessionLocal, Setting
@@ -595,6 +596,13 @@ async def fetch(settings: dict) -> list[dict]:
                 force_window = frow.value.strip()
                 await db.delete(frow)
                 await db.commit()
+            # One-shot family limit for that backfill (consumed with the window)
+            ffrow = await db.get(Setting, "fj_force_families")
+            if ffrow:
+                if force_window and ffrow.value and ffrow.value.strip():
+                    force_families = {f.strip() for f in ffrow.value.split(",") if f.strip() in ALL_FAMILIES}
+                await db.delete(ffrow)
+                await db.commit()
             # Admin family toggles — OFF families are cut from the API request.
             srow = await db.get(Setting, "scrape_families")
             if srow and srow.value:
@@ -602,6 +610,9 @@ async def fetch(settings: dict) -> list[dict]:
                 _ENABLED_FAMILIES = {f for f in ALL_FAMILIES if m.get(f, True)}
             else:
                 _ENABLED_FAMILIES = None   # no setting → all on
+            if force_families:
+                _ENABLED_FAMILIES = force_families
+                print(f"[FantasticJobs] backfill limited to families: {sorted(force_families)}")
     except Exception as e:
         print(f"[FantasticJobs] force-window/families read failed: {e}")
         _ENABLED_FAMILIES = None

@@ -3268,29 +3268,45 @@ async def set_scrape_families(body: dict, user_id: str = Depends(get_current_use
 
 @app.post("/api/jobs/scrape")
 async def scrape_jobs(background_tasks: BackgroundTasks, window: str | None = None,
+                      families: str | None = None,
                       user_id: str = Depends(get_current_user_id)):
     await _verify_admin(user_id)
     # Optional one-shot backfill: ?window=24h (or 6h/48h/7d) forces a wider
     # FantasticJobs time_frame for this run only — used to pull a full day of
     # newly added role families. Bypasses the hourly 1h-window economy once.
+    # ?families=ServiceNow,GRC limits that one run to the named families, so a
+    # 7-day pull for a new family does not re-bill a week of every other one.
     forced = None
+    fam_list: list[str] = []
+    if families:
+        from scrapers.fantasticjobs import ALL_FAMILIES
+        by_low = {f.lower(): f for f in ALL_FAMILIES}
+        fam_list = [by_low[x.strip().lower()] for x in families.split(",") if x.strip().lower() in by_low]
+        unknown = [x.strip() for x in families.split(",") if x.strip() and x.strip().lower() not in by_low]
+        if unknown or not fam_list:
+            raise HTTPException(status_code=400, detail=f"unknown families {unknown}; valid: {ALL_FAMILIES}")
+        if not window:
+            raise HTTPException(status_code=400, detail="families needs a window (e.g. window=7d)")
     if window:
         allowed = {"1h", "6h", "24h", "48h", "2d", "3d", "4d", "5d", "7d"}
         if window not in allowed:
             raise HTTPException(status_code=400, detail=f"window must be one of {sorted(allowed)}")
         forced = window
         async with SessionLocal() as db:
-            row = await db.get(Setting, "fj_force_window")
-            if row:
-                row.value = window
-            else:
-                db.add(Setting(key="fj_force_window", value=window))
+            for key, val in (("fj_force_window", window),
+                             ("fj_force_families", ",".join(fam_list) if fam_list else "")):
+                row = await db.get(Setting, key)
+                if row:
+                    row.value = val
+                elif val:
+                    db.add(Setting(key=key, value=val))
             await db.commit()
     # The actual scrape takes ~2 minutes for 3600 companies, which exceeds Railway's 100s HTTP timeout.
     # We must run it in the background so the UI doesn't crash or timeout.
     background_tasks.add_task(_run_scrape)
-    msg = f"Scrape started (backfill window={forced})." if forced else "Scrape started in background. Check back in a few minutes."
-    return {"message": msg, "window": forced}
+    msg = (f"Scrape started (backfill window={forced}" + (f", families={', '.join(fam_list)}" if fam_list else "") + ")."
+           if forced else "Scrape started in background. Check back in a few minutes.")
+    return {"message": msg, "window": forced, "families": fam_list or None}
 
 
 # ————————————————————————————————————————————————————————————————————————————————

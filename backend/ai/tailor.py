@@ -152,9 +152,8 @@ OUTPUT FORMAT (plain text — NOT markdown. No #, no **, no code fences.)
 Line 1:  `<Candidate Full Name> — <Exact Job Title from the JD>` — em-dash between
          them; the clean, short title only (no suffix, tool, domain, or seniority
          the JD's posting title padded on).
-Line 2:  `<phone> | <email> | <City, ST>`   (phone FIRST, then email, then the
-         candidate's city and state from the base resume — omit the city part
-         if the base has none. No street address, no linkedin.)
+Line 2:  `<phone> | <email>`   (phone FIRST, then email. Nothing else on this
+         line: no city, state, street address, linkedin or website.)
 
 Then these sections, in this exact order. Section headers are UPPERCASE with a
 trailing colon on their own line. Every bullet starts with "• ".
@@ -940,6 +939,25 @@ def _clean_header_title(result: str) -> str:
     if cleaned and cleaned != title.strip():
         lines[0] = f"{name.strip()} — {cleaned}"
         print(f"[HEADER TITLE] Cleaned posting suffix: {title.strip()!r} -> {cleaned!r}")
+    return "\n".join(lines)
+
+
+def _contact_only(result: str) -> str:
+    """The contact line (line 2) is `phone | email` and nothing else. The base
+    resume carries a city and the model tends to copy it; strip it here so
+    every tailored resume (and the cover letter, which reuses this line)
+    shows the same two fields."""
+    lines = result.strip().splitlines()
+    for i, line in enumerate(lines[:3]):
+        phone = _HDR_PHONE_RE.search(line)
+        email = _HDR_EMAIL_RE.search(line)
+        if not (phone and email):
+            continue
+        clean = f"{phone.group(0)} | {email.group(0)}"
+        if clean != line.strip():
+            print(f"[HEADER CONTACT] {line.strip()!r} -> {clean!r}")
+            lines[i] = clean
+        break
     return "\n".join(lines)
 
 
@@ -3798,7 +3816,7 @@ async def tailor_resume(base_resume: str, job_description: str,
         tailor_prompt(base_resume, job_description, context, missing, profile_skills),
         max_tokens=8000, pass_name="tailor", **main_kw,
     )).strip()
-    tailored = _clean_header_title(_ensure_header(_normalize_format(tailored), base_resume))
+    tailored = _contact_only(_clean_header_title(_ensure_header(_normalize_format(tailored), base_resume)))
     tailored = _enforce_caps(tailored, base_resume, notes,
                              keep_tool=_dominant_jd_tool(job_description, context.get("target_tools") or []))
 
@@ -3836,7 +3854,7 @@ async def tailor_resume(base_resume: str, job_description: str,
                      + ", ".join(f"{c}={cl}" for c, cl in still_missing.items()))
         tailored = _backstop_native_clouds(tailored, still_missing)
 
-    tailored = _clean_header_title(_strip_empty_sections(tailored)).strip()
+    tailored = _contact_only(_clean_header_title(_strip_empty_sections(tailored))).strip()
     tailored = _guard_title_inflation(tailored, base_resume, notes)
     tailored = _headline_hybrid(tailored, base_resume, context.get("job_title", ""), notes)
 

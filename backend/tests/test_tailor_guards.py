@@ -205,3 +205,27 @@ def test_number_audit_floor_waives_drops_in_covered_jobs():
     one = tailored.replace("saving $100K", "saving money")
     inv, dropped, removed = t._number_audit(one, base, "", floor=2)
     assert dropped or removed                                     # below the floor: reported again
+
+
+# ── contact line: phone | email, nothing else ────────────────────────────────
+
+def test_contact_line_drops_city_state():
+    out = t._contact_only("Jane Doe — Data Engineer\n(347) 695-1020 | jane@example.com | Minneapolis, MN\n\nSUMMARY:\n• x")
+    assert out.splitlines()[1] == "(347) 695-1020 | jane@example.com"
+
+
+def test_contact_line_reorders_and_strips_links():
+    out = t._contact_only("Jane Doe — Data Engineer\nAustin, TX | jane@example.com | 347-695-1020 | linkedin.com/in/jane\n\nSUMMARY:")
+    assert out.splitlines()[1] == "347-695-1020 | jane@example.com"
+
+
+def test_contact_line_untouched_when_already_clean():
+    src = "Jane Doe — Data Engineer\n(347) 695-1020 | jane@example.com\n\nSUMMARY:\n• x"
+    assert t._contact_only(src) == src
+
+
+def test_contact_line_left_alone_when_incomplete():
+    # nothing to rebuild from: lint reports the missing field instead
+    src = "Jane Doe — Data Engineer\njane@example.com | Austin, TX\n\nSUMMARY:"
+    assert t._contact_only(src) == src
+

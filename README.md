@@ -94,6 +94,7 @@ backend/
   scrapers/           fantasticjobs.py (primary), o2ten.py, base helpers
 frontend/
   src/App.tsx         shell, filters, role-family matchers
+  src/auth/           login / register / reset page with intro splash
   src/components/     job cards, detail panel, dashboards, settings
 extension/            Chrome autofill extension (see extension/README.md)
 ```
@@ -112,6 +113,9 @@ cd frontend
 npm install
 npm run dev
 ```
+
+The dev server proxies `/api` to the local backend on port 8000. To point
+it at a deployed API instead, set `VITE_API_URL` in `frontend/.env.development.local`.
 
 Environment (backend `.env`): `DATABASE_URL`, `SECRET_KEY`,
 `FANTASTIC_JOBS_API_KEY`, OAuth client IDs, `CORS_ORIGIN`. AI provider keys

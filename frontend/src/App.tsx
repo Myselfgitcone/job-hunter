@@ -35,7 +35,8 @@ import { Profile } from "./components/Profile";
 import { Settings } from "./components/Settings";
 import { JobDetail } from "./components/JobDetail";
 import { Toasts, useToasts, Spinner } from "./components/primitives";
-import Auth from "./components/Auth";
+import Auth from "./auth/Auth";
+import { applyZoom, clearZoom } from "./auth/zoom";
 
 type View = "jobs" | "dashboard" | "mystats" | "profile" | "settings" | "tailor";
 type ViewMode = "list" | "kanban";
@@ -130,6 +131,15 @@ export default function App() {
   );
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem("jh_token"));
   const [userSettings, setUserSettings]       = useState<any>(null);
+
+  // The auth page is drawn at a fixed reference size and zoomed to fit the
+  // screen; the app renders at native scale. Zoom only while logged out.
+  useEffect(() => {
+    if (isAuthenticated) { clearZoom(); return; }
+    applyZoom();
+    window.addEventListener("resize", applyZoom);
+    return () => { window.removeEventListener("resize", applyZoom); clearZoom(); };
+  }, [isAuthenticated]);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);

@@ -115,23 +115,23 @@ def test_symbol_edged_names_are_evidenced():
     assert present == ["KDB+", "Python"] and missing == []
 
 
-def test_headline_mirrors_same_family_but_never_inflates():
+def test_headline_keeps_jd_title_verbatim_in_same_family():
+    # review 2026-09-10: "Data Architect" became "Senior Data" because the level
+    # words were stripped and re-added; same family now keeps the JD title as is
     base = ("Jane Doe — Senior Data Engineer\n\nEXPERIENCE:\nSenior Data Engineer @ Acme | 2021 - Present\n"
             "• Leading a staff of analysts through a platform migration.\n")
     def head(jt):
         return t._headline_hybrid("Jane Doe — " + jt + "\nrest", base, jt, []).splitlines()[0].split("—")[1].strip()
-    assert head("ETL Data Engineer") == "Senior ETL Data Engineer"    # JD words + the base's level
-    assert head("Data Engineer") == "Senior Data Engineer"            # never downgraded
-    assert head("Senior ETL Data Engineer") == "Senior ETL Data Engineer"   # Senior is a real base title
-    assert head("Lead Data Engineer") == "Senior Data Engineer"        # "leading" in a bullet is not a title
-    assert head("Staff Data Engineer") == "Senior Data Engineer"       # "staff of analysts" is not a title
+    assert head("ETL Data Engineer") == "ETL Data Engineer"
+    assert head("Data Architect") == "Data Architect"
+    assert head("Lead Data Engineer") == "Lead Data Engineer"
     assert head("Software Engineer") == "Senior Data Engineer"        # other family: real title
 
 
-def test_headline_level_not_invented_for_plain_base():
+def test_headline_plain_base_keeps_jd_title():
     base = "Jane Doe — Data Engineer\n\nEXPERIENCE:\nData Engineer @ Acme | 2021 - Present\n• Built pipelines.\n"
     out = t._headline_hybrid("Jane Doe — Senior Data Engineer\nrest", base, "Senior Data Engineer", [])
-    assert out.splitlines()[0].split("—")[1].strip() == "Data Engineer"
+    assert out.splitlines()[0].split("—")[1].strip() == "Senior Data Engineer"
 
 
 def test_role_family_data_plus_engineer_beats_generic_keywords():
@@ -163,8 +163,7 @@ def test_summary_voice_and_density_flags():
             "EXPERIENCE:\nSenior Data Engineer @ Acme | 2021 - Present\n• Built pipelines.\n")
     flags = t._qa_flags(text, {}, jd_tools=["Kafka", "Debezium", "Snowflake", "Airflow", "dbt", "schema drift"])
     msgs = " || ".join(flags.values())
-    assert "third-person verb like 'Builds'" in msgs          # the lone "Partner" line is flagged
-    assert msgs.count("Summary voice") == 1
+    assert "Summary voice" not in msgs                         # voice forcing removed (broke grammar)
     assert "Too many JD terms in one line (6)" in msgs
     assert t._verb_form("Builds") == "third-person" and t._verb_form("Led") == "past-tense" and t._verb_form("Partner") == "base-form"
 

@@ -3386,8 +3386,8 @@ async def fetch_jd(job_id: str, user_id: str = Depends(get_current_user_id)):
     return {"description": full_desc, "date": job.posted_at, "experience_level": job.experience_level}
 
 
-DAILY_TAILOR_LIMIT = 80
-DAILY_APPLY_LIMIT  = 60
+DAILY_TAILOR_LIMIT = 45
+DAILY_APPLY_LIMIT  = 45
 
 async def _get_daily_tailor_count(user_id: str, db) -> int:
     """Count job tailors + quick tailors this user has run today (UTC)."""

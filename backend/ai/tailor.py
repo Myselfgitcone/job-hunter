@@ -3629,7 +3629,11 @@ def _verb_form(word: str) -> str:
     return "base-form"
 
 
-def _qa_flags(text: str, missing_clouds: dict, jd_tools: list | None = None) -> dict[int, str]:
+_WORD_RE = re.compile(r"[a-z0-9+#.]+")
+
+
+def _qa_flags(text: str, missing_clouds: dict, jd_tools: list | None = None,
+              jd_text: str = "", base_resume: str = "", target_cloud: str = "") -> dict[int, str]:
     lines = text.split("\n")
     flags: dict[int, str] = {}
 
@@ -3694,12 +3698,59 @@ def _qa_flags(text: str, missing_clouds: dict, jd_tools: list | None = None) -> 
             for i in range(h + 1, end):
                 if _TECH_LINE_RE.match(lines[i].strip()):
                     _add(i, f"Add {cloud} to this list.")
+
+    # summary length: the prompt asks for 55-80 words; live runs shipped ~120.
+    # Flag the long lines so the fixer trims them (a code cut would break prose).
+    sum_idx = _summary_lines(text)
+    total = sum(len(lines[i].lstrip("\u2022 ").split()) for i in sum_idx)
+    if total > 80:
+        for i in sum_idx:
+            if len(lines[i].lstrip("\u2022 ").split()) > 22:
+                _add(i, f"The summary is {total} words (limit 80): cut this line to at most 20 words; keep its tools, drop the second clause.")
+
+    # JD copied word for word: seven consecutive words shared with the posting
+    # (live: "document parsing, chunking, metadata extraction, and embedding
+    # generation" pasted as a bullet). Rewrite, keep the tools.
+    if jd_text:
+        jd_words = _WORD_RE.findall(jd_text.lower())
+        jd_grams = {tuple(jd_words[k:k + 7]) for k in range(max(0, len(jd_words) - 6))}
+        for _, bl in _job_bullet_lines(text):
+            for i in bl:
+                w = _WORD_RE.findall(lines[i].lower())
+                if any(tuple(w[k:k + 7]) in jd_grams for k in range(max(0, len(w) - 6))):
+                    _add(i, "Copied from the JD word for word: say what the candidate did in different words; keep the tools and the meaning.")
+
+    # cloud mix: a bullet naming a second cloud's native services inside a job
+    # that ran on one cloud (live: "Databricks, Delta Lake, Microsoft Azure,
+    # and Lambda" in an AWS job under a Multi-cloud JD). The swapped job 1 may
+    # carry the target cloud; every other job only its real one.
+    if base_resume:
+        base_cloud = {c: _detect_cloud(b) for c, b in _split_jobs(base_resume)}
+        swap_to = target_cloud if target_cloud in _CLOUD_SIG else ""
+        hdr_idx = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]
+        for j, h in enumerate(hdr_idx):
+            m = _JOB_HDR_RE.search(lines[h])
+            real = base_cloud.get(m.group(1).strip().lower() if m else "")
+            if not real:
+                continue
+            allowed = {real} | ({swap_to} if swap_to and j == 0 else set())
+            end = _job_block_end(lines, h)
+            for i in range(h + 1, end):
+                st = lines[i].strip()
+                if not st.startswith("\u2022") or _TECH_LINE_RE.match(st):
+                    continue
+                low = st.lower()
+                named = {c for c, sigs in _CLOUD_SIG.items() if any(sg in low for sg in sigs)}
+                foreign = sorted(named - allowed)
+                if foreign:
+                    _add(i, f"This job ran on {real}: remove the {', '.join(foreign)} reference; cloud-neutral tools stay.")
     return flags
 
 
 async def _targeted_qa(text: str, missing_clouds: dict, notes: list,
-                       jd_tools: list | None = None, **cheap_kw) -> str:
-    flags = _qa_flags(text, missing_clouds, jd_tools)
+                       jd_tools: list | None = None, jd_text: str = "", base_resume: str = "",
+                       target_cloud: str = "", **cheap_kw) -> str:
+    flags = _qa_flags(text, missing_clouds, jd_tools, jd_text, base_resume, target_cloud)
     if not flags:
         return text
     before = text.split("\n")
@@ -4008,7 +4059,8 @@ async def tailor_resume(base_resume: str, job_description: str,
     _jd_keep_words = (context.get("target_tools") or []) + (context.get("responsibilities") or [])
     tailored = await _compress_long_bullets(tailored, notes, _jd_keep_words, **cheap_kw)
     tailored = await _targeted_qa(tailored, missing_clouds, notes,
-                                  jd_tools=context.get("target_tools") or [], **cheap_kw)
+                                  jd_tools=context.get("target_tools") or [], jd_text=job_description,
+                                  base_resume=base_resume, target_cloud=str(context.get("target_cloud") or ""), **cheap_kw)
 
     # Guard (c): still missing after the fixer -> force into Technologies Used.
     still_missing = _missing_native_clouds(tailored, base_resume, target)
@@ -4127,7 +4179,8 @@ async def tailor_resume(base_resume: str, job_description: str,
                              keep_tool=_dominant_jd_tool(job_description, context.get("target_tools") or []))
     # the split halves and the weaves can repeat an opening verb: one more
     # targeted QA pass (only calls the model when something is flagged)
-    tailored = await _targeted_qa(tailored, {}, notes, jd_tools=context.get("target_tools") or [], **cheap_kw)
+    tailored = await _targeted_qa(tailored, {}, notes, jd_tools=context.get("target_tools") or [], jd_text=job_description,
+                                  base_resume=base_resume, target_cloud=str(context.get("target_cloud") or ""), **cheap_kw)
 
     # Guard (g3): the page is measured the way the reader sees it. Dense after
     # everything above (type shrunk 8%+) -> the longest bullets get one more,

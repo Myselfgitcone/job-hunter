@@ -234,3 +234,40 @@ def test_contact_line_left_alone_when_incomplete():
     # nothing to rebuild from: lint reports the missing field instead
     src = "Jane Doe — Data Engineer\njane@example.com | Austin, TX\n\nSUMMARY:"
     assert t._contact_only(src) == src
+
+
+# \u2500\u2500 QA flags: summary length, JD copy, cloud mix \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+_JD = ("Own document parsing, chunking, metadata extraction, and embedding generation stages "
+       "for the retrieval platform. Build pipelines on Snowflake.")
+
+
+def test_qa_flags_summary_over_80_words():
+    long = "\u2022 " + " ".join(["word"] * 30) + "."
+    text = "Jane Doe \u2014 X\n\nSUMMARY:\n" + "\n".join([long] * 4) + "\n\nEXPERIENCE:\nData Engineer @ Acme | 2021 - Present\n\u2022 Built pipelines.\n"
+    msgs = " || ".join(t._qa_flags(text, {}).values())
+    assert "limit 80" in msgs
+    short = "Jane Doe \u2014 X\n\nSUMMARY:\n\u2022 Builds pipelines on Snowflake for finance teams.\n\nEXPERIENCE:\nData Engineer @ Acme | 2021 - Present\n\u2022 Built pipelines.\n"
+    assert "limit 80" not in " || ".join(t._qa_flags(short, {}).values())
+
+
+def test_qa_flags_jd_copied_word_for_word():
+    text = ("Jane Doe \u2014 X\n\nEXPERIENCE:\nData Engineer @ Acme | 2021 - Present\n"
+            "\u2022 Owned document parsing, chunking, metadata extraction, and embedding generation stages with Pinecone.\n"
+            "\u2022 Built 14 Snowflake feeds for the retrieval platform over two quarters.\n")
+    flags = t._qa_flags(text, {}, jd_text=_JD)
+    lines = text.split("\n")
+    copied = [i for i, m in flags.items() if "Copied from the JD" in m]
+    assert len(copied) == 1 and "document parsing" in lines[copied[0]]
+
+
+def test_qa_flags_second_cloud_in_a_one_cloud_job():
+    base = ("Jane Doe \u2014 X\n\nEXPERIENCE:\nData Engineer @ Acme | 2021 - Present\n\u2022 Built pipelines on AWS S3 and EMR.\n")
+    text = ("Jane Doe \u2014 X\n\nEXPERIENCE:\nData Engineer @ Acme | 2021 - Present\n"
+            "\u2022 Architected ELT on Databricks, Delta Lake, Microsoft Azure, and Lambda cutting incidents.\n"
+            "\u2022 Built Spark jobs on EMR reading from S3.\n")
+    flags = t._qa_flags(text, {}, base_resume=base)
+    msgs = list(flags.values())
+    assert len(msgs) == 1 and "ran on AWS" in msgs[0] and "Azure" in msgs[0]
+    # job 1 may carry the target cloud under an active swap
+    assert not t._qa_flags(text, {}, base_resume=base, target_cloud="Azure")

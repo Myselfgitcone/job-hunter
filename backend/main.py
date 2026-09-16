@@ -1704,9 +1704,11 @@ import telegram_bot
 
 # â"€â"€ Settings â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
-# The admin account. Set ADMIN_EMAIL in the environment; the fallback keeps
-# existing deployments working until the variable is set there.
-ADMIN_EMAIL = _os.getenv("ADMIN_EMAIL", "Jaggubhai8766@gmail.com")
+# The admin account (sees every job, approves users, grants families).
+# Required in the environment; compared case-insensitively everywhere.
+ADMIN_EMAIL = (_os.getenv("ADMIN_EMAIL") or "").strip()
+if not ADMIN_EMAIL:
+    print("[Startup] WARNING: ADMIN_EMAIL is not set; no account will have admin rights", flush=True)
 
 async def _get_admin_settings(db) -> UserSettings:
     res = await db.execute(select(User).where(User.email.ilike(ADMIN_EMAIL)))

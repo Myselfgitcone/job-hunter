@@ -206,15 +206,22 @@ def test_number_audit_floor_waives_drops_in_covered_jobs():
     assert dropped or removed                                     # below the floor: reported again
 
 
-# ── contact line: phone | email, nothing else ────────────────────────────────
+# ── contact line: phone | email, plus the links the base itself lists ──────
 
 def test_contact_line_drops_city_state():
     out = t._contact_only("Jane Doe — Data Engineer\n(347) 695-1020 | jane@example.com | Minneapolis, MN\n\nSUMMARY:\n• x")
     assert out.splitlines()[1] == "(347) 695-1020 | jane@example.com"
 
 
-def test_contact_line_reorders_and_strips_links():
-    out = t._contact_only("Jane Doe — Data Engineer\nAustin, TX | jane@example.com | 347-695-1020 | linkedin.com/in/jane\n\nSUMMARY:")
+def test_contact_line_keeps_links_the_base_has():
+    base = "Jane Doe — Data Engineer\njane@example.com | 347-695-1020 | Austin, TX | linkedin.com/in/jane | github.com/jane\n\nEXPERIENCE:"
+    out = t._contact_only("Jane Doe — Data Engineer\n347-695-1020 | jane@example.com | Austin, TX\n\nSUMMARY:", base)
+    assert out.splitlines()[1] == "347-695-1020 | jane@example.com | linkedin.com/in/jane | github.com/jane"
+
+
+def test_contact_line_never_adds_a_link_the_base_lacks():
+    base = "Jane Doe — Data Engineer\n347-695-1020 | jane@example.com\n\nEXPERIENCE:"
+    out = t._contact_only("Jane Doe — Data Engineer\n347-695-1020 | jane@example.com | linkedin.com/in/invented\n\nSUMMARY:", base)
     assert out.splitlines()[1] == "347-695-1020 | jane@example.com"
 
 
@@ -227,4 +234,3 @@ def test_contact_line_left_alone_when_incomplete():
     # nothing to rebuild from: lint reports the missing field instead
     src = "Jane Doe — Data Engineer\njane@example.com | Austin, TX\n\nSUMMARY:"
     assert t._contact_only(src) == src
-

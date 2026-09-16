@@ -541,7 +541,7 @@ export function Profile() {
   };
 
   const [profile, _setProfile] = useState<any>({
-    personal: { firstName: "", lastName: "", email: "", phone: "", address: "", linkedin: "", github: "", visa: "" },
+    personal: { firstName: "", lastName: "", headline: "", email: "", phone: "", address: "", linkedin: "", github: "", visa: "" },
     summary: "",
     experience: [] as any[],
     education: [] as any[],
@@ -610,6 +610,7 @@ export function Profile() {
           first_name: profile.personal.firstName,
           last_name: profile.personal.lastName,
           name: [profile.personal.firstName, profile.personal.lastName].filter(Boolean).join(" "),
+          headline: profile.personal.headline || "",
           email: profile.personal.email, phone: profile.personal.phone, address: profile.personal.address,
           linkedin: profile.personal.linkedin, github: profile.personal.github, visa_status: profile.personal.visa,
           experience: profile.experience.map((e: any) => ({
@@ -662,7 +663,7 @@ export function Profile() {
 
         _setProfile({
           personal: {
-            firstName: first, lastName: last,
+            firstName: first, lastName: last, headline: p.headline || "",
             email: p.email || "", phone: p.phone || "",
             address: p.address || p.location || "", linkedin: p.linkedin || "", github: p.github || "",
             visa: p.visa_status || "",
@@ -684,14 +685,14 @@ export function Profile() {
   const clearAll = async () => {
     if (!window.confirm("Are you sure you want to clear your entire profile? This cannot be undone until you save again.")) return;
     const empty = {
-      personal: { firstName: "", lastName: "", email: "", phone: "", address: "", linkedin: "", github: "", visa: "" },
+      personal: { firstName: "", lastName: "", headline: "", email: "", phone: "", address: "", linkedin: "", github: "", visa: "" },
       summary: "",
       experience: [], education: [], projects: [], skills: [], certifications: [],
     };
     setProfile(empty);
     try {
       setSaveStatus("saving");
-      await api.saveProfile({ first_name: "", last_name: "", name: "", email: "", phone: "", address: "", linkedin: "", github: "", visa_status: "", experience: [], education: [], projects: [], summary: "", skills: [], certifications: [] } as any);
+      await api.saveProfile({ first_name: "", last_name: "", name: "", headline: "", email: "", phone: "", address: "", linkedin: "", github: "", visa_status: "", experience: [], education: [], projects: [], summary: "", skills: [], certifications: [] } as any);
       setSaveStatus("saved");
     } catch { setSaveStatus("unsaved"); }
   };
@@ -754,6 +755,7 @@ export function Profile() {
             ...prev.personal,
             firstName: first           || prev.personal.firstName,
             lastName:  last            || prev.personal.lastName,
+            headline: parsed.headline  || prev.personal.headline,
             email:    parsed.email     || prev.personal.email,
             phone:    parsed.phone     || prev.personal.phone,
             address:  parsed.location  || prev.personal.address,
@@ -875,6 +877,8 @@ export function Profile() {
           <div className="field-grid">
             <Field label="First name"   value={P.personal.firstName} onChange={v => pset("firstName", v)} />
             <Field label="Last name"    value={P.personal.lastName}  onChange={v => pset("lastName", v)} />
+            <Field label="Headline" value={P.personal.headline} onChange={v => pset("headline", v)}
+              placeholder="Title under your name, e.g. Senior ServiceNow Developer (blank = latest job title)" />
             <Field 
               label={<><span style={{display: "inline-flex", alignItems: "center", gap: 4}}><Ic d={I.mail} size={13} /> Email</span></>} 
               type="email" value={P.personal.email} onChange={v => pset("email", v)} 

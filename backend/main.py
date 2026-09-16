@@ -1266,8 +1266,6 @@ async def register(body: RegisterBody):
         db.add(user)
         # Store desired_roles from signup so admin can see what the user wants
         initial_roles = json.dumps(body.desired_roles) if body.desired_roles else '[]'
-        if status != "pending":
-            initial_roles = initial_roles if body.desired_roles else '["Data Engineer"]'
         db.add(UserSettings(
             user_id=user_id,
             resume="",
@@ -1834,7 +1832,7 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
 
         data = {
             "resume": resume_val,
-            "job_roles": json.loads(s.job_roles or '["Data Engineer"]'),
+            "job_roles": json.loads(s.job_roles or '[]'),
             "active_job_roles": (json.loads(s.active_job_roles) if s.active_job_roles else []),
             "countries": json.loads(s.countries or '["USA","Remote"]'),
             "visa_filter": bool(s.visa_filter),
@@ -2273,6 +2271,9 @@ async def list_jobs(
             jobs = [j for j in jobs
                     if (_has_o2ten and (j.source or "") == "O2Ten")
                     or _title_matches_roles(j.title or "", user_roles)]
+        elif not is_admin:
+            # No family granted yet: an empty feed, never every job in the system.
+            jobs = []
 
         # Get user's job statuses
         job_ids = [j.id for j in jobs]
@@ -5193,6 +5194,7 @@ class ProfileProject(BaseModel):
 
 class ProfileData(BaseModel):
     name: str = ""
+    headline: str = ""   # professional title under the name; falls back to the latest job title
     first_name: str = ""
     last_name: str = ""
     email: str = ""
@@ -5215,16 +5217,35 @@ async def get_profile(user_id: str = Depends(get_current_user_id)):
     async with SessionLocal() as db:
         return await _load_profile(db, user_id)
 
+def _profile_link(value: str, domain: str, prefix: str) -> str:
+    """'jane-doe' -> 'linkedin.com/in/jane-doe'; a full URL or domain is kept as typed."""
+    v = (value or "").strip()
+    if not v:
+        return ""
+    if "://" in v or domain in v.lower() or "." in v.split("/")[0]:
+        return v
+    return f"{domain}{prefix}{v.lstrip('/')}"
+
+
 def _profile_to_resume_text(p: dict) -> str:
-    """Convert structured profile to plain-text resume for AI tailoring."""
+    """Convert structured profile to plain-text resume for AI tailoring.
+
+    Line 1: name — headline. The headline is the user's own (Profile field),
+    else the title of their most recent job; never a fixed string.
+    Line 2: phone | email, then any LinkedIn / GitHub / website the user
+    filled in. No city or state: the tailored resume drops location too."""
     lines = []
-    name = p.get("name", "")
-    email = p.get("email", "")
-    phone = p.get("phone", "")
-    location = p.get("location", "")
-    contact = " | ".join(filter(None, [phone, email, location]))
+    name = (p.get("name") or "").strip()
+    email = (p.get("email") or "").strip()
+    phone = (p.get("phone") or "").strip()
+    exp = p.get("experience") or []
+    headline = (p.get("headline") or "").strip() or ((exp[0].get("role") or "").strip() if exp else "")
+    links = [_profile_link(p.get("linkedin", ""), "linkedin.com", "/in/"),
+             _profile_link(p.get("github", ""), "github.com", "/"),
+             (p.get("website") or "").strip()]
+    contact = " | ".join(filter(None, [phone, email, *links]))
     if name:
-        lines.append(f"{name} — Senior Data Engineer")
+        lines.append(f"{name} — {headline}" if headline else name)
     if contact:
         lines.append(contact)
     lines.append("")
@@ -5251,7 +5272,7 @@ def _profile_to_resume_text(p: dict) -> str:
             lines.append(header)
             for b in e.get("bullets", []):
                 if b.strip():
-                    lines.append(f"â€¢ {b.strip()}")
+                    lines.append(f"• {b.strip()}")
             lines.append("")
 
     skills = p.get("skills", [])
@@ -5390,6 +5411,7 @@ async def parse_resume_file(file: UploadFile = File(...), user_id: str = Depends
     PARSE_SYSTEM = """Extract ALL structured information from this resume. Return ONLY valid JSON, no markdown, no explanation:
 {
   "name": "",
+  "headline": "",
   "email": "",
   "phone": "",
   "location": "",
@@ -5419,6 +5441,7 @@ async def parse_resume_file(file: UploadFile = File(...), user_id: str = Depends
 
 Rules:
 - name: full name from top of resume
+- headline: the professional title printed under or beside the name (e.g. "Senior ServiceNow Developer"); "" if the resume has none
 - email: extract email address
 - phone: extract phone number
 - location: ONLY extract the applicant's personal home city/state. Do NOT extract locations of client companies or work history. If missing, leave as "".

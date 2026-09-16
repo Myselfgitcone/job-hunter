@@ -30,6 +30,7 @@ export interface ProfileEducation { degree: string; school: string; year: string
 export interface ProfileProject { name: string; description: string; }
 export interface ProfileData {
   name: string;
+  headline?: string;
   email: string;
   phone: string;
   location: string;

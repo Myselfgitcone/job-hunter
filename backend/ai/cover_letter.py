@@ -1,7 +1,9 @@
 from ai.llm import chat
 from resume_lint import detect_cover_letter_fabrication
 
-SYSTEM_PROMPT = """You are an expert technical cover letter writer specializing in Data Engineering roles.
+# The role comes from the job being applied to: one prompt serves every user
+# and every family (data, ServiceNow, BA, cloud, ...).
+SYSTEM_PROMPT = """You are an expert cover letter writer specializing in {role} roles.
 
 Write a compelling, personalized cover letter that:
 1. Opens with a strong hook referencing the specific company and role
@@ -37,8 +39,9 @@ async def generate_cover_letter(resume: str, jd: str, job_title: str, company: s
 
 Write the cover letter body only (starting from "Dear Hiring Manager," or similar). Keep it 250-350 words, highly specific to this role and company."""
 
+    role = (job_title or "").strip() or "professional"
     letter = await chat(
-        system=SYSTEM_PROMPT, user=user_msg,
+        system=SYSTEM_PROMPT.format(role=role), user=user_msg,
         api_key=api_key, provider=provider, model=model,
         max_tokens=1024, pass_name="cover-letter", keys=keys,
     )
@@ -59,7 +62,7 @@ Write the cover letter body only (starting from "Dear Hiring Manager," or simila
         f"=== LETTER TO FIX ===\n{letter}"
     )
     fixed = await chat(
-        system=_RETRY_SYSTEM_PROMPT, user=fix_msg,
+        system=_RETRY_SYSTEM_PROMPT.format(role=role), user=fix_msg,
         api_key=api_key, provider=provider, model=model,
         max_tokens=1024, pass_name="cover-letter-retry", keys=keys,
     )

@@ -171,8 +171,9 @@ OUTPUT FORMAT (plain text — NOT markdown. No #, no **, no code fences.)
 Line 1:  `<Candidate Full Name> — <Exact Job Title from the JD>` — em-dash between
          them; the clean, short title only (no suffix, tool, domain, or seniority
          the JD's posting title padded on).
-Line 2:  `<phone> | <email>`   (phone FIRST, then email. Nothing else on this
-         line: no city, state, street address, linkedin or website.)
+Line 2:  `<phone> | <email>` followed by any LinkedIn, GitHub or website link
+         that the base resume's own contact line carries, in that order. No
+         city, state or street address, and no link the base does not have.
 
 Then these sections, in this exact order. Section headers are UPPERCASE with a
 trailing colon on their own line. Every bullet starts with "• ".
@@ -193,7 +194,7 @@ SUMMARY:
   invented metrics.
 • ONE TENSE PER SLOT TYPE: capability slots (1, 3–6) are present tense
   ("Designs…", "Partners…"); a proof slot about the CURRENT job is present
-  tense too ("Maintains a 99% SLA at Cargill"); only a proof about a PAST
+  tense too ("Maintains a 99% SLA at <current employer>"); only a proof about a PAST
   employer is past tense. Never "Maintained … at <current employer>".
 • SUMMARY LENGTH: three sentences, 55-80 words in total. Longer summaries
   are compressed by a code check (live: 148 words pushed the page dense).
@@ -1022,18 +1023,42 @@ def _clean_header_title(result: str) -> str:
     return "\n".join(lines)
 
 
-def _contact_only(result: str) -> str:
-    """The contact line (line 2) is `phone | email` and nothing else. The base
-    resume carries a city and the model tends to copy it; strip it here so
-    every tailored resume (and the cover letter, which reuses this line)
-    shows the same two fields."""
+_HDR_LINK_RE = re.compile(
+    r"(?:https?://|www\.|linkedin\.com|github\.com|gitlab\.com|"
+    r"[a-z0-9-]+\.(?:io|dev|me|com|net|org)(?:/|$))", re.I)
+
+
+def _contact_extras(base_resume: str) -> list[str]:
+    """Links the base resume's own contact line carries (LinkedIn, GitHub, a
+    portfolio URL), in base order. Anything else on that line (city, state,
+    street) is dropped. Each user decides by what they put on their resume."""
+    for line in [l for l in (base_resume or "").strip().splitlines() if l.strip()][:5]:
+        if not (_HDR_PHONE_RE.search(line) or _HDR_EMAIL_RE.search(line)):
+            continue
+        out: list[str] = []
+        for tok in re.split(r"\s*[|\u2022\u00b7]\s*|\s{2,}", line):
+            tok = tok.strip(" ,;")
+            if (tok and _HDR_LINK_RE.search(tok)
+                    and not _HDR_EMAIL_RE.search(tok) and not _HDR_PHONE_RE.search(tok)
+                    and tok not in out):
+                out.append(tok)
+        return out
+    return []
+
+
+def _contact_only(result: str, base_resume: str = "") -> str:
+    """The contact line (line 2) is `phone | email` plus the links the base
+    resume itself lists, nothing else. The base usually carries a city and
+    the model tends to copy it; rebuilding the line here keeps every tailored
+    resume (and the cover letter, which reuses this line) consistent."""
     lines = result.strip().splitlines()
+    extras = _contact_extras(base_resume)
     for i, line in enumerate(lines[:3]):
         phone = _HDR_PHONE_RE.search(line)
         email = _HDR_EMAIL_RE.search(line)
         if not (phone and email):
             continue
-        clean = f"{phone.group(0)} | {email.group(0)}"
+        clean = " | ".join([phone.group(0), email.group(0), *extras])
         if clean != line.strip():
             print(f"[HEADER CONTACT] {line.strip()!r} -> {clean!r}")
             lines[i] = clean
@@ -3954,7 +3979,7 @@ async def tailor_resume(base_resume: str, job_description: str,
         tailor_prompt(base_resume, job_description, context, missing, profile_skills),
         max_tokens=8000, pass_name="tailor", **main_kw,
     )).strip()
-    tailored = _contact_only(_clean_header_title(_ensure_header(_normalize_format(tailored), base_resume)))
+    tailored = _contact_only(_clean_header_title(_ensure_header(_normalize_format(tailored), base_resume)), base_resume)
     tailored = _enforce_caps(tailored, base_resume, notes,
                              keep_tool=_dominant_jd_tool(job_description, context.get("target_tools") or []))
 
@@ -3992,7 +4017,7 @@ async def tailor_resume(base_resume: str, job_description: str,
                      + ", ".join(f"{c}={cl}" for c, cl in still_missing.items()))
         tailored = _backstop_native_clouds(tailored, still_missing)
 
-    tailored = _contact_only(_clean_header_title(_strip_empty_sections(tailored))).strip()
+    tailored = _contact_only(_clean_header_title(_strip_empty_sections(tailored)), base_resume).strip()
     tailored = _guard_title_inflation(tailored, base_resume, notes)
     tailored = _headline_hybrid(tailored, base_resume, context.get("job_title", ""), notes)
 

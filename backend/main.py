@@ -864,6 +864,19 @@ async def startup():
     except Exception as e:
         print(f"[Startup] DB migration error: {e}")
 
+    # Indexes the hot paths rely on (list ordering, country filter, per-user
+    # overlay lookup). Idempotent; the list endpoint timed out without them.
+    for _ddl in (
+        "CREATE INDEX IF NOT EXISTS ix_jobs_posted_scraped ON jobs (posted_at DESC, scraped_at DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_jobs_country ON jobs (country)",
+        "CREATE INDEX IF NOT EXISTS ix_user_jobs_user_job ON user_jobs (user_id, job_id)",
+    ):
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(_ddl))
+        except Exception as e:
+            print(f"[Startup] index skipped: {e}")
+
     # India purge: USA-only hunting now. Scraping India
     # is already disabled (fantasticjobs LOCATIONS); this clears existing rows
     # plus their user_jobs overlays. Idempotent — deletes 0 rows once clean.
@@ -2239,7 +2252,14 @@ async def list_jobs(
             except Exception:
                 user_roles = []
 
-        q = select(Job).order_by(Job.posted_at.desc(), Job.scraped_at.desc())
+        # List view never needs the big text columns — the description is
+        # fetched per job on open (GET /api/jobs/{id}). Loading them here
+        # meant ~18k HTML descriptions per request and 30s DB timeouts.
+        from sqlalchemy.orm import defer as _defer
+        q = (select(Job)
+             .options(_defer(Job.description), _defer(Job.cover_letter),
+                      _defer(Job.fit_analysis), _defer(Job.interview_tips))
+             .order_by(Job.posted_at.desc(), Job.scraped_at.desc()))
         if source:
             q = q.where(Job.source == source)
         if remote is not None:
@@ -2350,10 +2370,29 @@ async def list_jobs(
             sorted(_fam_scores.items(), key=lambda kv: -(sum(kv[1]) / len(kv[1]))), start=1)
     }
 
+    # The list view still needs a few descriptions inline: O2Ten rows (their
+    # "Skills:" line lives in the description) and jobs the user has moved
+    # past "new" (Kanban card snippets). Both sets are small; one keyed query.
+    _need_desc = [j.id for j in jobs
+                  if (j.source or "") == "O2Ten"
+                  or (user_jobs_map.get(j.id) and (user_jobs_map[j.id].status or "new") != "new")]
+    _desc_map: dict = {}
+    if _need_desc:
+        try:
+            async with SessionLocal() as _db2:
+                for _start in range(0, len(_need_desc), 500):
+                    _res = await _db2.execute(
+                        select(Job.id, Job.description).where(Job.id.in_(_need_desc[_start:_start + 500])))
+                    _desc_map.update({_i: _dsc for _i, _dsc in _res.all()})
+        except Exception as e:
+            print(f"[Jobs] inline description fetch skipped: {e}")
+
     # Merge user_jobs overlay into job dicts
     out = []
     for job in jobs:
-        d = _job_to_dict(job)
+        d = _job_to_dict(job, light=True)
+        if job.id in _desc_map and _desc_map[job.id]:
+            d["description"] = clean_jd_html(_desc_map[job.id])
         uj = user_jobs_map.get(job.id)
         if uj:
             d["status"] = uj.status
@@ -4898,7 +4937,18 @@ async def get_analytics(user_id: str = Depends(get_current_user_id),
 
 # â"€â"€ Helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
-def _job_to_dict(job: Job) -> dict:
+def _job_to_dict(job: Job, light: bool = False) -> dict:
+    """light=True: for list responses where the big text columns are deferred —
+    read them from the instance dict so an unloaded column yields its default
+    instead of triggering a lazy load (which fails under the async session)."""
+    if light:
+        _d = job.__dict__
+        _desc = _d.get("description") or ""
+        _fit = _d.get("fit_analysis")
+        _tips = _d.get("interview_tips")
+        _cover = _d.get("cover_letter") or ""
+    else:
+        _desc, _fit, _tips, _cover = job.description or "", job.fit_analysis, job.interview_tips, job.cover_letter or ""
     return {
         "id": job.id,
         "title": job.title,
@@ -4913,7 +4963,7 @@ def _job_to_dict(job: Job) -> dict:
         # can't detect as HTML (no literal '<' chars) so it renders the
         # escaped tag soup as visible text. Read-time fix: covers every
         # already-scraped dirty row too, no DB migration needed.
-        "description": clean_jd_html(job.description or ""),
+        "description": clean_jd_html(_desc) if _desc else "",
         "salary": job.salary,
         "remote": job.remote,
         "posted_at": job.posted_at,
@@ -4928,9 +4978,9 @@ def _job_to_dict(job: Job) -> dict:
         "ats_score_after": job.ats_score_after,
         "ats_keywords_matched": json.loads(job.ats_keywords_matched) if job.ats_keywords_matched else [],
         "ats_keywords_missing": json.loads(job.ats_keywords_missing) if job.ats_keywords_missing else [],
-        "fit_analysis": job.fit_analysis,
-        "interview_tips": json.loads(job.interview_tips) if job.interview_tips else [],
-        "cover_letter": job.cover_letter or "",
+        "fit_analysis": _fit,
+        "interview_tips": json.loads(_tips) if _tips else [],
+        "cover_letter": _cover,
         "notes": job.notes or "",
         "deadline": getattr(job, "deadline", None) or "",
         "interview_date": getattr(job, "interview_date", None) or "",

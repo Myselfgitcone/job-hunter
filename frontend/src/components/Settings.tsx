@@ -272,7 +272,9 @@ function UsersPanel({ onToast, onChanged }: { onToast: (m: string, t?: any) => v
                   )
                 ) : u.status === "pending" ? (
                   <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 6 }}>No role preference stated</div>
-                ) : null}
+                ) : (
+                  <div style={{ fontSize: 11, color: "#d97706", fontWeight: 700, marginTop: 6 }}>No family granted \u2014 empty feed until you pick one</div>
+                )}
               </div>
               <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999,
                 background: u.status === "approved" ? "rgba(22,163,74,0.12)" : u.status === "revoked" ? "rgba(100,116,139,0.15)" : "rgba(220,38,38,0.1)",

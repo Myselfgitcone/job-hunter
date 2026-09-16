@@ -580,6 +580,42 @@ _RETIRED_ROLE_ITEMS = {
 }
 
 
+async def _rebuild_stale_profile_resumes() -> int:
+    """Base resumes built from a Profile before the headline fix all carry
+    '— Senior Data Engineer' on line 1 (a fixed string, not the user's title).
+    Rebuild those from the saved profile. Skips the admin and anyone whose
+    profile really says that title. Idempotent: a rebuilt resume no longer
+    matches the condition."""
+    n = 0
+    async with SessionLocal() as db:
+        res = await db.execute(select(UserSettings))
+        for st in res.scalars().all():
+            first = (st.resume or "").strip().splitlines()[:1]
+            if not first or not first[0].rstrip().endswith("\u2014 Senior Data Engineer"):
+                continue
+            u = await db.get(User, st.user_id)
+            if not u or u.email.lower() == ADMIN_EMAIL.lower():
+                continue
+            row = await db.get(Setting, f"profile:{st.user_id}")
+            if not row or not row.value:
+                continue
+            try:
+                prof = json.loads(row.value)
+            except Exception:  # noqa: BLE001
+                continue
+            exp = prof.get("experience") or []
+            latest = ((exp[0].get("role") or "") if exp else "").strip()
+            if (prof.get("headline") or "").strip() or latest.lower() == "senior data engineer":
+                continue
+            rebuilt = _profile_to_resume_text(prof)
+            if rebuilt and rebuilt != st.resume:
+                st.resume = rebuilt
+                n += 1
+        if n:
+            await db.commit()
+    return n
+
+
 async def _strip_retired_role_items() -> int:
     """Remove retired-family role items (Security/SIEM, GenAI/RAG, IAM) from
     every user's selections — their picker groups are gone, so leftover items
@@ -1217,6 +1253,12 @@ async def startup():
                 print(f"[Startup] Stripped retired-family role items from {res} user(s)")
         except Exception as e:
             print(f"[Startup] Retired-role cleanup skipped: {e}")
+        try:
+            res = await _rebuild_stale_profile_resumes()
+            if res:
+                print(f"[Startup] Rebuilt {res} base resume(s) that carried the old fixed headline")
+        except Exception as e:
+            print(f"[Startup] Stale-resume rebuild skipped: {e}")
         # try:
         # from scrapers.company_seeder import seed_companies_if_empty
         # await seed_companies_if_empty()
@@ -1234,6 +1276,9 @@ async def startup():
     except Exception as e:
         print(f"[Startup] Cron setting fetch failed (using default): {e}")
 
+    if _os.getenv("DISABLE_SCHEDULER", "").lower() in ("1", "true", "yes"):
+        print("[Scheduler] Disabled (DISABLE_SCHEDULER is set) \u2014 no scrapes or syncs from this process")
+        return
     # All crons pinned to Eastern Time (app-wide standard)
     _scheduler.add_job(_auto_scrape,         CronTrigger.from_crontab(cron_expr, timezone=EST),    id="auto_scrape",    replace_existing=True, max_instances=1, coalesce=True, misfire_grace_time=300)
     _scheduler.add_job(_sync_expired_wrapper, CronTrigger.from_crontab("0 0 * * *", timezone=EST),  id="sync_expired",   replace_existing=True)
@@ -1659,7 +1704,9 @@ import telegram_bot
 
 # â"€â"€ Settings â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
-ADMIN_EMAIL = "Jaggubhai8766@gmail.com"
+# The admin account. Set ADMIN_EMAIL in the environment; the fallback keeps
+# existing deployments working until the variable is set there.
+ADMIN_EMAIL = _os.getenv("ADMIN_EMAIL", "Jaggubhai8766@gmail.com")
 
 async def _get_admin_settings(db) -> UserSettings:
     res = await db.execute(select(User).where(User.email.ilike(ADMIN_EMAIL)))

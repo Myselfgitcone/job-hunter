@@ -16,8 +16,13 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from ai import tailor as t  # noqa: E402
 
-DEFAULT_MODEL = {"anthropic": "claude-sonnet-4-5", "openai": "gpt-4.1", "google": "gemini-2.5-pro",
-                 "openrouter": "anthropic/claude-sonnet-4-5"}
+DEFAULT_MODEL = {"anthropic": "claude-sonnet-4-6", "openai": "gpt-4.1", "google": "gemini-2.5-pro",
+                 "openrouter": "anthropic/claude-sonnet-4-6"}
+# The app runs analyze + every fix-up pass on a cheap model (Settings ->
+# ai_model_secondary, default Haiku); the check must do the same or its cost
+# and behaviour are not the app's. Override with TAILOR_MODEL_CHEAP.
+DEFAULT_CHEAP = {"anthropic": "claude-haiku-4-5", "openai": "gpt-4o-mini", "google": "gemini-2.5-flash",
+                 "openrouter": "anthropic/claude-haiku-4.5"}
 
 
 def main() -> int:
@@ -30,14 +35,19 @@ def main() -> int:
         return 2
     provider = os.environ.get("TAILOR_PROVIDER", "anthropic")
     model = os.environ.get("TAILOR_MODEL") or DEFAULT_MODEL.get(provider, DEFAULT_MODEL["openrouter"])
+    cheap = os.environ.get("TAILOR_MODEL_CHEAP") or DEFAULT_CHEAP.get(provider, DEFAULT_CHEAP["openrouter"])
     base = open(sys.argv[1], encoding="utf-8").read()
     jd = open(sys.argv[2], encoding="utf-8").read()
     out_dir = os.path.dirname(os.path.abspath(sys.argv[2]))
+    # TAILOR_TAG names the output files so two prompts on one JD do not overwrite
+    tag = os.environ.get("TAILOR_TAG", "")
+    tag = f".{tag}" if tag else ""
 
-    tailored, review = asyncio.run(t.tailor_resume(base, jd, key, provider, model))
-    open(os.path.join(out_dir, "live_tailor_out.txt"), "w", encoding="utf-8").write(tailored)
-    open(os.path.join(out_dir, "live_tailor_review.json"), "w", encoding="utf-8").write(
+    tailored, review = asyncio.run(t.tailor_resume(base, jd, key, provider, model, secondary_model=cheap))
+    open(os.path.join(out_dir, f"live_tailor_out{tag}.txt"), "w", encoding="utf-8").write(tailored)
+    open(os.path.join(out_dir, f"live_tailor_review{tag}.json"), "w", encoding="utf-8").write(
         json.dumps(review, indent=1, default=str))
+    print(f"prompt={'legacy' if t.TAILOR_SYSTEM is t.TAILOR_SYSTEM_LEGACY else 'v2'} main={model} cheap={cheap}")
 
     ctx = review.get("context") or {}
     scores = review.get("scores") or {}
@@ -53,11 +63,15 @@ def main() -> int:
     results = []
     results.append(("1 header keeps the JD title", head_title == (ctx.get("job_title") or "").strip(),
                     f"header={head_title!r} jd_title={ctx.get('job_title')!r}"))
-    results.append(("2 job 1 <= 8 bullets", bool(jobs) and len(jobs[0][1]) <= 8, f"per job {[len(b) for _, b in jobs]}"))
+    results.append(("2 job 1 <= 12 bullets (cap 11 + one coverage slot)", bool(jobs) and len(jobs[0][1]) <= t._job_cap(0) + 1, f"per job {[len(b) for _, b in jobs]}"))
     bad = [lines[i].lstrip()[1:].strip()[:60] for _, bl in jobs for i in bl
-           if re.match(r"^(supported|maintained|managed|explored|evaluated|collaborated)\b", lines[i].lstrip()[1:].strip(), re.I)]
-    results.append(("3 no filler openers", not bad, f"{bad[:3]}"))
+           if t._CLICHE_RE.match(lines[i].lstrip()[1:].strip())]
+    weak = [lines[i].lstrip()[1:].strip()[:60] for j, bl in jobs for n, i in enumerate(bl)
+            if n < t._impact_slots(j) and t._WEAK_VERB_RE.match(lines[i].lstrip()[1:].strip())]
+    results.append(("3 no filler openers; no weak verb in an impact slot", not bad and not weak,
+                    f"filler={bad[:3]} weak_in_impact_slot={weak[:3]}"))
     gen_fail, gen_seen = [], 0
+    base_nums = t._num_tokens(base)
     for _, bl in jobs:
         blob = "\n".join(lines[i].lstrip()[1:].strip() for i in bl)
         job_tools = t._line_skills(blob, present)
@@ -66,11 +80,13 @@ def main() -> int:
             if body not in gen:
                 continue
             gen_seen += 1
-            nums = [int(x) for x in re.findall(r"\b(\d{1,2})\b", body)]
-            ok = any(4 <= x <= 50 for x in nums) and ((not job_tools) or any(tl.lower() in body.lower() for tl in job_tools))
+            # a generated bullet may carry no figure the base resume lacks, and
+            # must anchor to a tool the job already uses
+            invented = t._num_tokens(body) - base_nums
+            ok = not invented and ((not job_tools) or any(tl.lower() in body.lower() for tl in job_tools))
             if not ok:
                 gen_fail.append(body[:60])
-    results.append(("4 generated bullets: count 4-50 + a job tool", gen_seen > 0 and not gen_fail,
+    results.append(("4 generated bullets: no invented figure + a job tool", not gen_fail,
                     f"generated={gen_seen} failing={gen_fail[:3]}"))
     ga = t._ga_years(ctx)
     ga_fail = []

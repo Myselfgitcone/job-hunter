@@ -18,7 +18,9 @@ Plus 3 deterministic (free) code steps:
   c. cloud backstop       — last-resort restore into Technologies Used
 
 CLOUD SWAP IS ALWAYS ON. There is no toggle. When the JD literally names
-AWS / Azure / GCP, the two most recent jobs are both converted to that cloud.
+AWS / Azure / GCP, Job 1 (the most recent) is converted to that cloud; Job 2
+and older keep their real cloud. The three cloud guards below enforce exactly
+this (only Job 1 is exempt from the dropped-cloud and cloud-mix checks).
 When the JD names no cloud, every job keeps its real cloud and the JD's tools
 are layered on top.
 
@@ -26,12 +28,46 @@ Output format is job-hunter's plain-text resume format (UPPERCASE section
 headers with a colon, "•" bullets) so pdf_gen / docx_gen / ats keep working.
 """
 import json
+import os
 import re
 
 from ai.llm import chat
 
 # Cloud swap is a permanent behaviour, not a user toggle.
 CLOUD_SWAP = True
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ENGINE CONSTANTS — one number per rule. The prompts below are rendered from
+# these, and every code guard reads them, so prompt and code cannot drift.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Hard bullet ceilings by job recency (Job 1, Job 2, Job 3; Job 4+ = 3). The
+# writer targets 6-8/5-6/4-5/2-3 and exceeds only to give a listed skill its
+# bullet. The coverage pass may add ONE more per job (`bonus` in
+# _enforce_caps), so the page maximum is 12/8/6/4.
+_JOB_BULLET_CAPS = (11, 7, 5)
+_JOB_CAP_OLDER = 3
+
+# Share of the ranked JD tool list that must earn a bullet; the rest sit in
+# SKILLS only. (2026-09: code said 0.60 while the prose said 90% — never again.)
+_COVERAGE_TARGET = 0.90
+
+# Bullet length: "mostly 15-24, never past _BULLET_MAX". Compress, the weave
+# FULL mark and the score penalty fire at _BULLET_MAX; split and the "tighten"
+# flag at _BULLET_SPLIT (last resort after a compress reverted).
+_BULLET_MAX = 26
+_BULLET_SPLIT = _BULLET_MAX + 6
+_WEAVE_MAX_WORDS = _BULLET_MAX
+_SHORT_MAX = 18          # a bullet at or under this many words counts as "short"
+_LONG_RUN = 25           # three consecutive bullets over this = a wall
+
+# Summary: 4 bullets (5 at most), 55-80 words.
+_SUMMARY_MAX_WORDS = 80
+_SUMMARY_MAX_LINES = 5
+
+# Real base figures per job: (floor, cap); the rest read as plain outcomes.
+_FIGURES_PER_JOB = (2, 3)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -68,86 +104,60 @@ Return ONLY a compact JSON object, no prose, no markdown fences:
 }
 
 Rules:
-- target_cloud = a cloud ONLY if the JD text LITERALLY names it (the words "AWS"/
-  "Amazon Web Services", "Azure", or "GCP"/"Google Cloud" must actually appear).
-  If no cloud is explicitly named, target_cloud MUST be "None". Do NOT infer a
-  cloud from the company, domain, or tools — a Spark/Flink/data role that names no
-  cloud is "None". Use "Multi" only if two+ are named and weighted equally.
-- target_tools are the JD's OWN WORDS, copied verbatim ("ETL/ELT", "testing
-  frameworks", "batch and real-time data architectures", "Git-based
-  development"). Never a paraphrased label: no "Batch architecture" for a JD
-  that says "batch and real-time data architectures", no "Infrastructure as
-  Code" unless the JD says it. An ATS scans for the JD's tokens; a label the
-  JD never used earns nothing and a code check removes it.
-- ONE keyword per entry. A JD list like "orchestration tools (e.g., Airflow,
-  Dagster, or dbt for transformations)" is three entries — "Airflow",
-  "Dagster", "dbt" — never the whole phrase: no bullet can hold nine words in
-  order, so the whole phrase always scores as missing. No parentheses, no
-  "e.g.", no "or similar" inside an entry; an entry is 1-4 words.
-- A prose JD with few product names still yields 12+ entries: the competency
-  nouns it literally uses are keywords ("API design", "CRMs", "distributed",
-  "customers", "connectors"). Copy the JD's word, not a synonym.
-- target_tools is RANKED, most important first: required beats preferred,
-  in the title or summary beats buried in a list, repeated beats mentioned
-  once, "must / strong / hands-on" beats "exposure / a plus / or similar".
-  The last entries are the ones a resume may skip.
-- target_tools: 12–24 concrete, resume-worthy skills the JD emphasises — tools,
-  services, frameworks AND named technical competencies (e.g. "dimensional
-  modeling", "semantic layer design", "data governance", "query optimization",
-  "A/B experimentation", "data warehousing"). This is the checklist the resume's
-  keyword coverage is scored against, so be thorough: include every hard skill a
-  recruiter or ATS would scan for, not just brand-name products. Still NO soft
-  skills (communication, collaboration, mentoring, stakeholder management).
-  A universal competency the JD EXPLICITLY requires (an OS, CI/CD, on-call,
-  testing, scripting, monitoring class of demand) always earns a slot — never
-  crowd one out with a tenth product name.
-- NEVER list years-of-experience, seniority levels, or security clearances (e.g. "13+ years experience", "TS Clearance", "Secret", "Public Trust") as tools — these are NOT injectable and must not appear in target_tools/present/missing.
-- present + missing together should cover target_tools: present = evidenced in resume, missing = not.
-- baseline_missing: from the missing list, pick ONLY the universal expected
-  competencies — practices any engineer at this level genuinely performs
-  regardless of employer or stack (the CI/CD, version-control, code-review,
-  testing, monitoring, on-call, documentation, migration, tuning class of
-  work). Judge each item yourself against that test: "would every competent
-  engineer in this role have really done this, even if their resume never
-  wrote it down?" Yes → baseline_missing. A product, platform, language, or
-  domain tool the candidate may simply not know (Salesforce, Ruby, Snowflake,
-  a vendor suite) is NEVER baseline, no matter how essential the JD calls it.
-- equivalent vs bridge_only: split the rest of `missing` (after baseline) by
-  whether the resume shows a tool of the SAME product category. Datadog ->
-  Splunk is equivalent; Kafka -> a message queue is equivalent. A CAD tool,
-  an ERP, a domain practice (bill of materials) for a data engineer has no
-  category match: bridge_only. A bridge_only tool may be claimed in ONE
-  modest bullet of one job and listed in SKILLS, never in the headline.
-- responsibilities: what the JD says the person DOES, not what they use.
-  Include a duty if it appears in the title, the summary, or the first three
-  responsibility lines, or repeats twice anywhere. Use the JD's own nouns
-  (e.g. "mentoring junior engineers", "peer code review", "clarifying
-  requirements with analysts", "on-call incident response", "stakeholder
-  demos", "technical documentation", "writing tests"). 6–8 items, most
-  important first. These are tracked and verified like tools.
-  Each item is a SHORT noun phrase of 2–6 words, never a whole JD sentence —
-  a sentence can never be matched against a bullet.
-- PROSE COUNTS AS MUCH AS BULLETS: a JD paragraph such as "you will be
-  developing conceptual design, logical database, taxonomy, capacity
-  planning, data loading plan, data maintenance plan and security policy"
-  is a checklist in disguise. Split every comma-separated list inside prose
-  into its items and treat each one exactly like a bullet-point requirement —
-  tools go to target_tools, duties go to responsibilities.
-- tool_facts covers EVERY entry in target_tools, present, missing, AND every
-  product named in the resume's skills section. Not competencies ("data
-  modeling"), only products, services, languages, frameworks.
-- ga_year is the first public/GA release year. Cloud services use the
-  service's launch year, not the cloud's. If unsure, 0.
-- platforms is non-empty ONLY for tools that cannot run without a specific
-  host platform: PL/SQL needs Oracle, T-SQL needs SQL Server, Apex/SOQL/LWC
-  need Salesforce, DataWeave needs MuleSoft, Spark SQL needs Spark.
-  Cloud-neutral tools get an empty list.
-- category groups tools a single job would run ONE of: a team runs one
-  orchestrator, one data catalog, one primary warehouse, one iPaaS. Use
-  'other' when the tool has no such exclusivity."""
+- target_cloud: a cloud ONLY if the JD text literally contains "AWS" / "Amazon
+  Web Services", "Azure", or "GCP" / "Google Cloud". Otherwise "None"; never
+  inferred from the company, domain or tools. "Multi" only when two or more
+  are named and weighted equally.
+- target_tools: 12–24 entries, the JD's OWN WORDS copied verbatim, ONE keyword
+  per entry of 1–4 words. Tools, services, frameworks AND named technical
+  competencies ("dimensional modeling", "data governance", "query
+  optimization", "API design", "connectors"): every hard skill a recruiter or
+  ATS would scan for. A list such as "orchestration tools (e.g., Airflow,
+  Dagster, or dbt for transformations)" is three entries: Airflow, Dagster,
+  dbt. No parentheses, "e.g.", "or similar", paraphrases ("Infrastructure as
+  Code" for a JD that never says it) or synonyms: a label the JD never used
+  earns nothing and a code check removes it. A universal competency the JD
+  explicitly requires (an OS, CI/CD, on-call, testing, scripting, monitoring)
+  always earns a slot. NEVER soft skills, years of experience, seniority
+  levels or clearances ("13+ years", "TS/SCI", "Public Trust").
+  RANKED, most important first: required beats preferred, title or summary
+  beats buried in a list, repeated beats once, "must / strong / hands-on"
+  beats "exposure / a plus / or similar". The last entries are the ones a
+  resume may skip.
+- PROSE COUNTS AS MUCH AS BULLETS: a paragraph like "you will be developing
+  conceptual design, logical database, taxonomy, capacity planning, data
+  loading plan and security policy" is a checklist. Split every comma list in
+  prose: tools go to target_tools, duties to responsibilities.
+- present + missing together cover target_tools: present = clearly evidenced
+  in the resume, missing = not.
+- baseline_missing: the subset of missing that ANY competent engineer at this
+  level really performs regardless of employer or stack (CI/CD, version
+  control, code review, testing, monitoring, on-call, documentation,
+  migration, tuning). A product, platform, language or domain tool the
+  candidate may simply not know (Salesforce, Ruby, Snowflake, a vendor suite)
+  is NEVER baseline, however essential the JD calls it.
+- equivalent vs bridge_only: split the rest of missing by whether the resume
+  shows a tool of the SAME product category (Datadog -> Splunk, Kafka -> a
+  message queue: equivalent; a CAD tool, an ERP or "bill of materials" for a
+  data engineer: bridge_only).
+- responsibilities: 6–8 SHORT noun phrases of 2–6 words, the JD's own nouns,
+  most important first, for what the person DOES ("peer code review",
+  "clarifying requirements with analysts", "on-call incident response",
+  "technical documentation"). Include a duty that appears in the title, the
+  summary, the first three responsibility lines, or twice anywhere. Never a
+  whole sentence: a sentence cannot be matched against a bullet.
+- tool_facts covers every entry in target_tools, present, missing, and every
+  product in the resume's skills section (products, services, languages,
+  frameworks only, not competencies). ga_year = first public/GA release year
+  (a cloud service's own launch, not the cloud's); 0 if unsure. platforms is
+  non-empty only for a tool that cannot run without a host (PL/SQL needs
+  Oracle, T-SQL needs SQL Server, Apex/SOQL/LWC need Salesforce, DataWeave
+  needs MuleSoft, Spark SQL needs Spark). category groups tools a team runs
+  ONE of (one orchestrator, one data catalog, one primary warehouse, one
+  iPaaS); 'other' when there is no such exclusivity."""
 
 
-TAILOR_SYSTEM = """You are StackShift, a professional resume writer. You rewrite a
+TAILOR_SYSTEM_LEGACY = """You are StackShift, a professional resume writer. You rewrite a
 resume so it MIRRORS a specific job description — echoing the JD's responsibilities
 and required skills in the candidate's own voice, mapped onto their REAL jobs.
 The goal is a clean, human, ATS-strong resume that reads like it was hand-written
@@ -179,7 +189,8 @@ Then these sections, in this exact order. Section headers are UPPERCASE with a
 trailing colon on their own line. Every bullet starts with "• ".
 
 SUMMARY:
-• 4 minimum, 6 maximum. Fixed SLOT ORDER, free sentence shape — vary the
+• 4 bullets; 5 at most, never 6. Each bullet is ONE sentence of 12–20 words;
+  55–80 words in total. Fixed SLOT ORDER, free sentence shape — vary the
   syntax from resume to resume; never the same sentence skeleton twice.
   Slot 1 (identity): the JD's title, the candidate's REAL years from base
     dates, the JD's most-repeated tools they genuinely have, and the industries
@@ -188,16 +199,18 @@ SUMMARY:
     its number if the base has one.
   Slot 3 (lead duty): the top item from `responsibilities`, written as work
     the candidate has done, at their tenure level.
-  Slots 4–6 (coverage): one remaining core JD requirement each. Skip a slot
-    rather than pad it.
+  Slot 4 (coverage): the one remaining core JD requirement that matters most.
+  Slot 5 (optional): a second core requirement ONLY if it has no home in
+    slots 1–4. Skip it rather than pad it. A code check drops a 6th line.
 • No slot repeats a tool already named in slot 1. Plain, confident, no
-  invented metrics.
-• ONE TENSE PER SLOT TYPE: capability slots (1, 3–6) are present tense
+  invented metrics. A line naming four or more JD tools is a keyword list,
+  not a sentence: two per line at most.
+• ONE TENSE PER SLOT TYPE: capability slots (1, 3–5) are present tense
   ("Designs…", "Partners…"); a proof slot about the CURRENT job is present
   tense too ("Maintains a 99% SLA at <current employer>"); only a proof about a PAST
   employer is past tense. Never "Maintained … at <current employer>".
-• SUMMARY LENGTH: three sentences, 55-80 words in total. Longer summaries
-  are compressed by a code check (live: 148 words pushed the page dense).
+• SUMMARY LENGTH: 55–80 words in total. Longer summaries are compressed by a
+  code check (live: 148 words pushed the page dense).
 • SUMMARY IS A PREVIEW, NOT A CLAIM LIST: every tool, platform, or duty named
   in SUMMARY must appear in at least one experience bullet. Write the bullets
   first, then the summary from them. A summary item with no bullet behind it
@@ -283,7 +296,8 @@ Each Experience bullet = take ONE responsibility or skill from the JD and rewrit
 it as something the candidate DID at that real job, in plain professional English.
 
   Shape:  [Action verb] + [the JD duty, reworded] + [tool/skill] + [brief context]
-  Length: one clean past-tense sentence, mostly 15–24 words, never past 30;
+  Length: one clean past-tense sentence, mostly 15–24 words, never past 26
+    (a code check rewrites anything longer, so 27+ words is wasted work);
     every job with 4+ bullets carries one SHORT 8–12-word bullet, and lengths
     vary bullet to bullet.
 
@@ -385,10 +399,10 @@ A job may EXCEED its count when needed to give every listed Skill a supporting
 bullet (see EVERY SKILL EARNS A BULLET), but NEVER past these hard caps:
 Job 1 ≤ 11 · Job 2 ≤ 7 · Job 3 ≤ 5 · Job 4+ ≤ 3 (one slot per job stays open for the keyword-coverage pass). A skill that cannot fit
 within the caps is dropped from SKILLS, not crammed in.
-COVERAGE TARGET: at least 60% of `target_tools` (ranked, most important
-first) must be named in an experience bullet; the rest may
-skip the bullet but MUST still be listed in SKILLS — 100% of the JD's tools
-appear on the page. When the JD names more tools than the ladder has bullets,
+COVERAGE TARGET: at least 90% of `target_tools` (ranked, most important
+first) must be named in an experience bullet; the ANALYSIS block states the
+exact count. The remaining ~10% may skip the bullet but MUST still be listed
+in SKILLS — 100% of the JD's tools appear on the page. When the JD names more tools than the ladder has bullets,
 fill every job to its cap; each bullet carries ONE or TWO JD tools and stays
 15–24 words — never a paragraph ("Built
 streaming pipelines with Kafka, Flink, and Spark Structured Streaming…") —
@@ -413,19 +427,18 @@ SQL↔Cloud SQL · DynamoDB↔Cosmos DB↔Firestore/Bigtable.
 Cloud-neutral tools (Terraform, Kafka, Airflow, Spark, dbt) are NEVER translated.
 
 - IF a TARGET CLOUD is detected (the JD literally names AWS, Azure, or GCP):
-  Job 1 (the most recent) MUST be fully converted; Job 2 and older keep their real cloud to the TARGET
-  cloud — this is mandatory for EACH of the two, not just Job 1.
-  * For EACH of Job 1 and Job 2: take whatever cloud that job currently uses (even
-    if it differs from the other job) and rewrite ALL its cloud provider names and
-    native services into the target cloud's equivalents. Its Technologies Used line
-    and bullets must show the TARGET cloud, with NO leftover mention of the old one.
-  * Example — target = AWS: if Job 2 was on Azure, convert it — Azure Data Factory
-    → AWS Glue, Synapse → Redshift, ADLS → S3, Event Hubs → Kinesis, Azure SQL →
-    RDS, Purview → Lake Formation. After conversion Job 2 reads as native AWS.
-  * Do NOT leave Job 2 on its original cloud just because it already had a real one.
-    Both of the top two jobs end on the SAME target cloud.
-  Leave Job 3, 4, 5… on their real native clouds for authenticity. If there is only
-  ONE job, convert just Job 1.
+  ONLY Job 1 (the most recent) is converted. Job 2 and every older job keep
+  their real cloud exactly as the base resume shows it.
+  * Job 1: take whatever cloud it currently uses and rewrite ALL its cloud
+    provider names and native services into the target cloud's equivalents. Its
+    Technologies Used line and bullets show the TARGET cloud, with NO leftover
+    mention of the old one.
+  * Example — target = AWS, Job 1 was on Azure: Azure Data Factory → AWS Glue,
+    Synapse → Redshift, ADLS → S3, Event Hubs → Kinesis, Azure SQL → RDS,
+    Purview → Lake Formation. After conversion Job 1 reads as native AWS.
+  * Job 2 and older: do NOT convert, do NOT drop their real cloud. Their
+    Technologies Used line still names the real cloud. A code check restores
+    it and removes any target-cloud service written into those jobs.
 - IF the TARGET CLOUD is "Multi" (the JD names several clouds with no clear
   primary), treat it exactly like "None" below — do NOT swap anything. Keep every
   job on its real cloud and layer the JD's tools on top. Swapping to a guessed
@@ -446,19 +459,24 @@ Cloud-neutral tools (Terraform, Kafka, Airflow, Spark, dbt) are NEVER translated
     cloud. Layer, never erase.
 
 FOREIGN TOOLS (`bridge_only`): when the JD wants a tool the candidate's base
-shows nothing close to, claim it ONCE with ownership, in the most recent job
-whose stack fits. Anchor it to a real project already in that job: the base
-tools stay, the new tool is the mechanism.
-  Shape: ownership verb + the base project + new tool + specific count +
-  outcome + duration. 18–24 words.
-  Verbs: Owned, Led, Built, Migrated, Designed. Never Supported, Piloted,
-  Explored, Evaluated, Maintained.
-  Scope sized to tenure: at 5 years one pipeline or one migration over 1–2
-  quarters. Never "platform", never "enterprise-wide".
-  Count is specific (14 feeds, 4 triggers), never round. Duration in
-  quarters, sprints, or months. No percentages, no dollars.
-  Example: "Owned migration of 14 Kafka CDC feeds from Delta Lake to Snowflake
-  over two quarters; Snowpipe Streaming cut freshness 2h to 90s."
+shows nothing close to, claim it ONCE, in the most recent job whose stack
+fits. Anchor it to a real project already in that job: the base tools stay,
+the new tool is the mechanism. Strength comes from specifics that are TRUE,
+never from a number.
+  Shape: honest verb + the base project by name + the new tool + how it fits
+  (the mechanism) + who consumed the result. 18–26 words.
+  Verbs, by what the base supports: Prototyped, Piloted, Integrated,
+  Designed, Scoped, Extended. Never Owned / Led / Migrated for a tool the
+  base never shows, and never Supported, Explored, Maintained.
+  Scope sized to tenure: at 5 years one landing layer or one pipeline, never
+  "platform", never "enterprise-wide".
+  NO FIGURE OF ANY KIND: no count, no duration, no percentage, no dollar, no
+  time saved. A number the base resume does not carry is an invented fact
+  and a code check deletes it. Scale words the base uses (terabytes,
+  dozens of feeds) are fine.
+  Example: "Prototyped a Snowflake landing layer for the Kafka CDC feeds
+  behind the commodity pricing marts, using Snowpipe continuous loads to
+  replace nightly batch for analytics teams."
 List it in SKILLS. Never in the headline, never in a second job, never as the
 lead bullet of a job.
 
@@ -537,6 +555,260 @@ GLOBAL RULES
   Listed" / "N/A" filler.
 - Output plain text only, in the format above. No markdown headers, no asterisks,
   no horizontal rules, no commentary, no code fences."""
+
+
+_CAPS_TXT = (f"Job 1 ≤ {_JOB_BULLET_CAPS[0]} · Job 2 ≤ {_JOB_BULLET_CAPS[1]} · "
+             f"Job 3 ≤ {_JOB_BULLET_CAPS[2]} · Job 4+ ≤ {_JOB_CAP_OLDER}")
+_COV_PCT = int(round(_COVERAGE_TARGET * 100))
+
+# The working prompt. Every judgement rule of the legacy prompt is kept; what
+# is gone is repetition (the same rule stated three to ten times) and the
+# rules a code guard enforces anyway (those are stated once, as the number the
+# guard checks, rendered from the ENGINE CONSTANTS above). Set
+# TAILOR_PROMPT=legacy in the environment to run the old prompt for an A/B.
+_TAILOR_SYSTEM_V2 = f"""You are StackShift, a professional resume writer. You rewrite a
+resume so it MIRRORS a specific job description: the JD's responsibilities and
+required skills, in the candidate's own voice, mapped onto their REAL jobs. The
+result must read as hand-written for this exact role, be ATS-strong, and contain
+nothing the candidate could not defend in an interview.
+
+You receive the original resume, the JD, and an ANALYSIS block (one shared
+reading of the JD). Use its fields:
+- job_title -> the headline.       - target_cloud -> the CLOUD rules.
+- industry -> the summary's domain phrase; lead with base jobs in that industry.
+- role_domain -> verb register and which duties lead each job.
+- metric_style -> which REAL base numbers go first.
+- present -> tools already in the base that the JD wants. Every one keeps a bullet.
+- missing / baseline_missing / equivalent / bridge_only -> the COVERAGE rules.
+- responsibilities -> each earns a bullet (COVERAGE).
+- coverage target -> how many ranked tools must have a bullet (COVERAGE).
+
+================================================================================
+OUTPUT FORMAT (plain text. No markdown: no #, no **, no code fences.)
+================================================================================
+Line 1: `<Candidate Full Name> — <Exact Job Title from the JD>` (em-dash between;
+        the clean short title, no suffix, tool, domain or seniority the posting padded on).
+Line 2: `<phone> | <email>` then any LinkedIn / GitHub / website link the base's own
+        contact line carries, in that order. No city, state, street, or link the base lacks.
+
+Sections in this order, headers UPPERCASE with a trailing colon, every bullet "• ":
+
+SUMMARY:
+4 bullets; 5 at most, never 6. One sentence each, 12–20 words; 55–{_SUMMARY_MAX_WORDS} words
+in total. Fixed slot order, free sentence shape (never the same skeleton twice):
+  1 identity: the JD's title, the candidate's REAL years from base dates, the JD's
+    most-repeated tools they genuinely have, the industries from the base.
+  2 proof: the single strongest REAL base achievement, with its number if the base has one.
+  3 lead duty: the top `responsibilities` item as work they have done, at their tenure level.
+  4 coverage: the one remaining core JD requirement that matters most.
+  5 optional: a second core requirement only if slots 1–4 have no room for it.
+No slot repeats a tool named in slot 1. At most two JD tools per line (four is a
+keyword list, not a sentence). Present tense for capability slots ("Designs…",
+"Partners…") and for a proof about the CURRENT employer; past tense only for a
+proof about a past employer. Every tool or duty named here must also appear in
+an experience bullet: write the bullets first, then the summary from them.
+
+SKILLS:
+5–7 lines: `• <Category Name>: skill, skill, ...`, 5–7 items each, 8 at most, 36 in
+total. Categories come from the JD's domains and the candidate's real strengths
+("Data Warehousing & Modeling", "Languages & Scripting", "ETL & Orchestration",
+"Cloud Platforms", "DevOps & Infrastructure", "Data Quality & Governance",
+"AI / ML Engineering"); split a bloated line rather than pile 12 tools on it; give
+BI its own "Business Intelligence & Analytics" line when the JD mentions
+reporting/dashboards and the candidate has Power BI, Tableau, Looker or similar.
+Priority for the 36: (1) tools in BOTH the base and the JD, never dropped to hit
+a count; (2) JD-required tools; (3) closely transferable JD-preferred tools. No
+soft skills, no duplicate tool across lines, no two names for one thing.
+EVERY SKILL EARNS A BULLET: each listed tool appears in at least one experience
+bullet, in the job where that work plausibly happened (one bullet may evidence
+up to three related tools). A tool that cannot get a bullet within the caps
+leaves SKILLS. The one exception is the ANALYSIS block's skills-only tail.
+
+PROFESSIONAL EXPERIENCE:
+Per job, the header line (not a bullet):
+`<Job Title> @ <Company> | <Location> <Month Year> – <Month Year or Present>`
+then the bullets, then one final non-bullet line
+`Technologies Used: <comma-separated tools of THAT job>`.
+Bullet counts, by recency: Job 1: 6–8 · Job 2: 5–6 · Job 3: 4–5 · Job 4: 2–3 ·
+Job 5+: 1–2. A job may exceed its count only to give a listed skill its bullet,
+never past the hard caps {_CAPS_TXT} (code trims anything over). Merge when the
+base has too many bullets; expand with real everyday work when too few.
+EVERY RESPONSIBILITY EARNS A BULLET: each `responsibilities` item (at most 8) is
+written as work done, in the job where it plausibly happened, at the tenure's
+level; one bullet may cover two related duties; 1–2 bullets per job may be a
+plain duty or collaboration line with no tool in it.
+
+PROJECTS: only if the base lists real projects (up to 3, one bullet each). If the
+base has no job history, PROJECTS is the main section: up to 4 real projects, 2
+bullets each. Never invent one; omit the header when empty.
+EDUCATION: `<Degree and Major>, <University/School>` per line, from the base only.
+CERTIFICATIONS: `• <Cert>` per line, from the base only. Omit either header when empty.
+
+================================================================================
+BULLET STYLE
+================================================================================
+Each bullet takes ONE JD responsibility or skill and rewrites it as something the
+candidate DID at that real job: [action verb] + [the JD duty, reworded] +
+[tool/skill] + [brief context]. One past-tense sentence, mostly 15–24 words,
+never past {_BULLET_MAX} (a code check rewrites longer ones). Every job with 4+
+bullets carries one SHORT 8–12-word bullet, and lengths vary bullet to bullet.
+Every bullet ends on a complete noun phrase, never a bare "-ing" word, a
+preposition, or a two-word ", improving reliability." tail.
+
+Rewrite, never paste: change the JD's words, turn "you will…" into a past
+achievement, anchor it to the job's real context. The same duty phrased in two
+jobs never reads identically. The first use of an acronym writes both forms
+("continuous integration/continuous delivery (CI/CD)") so the ATS matches either.
+
+VERB REGISTER (critical): read the JD's verbs and mirror that LEVEL.
+- Architect / lead / strategy JD (define, architect, govern, establish, oversee,
+  drive, lead, mentor, influence): lead 2–3 bullets per job with those verbs
+  (Defined, Architected, Governed, Established, Led, Directed, Oversaw,
+  Standardized, Mentored), not builder verbs. "Engineered entity resolution logic
+  to deduplicate…" becomes "Architected an entity-resolution framework that deduplicated…".
+- IC / hands-on JD: builder verbs (Built, Developed, Implemented, Optimized) are
+  correct; do not force architect verbs.
+- TENURE CEILING: the register is the LOWER of the JD's level and what the
+  candidate's real years support (earliest job start to latest end, internships
+  at half weight): ~1 year owns tasks, ~5 owns pipelines, ~10 owns platforms, ~15
+  owns strategy and teams. A 2-year candidate on a Senior JD gets the Senior
+  headline and a 2-year body: builder verbs, peer-level duties (onboarding,
+  pairing), never "mentored the team". Scope follows tenure too: no eight
+  architect-level initiatives inside a two-year IC role.
+
+IMPACT LADDER: strong resumes do not make every bullet heroic. Impact bullets
+(ownership verb + what it achieved or enabled, closing on a REAL outcome: a base
+number if one exists, else a real qualitative result such as "eliminating
+recurring nightly batch failures") lead each job: Job 1 the top 2–3, Job 2 the
+top 2, Job 3 and older the top 1. The rest are plain scope bullets. The
+strongest impact bullets sit at the top of the most recent job.
+
+LEAD WITH THE JD'S VOCABULARY: the first two bullets of every job speak the JD's
+dominant technology (the one it names most); a brand the JD never mentions does
+not open a top-two bullet. If the candidate's real experience with that tool
+sits in an older job, keep it there truthfully and let the SUMMARY and that
+job's first bullet carry it. Never move a tool into a job that did not use it.
+
+WRITE LIKE A HUMAN: open with a real action verb, never "Responsible for",
+"Tasked with", "Utilized", "Leveraged", "Spearheaded", "Worked on", "Helped
+with", "Involved in", "In charge of", "Assisted", "Contributed to". Plain
+scope verbs (Maintained, Managed, Supported, Collaborated) are welcome in a
+job's scope bullets and wrong in its impact slots (the top 2–3 of Job 1, top 2
+of Job 2, top 1 older), which open with an ownership verb. No two bullets in
+one job open with the same verb; vary the sentence shape rather than running
+one template. No em or
+en dash inside a bullet or summary line (commas, colons, parentheses,
+"including", "such as"); dashes live only in the headline and date ranges. No
+editorial filler ("seamlessly", "cutting-edge", "with a pragmatic eye toward"),
+no vague intensifiers (significantly, substantially, meaningfully), no
+measurement clauses ("as measured in PagerDuty"), no JD lines copied word for word.
+
+METRIC POLICY (the only rule about numbers, it applies everywhere): each job
+carries {_FIGURES_PER_JOB[0]} or {_FIGURES_PER_JOB[1]} REAL base figures, the ones behind this JD's tools, one
+per bullet, the strongest within the job's first three bullets; every other
+bullet ends on a plain outcome or a scale word the base uses (terabytes,
+millions of rows, dozens of feeds). Invent NO figure: no percentage, count,
+dollar, duration or time figure the base lacks, and none copied from the JD. A
+code check deletes any figure the base does not carry and restores one the
+writer dropped. Years of experience are exactly what the base supports, never
+the JD's minimum.
+
+================================================================================
+COVERAGE — cover everything real; leave out only what you would have to fake
+================================================================================
+Fill order per job: (1) the JD's responsibilities, reworded onto real work;
+(2) the candidate's genuine everyday work (documentation, code review,
+monitoring, collaboration, troubleshooting); (3) bridge bullets, last. Skills
+the candidate has but the JD ignores leave the bullets; a few may stay in SKILLS.
+
+COVERAGE TARGET: at least {_COV_PCT}% of the ranked `target_tools` earn a bullet
+(the ANALYSIS block states the exact count); the remaining tail may skip the
+bullet but is still listed in SKILLS, so 100% of the JD's tools are on the
+page. When the JD names more tools than the ladder has bullets, fill every job
+to its cap with bullets that each carry one or two JD tools; never a paragraph
+listing five tools. Density beats count.
+
+Four honest ways to cover a JD tool, and the one dishonest way you never use:
+- OWNED (`present`): write it with the JD's own wording so the token matches
+  ("RAG pipelines" in the base and "Retrieval-Augmented Generation" in the JD:
+  write both; "Rails" work on a JD that says "Ruby": write "Ruby on Rails"). A
+  candidate who truly matches the JD should score near-complete coverage.
+- BASELINE (`baseline_missing`): practices any engineer at this level does even
+  if the base never listed them (Linux, high availability, on-call/incident
+  response, Agile, CI/CD, code review, monitoring, performance tuning, data
+  migration). Weave them into existing real work: SLA work becomes
+  "high-availability", a SQL Server to Snowflake move IS a data migration.
+- CATEGORY-EQUIVALENT (`equivalent`): the JD names a product in a category the
+  candidate already works in. Write the JD's product name directly, in bullets
+  and SKILLS, no "similar to" phrasing (Datadog work covers a Splunk ask; Kafka
+  covers a message-queue ask). Cap each swap at what the base's real work in
+  that category supports: one observability bullet covers ONE swap, not three.
+  Common AI-dev tools the candidate plausibly uses (GitHub Copilot) count here;
+  niche ones they do not use (Windsurf, a proprietary IDE) stay out.
+- FOREIGN (`bridge_only`): nothing in that category anywhere in the base. Claim
+  it ONCE, in the most recent job whose stack fits, anchored to a real project
+  already in that job: honest verb (Prototyped, Piloted, Integrated, Designed,
+  Scoped, Extended; never Owned / Led / Migrated, never Supported / Explored /
+  Maintained) + that project by name + the new tool + how it fits + who
+  consumed the result, 18–26 words, scope sized to tenure, NO figure of any
+  kind. Example: "Prototyped a Snowflake landing layer for the Kafka CDC feeds
+  behind the commodity pricing marts, using Snowpipe continuous loads to
+  replace nightly batch for analytics teams." List it in SKILLS; never in the
+  headline, a second job, or a job's lead bullet.
+- NEVER: a tool the base shows zero evidence of listed as an owned skill or put
+  in the title (ArcGIS Enterprise, SAP HANA, a niche suite never used).
+
+Judge a gap's weight from the JD: "required" vs "preferred / a plus"; frequency;
+title / summary / first responsibilities vs buried in a list; "strong / must /
+hands-on" = core, "exposure to / a plus / or similar / or equivalent" =
+peripheral (one member covers an "X, Y, or equivalent" group). Never manufacture
+a gap by omitting a skill the candidate really has.
+
+LENGTH FOLLOWS TENURE: 0–3 years -> 1 page · 4–11 -> 2 · 12+ -> up to 3. If
+coverage needs more, trim generated bridge bullets first, then the oldest jobs
+down to their minimum count. Never trim an impact bullet or a `present` tool.
+
+================================================================================
+CLOUD (the swap is always active; there is no toggle)
+================================================================================
+Equivalents: EC2 <-> Azure VM <-> Compute Engine · Lambda <-> Functions <-> Cloud
+Functions · S3 <-> Blob <-> Cloud Storage · Redshift <-> Synapse <-> BigQuery · Glue <->
+ADF <-> Dataflow · EMR <-> HDInsight <-> Dataproc · EKS <-> AKS <-> GKE · Kinesis <-> Event
+Hubs <-> Pub/Sub · RDS <-> Azure SQL <-> Cloud SQL · DynamoDB <-> Cosmos DB <-> Firestore/Bigtable.
+Cloud-neutral tools (Terraform, Kafka, Airflow, Spark, dbt) are never translated.
+
+- target_cloud is AWS, Azure or GCP: ONLY Job 1 (the most recent) is converted.
+  Rewrite all of Job 1's provider names and native services into the target's
+  equivalents; its bullets and Technologies Used line show the target cloud with
+  no leftover mention of the old one (target AWS, Job 1 on Azure: Azure Data
+  Factory -> AWS Glue, Synapse -> Redshift, ADLS -> S3, Event Hubs -> Kinesis,
+  Azure SQL -> RDS, Purview -> Lake Formation). Job 2 and older keep their real
+  cloud exactly as the base shows it, including in Technologies Used; a code
+  check restores it and removes any target-cloud service written into them.
+- target_cloud is "Multi" or "None": swap nothing. Every job keeps its real
+  cloud and platform (AWS, Azure, GCP, Databricks, Spark…) in its bullets and
+  its Technologies Used line, and the JD's tools are layered on top ("On AWS
+  and Databricks, modeled MART-layer data products in dbt and Snowflake…"). A
+  JD that names no cloud is not permission to hide the candidate's real cloud.
+
+================================================================================
+GLOBAL RULES
+================================================================================
+- Employers, dates, locations, education, certifications: preserved EXACTLY.
+  Every experience entry keeps its EXACT base title (background checks verify
+  them); the JD's role belongs only in the headline. Each employer listed once,
+  never a duplicate or a "(See above)" stub. An unknown field (location, dates)
+  is omitted, never "Location Not Listed" / "N/A".
+- Never invent employers, dates, degrees, certifications, projects, or figures.
+- SECURITY CLEARANCE and citizenship: never claimed or implied (Top Secret, TS,
+  TS/SCI, Secret, Public Trust, "clearance-eligible") unless the BASE states it.
+  If the JD requires one the resume lacks, omit the topic entirely.
+- Output plain text only, in the format above: no markdown, no asterisks, no
+  horizontal rules, no commentary, no code fences."""
+
+# Default = the new prompt. TAILOR_PROMPT=legacy runs the old one for an A/B.
+TAILOR_SYSTEM = (TAILOR_SYSTEM_LEGACY if os.getenv("TAILOR_PROMPT", "").strip().lower() == "legacy"
+                 else _TAILOR_SYSTEM_V2)
 
 
 FRAGMENT_FIX_SYSTEM = """You are a resume line editor. Each input line is a
@@ -621,9 +893,9 @@ def tailor_prompt(resume_text: str, jd_text: str, context: dict,
             + "\n  ".join(_base_number_hints(resume_text)) + "\n\n")
            if _base_number_hints(resume_text) else "")
         + _anchor_hints(resume_text, context, jd_text)
-        + "CLOUD SWAP: ALWAYS ON — if a target cloud is named above, convert BOTH "
-        "Job 1 and Job 2 to it. If it is 'None', keep every job's real cloud and "
-        "layer the JD's tools on top.\n\n"
+        + "CLOUD SWAP: ALWAYS ON — if a target cloud is named above, convert Job 1 "
+        "ONLY to it; Job 2 and older keep their real cloud. If it is 'None', keep "
+        "every job's real cloud and layer the JD's tools on top.\n\n"
         f"JD TOOLS TO MIRROR ACROSS ALL JOBS:\n  {tools}\n{extra}\n"
         f"JOB DESCRIPTION:\n{jd_text}\n\n"
         f"ORIGINAL RESUME:\n{resume_text}\n\n"
@@ -631,7 +903,7 @@ def tailor_prompt(resume_text: str, jd_text: str, context: dict,
         "JD-mirroring bullets (varied lengths — mostly 15–24 words with a short "
         "8–12-word bullet in each job, no invented numbers, no 'measured via' "
         "clauses), the exact bullet ladder, and the cloud rule (provider swap in "
-        "Job 1 & 2 when a target cloud exists; tools mirrored in all jobs)."
+        "Job 1 only when a target cloud exists; tools mirrored in all jobs)."
     )
 
 
@@ -690,8 +962,7 @@ def _competing_tools(text: str, base_resume: str, context: dict) -> dict[int, li
     hdr_idx = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]
     leaks: dict[int, list[str]] = {}
     for h in hdr_idx:
-        m = _JOB_HDR_RE.search(lines[h])
-        company = m.group(1).strip().lower() if m else ""
+        company = _company_key(lines[h])
         end = _job_block_end(lines, h)
         bullets = [i for i in range(h + 1, end)
                    if lines[i].lstrip().startswith("•") and not _TECH_LINE_RE.match(lines[i].strip())]
@@ -721,6 +992,25 @@ _CLOUD_TERMS = {
 }
 
 _JOB_HDR_RE = re.compile(r"@\s*([A-Za-z0-9&.\-]+)")
+_COMPANY_FIELD_RE = re.compile(r"@\s*([^|\n]+?)\s*(?:\||$)")
+_COMPANY_DATE_RE = re.compile(
+    r"\s*(?:\(|,)?\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)?\.?\s*(?:19|20)\d{2}.*$", re.I)
+
+
+def _company_key(header_line: str) -> str:
+    """The job's identity for every guard that maps tools, clouds or figures
+    to a job: the WHOLE company name after "@" up to the "|" (or the date when
+    there is no pipe), lowercased, punctuation stripped. Before 2026-09-16 the
+    key was the first word only, so "Bank of America" and "Bank of the West"
+    were one job and their tools, clouds and figures were pooled."""
+    m = _COMPANY_FIELD_RE.search(header_line or "")
+    if not m:
+        return ""
+    name = _COMPANY_DATE_RE.sub("", m.group(1))
+    name = re.sub(r"[^a-z0-9&+ ]+", " ", name.lower())
+    return re.sub(r"\s+", " ", name).strip()
+
+
 _BULLET_PREFIXES = ("• ", "- ", "* ", "•")
 
 
@@ -791,7 +1081,7 @@ def _split_jobs(text: str):
         if _is_job_header_line(ln):
             if company is not None:
                 out.append((company, "\n".join(buf)))
-            company = _JOB_HDR_RE.search(ln).group(1).strip().lower()
+            company = _company_key(ln)
             buf = [ln]
         elif company is not None:
             buf.append(ln)
@@ -831,7 +1121,7 @@ def _backstop_native_clouds(tailored: str, missing: dict) -> str:
     company = None
     for i, ln in enumerate(lines):
         if _is_job_header_line(ln):
-            company = _JOB_HDR_RE.search(ln).group(1).strip().lower()
+            company = _company_key(ln)
             continue
         if company in missing and re.match(r"\s*\*{0,2}technologies used", ln, re.I):
             real = missing[company]
@@ -908,25 +1198,75 @@ def _guard_title_inflation(result: str, base_resume: str, notes: list) -> str:
 _FAMILY_KWS: list[tuple[str, list[str]]] = [
     ("ServiceNow",       ["servicenow", "service now", "now platform", "itsm", "itom", "hrsd",
                           "cmdb", "itam", "service mapping", "integrationhub"]),
+    ("Security",         ["security engineer", "security analyst", "security architect",
+                          "cybersecurity", "cyber security", "infosec", "information security",
+                          "grc", "soc analyst", "iam engineer", "identity and access",
+                          "penetration", "threat", "vulnerability"]),
+    ("ML",               ["machine learning", "ml engineer", "mlops", "data scientist",
+                          "data science", "ai engineer", "applied scientist", "nlp engineer",
+                          "deep learning", "generative ai", "llm engineer"]),
     ("Data Engineer",    ["data engineer", "etl", "elt", "databricks", "snowflake", "spark",
-                          "mlops", "machine learning", "data platform", "data warehouse",
-                          "data architect", "database engineer", "database developer", "big data"]),
-    ("Data Analyst",     ["data analyst", "data analytics", "analytics engineer",
-                          "reporting analyst", "product analyst", "quantitative analyst"]),
+                          "data platform", "data warehouse", "data architect",
+                          "database engineer", "database developer", "database administrator",
+                          "dba", "big data", "analytics engineer"]),
+    ("Data Analyst",     ["data analyst", "data analytics", "reporting analyst",
+                          "product analyst", "quantitative analyst", "marketing analyst",
+                          "financial data analyst", "operations analyst"]),
     ("BI",               ["business intelligence", "bi developer", "bi analyst", "bi engineer",
-                          "power bi", "tableau", "looker"]),
+                          "power bi", "tableau", "looker", "qlik"]),
     ("Cloud",            ["cloud engineer", "cloud infrastructure", "cloud operations", "cloudops",
-                          "aws engineer", "azure engineer", "gcp engineer",
-                          "infrastructure engineer", "kubernetes", "terraform"]),
+                          "cloud architect", "aws engineer", "azure engineer", "gcp engineer",
+                          "infrastructure engineer", "kubernetes", "terraform", "network engineer",
+                          "systems engineer", "systems administrator", "sysadmin"]),
     ("DevOps",           ["devops", "devsecops", "sre", "site reliability", "platform engineer",
                           "release engineer", "production engineer", "reliability engineer"]),
     ("Business Analyst", ["business analyst", "business systems analyst", "systems analyst",
                           "it business analyst", "process analyst", "requirements analyst",
                           "functional analyst"]),
+    ("QA",               ["qa engineer", "quality assurance", "quality engineer", "test engineer",
+                          "sdet", "automation engineer", "test analyst", "tester"]),
+    ("Product",          ["product manager", "product owner", "project manager", "program manager",
+                          "scrum master", "delivery manager", "technical program"]),
+    ("Software Engineer", ["software engineer", "software developer", "software development",
+                           "backend", "back-end", "back end", "frontend", "front-end", "front end",
+                           "full stack", "full-stack", "fullstack", "web developer",
+                           "application developer", "java developer", "python developer",
+                           ".net developer", "mobile developer", "ios", "android", "programmer",
+                           "member of technical staff", "engineer"]),
 ]
+# Families a candidate moves between in practice. Same family or an adjacent
+# one: the headline mirrors the JD title (level word still earned by tenure).
+_ADJACENT_FAMILIES = {
+    frozenset({"Data Engineer", "Data Analyst"}), frozenset({"Data Engineer", "BI"}),
+    frozenset({"Data Analyst", "BI"}), frozenset({"Data Engineer", "ML"}),
+    frozenset({"Data Analyst", "Business Analyst"}), frozenset({"BI", "Business Analyst"}),
+    frozenset({"Cloud", "DevOps"}), frozenset({"DevOps", "Software Engineer"}),
+    frozenset({"Cloud", "Security"}), frozenset({"DevOps", "Security"}),
+    frozenset({"Software Engineer", "ML"}), frozenset({"Software Engineer", "QA"}),
+}
+_ROLE_NOUN_RE = re.compile(
+    r"\b(engineer|developer|analyst|architect|scientist|administrator|manager|consultant|"
+    r"specialist|lead|designer|owner)s?\b", re.I)
 _F_DATA = re.compile(r"\bdata\b", re.I)
 _F_ANALYST = re.compile(r"\banalyst\b", re.I)
 _F_ENGINEER = re.compile(r"\bengineer\b", re.I)
+
+
+def _same_family(title_a: str, title_b: str) -> bool:
+    """May the headline mirror title_b's role on a resume whose latest job is
+    title_a? Yes when the families match, are adjacent, or, for two titles the
+    keyword table does not know, when both end on the same role noun
+    ("Backend Engineer" on a "Software Engineer" base: yes; "Product Manager"
+    on that base: no). Before 2026-09-16 unknown never equalled unknown, so
+    every software / ML / security / QA / PM applicant lost the JD title."""
+    fa, fb = _role_family(title_a), _role_family(title_b)
+    if fa and fb:
+        return fa == fb or frozenset({fa, fb}) in _ADJACENT_FAMILIES
+    # one or both unknown to the table: the role noun decides ("Epic Cogito
+    # Analyst" -> "Clinical Reporting Analyst": yes; -> "Data Engineer": no)
+    na = _ROLE_NOUN_RE.findall(title_a or "")
+    nb = _ROLE_NOUN_RE.findall(title_b or "")
+    return bool(na and nb) and na[-1].lower().rstrip("s") == nb[-1].lower().rstrip("s")
 
 
 def _role_family(title: str) -> str:
@@ -966,6 +1306,28 @@ def _title_has_word(base_titles: str, word: str) -> bool:
     return bool(re.search(rf"(?<![a-z]){re.escape(w)}\.?(?![a-z])", base_titles))
 
 
+# Years of real tenure that earn a level word in the headline when the base's
+# own titles do not already carry it. Manager / Director / Head / Chief / VP
+# are never earned by tenure alone.
+_LEVEL_MIN_YEARS = {"senior": 5, "sr": 5, "lead": 7, "staff": 7, "principal": 10}
+
+
+def _deinflate_title(title: str, base_resume: str) -> str:
+    """Drop each level word in `title` that neither the base's own titles nor
+    the candidate's tenure supports; keep the role words."""
+    base_titles = _base_title_text(base_resume)
+    _, years = _base_years_claim(base_resume)
+
+    def _keep(word: str) -> bool:
+        w = word.lower().rstrip(".")
+        if _title_has_word(base_titles, w):
+            return True
+        need = _LEVEL_MIN_YEARS.get(w)
+        return need is not None and years is not None and years >= need
+    out = _SENIORITY_RE.sub(lambda m: m.group(0) if _keep(m.group(0)) else "", title)
+    return re.sub(r"\s{2,}", " ", out).strip(" -–—|,")
+
+
 def _headline_hybrid(result: str, base_resume: str, jd_title: str, notes: list) -> str:
     """Hybrid headline rule: mirror the JD role in the headline ONLY when it is
     the same role family as the candidate's real latest job title; otherwise fall
@@ -993,7 +1355,18 @@ def _headline_hybrid(result: str, base_resume: str, jd_title: str, notes: list) 
     fam_jd = _role_family(jd_core)
     fam_real = _role_family(real_title)
 
-    if fam_jd and fam_jd == fam_real:
+    if _same_family(real_title, jd_core):
+        # Same or adjacent family: mirror the JD title, but a LEVEL word (Senior, Lead,
+        # Staff, Principal, Manager…) stays only when the base's own titles
+        # carry it or the candidate's real tenure clears its bar. A 2-year
+        # engineer on a "Senior Data Engineer" JD is headlined "Data Engineer":
+        # the role word is the ATS token, the level word is the inflation.
+        clean = _deinflate_title(cur_title, base_resume)
+        if clean and clean.lower() != cur_title.lower():
+            lines[0] = f"{name.strip()} — {clean}"
+            notes.append(f"headline level de-inflated (tenure/base titles do not support it): "
+                         f"{cur_title!r} -> {clean!r}")
+            return "\n".join(lines)
         return result
 
     # Different family / off-domain JD → use the real latest job title.
@@ -1563,6 +1936,64 @@ def _dominant_jd_tool(job_description: str, target_tools: list) -> str:
     return best if best_n >= 3 else ""
 
 
+def _dedupe_bullets(text: str, notes: list) -> str:
+    """Two bullets in one job that say the same thing (60%+ of their content
+    words shared) collapse to one. When the later bullet contains the earlier
+    one's words it is the richer rewrite (a weave that added a keyword) and
+    stays; otherwise the earlier, writer-authored bullet stays. Live miss
+    (Instacart A/B): "Mentored data engineers on pipeline design patterns…"
+    and "Coached data engineers on pipeline design patterns… and code review"
+    both shipped in Job 1."""
+    lines = text.split("\n")
+    gone: set[int] = set()
+    _w = lambda s: {w.rstrip(".") for w in _content_words(s)}      # "techniques." == "techniques"
+    for _, bl in _job_bullet_lines(text):
+        words = {i: _w(lines[i]) for i in bl}
+        for a_pos, a in enumerate(bl):
+            if a in gone or not words[a]:
+                continue
+            for b in bl[a_pos + 1:]:
+                if b in gone or not words[b]:
+                    continue
+                inter = len(words[a] & words[b])
+                if inter / len(words[a] | words[b]) < 0.6:
+                    continue
+                gone.add(a if len(words[a] - words[b]) <= 1 else b)
+                if a in gone:
+                    break
+    if gone:
+        notes.append(f"duplicate guard: removed {len(gone)} bullet(s) that restated another in the same job")
+    return "\n".join(ln for i, ln in enumerate(lines) if i not in gone)
+
+
+_BRIDGE_VERB_RE = re.compile(r"^(?:prototyped|piloted|scoped|explored|evaluated)\b", re.I)
+
+
+def _demote_bridge_bullets(text: str, notes: list) -> str:
+    """Pure reordering: a bullet opening with a bridge verb that sits in one
+    of a job's impact slots moves to the end of that job's bullets. The
+    prompt forbids a foreign-tool bullet as a job's lead; this makes it so."""
+    lines = text.split("\n")
+    moved = 0
+    for j, bl in _job_bullet_lines(text):
+        slots = _impact_slots(j)
+        if len(bl) <= slots:
+            continue
+        for i in bl[:slots]:
+            if _BRIDGE_VERB_RE.match(lines[i].lstrip()[1:].strip()):
+                bullet = lines[i]
+                lines[i] = None                      # type: ignore[call-overload]
+                last = bl[-1]
+                lines.insert(last + 1, bullet)
+                moved += 1
+        if moved:
+            text = "\n".join(l for l in lines if l is not None)
+            lines = text.split("\n")
+    if moved:
+        notes.append(f"bridge guard: moved {moved} bridge bullet(s) out of a job's impact slots")
+    return "\n".join(l for l in lines if l is not None)
+
+
 def _promote_tool_bullets(text: str, tool: str, notes: list) -> str:
     """Recruiters scan the first two bullets of each job. If the JD's dominant
     tool is already evidenced further down a job, move that bullet to the top
@@ -1731,11 +2162,6 @@ def _job_block_end(lines: list[str], start: int) -> int:
     return len(lines)
 
 
-# Hard bullet ceilings by job recency (Job 1, Job 2, Job 3; older jobs 4).
-_JOB_BULLET_CAPS = (8, 6, 5)
-
-
-_COVERAGE_TARGET = 0.60   # share of the ranked JD tool list that must earn a bullet
 
 
 _LABEL_SPLIT_RE = re.compile(
@@ -1933,7 +2359,7 @@ def _coverage_plan(context: dict) -> tuple[list[str], list[str]]:
 
 
 def _job_cap(j: int) -> int:
-    return _JOB_BULLET_CAPS[j] if j < len(_JOB_BULLET_CAPS) else 3
+    return _JOB_BULLET_CAPS[j] if j < len(_JOB_BULLET_CAPS) else _JOB_CAP_OLDER
 
 
 def _insert_skill_bullets(resume: str, additions: dict,
@@ -1966,10 +2392,26 @@ def _insert_skill_bullets(resume: str, additions: dict,
             log.extend((j, s, b) for s, b in take)
         if tech_i is not None:
             ti = tech_i + len(new_lines)
+            # only product-shaped names join the Technologies Used line; a duty
+            # ("Building high-quality ETL/ELT pipelines") is proven by the
+            # bullet, not listed as a technology (live: both A/B prompts)
             skills = ", ".join(s for pair in take
-                               for s in re.split(r"\s*\+\s*", pair[0]) if s)
-            lines[ti] = lines[ti].rstrip().rstrip(",") + ", " + skills
+                               for s in re.split(r"\s*\+\s*", pair[0]) if s and _looks_like_tool(s))
+            if skills:
+                lines[ti] = lines[ti].rstrip().rstrip(",") + ", " + skills
     return "\n".join(lines), added
+
+
+def _looks_like_tool(name: str) -> bool:
+    """A product / language / short competency ("dbt", "Great Expectations",
+    "data governance"), not a duty phrase ("translate finance pain points into
+    self-serve data solutions")."""
+    words = name.strip().split()
+    if not words or len(words) > 3:
+        return False
+    if re.match(r"^[a-z]+(ing|ed|ate|ify|ize|ise)$", words[0]) and len(words) >= 2:
+        return False                      # "building …", "translate …"
+    return True
 
 
 def _rewrite_skill_lines(text: str, drop: set[str]) -> tuple[str, list[str]]:
@@ -2012,8 +2454,9 @@ def _rewrite_skill_lines(text: str, drop: set[str]) -> tuple[str, list[str]]:
         if changed:
             indent = ln[: len(ln) - len(ln.lstrip())]
             label = label.lstrip("•-* ").rstrip()
-            lines[i] = f"{indent}{marker} {label}: {', '.join(kept)}" if kept else ""
-    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)), removed
+            lines[i] = f"{indent}{marker} {label}: {', '.join(kept)}" if kept else None
+    # an emptied row is removed outright (a "" left a blank line inside SKILLS)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(l for l in lines if l is not None)), removed
 
 
 def _drop_unevidenced_skills(text: str, notes: list, keep: list | None = None) -> str:
@@ -2046,13 +2489,21 @@ For EACH listed item, output ONE line — every item, no skipping. Priority:
 
   N <job number> :: <skill> :: <new bullet>
       The default whenever the fitting job still has ROOM (shown per job).
-      One project the candidate owned at that job, anchored to a tool the
-      job already names. Shape: ownership verb + count (4-50, never round)
-      + countable thing + the skill + outcome + duration. 14-24 words.
-      Verbs: Owned, Led, Built, Migrated, Designed. Never Supported,
-      Maintained, Managed, Explored, Evaluated, Collaborated.
-      Outcome in time, failures, releases, or users. No percentages, no
-      dollars. One or two related skills (joined by " + ").
+      One piece of real work at that job, anchored to a project and a tool
+      the job's existing bullets already name. Shape: verb + that project
+      by name + the skill + how it fits (the mechanism) + who consumed the
+      result. 14-26 words.
+      Verbs for a skill the job's bullets already imply: Built, Designed,
+      Extended, Integrated; Maintained / Managed are fine for routine scope
+      work. Verbs for a tool the job never used (marked FOREIGN): Prototyped,
+      Piloted, Integrated, Scoped. Never Supported, Explored, Evaluated,
+      Collaborated, and never Maintained / Managed for a FOREIGN item.
+      NO NUMBER OF ANY KIND in a new bullet: no count, duration,
+      percentage, dollar or time figure. A figure that is not in the base
+      resume is an invented fact; a code check rejects the whole line.
+      Strength comes from naming the real project, the real tool and the
+      real consumer, not from a digit. One or two related skills (joined
+      by " + ").
 
 Rules:
 - The item's EXACT words must appear in the bullet, verbatim (case may
@@ -2080,8 +2531,6 @@ Rules:
 Output ONLY these lines."""
 
 
-_WEAVE_MAX_WORDS = 24  # a bullet already this long takes no more weaving
-_FIGURES_PER_JOB = (2, 3)  # (floor, cap) real base figures per job; the rest read as plain outcomes
 
 
 async def _ensure_skill_bullets(resume: str, job_description: str,
@@ -2147,8 +2596,7 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
         hdr_idx = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]
         job_co: list[str] = []
         for h in hdr_idx:
-            mh = _JOB_HDR_RE.search(lines[h])
-            job_co.append(mh.group(1).strip().lower() if mh else "")
+            job_co.append(_company_key(lines[h]))
         anch_low = {k.lower(): v for k, v in (anchors or {}).items()}
 
         def _allowed_jobs(item: str):
@@ -2214,6 +2662,9 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
                 continue
             kind, num, skill, body = m.group(1).upper(), int(m.group(2)), m.group(3).strip(), m.group(4)
             body = re.sub(r"\s*[—–]\s*", ", ", body.strip().lstrip("•-* ").strip())
+            # the skill field joins items with " + "; the model sometimes copies
+            # that into the sentence (live: "exception handling + code review")
+            body = re.sub(r"\s+\+\s+", " and ", body)
             if not body:
                 rejected.append(f"{skill} (empty)")
                 continue
@@ -2250,7 +2701,7 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
                 proves = all(not _unevidenced([p], "EXPERIENCE:\nX @ Y | Z\n• " + body) for p in need)
                 # the RESULT must read as one bullet (three words of slack past
                 # the weave limit); a 25-word bullet is not off limits
-                slack = 6 if any(len(p.split()) >= 4 for p in parts) else 3
+                slack = 4 if any(len(p.split()) >= 4 for p in parts) else 2
                 # the result must not be longer than the limit OR than the bullet
                 # already was: a long bullet the compressor could not shorten still
                 # takes a keyword as long as it does not grow (live: eight "named,
@@ -2261,11 +2712,20 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
                 kept_old = set(_line_skills(old, claimed_now)) <= set(_line_skills(body, claimed_now))
                 grow_ok = ((0 <= grew or (kept_old and len(body.split()) >= 8))
                            and grew <= max(6 * len(need) + 4, len(" ".join(need).split()) + 10))
-                if room_ok and grow_ok and same_nums and proves:
+                # a WEAVE keeps the bullet's topic: at least 40% of the original
+                # content words survive. Live miss (Cloudflare A/B): a Cargill
+                # bullet was rewritten to "surface healthcare claims data feeds"
+                # to place PostgreSQL, the topic lifted from the Molina job.
+                ow = _content_words(old)
+                topic_ok = not ow or len(ow & _content_words(body)) / len(ow) >= 0.4
+                if room_ok and grow_ok and same_nums and proves and topic_ok:
                     lines[i] = "• " + body
                     used[i] = need
                     woven.append(skill)
                 else:
+                    if not topic_ok:
+                        rejected.append(f"{skill} (weave changed the bullet's topic)")
+                        continue
                     if proves and same_nums and not (room_ok and grow_ok):
                         # the words were right, the bullet had no room: next
                         # round asks for a NEW bullet instead of another weave
@@ -2281,7 +2741,7 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
             else:
                 j = num - 1
                 if not (0 <= j < len(jobs)) or not 8 <= len(body.split()) <= 26 or _bad_figures(body):
-                    rejected.append(f"{skill} (new bullet: bad job, {len(body.split())} words (8-26), or has a %/$ figure)")
+                    rejected.append(f"{skill} (new bullet: bad job, {len(body.split())} words (8-26), or carries a figure)")
                     continue
                 job_blob = "\n".join(lines[i].lstrip()[1:].strip() for i in jobs[j][1])
                 job_tools = _line_skills(job_blob, [str(p) for p in (present_tools or [])])
@@ -2337,20 +2797,28 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
     return _drop_unevidenced_skills(resume, notes, keep=list(skills_only or []) + must)
 
 
-def _enforce_caps(text: str, base_resume: str, notes: list, keep_tool: str = "") -> str:
+def _enforce_caps(text: str, base_resume: str, notes: list, keep_tool: str = "",
+                  bonus: int = 0, protect: set[str] | None = None) -> str:
     """The writer is told the per-job caps but overshoots; trim from the end
-    of the job, keeping any bullet that carries a real base figure or names
-    the JD's dominant tool as long as another one is available."""
+    of the job, keeping any bullet that carries a real base figure, names
+    the JD's dominant tool, or is in `protect` (the coverage pass's own
+    bullets) as long as another one is available. `bonus` widens each cap by
+    that many slots: the final pass allows the one slot the coverage pass
+    was given, otherwise the bullet it wrote (last in the job, no base
+    figure) would be the first victim and its keyword lost."""
     lines = text.split("\n")
     base_nums = _num_tokens(base_resume)
     gone: set[int] = set()
+    keep_texts = protect or set()
 
     def _precious(i: int) -> bool:
         if _num_tokens(lines[i]) & base_nums:
             return True
+        if lines[i].lstrip()[1:].strip() in keep_texts:
+            return True
         return bool(keep_tool) and not _unevidenced([keep_tool], "EXPERIENCE:\nX @ Y | Z\n" + lines[i])
     for j, bl in _job_bullet_lines(text):
-        cap = _job_cap(j)
+        cap = _job_cap(j) + bonus
         live = list(bl)
         while len(live) > cap:
             victim = next((i for i in reversed(live) if not _precious(i)), live[-1])
@@ -2409,7 +2877,7 @@ def _code_score(tailored: str, base_resume: str, job_description: str,
     _lvl = lambda s: re.sub(r"\s{2,}", " ", _SENIORITY_RE.sub("", s or "")).strip()
     if jd_title and (head_title in (jd_title, jd_core) or _lvl(head_title) in (_lvl(jd_title), _lvl(jd_core))):
         ti_pts = 5
-    elif jd_title and _role_family(head_title) and _role_family(head_title) == _role_family(jd_title):
+    elif jd_title and _same_family(head_title, jd_core):
         ti_pts = 3
     else:
         ti_pts = 0
@@ -2444,9 +2912,9 @@ def _code_score(tailored: str, base_resume: str, job_description: str,
         wc = [len(lines[i].split()) - 1 for i in bl]
         if len(bl) >= 4 and min(wc) > _SHORT_MAX:
             r_pen += 2; r_why.append(f"job {j + 1}: no short bullet")
-        n_long = sum(1 for w in wc if w > 35)
+        n_long = sum(1 for w in wc if w > _BULLET_MAX)
         if n_long:
-            r_pen += n_long; r_why.append(f"job {j + 1}: {n_long} bullet(s) over 35 words")
+            r_pen += n_long; r_why.append(f"job {j + 1}: {n_long} bullet(s) over {_BULLET_MAX} words")
         verbs = [re.match(r"[A-Za-z-]+", lines[i].lstrip()[1:].strip()) for i in bl]
         verbs = [v.group(0).lower() for v in verbs if v]
         n_rep = len(verbs) - len(set(verbs))
@@ -2461,13 +2929,15 @@ def _code_score(tailored: str, base_resume: str, job_description: str,
 
     pf_pen, pf_why = 0, []
     ins_texts = {b for _, _, b in (inserted or [])}
+    base_nums = _num_tokens(base_resume)
     for _, bl in _job_bullet_lines(tailored):
         for i in bl:
             body = lines[i].lstrip()[1:].strip()
-            if body in ins_texts and not re.search(r"\b\d{1,2}\b", body):
-                pf_pen += 2; pf_why.append("generated bullet without a count")
-            if _CLICHE_RE.match(body):
-                pf_pen += 2; pf_why.append(f"filler opener: {body.split()[0]}")
+            # a generated bullet is proof only when every figure in it is the
+            # base resume's own; an invented count is the opposite of proof
+            if body in ins_texts and (_num_tokens(body) - base_nums):
+                pf_pen += 3; pf_why.append("generated bullet carries a figure the base lacks")
+            # (cliché openers are penalised once, under readability)
     pf_pts = max(0, 10 - pf_pen)
     if pf_why:
         fixes.append("Proof: " + "; ".join(dict.fromkeys(pf_why))[:120])
@@ -2475,6 +2945,13 @@ def _code_score(tailored: str, base_resume: str, job_description: str,
     p_pts, p_why = _page_fit_points(tailored, base_resume)
     if p_pts < 10:
         fixes.append(p_why)
+
+    # The engine never invents a figure, so a base with none yields a resume
+    # with none; that is the biggest quality gap a user can close themselves.
+    base_figs = {f for f in _num_tokens(base_resume) if not f.endswith("y")}
+    if not base_figs:
+        fixes.insert(0, "Your base resume carries no numbers: add 2-3 real figures per job in your "
+                        "profile (feeds, rows, latency, SLA, users) and every tailored resume will carry them")
 
     overall = round(t_pts + d_pts + ti_pts + o_pts + n_pts + r_pts + p_pts + pf_pts)
     ats = round((t_pts + d_pts) / 45 * 100)
@@ -2614,11 +3091,11 @@ def _base_job_blocks(base_resume: str) -> dict[str, str]:
     for i, ln in enumerate(lines):
         if not _is_job_header_line(ln):
             continue
-        m = _JOB_HDR_RE.search(ln)
-        if not m:
+        key = _company_key(ln)
+        if not key:
             continue
         end = _job_block_end(lines, i)
-        out[m.group(1).strip().lower()] = "\n".join(lines[i + 1:end]).lower()
+        out[key] = "\n".join(lines[i + 1:end]).lower()
     return out
 
 
@@ -2651,16 +3128,20 @@ def _scope_leaks(text: str, base_resume: str, context: dict,
     hdr_idx = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]
     leaks: dict[int, list[str]] = {}
     for j, h in enumerate(hdr_idx):
-        m = _JOB_HDR_RE.search(lines[h])
-        company = m.group(1).strip().lower() if m else ""
+        company = _company_key(lines[h])
         if company not in base_jobs:
             continue
         end = _job_block_end(lines, h)
         end_year = _job_end_year(lines[h])
         job_blob = "\n".join(lines[h + 1:end]).lower()
+        base_here = base_jobs.get(company, "")
         if end_year:
             for tool, ga in _ga_years(context).items():
-                if ga <= end_year:
+                # one year of slack (job dates are year-granular), and never
+                # for a tool the BASE already names in this job: that is the
+                # candidate's own claim, and the cheap model's release year
+                # is a guess (live: Airflow "2019" erased from a real 2018 job)
+                if ga <= end_year + 1 or _hits(tool, base_here):
                     continue
                 for i in range(h + 1, end):
                     s = lines[i].strip()
@@ -2670,8 +3151,8 @@ def _scope_leaks(text: str, base_resume: str, context: dict,
         for lang, plats in _platform_bound(context).items():
             if not re.search(rf"(?<![a-z0-9]){re.escape(lang)}(?![a-z0-9])", job_blob):
                 continue
-            if any(p in job_blob for p in plats):
-                continue
+            if any(p in job_blob for p in plats) or _hits(lang, base_here):
+                continue                     # platform named, or the base's own claim
             for i in range(h + 1, end):
                 s = lines[i].strip()
                 if s.startswith("•") and not _TECH_LINE_RE.match(s) \
@@ -2771,11 +3252,16 @@ _NUM_WORDS = {
 _NUM_WORD_RE = re.compile(r"\b(" + "|".join(_NUM_WORDS) + r")\b(?=[\s-])", re.I)
 _NUM_TOKEN_RE = re.compile(
     r"(?<![A-Za-z0-9.])(sub-)?(\$)?(\d[\d,]*(?:\.\d+)?)\s*"
-    r"(%|\+|[kKmMbB](?![a-z])|[xX](?![a-z])|ms\b|TB\+?|GB\+?|PB\+?|"
+    r"(\+?\s?(?:years?|yrs?)\b|"
+    r"%|\+|[kKmMbB](?![a-z])|[xX](?![a-z])|ms\b|TB\+?|GB\+?|PB\+?|"
     r"-?\s?(?:hours?|hrs?|hour)\b|-?\s?(?:minutes?|mins?|minute)\b|"
     r"-?\s?seconds?\b|-?\s?(?:days?|weeks?|months?)\b)?"
 )
 _UNIT_NORM = {
+    # "6 years" and "6+ years" are the same tenure claim: one key, judged by
+    # _clamp_years (against the base's dates), never by the invented-figure audit
+    "years": "y", "year": "y", "yrs": "y", "yr": "y",
+    "+years": "y", "+year": "y", "+yrs": "y", "+yr": "y",
     "k": "k", "m": "m", "b": "b", "x": "x", "%": "%", "+": "+", "ms": "ms",
     "tb": "tb", "gb": "gb", "pb": "pb", "hour": "h", "hours": "h", "hr": "h",
     "hrs": "h", "minute": "min", "minutes": "min", "min": "min", "mins": "min",
@@ -2801,7 +3287,7 @@ def _num_tokens(text: str) -> set[str]:
             val = float(raw)
         except ValueError:
             continue
-        unit = (unit or "").strip().lstrip("-").strip().lower()
+        unit = re.sub(r"\s+", "", (unit or "").strip().lstrip("-").lower())
         unit = _UNIT_NORM.get(unit, unit)
         if not unit and not dollar and val <= 3:
             continue                      # "SOC 2", "Vault 2.0", "two teams"
@@ -2815,14 +3301,12 @@ def _num_tokens(text: str) -> set[str]:
 
 
 def _bad_figures(text: str) -> set[str]:
-    out = set()
-    for t in _num_tokens(text):
-        if "%" in t or "$" in t:
-            out.add(t); continue
-        m = re.match(r"^(\d+)$", t)
-        if not m or int(m.group(1)) > 50:
-            out.add(t)
-    return out
+    """Every figure in a GENERATED bullet is a bad figure. A coverage bullet
+    describes work the base resume never quantified, so any number in it is
+    invented. (Before 2026-09-16 bare counts up to 50 were exempt, and the
+    prompt asked for one — "14 feeds, never round" — which is fabrication
+    dressed as precision.)"""
+    return set(_num_tokens(text))
 
 
 def _content_words(s: str) -> set[str]:
@@ -2843,6 +3327,18 @@ def _job_bullet_lines(text: str) -> list[tuple[int, list[int]]]:
                         if lines[i].lstrip().startswith("•")
                         and not _TECH_LINE_RE.match(lines[i].strip())]))
     return out
+
+
+def _cap_summary_lines(text: str, notes: list) -> str:
+    """The prompt allows 4 summary bullets, 5 at most; a 6th is a coverage
+    slot the writer padded. Drop the extras from the end (slot order puts
+    identity, proof and lead duty first). Pure code, nothing rewritten."""
+    idx = _summary_lines(text)
+    if len(idx) <= _SUMMARY_MAX_LINES:
+        return text
+    gone = set(idx[_SUMMARY_MAX_LINES:])
+    notes.append(f"summary guard: dropped {len(gone)} bullet(s) past the {_SUMMARY_MAX_LINES}-line cap")
+    return "\n".join(ln for i, ln in enumerate(text.split("\n")) if i not in gone)
 
 
 def _summary_lines(text: str) -> list[int]:
@@ -2897,8 +3393,10 @@ def _number_audit(tailored: str, base_resume: str, job_description: str,
     body_idx = _summary_lines(tailored) + [i for _, bl in _job_bullet_lines(tailored) for i in bl]
     invented = []
     for i in body_idx:
-        bad = {t for t in _num_tokens(lines[i]) - allowed
-               if not re.fullmatch(r"\d{1,2}", t) or int(t) > 50}
+        # every figure must trace to the base (or the JD); a bare count the
+        # base never states ("14 feeds") is as invented as a percentage.
+        # A years-of-experience claim ("6+ years") is judged by _clamp_years.
+        bad = {t for t in _num_tokens(lines[i]) - allowed if not t.endswith("y")}
         if bad:
             invented.append((i, bad))
 
@@ -2908,7 +3406,7 @@ def _number_audit(tailored: str, base_resume: str, job_description: str,
     t_lines: dict[str, list[int]] = {}
     hdr_idx = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]
     for h in hdr_idx:
-        c = _JOB_HDR_RE.search(lines[h]).group(1).strip().lower()
+        c = _company_key(lines[h])
         end = _job_block_end(lines, h)
         t_lines[c] = [i for i in range(h + 1, end)
                       if lines[i].lstrip().startswith("•")
@@ -2953,7 +3451,7 @@ _INTENSIFIER_RE = re.compile(
     re.I)
 
 
-_SPLIT_MAX_WORDS = 30
+_SPLIT_MAX_WORDS = _BULLET_SPLIT   # split is the last resort after compress reverted
 
 
 def _split_long_bullets(text: str, notes: list, max_words: int = _SPLIT_MAX_WORDS) -> str:
@@ -3036,8 +3534,6 @@ def _strip_intensifiers(text: str) -> tuple[str, int]:
     return "\n".join(lines), hits
 
 
-_SHORT_MAX = 18          # a bullet at or under this many words counts as "short"
-_LONG_RUN = 25           # three consecutive bullets over this = a wall
 
 
 def _line_skills(line: str, claimed: list[str]) -> list[str]:
@@ -3072,9 +3568,9 @@ def _length_flags(text: str, inserted_texts: set[str]) -> dict[int, str]:
                           + (f" These names must stay: {', '.join(keep)}." if keep else ""))
         # a bullet past 40 words is a paragraph, not a bullet: always trimmed
         for i in bl:
-            if wc[i] > 40 and i not in flags:
+            if wc[i] > _BULLET_SPLIT and i not in flags:
                 figs = _num_tokens(lines[i])
-                flags[i] = ("Tighten to 22-30 words: keep the tools"
+                flags[i] = (f"Tighten to 20-{_BULLET_MAX} words: keep the tools"
                             + (f" and the figure {', '.join(sorted(figs))}" if figs else "")
                             + ", remove the weakest clause.")
         # one wall-breaker per job: the model rewrites few lines, code verifies each
@@ -3122,7 +3618,9 @@ def _overused_phrases(text: str, job_description: str, target_tools: list) -> di
     jd_low = job_description.lower()
     flags: dict[int, list[str]] = {}
     for p, idxs in counts.items():
-        if len(idxs) < 4:
+        # a two-word phrase echoes at three uses ("commodity pricing" x5 in
+        # one live resume); a hyphenated compound at four
+        if len(idxs) < (3 if " " in p else 4):
             continue
         # a product name is written Title Case ("Great Expectations", "Lake
         # Formation") — repeating a product is not an echo, skip it
@@ -3164,8 +3662,9 @@ Output ONLY the numbered lines."""
 
 
 async def _compress_long_bullets(text: str, notes: list, target_tools: list | None = None,
-                                 max_words: int = 24, target: int = 22,
-                                 summary_max: int = 90, summary_target: int = 80,
+                                 max_words: int = _BULLET_MAX, target: int = _BULLET_MAX - 4,
+                                 summary_max: int = _SUMMARY_MAX_WORDS,
+                                 summary_target: int = _SUMMARY_MAX_WORDS - 10,
                                  **cheap_kw) -> str:
     """The writer is told 15-24 words and writes 25-38 (live: 17 of 27
     bullets over the limit), and a 150-word summary. A long bullet is FULL
@@ -3416,7 +3915,7 @@ async def _polish_numbers_and_length(tailored: str, base_resume: str,
                     verdict = False; bad.append(f"line {i}: figure not restored")
         if i in length:
             wc = len(new.split()) - (1 if new.lstrip().startswith("•") else 0)
-            lim = _SHORT_MAX if "8-12" in length[i] else 32 if "22-30" in length[i] else 21
+            lim = _SHORT_MAX if "8-12" in length[i] else _BULLET_MAX if "Tighten to 20-" in length[i] else 21
             kept_figs = (_num_tokens(before[i]) & allowed) <= _num_tokens(new)
             lost = [sk for sk in _line_skills(before[i], claimed) if sk not in _line_skills(new, claimed)]
             if 5 <= wc <= lim and kept_figs and not lost:
@@ -3580,10 +4079,34 @@ def _trim_to_budget(text: str, inserted: list, base_resume: str, notes: list,
 _JUNK_LINE_RE = re.compile(
     r"^\s*(?:•\s*)?(?:location not listed|n/?a|not specified|see above|"
     r"\(?consolidated under[^)]*\)?|fabricated[^\n]*|\[?end of resume\]?)\s*\.?\s*$", re.I)
+# Filler openers: phrases that carry no information. Banned everywhere, flagged
+# for a rewrite, penalised once (readability).
 _CLICHE_RE = re.compile(
     r"^(?:responsible for|tasked with|utilized|leveraged|spearheaded|worked on|"
-    r"helped with|involved in|in charge of|supported|maintained|managed|explored|"
-    r"evaluated|collaborated|assisted|contributed to)\b", re.I)
+    r"helped with|involved in|in charge of|assisted|contributed to)\b", re.I)
+# Weak but honest verbs: fine for a scope bullet ("Maintained the nightly
+# DAGs…" is what a real engineer does), wrong for a job's IMPACT slots (the top
+# 2-3 bullets a recruiter reads). Before 2026-09-16 these sat in _CLICHE_RE, so
+# honest scope bullets were rewritten into ownership claims and penalised twice.
+_WEAK_VERB_RE = re.compile(
+    r"^(?:supported|maintained|managed|explored|evaluated|collaborated)\b", re.I)
+_IMPACT_SLOTS = (3, 2)          # Job 1: top 3, Job 2: top 2, older jobs: top 1
+
+
+def _impact_slots(j: int) -> int:
+    return _IMPACT_SLOTS[j] if j < len(_IMPACT_SLOTS) else 1
+
+
+def _ownership_verbs(base_resume: str) -> str:
+    """Impact-slot verbs sized to the candidate's REAL tenure (the prompt's
+    tenure ceiling, applied to the fixer too): a 2-year engineer owns tasks
+    and builds things; "Architected" or "Led" on that resume is inflation."""
+    _, years = _base_years_claim(base_resume or "")
+    if years is None or years <= 3:
+        return "Built, Developed, Implemented, Automated, Delivered, Shipped"
+    if years <= 9:
+        return "Built, Designed, Owned, Delivered, Led, Migrated"
+    return "Architected, Led, Directed, Established, Owned, Standardized"
 
 
 def _strip_junk_lines(text: str) -> tuple[str, int]:
@@ -3630,6 +4153,9 @@ def _verb_form(word: str) -> str:
 
 
 _WORD_RE = re.compile(r"[a-z0-9+#.]+")
+_VAGUE_TAIL_RE = re.compile(
+    r"(?:,\s*|\s+)(?:plus\s+additional|and\s+other|and\s+more|among\s+others|and\s+various|"
+    r"and\s+related|and\s+similar|and\s+beyond|etc\.?)\b[^.]*", re.I)
 
 
 def _qa_flags(text: str, missing_clouds: dict, jd_tools: list | None = None,
@@ -3640,18 +4166,23 @@ def _qa_flags(text: str, missing_clouds: dict, jd_tools: list | None = None,
     def _add(i: int, instr: str) -> None:
         flags[i] = (flags.get(i, "") + " " + instr).strip()
 
-    # cliché openers, repeated opening verbs, stacked figures — per job
-    for _, bl in _job_bullet_lines(text):
+    # cliché openers, weak verbs in impact slots, repeated opening verbs,
+    # stacked figures — per job
+    for j, bl in _job_bullet_lines(text):
         seen_verbs: dict[str, int] = {}
         all_verbs: list[str] = []
         for i in bl:
             first = re.match(r"[A-Za-z][A-Za-z-]*", lines[i].lstrip()[1:].strip())
             if first and first.group(0).lower() not in all_verbs:
                 all_verbs.append(first.group(0).lower())
-        for i in bl:
+        for n, i in enumerate(bl):
             body = lines[i].lstrip()[1:].strip()
             if _CLICHE_RE.match(body):
                 _add(i, "Open with a real action verb instead of this templated phrase.")
+            elif n < _impact_slots(j) and _WEAK_VERB_RE.match(body):
+                _add(i, "This is an impact slot (top of the job): open with an ownership verb "
+                        f"sized to the candidate's tenure ({_ownership_verbs(base_resume)}) and keep "
+                        "the meaning; a scope verb like Maintained belongs lower in the job.")
             first = re.match(r"[A-Za-z][A-Za-z-]*", body)
             verb = first.group(0).lower() if first else ""
             if verb:
@@ -3675,6 +4206,14 @@ def _qa_flags(text: str, missing_clouds: dict, jd_tools: list | None = None,
         if cur and first and first.group(0).lower().endswith("ed") \
                 and re.search(rf"\b{re.escape(cur)}\b", body, re.I):
             _add(i, f"Present tense: this describes the current employer ({cur}).")
+    # summary filler: a vague tail ("plus additional cloud data warehouses and
+    # processing frameworks", "and other tools", "and more") says nothing
+    for i in _summary_lines(text):
+        body = lines[i].lstrip("• ").strip()
+        m = _VAGUE_TAIL_RE.search(body)
+        if m:
+            _add(i, f"Cut the vague tail starting at '{m.group(0).strip()}': end the sentence on the "
+                    "last concrete item; name a real tool or drop the clause. No filler.")
     # summary density: a line naming four or more JD terms is a keyword list, not a sentence
     if jd_tools:
         sum_idx = _summary_lines(text)
@@ -3687,8 +4226,7 @@ def _qa_flags(text: str, missing_clouds: dict, jd_tools: list | None = None,
     # dropped real cloud: weave into the job's first two bullets + its tools line
     for company, cloud in (missing_clouds or {}).items():
         for h in hdr_idx:
-            m = _JOB_HDR_RE.search(lines[h])
-            if not m or m.group(1).strip().lower() != company:
+            if _company_key(lines[h]) != company:
                 continue
             end = _job_block_end(lines, h)
             bl = [i for i in range(h + 1, end) if lines[i].lstrip().startswith("•")
@@ -3703,10 +4241,10 @@ def _qa_flags(text: str, missing_clouds: dict, jd_tools: list | None = None,
     # Flag the long lines so the fixer trims them (a code cut would break prose).
     sum_idx = _summary_lines(text)
     total = sum(len(lines[i].lstrip("\u2022 ").split()) for i in sum_idx)
-    if total > 80:
+    if total > _SUMMARY_MAX_WORDS:
         for i in sum_idx:
             if len(lines[i].lstrip("\u2022 ").split()) > 22:
-                _add(i, f"The summary is {total} words (limit 80): cut this line to at most 20 words; keep its tools, drop the second clause.")
+                _add(i, f"The summary is {total} words (limit {_SUMMARY_MAX_WORDS}): cut this line to at most 20 words; keep its tools, drop the second clause.")
 
     # JD copied word for word: seven consecutive words shared with the posting
     # (live: "document parsing, chunking, metadata extraction, and embedding
@@ -3729,8 +4267,7 @@ def _qa_flags(text: str, missing_clouds: dict, jd_tools: list | None = None,
         swap_to = target_cloud if target_cloud in _CLOUD_SIG else ""
         hdr_idx = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]
         for j, h in enumerate(hdr_idx):
-            m = _JOB_HDR_RE.search(lines[h])
-            real = base_cloud.get(m.group(1).strip().lower() if m else "")
+            real = base_cloud.get(_company_key(lines[h]))
             if not real:
                 continue
             allowed = {real} | ({swap_to} if swap_to and j == 0 else set())
@@ -3772,6 +4309,8 @@ async def _targeted_qa(text: str, missing_clouds: dict, notes: list,
             ok = False
         if ok and "templated" in instr and _CLICHE_RE.match(nb):
             ok = False
+        if ok and "impact slot" in instr and (_WEAK_VERB_RE.match(nb) or _CLICHE_RE.match(nb)):
+            ok = False
         if ok and "different verb" in instr:
             taken = set()
             m_all = re.search(r"do not use any of: ([^;]+);", instr)
@@ -3801,6 +4340,8 @@ async def _targeted_qa(text: str, missing_clouds: dict, notes: list,
         if ok and "Too many JD terms" in instr:
             if len(_line_skills(nb, [str(t) for t in (jd_tools or [])])) > 3:
                 ok = False
+        if ok and "vague tail" in instr and _VAGUE_TAIL_RE.search(nb):
+            ok = False
         if ok and ("Weave" in instr or "Add " in instr):
             cloud = re.search(r"(?:Weave|Add) (\w+)", instr).group(1)
             if not any(t in nb.lower() for t in _CLOUD_TERMS.get(cloud, (cloud.lower(),))):
@@ -3831,13 +4372,38 @@ def _base_years_claim(base_resume: str):
     explicit = m.group(0) if m else None
     explicit_n = int(m.group(1)) if m else None
 
-    years = [int(y) for y in _YEAR_RE.findall(base_resume)]
-    derived = None
-    if years:
-        # crude but safe: span from earliest 4-digit year to the latest.
-        derived = max(years) - min(years)
+    derived = _tenure_years(base_resume)
     ceiling = explicit_n if explicit_n is not None else derived
     return explicit, ceiling
+
+
+def _tenure_years(base_resume: str) -> int | None:
+    """Real tenure: earliest job start to latest job end, read from the job
+    header lines only ("Title @ Company | City 2018 – Present"). "Present" /
+    "Current" counts as this year. Education, certification and summary years
+    are ignored (before 2026-09-16 every 4-digit year in the resume counted,
+    so a 2015 graduation made a 2-year engineer read as 11 years, and a
+    single "2018 – Present" job read as 0 because "Present" is not a year).
+    Falls back to the span of all years when no job header parses."""
+    import datetime as _dt
+    this_year = _dt.date.today().year
+    starts, ends = [], []
+    for ln in (base_resume or "").splitlines():
+        if not _is_job_header_line(ln):
+            continue
+        yrs = [int(y) for y in _YEAR_RE.findall(ln)]
+        if not yrs:
+            continue
+        starts.append(min(yrs))
+        ends.append(this_year if re.search(r"\b(present|current|now)\b", ln, re.I) else max(yrs))
+    if starts:
+        return max(0, max(ends) - min(starts))
+    years = [int(y) for y in _YEAR_RE.findall(base_resume or "")]
+    if not years:
+        return None
+    if re.search(r"\b(present|current)\b", base_resume, re.I):
+        years.append(this_year)
+    return max(years) - min(years)
 
 
 def _clamp_years(result: str, base_resume: str) -> tuple[str, bool]:
@@ -3868,6 +4434,16 @@ def _clamp_years(result: str, base_resume: str) -> tuple[str, bool]:
             lines[i] = ln[:m.start()] + repl + ln[m.end():]
             changed = True
     return "\n".join(lines), changed
+
+
+def _analysis_ok(context) -> bool:
+    """A usable analysis names at least three JD tools. Anything less is a
+    truncated or misparsed reply, and tailoring against it ships a resume
+    tuned to nothing while the coverage score reads 'met'."""
+    if not isinstance(context, dict):
+        return False
+    tools = context.get("target_tools")
+    return isinstance(tools, list) and len([t for t in tools if str(t).strip()]) >= 3
 
 
 def _loads_loose(text: str) -> dict:
@@ -3939,24 +4515,32 @@ async def tailor_resume(base_resume: str, job_description: str,
     cheap_kw = {"api_key": api_key, "provider": provider, "model": cheap, "keys": keys}
 
     # ── 1. ANALYZE (cheap) ────────────────────────────────────────────────
-    try:
-        raw = await chat(ANALYZE_SYSTEM, analyze_prompt(base_resume, job_description),
-                         max_tokens=2500, pass_name="analyze", **cheap_kw)
-        context = _loads_loose(raw)
-    except Exception as exc:  # noqa: BLE001 — retry once on the main model
-        notes.append(f"analyze: cheap model failed ({exc}); retried on main model")
+    # The analysis is the JD reading every later stage uses. An empty or
+    # truncated one used to be swallowed (empty context, coverage "0 of 0,
+    # met", a confident score on a resume tailored to nothing). Now: one retry
+    # on the same cheap model, then a clear error. Never the main model.
+    context: dict = {}
+    for _attempt in (1, 2):
+        _err = ""
         try:
             raw = await chat(ANALYZE_SYSTEM, analyze_prompt(base_resume, job_description),
-                             max_tokens=2500, pass_name="analyze", **main_kw)
+                             max_tokens=4000, pass_name="analyze" if _attempt == 1 else "analyze_retry",
+                             **cheap_kw)
             context = _loads_loose(raw)
-        except Exception as exc2:  # noqa: BLE001
-            notes.append(f"analyze: failed ({exc2}); continuing with empty context")
-            context = {}
-
-    if not context:
-        context = {"target_cloud": "None", "target_tools": [], "industry": "",
-                   "present": [], "missing": [], "baseline_missing": [],
-                   "responsibilities": []}
+        except Exception as exc:  # noqa: BLE001
+            _err, context = str(exc), {}
+        if _analysis_ok(context):
+            break
+        notes.append(f"analyze: attempt {_attempt} " + (f"failed ({_err})" if _err else
+                     "returned no usable JSON (target_tools empty or missing)")
+                     + ("; retrying once" if _attempt == 1 else ""))
+    if not _analysis_ok(context):
+        raise ValueError("Could not analyze this job description (the model returned no usable "
+                         "analysis twice). Try again in a moment.")
+    for _k in ("present", "missing", "baseline_missing", "responsibilities"):
+        context.setdefault(_k, [])
+    context.setdefault("target_cloud", "None")
+    context.setdefault("industry", "")
 
     # Guard (a): a cloud swap only fires when the JD LITERALLY names that cloud.
     # Kills phantom swaps (e.g. GCP invented for a cloud-agnostic JD).
@@ -4004,7 +4588,9 @@ async def tailor_resume(base_resume: str, job_description: str,
         notes.append("analyze: dropped labels the JD never says: " + ", ".join(_not_literal))
 
     _dom = _dominant_jd_tool(job_description, context.get("target_tools") or [])
-    if _dom:
+    # the fit gate is about a PRODUCT the interview will go deep on; a
+    # competency phrase ("financial data") is vocabulary, not a tool
+    if _dom and _dom.lower() in _tool_facts(context):
         _anch = _anchored_tools(base_resume, context)
         _where = _anch.get(_dom) or set()
         _base_cos = [c for c, _ in _split_jobs(base_resume)]
@@ -4050,10 +4636,11 @@ async def tailor_resume(base_resume: str, job_description: str,
     tailored, junk = _strip_junk_lines(tailored)
     if junk:
         notes.append(f"qa: removed {junk} junk/placeholder line(s)")
+    tailored = _cap_summary_lines(tailored, notes)
     tailored, tech_added = _ensure_tech_lines(tailored)
     if tech_added:
         notes.append(f"qa: built {tech_added} missing Technologies Used line(s) from the job's own bullets")
-    # Guard (c1c): no bullet over 24 words (and no 150-word summary) goes any
+    # Guard (c1c): no bullet over _BULLET_MAX words (and no 150-word summary) goes any
     # further — a long bullet is FULL for the coverage weave and dense on the
     # page; the QA pass right after this sees the final wording.
     _jd_keep_words = (context.get("target_tools") or []) + (context.get("responsibilities") or [])
@@ -4105,6 +4692,14 @@ async def tailor_resume(base_resume: str, job_description: str,
     # The bottom 10% of the ranked JD keywords need no bullet but must still
     # be on the page for the ATS: make sure each sits in the Skills row.
     tailored = _ensure_skills_row(tailored, _coverage_plan(context)[1], notes)
+    # Weaves may push a bullet past _BULLET_MAX by their slack; the earlier
+    # compress ran before them. One more pass, which costs a call only when a
+    # bullet is actually over the line (live: three 28-30-word bullets in Job 1
+    # after coverage, readability 6/10).
+    if any(len(tailored.split("\n")[i].split()) - 1 > _BULLET_MAX
+           for _, bl in _job_bullet_lines(tailored) for i in bl):
+        tailored = await _compress_long_bullets(tailored, notes, _jd_keep_words,
+                                                summary_max=10 ** 6, **cheap_kw)
 
     # Guard (c3): bullets whose endings read as truncated. Measured with the
     # same detector that drives the UI warning; only spends a call when the
@@ -4137,6 +4732,11 @@ async def tailor_resume(base_resume: str, job_description: str,
     # cloud brands the JD never mentions. Reordering only — no rewriting.
     tailored = _promote_tool_bullets(
         tailored, _dominant_jd_tool(job_description, context.get("target_tools") or []), notes)
+    # Guard (d1b): a bridge bullet (Prototyped / Piloted / Scoped …) is never a
+    # job's lead: it moves below the impact slots. Live miss (Instacart A/B):
+    # "Prototyped cross-cloud data aggregation…" opened Job 1.
+    tailored = _demote_bridge_bullets(tailored, notes)
+    tailored = _dedupe_bullets(tailored, notes)
 
     tailored, dash_hits = _strip_dash_asides(tailored)
     if dash_hits:
@@ -4173,10 +4773,12 @@ async def tailor_resume(base_resume: str, job_description: str,
     tailored = await _fix_scope_leaks(tailored, base_resume, context, notes,
                                       jd_text=job_description, **cheap_kw)
 
-    # Guard (g1): no paragraph bullets — split past 38 words, nothing lost.
+    # Guard (g1): no paragraph bullets — split past _BULLET_SPLIT words, nothing lost.
     tailored = _split_long_bullets(tailored, notes)
+    # cap + the one coverage slot; the coverage pass's own bullets are kept
     tailored = _enforce_caps(tailored, base_resume, notes,
-                             keep_tool=_dominant_jd_tool(job_description, context.get("target_tools") or []))
+                             keep_tool=_dominant_jd_tool(job_description, context.get("target_tools") or []),
+                             bonus=1, protect={b for _, _, b in inserted})
     # the split halves and the weaves can repeat an opening verb: one more
     # targeted QA pass (only calls the model when something is flagged)
     tailored = await _targeted_qa(tailored, {}, notes, jd_tools=context.get("target_tools") or [], jd_text=job_description,

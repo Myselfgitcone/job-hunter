@@ -712,21 +712,17 @@ function ResumeTab({ job, tailoring, startedAt, onTailor, onCancel, onToast, onU
           {disqualifiers.map((d, i) => <div key={i} style={{ fontSize: 12.5, color: "#fca5a5" }}>{d}</div>)}
         </div>
       )}
-      {/* Review gate banners — DISABLED by user request.
-          Backend always sends needs_review=false now, so these never fired
-          anyway; commented out here too so the JSX doesn't silently depend
-          on that. Uncomment both blocks to restore the green/red banner. */}
-      {/* {job.needs_review === true && (
+      {/* Review gate: the backend sets needs_review when the overall score is
+          under 70 (reasons = its top fixes) or when the JD's dominant tool is
+          absent from the base / only in an old job (the fit gate). Shown while
+          the job is still new; once applied the warning is moot. */}
+      {job.needs_review === true && job.tailored_resume && job.status === "new" && (
         <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.35)", borderRadius: 10, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#fbbf24", marginBottom: 2 }}>🔴 Needs review — read this resume before applying</div>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#fbbf24", marginBottom: 2 }}>⚠ Review before applying</div>
           {(job.review_reasons || []).slice(0, 6).map((r, i) => <div key={i} style={{ fontSize: 12.5, color: "#fcd34d" }}>{r}</div>)}
+          {!(job.review_reasons || []).length && <div style={{ fontSize: 12.5, color: "#fcd34d" }}>The score panel lists what to fix.</div>}
         </div>
       )}
-      {job.needs_review === false && job.tailored_resume && (
-        <div style={{ background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 10, padding: "8px 14px", fontSize: 12.5, color: "#4ade80", fontWeight: 600 }}>
-          🟢 Auto-approved — passed all quality checks, safe to apply
-        </div>
-      )} */}
       {/* TOP ROW — Detected Context (left) + Resume Score & downloads (right) */}
       <div style={{ display: "flex", gap: 18, alignItems: "flex-start", marginBottom: 16 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -759,7 +755,7 @@ function ResumeTab({ job, tailoring, startedAt, onTailor, onCancel, onToast, onU
                   </span>
                   <span style={{ fontSize: 10.5, color: "var(--tx-2, #a9adba)" }}>
                     {swapped
-                      ? `— Jobs 1 & 2 converted to ${cloud}, older roles keep their real cloud`
+                      ? `— most recent job converted to ${cloud}, older roles keep their real cloud`
                       : "— no swap; every job keeps its real cloud, JD tools layered on top"}
                   </span>
                 </div>
@@ -866,6 +862,15 @@ function ResumeTab({ job, tailoring, startedAt, onTailor, onCancel, onToast, onU
                     </div>
                   );
                 })()}
+                {/* Same list QuickTailor shows: the score pass's own top fixes. */}
+                {!!(job.gate_scores.top_fixes || []).length && (
+                  <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border-subtle)" }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-muted)", marginBottom: 6 }}>What would raise the score</div>
+                    {(job.gate_scores.top_fixes || []).slice(0, 5).map((f, i) => (
+                      <div key={i} style={{ fontSize: 11.5, color: "var(--tx-2, #a9adba)", marginBottom: 4, lineHeight: 1.35 }}>• {f}</div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}

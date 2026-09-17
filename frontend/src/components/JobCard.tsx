@@ -173,7 +173,7 @@ export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "comp
     const stItem = STATUS_LABEL[job.status];
     return (
       <div className={`jcard${selected ? " sel" : ""}${checked ? " checked" : ""}`}
-        onClick={onClick}
+        onClick={onClick} onMouseLeave={() => setQualAnchor(null)}
         style={{ animationDelay: `${Math.min(index, 12) * 20}ms`, ...(job.deferred ? { opacity: 0.5 } : {}) } as React.CSSProperties}>
 
         {onDefer && (
@@ -237,9 +237,8 @@ export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "comp
               {/* AI Match % is a "worth tailoring?" triage signal — once a
                   tailored score exists the decision is made, so hide the %. */}
               {score !== null && job.ats_score_after == null && (job.gate_scores?.overall == null)
-                && <span className={`jcard-matchpill ${scoreClass(score)}`} style={{ cursor: "help" }}
-                         onMouseEnter={e => setQualAnchor((e.currentTarget as HTMLElement).getBoundingClientRect())}
-                         onMouseLeave={() => setQualAnchor(null)}>{score}%</span>}
+                && <span className={`jcard-matchpill ${scoreClass(score)}`}
+                         onMouseEnter={e => setQualAnchor((e.currentTarget as HTMLElement).getBoundingClientRect())}>{score}%</span>}
               {(() => {
                 // Tailored resume score — overall gate blend, else raw ATS.
                 const overall = typeof job.gate_scores?.overall === "number" ? job.gate_scores.overall : null;
@@ -269,7 +268,7 @@ export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "comp
   return (
     <div
       className={`jobcard${selected ? " sel" : ""}`}
-      onClick={onClick}
+      onClick={onClick} onMouseLeave={() => setQualAnchor(null)}
       style={{
         "--st-color": stColor,
         animationDelay: `${Math.min(index, 12) * 20}ms`,
@@ -319,10 +318,11 @@ export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "comp
 
       {/* Right: score badge + status + resume ATS + time */}
       <div className="jc-right">
+        {/* opens on pill hover, closes on card leave: the hover-only skip /
+            defer buttons sit on top of the pill and would fire a leave */}
         {score !== null ? (
-          <span className={`score-badge ${scoreClass(score)}`} style={{ cursor: "help" }}
-                onMouseEnter={e => setQualAnchor((e.currentTarget as HTMLElement).getBoundingClientRect())}
-                onMouseLeave={() => setQualAnchor(null)}>{score}%</span>
+          <span className={`score-badge ${scoreClass(score)}`}
+                onMouseEnter={e => setQualAnchor((e.currentTarget as HTMLElement).getBoundingClientRect())}>{score}%</span>
         ) : null}
         {qualAnchor && qr && <QualifyPopover qr={qr} anchor={qualAnchor} />}
         {STATUS_LABEL[job.status] && (

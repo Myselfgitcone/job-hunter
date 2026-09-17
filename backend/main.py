@@ -1012,14 +1012,21 @@ async def startup():
                     flagged.append(f"qualify={q}")
                 if p and p.startswith("anthropic/"):
                     flagged.append(f"parse={p}")
-                print(f"[Startup] Bulk-model cost leak: {email} had {', '.join(flagged)} — resetting to Gemini Flash-Lite")
+                print(f"[Startup] Bulk-model cost leak: {email} had {', '.join(flagged)} — resetting to Gemini Flash")
             await conn.execute(text(
-                "UPDATE user_settings SET ai_model_qualify = 'google/gemini-2.5-flash-lite' "
+                "UPDATE user_settings SET ai_model_qualify = 'google/gemini-2.5-flash' "
                 "WHERE ai_model_qualify LIKE 'anthropic/%'"
             ))
             await conn.execute(text(
-                "UPDATE user_settings SET ai_model_parse = 'google/gemini-2.5-flash-lite' "
+                "UPDATE user_settings SET ai_model_parse = 'google/gemini-2.5-flash' "
                 "WHERE ai_model_parse LIKE 'anthropic/%'"
+            ))
+            # 2026-09-17: qualify is hybrid (code decides 4 of 6 criteria, the
+            # model reads the full requirements for the other 2): Flash, not
+            # Flash-Lite, is the tier for that read. Move stored Lite settings up.
+            await conn.execute(text(
+                "UPDATE user_settings SET ai_model_qualify = 'google/gemini-2.5-flash' "
+                "WHERE ai_model_qualify = 'google/gemini-2.5-flash-lite'"
             ))
         print(f"[Startup] Bulk-model reset complete — {len(rows)} user(s) moved off premium qualify/parse")
     except Exception as e:
@@ -1850,8 +1857,8 @@ async def get_ai_status(user_id: str = Depends(get_current_user_id)):
 
     tailor_model  = cfg.get("ai_model_tailor",       "anthropic/claude-sonnet-4.6")
     sec_model     = cfg.get("ai_model_secondary") or "anthropic/claude-haiku-4-5"
-    parse_model   = cfg.get("ai_model_parse",         "google/gemini-2.5-flash-lite")
-    qualify_model = cfg.get("ai_model_qualify",       "google/gemini-2.5-flash-lite")
+    parse_model   = cfg.get("ai_model_parse",         "google/gemini-2.5-flash")
+    qualify_model = cfg.get("ai_model_qualify",       "google/gemini-2.5-flash")
     cover_model   = cfg.get("ai_model_cover_letter",  "anthropic/claude-sonnet-4.6")
 
     return {
@@ -1906,10 +1913,10 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
             "anthropic_api_key": "•" * len(s.anthropic_api_key) if s.anthropic_api_key else "",
             "google_api_key":    "•" * len(s.google_api_key)    if s.google_api_key    else "",
             "openai_api_key":    "•" * len(s.openai_api_key)    if s.openai_api_key    else "",
-            "ai_model_parse": s.ai_model_parse or "google/gemini-2.5-flash-lite",
+            "ai_model_parse": s.ai_model_parse or "google/gemini-2.5-flash",
             "ai_model_tailor": s.ai_model_tailor or "anthropic/claude-sonnet-4.6",
             "ai_model_secondary": s.ai_model_secondary or "anthropic/claude-haiku-4-5",
-            "ai_model_qualify": s.ai_model_qualify or "google/gemini-2.5-flash-lite",
+            "ai_model_qualify": s.ai_model_qualify or "google/gemini-2.5-flash",
             "ai_model_cover_letter": s.ai_model_cover_letter or "anthropic/claude-sonnet-4.6",
             "profile_name": s.profile_name or "",
             "profile_visa": s.profile_visa or "",
@@ -5467,7 +5474,7 @@ async def parse_resume_file(file: UploadFile = File(...), user_id: str = Depends
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model = user_cfg.get("ai_model_parse", "google/gemini-2.5-flash-lite")
+    model = user_cfg.get("ai_model_parse", "google/gemini-2.5-flash")
 
     from ai.llm import ModelKeys as _ModelKeys
     _mk = _ModelKeys(
@@ -5631,7 +5638,7 @@ async def qualify_job_endpoint(job_id: str, user_id: str = Depends(get_current_u
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model = user_cfg.get("ai_model_qualify", "google/gemini-2.5-flash-lite")
+    model = user_cfg.get("ai_model_qualify", "google/gemini-2.5-flash")
     # Per-user profile — each user's scores measure THEIR fit
     async with SessionLocal() as db:
         profile = await _load_profile(db, user_id)
@@ -5652,6 +5659,8 @@ async def qualify_job_endpoint(job_id: str, user_id: str = Depends(get_current_u
         provider=provider,
         model=model,
         candidate_roles=candidate_roles,
+        job_meta={"remote": job.remote, "country": job.country, "visa_sponsorship": job.visa_sponsorship,
+                  "experience_level": job.experience_level},
     )
 
     async with SessionLocal() as db:
@@ -5727,7 +5736,7 @@ async def _run_qualify_for_users(new_job_ids: list | None = None):
     active non-admin user's OWN profile + roles and caches it in their UserJob.
 
     Bounded and cheap: only new jobs that match a user's roles and aren't already
-    qualified for them, on the flash-lite tier. The admin keeps the global batch.
+    qualified for them, on the Gemini Flash tier. The admin keeps the global batch.
     """
     # new_job_ids semantics: a list of ids → score those (post-scrape); [] → the
     # scrape produced nothing, do nothing; None → BACKFILL mode (score each user's
@@ -5795,9 +5804,9 @@ async def _run_qualify_for_users(new_job_ids: list | None = None):
             if not any([_mk.anthropic, _mk.google, _mk.openai, _mk.openrouter]):
                 continue
 
-            model = s.ai_model_qualify or "google/gemini-2.5-flash-lite"
+            model = s.ai_model_qualify or "google/gemini-2.5-flash"
             if any(m in model for m in ("gpt-5", "gpt-4o", "o3", "o1", "claude-opus")):
-                model = "google/gemini-2.5-flash-lite"
+                model = "google/gemini-2.5-flash"
             provider = s.ai_provider or "openrouter"
 
             print(f"[Qualify/user] {u.email}: {len(mine)} new jobs")
@@ -5807,7 +5816,9 @@ async def _run_qualify_for_users(new_job_ids: list | None = None):
                         profile=profile, job_title=job.title,
                         job_description=job.description or "", company=job.company,
                         location=job.location or "", api_key=(s.ai_api_key or ""),
-                        provider=provider, model=model, candidate_roles=roles, keys=_mk)
+                        provider=provider, model=model, candidate_roles=roles, keys=_mk,
+                        job_meta={"remote": job.remote, "country": job.country,
+                                  "visa_sponsorship": job.visa_sponsorship, "experience_level": job.experience_level})
                     async with SessionLocal() as db2:
                         uj = (await db2.execute(select(UserJob).where(
                             UserJob.user_id == u.id, UserJob.job_id == job.id))).scalar_one_or_none()
@@ -5852,12 +5863,12 @@ async def _run_qualify_all_inner(new_job_ids: list | None = None):
         openrouter=api_key,
     )
     # Default to a cheap/free model — do NOT use gpt-5 for bulk qualify
-    model    = (admin_s.ai_model_qualify or "google/gemini-2.5-flash-lite") if admin_s else "google/gemini-2.5-flash-lite"
+    model    = (admin_s.ai_model_qualify or "google/gemini-2.5-flash") if admin_s else "google/gemini-2.5-flash"
     # Safety override: if the stored model is gpt-5 or o3 (very expensive), fall back
     _expensive_models = ("gpt-5", "gpt-4o", "o3", "o1", "claude-opus")
     if any(m in model for m in _expensive_models):
-        print(f"[Qualify] Model '{model}' is expensive — overriding to google/gemini-2.5-flash-lite for auto-qualify")
-        model = "google/gemini-2.5-flash-lite"
+        print(f"[Qualify] Model '{model}' is expensive — overriding to google/gemini-2.5-flash for auto-qualify")
+        model = "google/gemini-2.5-flash"
 
     if not any([_qmk.anthropic, _qmk.google, _qmk.openai, _qmk.openrouter]) or not profile:
         print(f"[Qualify] Skipping — admin_settings={'found' if admin_s else 'MISSING'} "
@@ -5910,6 +5921,8 @@ async def _run_qualify_all_inner(new_job_ids: list | None = None):
                 model=model,
                 candidate_roles=admin_roles,
                 keys=_qmk,
+                job_meta={"remote": job.remote, "country": job.country, "visa_sponsorship": job.visa_sponsorship,
+                          "experience_level": job.experience_level},
             )
             async with SessionLocal() as db2:
                 j = await db2.get(Job, job.id)

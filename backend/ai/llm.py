@@ -212,6 +212,7 @@ async def chat(
     retry_on_ratelimit: int = 0,
     keys: ModelKeys | None = None,
     timeout: int = 90,
+    temperature: float | None = None,
 ) -> str:
     """
     Call an LLM and return the response text.
@@ -229,17 +230,20 @@ async def chat(
     # ── Direct Anthropic (SDK) ────────────────────────────────────────────────
     if provider == "anthropic":
         clean_model = _strip_provider_prefix(model)
-        return await _call_anthropic(system, user, api_key, clean_model, max_tokens, pass_name, timeout=timeout)
+        return await _call_anthropic(system, user, api_key, clean_model, max_tokens, pass_name, timeout=timeout,
+                                     temperature=temperature)
 
     # ── Direct Google AI Studio (REST) ───────────────────────────────────────
     if provider == "google":
         try:
-            return await _call_google(system, user, api_key, model, max_tokens, timeout=timeout, pass_name=pass_name)
+            return await _call_google(system, user, api_key, model, max_tokens, timeout=timeout, pass_name=pass_name,
+                                      temperature=temperature)
         except ValueError as e:
             ant_key = keys.anthropic if keys else ""
             if ant_key:
                 print(f"[Google AI] direct failed ({e}) — falling back to Haiku via Anthropic")
-                return await _call_anthropic(system, user, ant_key, _HAIKU_FALLBACK, max_tokens, pass_name, timeout=timeout)
+                return await _call_anthropic(system, user, ant_key, _HAIKU_FALLBACK, max_tokens, pass_name, timeout=timeout,
+                                             temperature=temperature)
             raise
 
     # ── Direct OpenAI (REST) ─────────────────────────────────────────────────
@@ -355,7 +359,7 @@ async def chat(
 
 async def _call_anthropic(system: str, user: str, api_key: str,
                            model: str, max_tokens: int, pass_name: str = "",
-                           timeout: int = 120) -> str:
+                           timeout: int = 120, temperature: float | None = None) -> str:
     """Anthropic SDK — direct API, no service fees."""
     import anthropic
     # Anthropic API requires dashes not dots: claude-sonnet-4-6, not claude-sonnet-4.6
@@ -375,6 +379,7 @@ async def _call_anthropic(system: str, user: str, api_key: str,
             max_tokens=max_tokens,
             system=_system_param,
             messages=[{"role": "user", "content": user}],
+            **({"temperature": temperature} if temperature is not None else {}),
         )
     finally:
         print(f"{label} anthropic call took {time.perf_counter() - start:.1f}s")
@@ -396,7 +401,7 @@ async def _call_anthropic(system: str, user: str, api_key: str,
 
 async def _call_google(system: str, user: str, api_key: str,
                         model: str, max_tokens: int, timeout: int = 90,
-                        pass_name: str = "") -> str:
+                        pass_name: str = "", temperature: float | None = None) -> str:
     """
     Google AI Studio REST API — direct, no service fees.
     Get key at: aistudio.google.com/apikey
@@ -415,6 +420,7 @@ async def _call_google(system: str, user: str, api_key: str,
         "generationConfig": {
             "maxOutputTokens": max_tokens,
             "thinkingConfig": {"thinkingBudget": 0},
+            **({"temperature": temperature} if temperature is not None else {}),
         },
     }
     if system:

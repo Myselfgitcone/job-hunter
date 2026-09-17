@@ -534,7 +534,9 @@ _DYN_ACRONYM_SKIP: set[str] = {
 # This is purely structural — no per-word blacklisting needed.
 
 _HIGH_SIGNAL_ZONE_RE = re.compile(
-    r"^(requirements?|qualifications?|"
+    r"^(requirements?|qualifications?|(?:minimum|basic|required|desired)\s+qualifications?|"
+    r"about\s+you|what\s+you.ll\s+need|what\s+you\s+need|you\s+have|your\s+(?:background|experience|profile)|"
+    r"must[- ]haves?|skills?\s+(?:and|&)\s+experience|"
     r"technical\s+skills?|skills?\s+required|required\s+skills?|"
     r"what\s+we.re?\s+looking|preferred(?:\s+qualifications?)?|"
     r"experience\s+required|what\s+you.ll\s+bring|what\s+you\s+bring|"
@@ -672,8 +674,14 @@ def _dyn_remove_components(items: list[str]) -> list[str]:
     return result
 
 
+# "About Acme" / "About us" are company blurbs; "About the role / job / team /
+# position / you" introduce the role and its requirements and must NOT be
+# skipped (live: Instacart's "About the Job" + "About You" + "Minimum
+# Qualifications" were stripped, so the qualifier judged the posting from its
+# intro paragraph alone).
 _JD_NOISE_HEADERS = re.compile(
-    r"^(benefits?[\s&+]*perks?|life\s+at\s+\w+|why\s+\w+|about\s+\w+|"
+    r"^(benefits?[\s&+]*perks?|life\s+at\s+\w+|why\s+\w+|"
+    r"about\s+(?!the\s+(?:role|job|position|team|opportunity|work)\b|this\s+(?:role|job|position)\b|you\b)\w+|"
     r"equal\s+opportunity|eeo|diversity|culture\s+club|compensation|"
     r"what\s+we\s+offer|we\s+offer|perks?|our\s+benefits?|"
     r"employee\s+benefits?|what.s\s+in\s+it|working\s+at\s+\w+|"
@@ -691,7 +699,10 @@ _JD_NOISE_HEADERS = re.compile(
 # Section headers that RE-ENABLE extraction after a noise section
 _JD_CONTENT_HEADERS = re.compile(
     r"^(what\s+you.ll\s+do|what\s+you\s+will\s+do|responsibilities|"
-    r"requirements?|qualifications?|what\s+we.re?\s+looking|"
+    r"requirements?|qualifications?|(?:minimum|basic|required|preferred|desired)\s+qualifications?|"
+    r"about\s+(?:the\s+(?:role|job|position|team|opportunity)|this\s+(?:role|job)|you)\b|"
+    r"what\s+you.ll\s+need|what\s+you\s+need|you\s+have|your\s+(?:background|experience|profile)|"
+    r"must[- ]haves?|skills?\s+(?:and|&)\s+experience|what\s+we.re?\s+looking|"
     r"key\s+responsibilities|the\s+role|your\s+role|"
     r"what\s+you.ll\s+bring|what\s+you\s+bring|experience\s+required|"
     r"skills?\s+required|technical\s+requirements?|"

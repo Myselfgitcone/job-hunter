@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import type { Job } from "../types";
 import { JOB_STATUSES, STATUS_COLORS as _ST_COLORS } from "../types";
 import { CompanyLogo, AtsLogo, Spinner } from "./primitives";
@@ -15,6 +16,56 @@ const STATUS_LABEL: Record<string, { label: string; bg: string; color: string }>
 
 // Status → color for left border
 const STATUS_COLOR: Record<string, string> = _ST_COLORS;
+
+// The six qualify checks, in the order the screener weighs them.
+const QUAL_ROWS: [string, string][] = [
+  ["job_category", "Role match"], ["skills_match", "Skills"], ["experience", "Years"],
+  ["sponsorship", "Sponsorship"], ["location", "Location"], ["seniority", "Seniority"],
+];
+
+/** Hover panel behind the match pill: every check, its reason, and the keyword gaps. */
+function QualifyPopover({ qr, anchor }: { qr: any; anchor: DOMRect }) {
+  const crit = (qr?.criteria && typeof qr.criteria === "object") ? qr.criteria : {};
+  const missing: string[] = qr?.overlap?.missing || [];
+  const width = 330;
+  const left = Math.max(8, Math.min(anchor.right - width, window.innerWidth - width - 8));
+  const below = anchor.bottom + 6;
+  const style: React.CSSProperties = {
+    position: "fixed", left, width, zIndex: 9999,
+    ...(below + 260 < window.innerHeight ? { top: below } : { bottom: window.innerHeight - anchor.top + 6 }),
+  };
+  return createPortal(
+    <div className="qual-pop" style={style} onMouseDown={e => e.stopPropagation()}>
+      <div className="qual-pop-head">
+        <span className={`score-badge ${scoreClass(qr.score ?? 0)}`}>{qr.score}%</span>
+        <span style={{ fontWeight: 700, color: qr.qualified ? "var(--green, #4ade80)" : "var(--amber, #fbbf24)" }}>
+          {qr.qualified ? "Qualified" : "Not qualified"}
+        </span>
+      </div>
+      {qr.summary && <div className="qual-pop-sum">{qr.summary}</div>}
+      <div className="qual-pop-rows">
+        {QUAL_ROWS.map(([key, label]) => {
+          const c = crit[key];
+          if (!c) return null;
+          return (
+            <div key={key} className={`qual-pop-row ${c.pass ? "ok" : "bad"}`}>
+              <span className="qual-pop-mark">{c.pass ? "✓" : "✗"}</span>
+              <span className="qual-pop-label">{label}</span>
+              <span className="qual-pop-note">{c.note}</span>
+            </div>
+          );
+        })}
+      </div>
+      {missing.length > 0 && (
+        <div className="qual-pop-miss">
+          <span className="qual-pop-label">Posting keywords not in your profile:</span>{" "}
+          {missing.slice(0, 10).join(", ")}{missing.length > 10 ? ", …" : ""}
+        </div>
+      )}
+    </div>,
+    document.body,
+  );
+}
 
 // Source → CSS var
 const SRC_VAR: Record<string, string> = {
@@ -100,6 +151,7 @@ interface Props {
 
 export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "compact", index = 0, tailoring = false, checked = false, onToggleCheck, onDefer }: Props) {
   const [editingExp, setEditingExp] = useState(false);
+  const [qualAnchor, setQualAnchor] = useState<DOMRect | null>(null);   // hover panel behind the match pill
   const expRef = useRef<HTMLSelectElement>(null);
   const qr      = job.qualify_result as any;
   const score   = qr?.score ?? null;
@@ -185,7 +237,9 @@ export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "comp
               {/* AI Match % is a "worth tailoring?" triage signal — once a
                   tailored score exists the decision is made, so hide the %. */}
               {score !== null && job.ats_score_after == null && (job.gate_scores?.overall == null)
-                && <span className={`jcard-matchpill ${scoreClass(score)}`}>{score}%</span>}
+                && <span className={`jcard-matchpill ${scoreClass(score)}`} style={{ cursor: "help" }}
+                         onMouseEnter={e => setQualAnchor((e.currentTarget as HTMLElement).getBoundingClientRect())}
+                         onMouseLeave={() => setQualAnchor(null)}>{score}%</span>}
               {(() => {
                 // Tailored resume score — overall gate blend, else raw ATS.
                 const overall = typeof job.gate_scores?.overall === "number" ? job.gate_scores.overall : null;
@@ -266,8 +320,11 @@ export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "comp
       {/* Right: score badge + status + resume ATS + time */}
       <div className="jc-right">
         {score !== null ? (
-          <span className={`score-badge ${scoreClass(score)}`}>{score}%</span>
+          <span className={`score-badge ${scoreClass(score)}`} style={{ cursor: "help" }}
+                onMouseEnter={e => setQualAnchor((e.currentTarget as HTMLElement).getBoundingClientRect())}
+                onMouseLeave={() => setQualAnchor(null)}>{score}%</span>
         ) : null}
+        {qualAnchor && qr && <QualifyPopover qr={qr} anchor={qualAnchor} />}
         {STATUS_LABEL[job.status] && (
           <span style={{
             fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4,

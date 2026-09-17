@@ -44,6 +44,8 @@ export interface ProfileData {
   education: ProfileEducation[];
   projects: ProfileProject[];
   skills: string[];
+  /** Labelled skills rows from the uploaded resume ("AWS: S3, EMR, …"); the flat `skills` list is the source of truth. */
+  skill_groups?: { name: string; items: string[] }[];
   certifications: string[];
 }
 

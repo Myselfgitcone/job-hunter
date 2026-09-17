@@ -5291,6 +5291,13 @@ class ProfileProject(BaseModel):
     description: str = ""
     expanded: bool = True
 
+class ProfileSkillGroup(BaseModel):
+    """One labelled row of the resume's skills section ("AWS: S3, EMR, …").
+    The flat `skills` list stays the source the editor and the tailor read;
+    groups only decide how the BASE resume text lays those skills out."""
+    name: str = ""
+    items: List[str] = []
+
 class ProfileData(BaseModel):
     name: str = ""
     headline: str = ""   # professional title under the name; falls back to the latest job title
@@ -5309,6 +5316,7 @@ class ProfileData(BaseModel):
     education: List[ProfileEducation] = []
     projects: List[ProfileProject] = []
     skills: List[str] = []
+    skill_groups: List[ProfileSkillGroup] = []
     certifications: List[str] = []
 
 @app.get("/api/profile")
@@ -5374,10 +5382,32 @@ def _profile_to_resume_text(p: dict) -> str:
                     lines.append(f"• {b.strip()}")
             lines.append("")
 
-    skills = p.get("skills", [])
+    skills = [s.strip() for s in (p.get("skills") or []) if str(s).strip()]
+    groups = p.get("skill_groups") or []
     if skills:
         lines.append("TECHNICAL SKILLS:")
-        lines.append(", ".join(skills))
+        # Labelled rows when the upload carried them ("AWS: S3, EMR, …"); the
+        # flat list stays the truth: a skill added in the editor that belongs to
+        # no group lands in "Other", a group item no longer in the list is dropped.
+        norm = lambda s: re.sub(r"[^a-z0-9+#.]", "", str(s).lower())
+        have = {norm(s): s for s in skills}
+        placed: set = set()
+        rows: list[tuple[str, list[str]]] = []
+        for g in groups:
+            name = (g.get("name") if isinstance(g, dict) else getattr(g, "name", "")) or ""
+            items = (g.get("items") if isinstance(g, dict) else getattr(g, "items", None)) or []
+            kept = [have[norm(i)] for i in items if norm(i) in have and norm(i) not in placed]
+            placed.update(norm(i) for i in kept)
+            if name.strip() and kept:
+                rows.append((name.strip(), kept))
+        rest = [s for s in skills if norm(s) not in placed]
+        if rows:
+            for name, kept in rows:
+                lines.append(f"• {name}: {', '.join(kept)}")
+            if rest:
+                lines.append(f"• Other: {', '.join(rest)}")
+        else:
+            lines.append(", ".join(skills))
         lines.append("")
 
     certs = p.get("certifications", [])
@@ -5393,7 +5423,10 @@ def _profile_to_resume_text(p: dict) -> str:
             degree = e.get("degree", "")
             school = e.get("school", "")
             year = e.get("year", "")
-            lines.append(" | ".join(filter(None, [f"{degree} @ {school}" if degree and school else (degree or school), year])))
+            # "Degree, School  Year": the " @ " form is the JOB header shape and
+            # made the tailor's guards count the degree as a fourth job
+            head = f"{degree}, {school}" if degree and school else (degree or school)
+            lines.append("  ".join(filter(None, [head, year])))
         lines.append("")
 
     return "\n".join(lines).strip()
@@ -5535,6 +5568,7 @@ async def parse_resume_file(file: UploadFile = File(...), user_id: str = Depends
     {"name": "", "description": "", "stack": "", "url": ""}
   ],
   "skills": ["Python", "SQL"],
+  "skill_groups": [{"name": "Languages", "items": ["Python", "SQL"]}],
   "certifications": ["AWS Solutions Architect"]
 }
 
@@ -5552,6 +5586,7 @@ Rules:
 - years: calculate as decimal from start to end (2 years 6 months = 2.5). Estimate if dates missing.
 - bullets: extract EVERY bullet point for each role exactly as written — do NOT truncate, skip, or summarize any bullet.
 - skills: technical only (languages, frameworks, tools, platforms, databases, cloud services). No soft skills.
+- skill_groups: when the resume's skills section has labelled rows ("Cloud — AWS: S3, EMR, Glue"), return one group per row with the label as name and its items in order, every item also present in skills. Empty array [] when the skills are one unlabelled list.
 - certifications: only actual certs/licenses. Empty array [] if none.
 - education: ALWAYS extract even if at the bottom. Include degree, university/school name, graduation year, GPA if present.
 - projects: extract all personal/side projects with name, description, tech stack, and URL if present.

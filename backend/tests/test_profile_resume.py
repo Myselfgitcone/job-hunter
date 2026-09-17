@@ -40,3 +40,22 @@ def test_bullets_use_a_real_bullet_character():
     text = _profile_to_resume_text(_profile())
     assert "\u2022 Built ITSM flows." in text
     assert "\u00e2\u20ac\u00a2" not in text
+
+
+def test_skill_groups_render_as_labelled_rows_with_other_for_ungrouped():
+    p = _profile(skills=["Python", "SQL", "S3", "EMR", "Airflow"],
+                 skill_groups=[{"name": "Languages", "items": ["Python", "SQL"]},
+                               {"name": "AWS", "items": ["S3", "EMR", "Glue"]}])   # Glue not in skills: dropped
+    text = _profile_to_resume_text(p)
+    assert "\u2022 Languages: Python, SQL\n\u2022 AWS: S3, EMR\n\u2022 Other: Airflow" in text
+    flat = _profile_to_resume_text(_profile(skills=["Python", "SQL"], skill_groups=[]))
+    assert "TECHNICAL SKILLS:\nPython, SQL" in flat
+
+
+def test_education_line_is_not_a_job_header():
+    text = _profile_to_resume_text(_profile(education=[{"degree": "M.S. Information Systems", "school": "Saint Louis University", "year": "2022 \u2013 2024"}]))
+    assert "M.S. Information Systems, Saint Louis University  2022 \u2013 2024" in text
+    assert " @ Saint Louis" not in text
+    from ai.tailor import _is_job_header_line
+    edu_line = [l for l in text.splitlines() if "Saint Louis" in l][0]
+    assert not _is_job_header_line(edu_line)

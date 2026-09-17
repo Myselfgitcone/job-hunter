@@ -547,6 +547,7 @@ export function Profile() {
     education: [] as any[],
     projects: [] as any[],
     skills: [] as string[],
+    skill_groups: [] as { name: string; items: string[] }[],
     certifications: [] as string[],
   });
 
@@ -622,6 +623,7 @@ export function Profile() {
           projects: profile.projects.map((pr: any) => ({ name: pr.name, description: pr.stack || pr.desc, url: pr.url, expanded: pr.expanded !== false })),
           summary: profile.summary || "",
           skills: [...new Set(profile.skills.map((s: string) => s.trim()).filter(Boolean))],
+          skill_groups: profile.skill_groups || [],
           certifications: [...new Set(profile.certifications.map((s: string) => s.trim()).filter(Boolean))],
         };
         await api.saveProfile(payload as any);
@@ -671,6 +673,7 @@ export function Profile() {
           summary: p.summary || "",
           experience: exp, education: edu, projects: proj,
           skills: p.skills || [],
+          skill_groups: p.skill_groups || [],
           certifications: p.certifications || [],
         });
         setTimeout(() => { initialLoadRef.current = false; }, 100);
@@ -687,12 +690,12 @@ export function Profile() {
     const empty = {
       personal: { firstName: "", lastName: "", headline: "", email: "", phone: "", address: "", linkedin: "", github: "", visa: "" },
       summary: "",
-      experience: [], education: [], projects: [], skills: [], certifications: [],
+      experience: [], education: [], projects: [], skills: [], skill_groups: [], certifications: [],
     };
     setProfile(empty);
     try {
       setSaveStatus("saving");
-      await api.saveProfile({ first_name: "", last_name: "", name: "", headline: "", email: "", phone: "", address: "", linkedin: "", github: "", visa_status: "", experience: [], education: [], projects: [], summary: "", skills: [], certifications: [] } as any);
+      await api.saveProfile({ first_name: "", last_name: "", name: "", headline: "", email: "", phone: "", address: "", linkedin: "", github: "", visa_status: "", experience: [], education: [], projects: [], summary: "", skills: [], skill_groups: [], certifications: [] } as any);
       setSaveStatus("saved");
     } catch { setSaveStatus("unsaved"); }
   };
@@ -767,6 +770,8 @@ export function Profile() {
           education:  edu.length   ? edu   : prev.education,
           projects:   proj.length  ? proj  : prev.projects,
           skills:     parsed.skills?.length ? [...new Set((parsed.skills as string[]).map((s: string) => s.trim()).filter(Boolean))] : prev.skills,
+          // labelled rows travel with the upload; a resume with one flat list clears them
+          skill_groups: parsed.skills?.length ? (parsed.skill_groups || []) : (prev.skill_groups || []),
           certifications: parsed.certifications?.length ? [...new Set((parsed.certifications as string[]).map((s: string) => s.trim()).filter(Boolean))] : prev.certifications,
         }));
       }
@@ -1001,6 +1006,15 @@ export function Profile() {
           <TagInput tags={P.skills} setTags={t => setProfile((p: any) => ({ ...p, skills: t }))}
             placeholder="Add a skill and press Enter…"
             suggestions={["Python","SQL","React","AWS","Docker"]} />
+          {!!(P.skill_groups || []).length && (
+            <div style={{ marginTop: 8, fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.5 }}>
+              Base resume groups these as:{" "}
+              {(P.skill_groups as { name: string; items: string[] }[]).map((g, i) => (
+                <span key={i}><b>{g.name}</b> ({g.items.length}){i < P.skill_groups.length - 1 ? " · " : ""}</span>
+              ))}
+              . A skill you add here that fits no group lands under "Other". Re-upload the resume to change the groups.
+            </div>
+          )}
         </section>
 
         {/* Certifications */}

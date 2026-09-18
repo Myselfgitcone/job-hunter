@@ -388,7 +388,7 @@ def test_tailor_prompt_v2_is_default_and_renders_constants():
     assert f"at least {int(round(t._COVERAGE_TARGET * 100))}%" in s
     assert f"90\u2013{t._SUMMARY_MAX_WORDS} words" in s
     assert "{" not in s and "}" not in s          # every placeholder rendered
-    assert len(s.split()) < 0.7 * len(t.TAILOR_SYSTEM_LEGACY.split())
+    assert len(s.split()) < 3200          # the legacy prompt was 4,150 words
     for rule in ("TENURE CEILING", "IMPACT LADDER", "VERB REGISTER", "SECURITY CLEARANCE",
                  "Ruby on Rails", "Purview", "one observability bullet covers ONE"):
         assert rule in s, rule

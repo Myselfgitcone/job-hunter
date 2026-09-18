@@ -47,7 +47,7 @@ def main() -> int:
     open(os.path.join(out_dir, f"live_tailor_out{tag}.txt"), "w", encoding="utf-8").write(tailored)
     open(os.path.join(out_dir, f"live_tailor_review{tag}.json"), "w", encoding="utf-8").write(
         json.dumps(review, indent=1, default=str))
-    print(f"prompt={'legacy' if t.TAILOR_SYSTEM is t.TAILOR_SYSTEM_LEGACY else 'v2'} main={model} cheap={cheap}")
+    print(f"main={model} cheap={cheap}")
 
     ctx = review.get("context") or {}
     scores = review.get("scores") or {}

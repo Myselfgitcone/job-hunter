@@ -1713,10 +1713,13 @@ _VERB_TIER = {                      # verb -> minimum years
 _VERB_STEP_DOWN = {
     "led": "Drove", "owned": "Delivered", "established": "Built", "pioneered": "Introduced",
     "oversaw": "Ran", "architected": "Designed", "directed": "Coordinated",
-    "spearheaded": "Drove", "headed": "Ran", "championed": "Drove", "migrated": "Integrated",
+    "spearheaded": "Drove", "headed": "Ran", "championed": "Drove",
 }
+# "Migrated" is not here: it is a plain description of a migration, and
+# stepping it down wrote "Integrated a legacy SQL Server warehouse to
+# Snowflake" (live miss, Janus Henderson).
 _FOREIGN_NEVER = {"led", "owned", "established", "pioneered", "oversaw", "architected",
-                  "directed", "spearheaded", "headed", "championed", "migrated"}
+                  "directed", "spearheaded", "headed", "championed"}
 
 
 def _verb_ladder_guard(text: str, base_resume: str, foreign: list, notes: list) -> str:
@@ -4230,9 +4233,14 @@ def _ensure_tech_lines(text: str) -> tuple[str, int]:
     return "\n".join(lines), added
 
 
+_IRREGULAR_PAST = {"built", "led", "ran", "wrote", "drove", "held", "kept", "made", "took", "won", "cut",
+                   "set", "grew", "oversaw", "brought", "taught", "began", "chose", "gave", "spoke", "stood",
+                   "rebuilt", "rewrote", "withdrew", "sped", "spent", "met", "sent", "put", "shrank", "swept"}
+
+
 def _verb_form(word: str) -> str:
     w = (word or "").lower()
-    if w.endswith("ed"):
+    if w.endswith("ed") or w in _IRREGULAR_PAST:      # "Built" is past tense (live: a valid compress reverted)
         return "past-tense"
     if w.endswith("s") and not w.endswith("ss"):
         return "third-person"

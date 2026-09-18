@@ -26,7 +26,8 @@ from auth import get_current_user_id, hash_password, verify_password, create_tok
 from scrapers import run_all_scrapers, run_group_fast, run_group_greenhouse, run_group_hiringcafe, run_group_jobo, run_group_fantasticjobs  # noqa: F401 — groups A-D are disabled for the FantasticJobs trial (see _run_scrape); kept importable
 from scrapers.o2ten import fetch as run_group_o2ten
 from ai.ats import score_ats
-from ai.tailor import tailor_resume
+# default = slim pipeline (ai/tailor_slim.py); TAILOR_PIPELINE=full runs the previous one in ai/tailor.py
+from ai.tailor_slim import tailor_resume_routed as tailor_resume
 from ai.llm import set_fallback_notifier
 from ai.cover_letter import generate_cover_letter
 from resume_lint import clean_jd_html

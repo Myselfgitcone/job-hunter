@@ -43,11 +43,12 @@ def main() -> int:
     tag = os.environ.get("TAILOR_TAG", "")
     tag = f".{tag}" if tag else ""
 
-    tailored, review = asyncio.run(t.tailor_resume(base, jd, key, provider, model, secondary_model=cheap))
+    from ai.tailor_slim import tailor_resume_routed          # slim by default; TAILOR_PIPELINE=full for the old one
+    tailored, review = asyncio.run(tailor_resume_routed(base, jd, key, provider, model, secondary_model=cheap))
     open(os.path.join(out_dir, f"live_tailor_out{tag}.txt"), "w", encoding="utf-8").write(tailored)
     open(os.path.join(out_dir, f"live_tailor_review{tag}.json"), "w", encoding="utf-8").write(
         json.dumps(review, indent=1, default=str))
-    print(f"main={model} cheap={cheap}")
+    print(f"pipeline={os.environ.get('TAILOR_PIPELINE', 'slim')} main={model} cheap={cheap}")
 
     ctx = review.get("context") or {}
     scores = review.get("scores") or {}

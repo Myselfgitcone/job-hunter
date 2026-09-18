@@ -304,10 +304,41 @@ the required core is covered. Code decides pass/fail from your lists."""
 
 
 _PREFERRED_CTX_RE = re.compile(r"nice[- ]to[- ]have|preferred|a plus|bonus|plus:|ideally|familiarity|exposure|"
-                               r"would be|is a plus|desirable|or similar|or equivalent", re.I)
+                               r"would be|is a plus|desirable|or similar|or equivalent|interest in", re.I)
+
+
+def _alternatives_of(head: str, sentence: str) -> list[str]:
+    """The other options in the "X, Y, or Z" group that names `head` inside
+    `sentence` (a parenthesised list or the clause around it), lowercased.
+    Live miss: "AI-assisted development tools (e.g., Claude Code, Cursor, or
+    Amazon Q)" was demoted to nice-to-have because the sentence also
+    contained an owned word elsewhere; only the listed alternatives count."""
+    low = sentence.lower()
+    h = head.lower()
+    pos = low.find(h)
+    if pos < 0:
+        return []
+    # the innermost parenthesis or clause that contains the head
+    start = max(low.rfind("(", 0, pos), low.rfind(";", 0, pos), low.rfind(":", 0, pos), -1) + 1
+    end_cands = [i for i in (low.find(")", pos), low.find(";", pos), low.find(".", pos)) if i >= 0]
+    end = min(end_cands) if end_cands else len(low)
+    group = re.sub(r"\b(?:e\.g\.|i\.e\.|such as|including|like)\s*,?\s*", "", low[start:end])
+    opts = [o.strip(" .") for o in re.split(r",\s*|\s+or\s+|\s+and/or\s+|/|\s+and\s+", group)]
+    return [o for o in opts if len(o) >= 2 and o != h and h not in o]
 
 
 _YEARS_ITEM_RE = re.compile(r"\byears?\b|\byrs\b|experience\s*\(candidate", re.I)
+
+
+def _required_only(item: str, jd: str) -> bool:
+    """The JD names `item` and never inside a nice-to-have sentence."""
+    core = re.sub(r"\s*\(.*?\)\s*", " ", item).strip()
+    head = core.split(" or ")[0].split(",")[0].strip()
+    if len(head) < 2:
+        return False
+    pat = re.compile(rf"(?<![a-z0-9]){re.escape(head.lower())}(?![a-z0-9])", re.I)
+    hits = [s for s in re.split(r"(?<=[.!?•\n])\s+|\n", jd or "") if pat.search(s)]
+    return bool(hits) and not any(_PREFERRED_CTX_RE.search(s) for s in hits)
 
 
 def _confirm_required(items: list[str], jd: str, owned_terms: list[str] | None = None) -> tuple[list[str], list[str]]:
@@ -335,7 +366,8 @@ def _confirm_required(items: list[str], jd: str, owned_terms: list[str] | None =
             continue
         alt_covered = any(
             re.search(r"\bor\b|/", s, re.I) and any(
-                re.search(rf"(?<![a-z0-9]){re.escape(o)}(?![a-z0-9])", s, re.I) for o in owned)
+                o == alt or (len(o) >= 3 and re.search(rf"(?<![a-z0-9]){re.escape(o)}(?![a-z0-9])", alt))
+                for alt in _alternatives_of(head, s) for o in owned)
             for s in hits)
         if alt_covered:
             demoted.append(it)                        # the posting accepts an alternative the candidate has
@@ -447,7 +479,15 @@ async def qualify_job(
         # "must-have" the JD never names is the model's invention, one it names
         # only under "nice to have / plus / preferred" is not a gate
         real_missing, demoted = _confirm_required(real_missing, jd, skills + have)
-        nice_missing = nice_missing + [d for d in demoted if d not in nice_missing]
+        # the model's own nice-to-have list is checked the same way: an item
+        # the JD names only in required sentences is a required gap (live:
+        # "AI-assisted development tools" under "We're Excited About You
+        # Because" was filed as nice-to-have)
+        nice_owned = [x for x in nice_missing if x.lower() not in owned]
+        promoted, _ = _confirm_required(nice_owned, jd, skills + have)
+        promoted = [p for p in promoted if p not in real_missing and _required_only(p, jd)]
+        real_missing = real_missing + promoted
+        nice_missing = [x for x in nice_missing if x not in promoted] + [d for d in demoted if d not in nice_missing]
         # one confirmed gap inside a mostly-covered stack ("Spark, Airflow,
         # Trino, Iceberg" with three of four) is not a fail; two gaps, or one
         # with under half the named stack covered, is

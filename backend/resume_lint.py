@@ -1718,7 +1718,9 @@ def _dynamic_coverage_pattern(skill: str) -> str:
         # "modeling" -> "model", "warehousing" -> "warehous", "learning" -> "learn"
         stem = esc(last[:-3])
         return rf"{L}{interior}\s+{stem}\w*{R}"
-    if last.endswith("s") and not last.endswith("ss") and len(last) > 4:
+    # "REST APIs" must match "REST API integrations" (live miss: the pattern
+    # became "apiss?" and the JD tool scored missing on a bullet that named it)
+    if last.endswith("s") and not last.endswith("ss") and len(last) > 3:
         return rf"{L}{interior}\s+{esc(last[:-1])}s?{R}"
     return rf"{L}{interior}\s+{esc(last)}s?{R}"
 

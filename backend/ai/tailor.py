@@ -66,8 +66,15 @@ _LONG_RUN = 25           # three consecutive bullets over this = a wall
 _SUMMARY_MAX_WORDS = 80
 _SUMMARY_MAX_LINES = 5
 
-# Real base figures per job: (floor, cap); the rest read as plain outcomes.
+# Real base figures per job: (floor, cap for a small job). A job keeps about
+# one figure per two bullets, never fewer than the cap here: 11 bullets -> 6,
+# 7 -> 4, 5 -> 3. Real numbers are never thrown away to hit a count (policy
+# 2026-09-17: "never throw real things").
 _FIGURES_PER_JOB = (2, 3)
+
+
+def _figure_cap(n_bullets: int) -> int:
+    return max(_FIGURES_PER_JOB[1], -(-n_bullets // 2))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -460,25 +467,27 @@ Cloud-neutral tools (Terraform, Kafka, Airflow, Spark, dbt) are NEVER translated
 
 FOREIGN TOOLS (`bridge_only`): when the JD wants a tool the candidate's base
 shows nothing close to, claim it ONCE, in the most recent job whose stack
-fits. Anchor it to a real project already in that job: the base tools stay,
-the new tool is the mechanism. Strength comes from specifics that are TRUE,
-never from a number.
-  Shape: honest verb + the base project by name + the new tool + how it fits
-  (the mechanism) + who consumed the result. 18–26 words.
-  Verbs, by what the base supports: Prototyped, Piloted, Integrated,
-  Designed, Scoped, Extended. Never Owned / Led / Migrated for a tool the
-  base never shows, and never Supported, Explored, Maintained.
+fits, as a full-strength working bullet. Anchor it to a real project already
+in that job: the base tools stay, the new tool is the mechanism. Strength
+comes from specifics, never from a number.
+  Shape: verb + the base project by name + the new tool + how it fits (the
+  mechanism) + who consumed the result. 18–26 words. The JD's own wording for
+  the duty is welcome; it is what the ATS matches.
+  Verbs: Built, Designed, Implemented, Integrated, Extended, Optimized,
+  Automated, Developed. Never Led / Owned / Architected / Directed / Migrated
+  / Established for a tool the base never shows (a code check steps those
+  down), and never Supported, Explored, Maintained, Prototyped, Piloted.
   Scope sized to tenure: at 5 years one landing layer or one pipeline, never
   "platform", never "enterprise-wide".
   NO FIGURE OF ANY KIND: no count, no duration, no percentage, no dollar, no
   time saved. A number the base resume does not carry is an invented fact
   and a code check deletes it. Scale words the base uses (terabytes,
   dozens of feeds) are fine.
-  Example: "Prototyped a Snowflake landing layer for the Kafka CDC feeds
-  behind the commodity pricing marts, using Snowpipe continuous loads to
-  replace nightly batch for analytics teams."
-List it in SKILLS. Never in the headline, never in a second job, never as the
-lead bullet of a job.
+  Example: "Built a Snowflake landing layer for the Kafka CDC feeds behind
+  the commodity pricing marts, using Snowpipe continuous loads to replace
+  nightly batch for analytics teams."
+List it in SKILLS. Never in the headline, never in a second job, never in a
+job's impact slots (the real work leads; a code check moves it down).
 
 ================================================================================
 COVERAGE STRATEGY — cover everything real; leave out only what you'd have to fake
@@ -701,17 +710,25 @@ en dash inside a bullet or summary line (commas, colons, parentheses,
 "including", "such as"); dashes live only in the headline and date ranges. No
 editorial filler ("seamlessly", "cutting-edge", "with a pragmatic eye toward"),
 no vague intensifiers (significantly, substantially, meaningfully), no
-measurement clauses ("as measured in PagerDuty"), no JD lines copied word for word.
+measurement clauses ("as measured in PagerDuty"). A JD responsibility may be
+written in the JD's own words when that is what the candidate did; at most two
+bullets per job read as JD lines, the rest are the candidate's work in the
+candidate's words.
 
-METRIC POLICY (the only rule about numbers, it applies everywhere): each job
-carries {_FIGURES_PER_JOB[0]} or {_FIGURES_PER_JOB[1]} REAL base figures, the ones behind this JD's tools, one
-per bullet, the strongest within the job's first three bullets; every other
-bullet ends on a plain outcome or a scale word the base uses (terabytes,
-millions of rows, dozens of feeds). Invent NO figure: no percentage, count,
-dollar, duration or time figure the base lacks, and none copied from the JD. A
-code check deletes any figure the base does not carry and restores one the
-writer dropped. Years of experience are exactly what the base supports, never
-the JD's minimum.
+METRIC POLICY (the only rule about numbers, it applies everywhere): every REAL
+base figure stays with the bullet that carried it, exactly as the base states it
+(never "2 hours" rewritten as "one hour"); a job keeps about one figure per two
+bullets, at least {_FIGURES_PER_JOB[1]}, the ones behind this JD's tools first, one per bullet, the
+strongest within the job's first three bullets; every other bullet ends on a
+plain outcome or a scale word the base uses (terabytes, millions of rows, dozens
+of feeds). Invent NO figure: no percentage, count, dollar, duration or time
+figure the base lacks, and none copied from the JD. A code check deletes any
+figure the base does not carry and restores one the writer dropped. Years of
+experience are exactly what the base supports, never the JD's minimum.
+
+NEVER THROW REAL WORK AWAY: a base bullet that names a tool this JD asks for
+stays in its job (reworded, shortened, but present); a code check puts it back.
+A base bullet is never cut to a stub: keep at least 12 words and its figure.
 
 ================================================================================
 COVERAGE — cover everything real; leave out only what you would have to fake
@@ -747,13 +764,14 @@ Four honest ways to cover a JD tool, and the one dishonest way you never use:
   niche ones they do not use (Windsurf, a proprietary IDE) stay out.
 - FOREIGN (`bridge_only`): nothing in that category anywhere in the base. Claim
   it ONCE, in the most recent job whose stack fits, anchored to a real project
-  already in that job: honest verb (Prototyped, Piloted, Integrated, Designed,
-  Scoped, Extended; never Owned / Led / Migrated, never Supported / Explored /
-  Maintained) + that project by name + the new tool + how it fits + who
-  consumed the result, 18–26 words, scope sized to tenure, NO figure of any
-  kind. Example: "Prototyped a Snowflake landing layer for the Kafka CDC feeds
-  behind the commodity pricing marts, using Snowpipe continuous loads to
-  replace nightly batch for analytics teams." List it in SKILLS; never in the
+  already in that job: a working verb (Built, Designed, Implemented,
+  Integrated, Extended, Optimized; never Owned / Led / Architected / Migrated,
+  never Supported / Explored / Maintained / Prototyped / Piloted) + that
+  project by name + the new tool + how it fits + who consumed the result,
+  18–26 words, the JD's own wording welcome, scope sized to tenure, NO figure
+  of any kind. Example: "Built a Snowflake landing layer for the Kafka CDC
+  feeds behind the commodity pricing marts, using Snowpipe continuous loads
+  to replace nightly batch for analytics teams." List it in SKILLS; never in the
   headline, a second job, or a job's lead bullet.
 - NEVER: a tool the base shows zero evidence of listed as an owned skill or put
   in the title (ArcGIS Enterprise, SAP HANA, a niche suite never used).
@@ -1707,6 +1725,43 @@ def _tidy_items(rest: str, cap: int) -> tuple[str, bool]:
 _TECH_LINE_RE = re.compile(r"^(\s*(?:\*\*)?technologies used:?\**)\s*(.*)$", re.I)
 
 
+def _dedupe_skill_rows(text: str, notes: list) -> str:
+    """A skill listed in two SKILLS rows stays in the first (live: Apache
+    Airflow under Orchestration and again under Transformation; Kafka
+    Connect under Streaming and under API and Integration). A row emptied by
+    this is removed."""
+    lines = text.split("\n")
+    seen: set[str] = set()
+    removed: list[str] = []
+    in_skills = False
+    norm = lambda x: re.sub(r"[^a-z0-9]", "", re.sub(r"\s*\(.*?\)\s*", " ", x).lower())
+    for i, ln in enumerate(lines):
+        s = ln.strip()
+        if _is_section_hdr(s):
+            in_skills = "skill" in s.lower()
+            continue
+        if not (in_skills and s.startswith(("•", "-", "*")) and ":" in s):
+            continue
+        label, _, rest = s.partition(":")
+        items = [it.strip() for it in _split_list_items(rest) if it.strip()]
+        kept = []
+        for it in items:
+            k = norm(it)
+            if not k:
+                continue
+            if k in seen:
+                removed.append(it)
+                continue
+            seen.add(k)
+            kept.append(it)
+        if len(kept) != len(items):
+            indent = ln[: len(ln) - len(ln.lstrip())]
+            lines[i] = f"{indent}{s[0]} {label.lstrip('•-* ').rstrip()}: {', '.join(kept)}" if kept else None
+    if removed:
+        notes.append(f"skills rows: dropped {len(removed)} repeat(s) listed in an earlier row: " + ", ".join(removed[:6]))
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(l for l in lines if l is not None))
+
+
 def _clean_lists(text: str) -> tuple[str, int]:
     """Deterministic tidy of Skills rows and Technologies Used lines: dedup,
     strip 'and'/period junk left by generation, cap length. Adds nothing."""
@@ -1815,6 +1870,46 @@ def _stems(core: str) -> list[str]:
     return out
 
 
+# Word stems that prove each other in a DUTY phrase (never in a tool name):
+# "coach" proves "mentor", "analysts" proves "engineers", "optimized" proves
+# "tune". Keys and values are the stems `_stems` produces.
+_STEM_SYN = {
+    "mentor": ("coach", "mentorship"), "coach": ("mentor",),
+    "engineer": ("analyst", "developer", "team"), "analyst": ("engineer",), "developer": ("engineer",),
+    "junior": ("new", "peer"),
+    "build": ("develop", "implement", "creat", "construct", "built"), "built": ("build", "develop"),
+    "develop": ("build", "implement", "built"), "implement": ("build", "develop", "deploy"),
+    "creat": ("build", "develop"),
+    "design": ("architect", "model"), "architect": ("design",),
+    "tun": ("optimiz", "perform", "tuning"), "tune": ("tuning", "optimiz", "perform"),
+    "tuning": ("optimiz", "tun"), "optimiz": ("tun", "perform", "tuning"),
+    "perform": ("tun", "optimiz", "latenc", "runtime", "tuning"),
+    "performance": ("tuning", "optimiz", "latenc", "runtime", "perform"),
+    "runtime": ("latenc", "tuning", "hour"), "cost": ("spend", "saving", "finops", "cheaper"),
+    "pipelin": ("workflow", "etl", "elt", "job"), "workflow": ("pipelin", "dag"),
+    "monitor": ("observab", "alert", "datadog"), "observab": ("monitor",), "alert": ("monitor",),
+    "warehous": ("lakehous", "redshift", "snowflake", "synapse"), "lakehous": ("warehous", "delta"),
+    "model": ("schema", "dimension", "modeling"), "modeling": ("model", "schema"), "schema": ("model",),
+    "ingest": ("load", "extract", "ingestion"), "ingestion": ("ingest", "load"), "load": ("ingest",),
+    "transform": ("etl", "dbt", "transformation"), "transformation": ("transform",),
+    "orchestrat": ("airflow", "dag", "schedul", "orchestration"), "orchestration": ("orchestrat", "airflow"),
+    "review": ("peer",), "document": ("runbook", "documentation"), "documentation": ("document", "runbook"),
+    "maintain": ("own", "operat", "support"), "operat": ("maintain", "run"),
+    "qualit": ("validation", "contract", "check"), "reliab": ("sla", "uptime"),
+    "cost": ("spend", "finops"), "scal": ("scale", "terabyte", "million"),
+    "product": ("prod",), "stakeholder": ("business", "team"),
+}
+
+
+def _stem_hit(stem: str, low_line: str) -> bool:
+    """`stem` (escaped, from _stems) or one of its synonyms opens a word in
+    the line."""
+    if re.search(rf"\b{stem}", low_line):
+        return True
+    raw = stem.replace("\\", "")
+    return any(re.search(rf"\b{re.escape(alt)}", low_line) for alt in _STEM_SYN.get(raw, ()))
+
+
 def _stems_in_text(phrase: str, low_text: str) -> bool:
     """Every word stem of `phrase` occurs somewhere in `low_text` (any order,
     any distance). Single-token phrases fall back to a word-boundary match."""
@@ -1890,14 +1985,24 @@ def _unevidenced(items: list[str], text: str, strict: bool = False) -> list[str]
                 out.append(item)
                 continue
             # A DUTY phrase ("cleansing, organizing and transforming data") is
-            # proven by one bullet that carries all but one of its stems, in
-            # any order — same line only, so scattered words never add up.
+            # proven by one bullet that carries half of its stems (a synonym
+            # counts: mentor/coach, engineer/analyst, tune/optimize), or by
+            # two neighbouring bullets that together carry three quarters.
+            # Live miss: "Mentor and coach junior engineers" was called
+            # missing against "mentoring junior analysts", and "Design
+            # dimensional models and medallion layers" against one bullet on
+            # dimensional models and the next on medallion layering.
             stems = _stems(core)
-            need = max(2, -(-len(stems) * 3 // 5))      # ceil(60%), at least 2
-            if len(stems) >= 3 and any(
-                    sum(1 for st in stems if re.search(rf"\b{st}", bl_line)) >= need
-                    for bl_line in blob.split("\n")):
-                continue
+            if len(stems) >= 3:
+                bl_lines = blob.split("\n")
+                hits = [sum(1 for st in stems if _stem_hit(st, bl_line)) for bl_line in bl_lines]
+                need = max(2, -(-len(stems) // 2))          # ceil(50%), at least 2
+                need_pair = max(3, -(-len(stems) * 3 // 4))  # ceil(75%) across two lines
+                if any(h >= need for h in hits):
+                    continue
+                if any(sum(1 for st in stems if _stem_hit(st, bl_lines[k] + "\n" + bl_lines[k + 1])) >= need_pair
+                       for k in range(len(bl_lines) - 1)):
+                    continue
         except re.error:
             continue
         # Fallback: a distinctive token of a multi-word name still counts —
@@ -1969,18 +2074,241 @@ def _dedupe_bullets(text: str, notes: list) -> str:
 _BRIDGE_VERB_RE = re.compile(r"^(?:prototyped|piloted|scoped|explored|evaluated)\b", re.I)
 
 
-def _demote_bridge_bullets(text: str, notes: list) -> str:
-    """Pure reordering: a bullet opening with a bridge verb that sits in one
-    of a job's impact slots moves to the end of that job's bullets. The
-    prompt forbids a foreign-tool bullet as a job's lead; this makes it so."""
+def _names_any(line: str, tools: list) -> list[str]:
+    """The `tools` this one bullet names (same matcher the coverage score uses)."""
+    s = line.strip()
+    if not s.startswith(_BULLET_PREFIXES):
+        s = "• " + s                       # an empty evidence blob would prove everything
+    body = "EXPERIENCE:\nX @ Y | Z\n" + s
+    return [str(t) for t in (tools or []) if str(t).strip() and not _unevidenced([str(t)], body)]
+
+
+# Verb tiers by REAL tenure. A verb above the candidate's tier opens no
+# bullet; a bullet that names a FOREIGN tool (nothing like it in the base)
+# never opens with a top-tier verb whatever the tenure. Policy 2026-09-17:
+# "led should come as per experience".
+_VERB_TIER = {                      # verb -> minimum years
+    "led": 7, "owned": 7, "established": 7, "pioneered": 7, "oversaw": 7,
+    "architected": 10, "directed": 10, "spearheaded": 10, "headed": 10, "championed": 10,
+}
+_VERB_STEP_DOWN = {
+    "led": "Drove", "owned": "Delivered", "established": "Built", "pioneered": "Introduced",
+    "oversaw": "Ran", "architected": "Designed", "directed": "Coordinated",
+    "spearheaded": "Drove", "headed": "Ran", "championed": "Drove", "migrated": "Integrated",
+}
+_FOREIGN_NEVER = {"led", "owned", "established", "pioneered", "oversaw", "architected",
+                  "directed", "spearheaded", "headed", "championed", "migrated"}
+
+
+def _verb_ladder_guard(text: str, base_resume: str, foreign: list, notes: list) -> str:
+    """Deterministic first-word swap: a bullet opening above the tenure tier
+    ("Led" at 5 years) steps down one rung ("Drove"); a bullet naming a
+    foreign tool never opens with an ownership verb at all (live miss: "Led
+    adoption of AI-assisted development using Amazon Q, Cursor, and Claude
+    Code" on a base with none of them). Meaning and every other word stay."""
+    _, years = _base_years_claim(base_resume or "")
+    yrs = years if years is not None else 0
+    lines = text.split("\n")
+    swapped: list[str] = []
+    for _, bl in _job_bullet_lines(text):
+        for i in bl:
+            body = lines[i].lstrip()[1:].strip()
+            m = re.match(r"([A-Za-z][A-Za-z-]*)(\b.*)$", body, re.S)
+            if not m:
+                continue
+            verb = m.group(1).lower()
+            too_high = verb in _VERB_TIER and yrs < _VERB_TIER[verb]
+            is_foreign = verb in _FOREIGN_NEVER and bool(_names_any(body, foreign))
+            if not (too_high or is_foreign):
+                continue
+            new_verb = _VERB_STEP_DOWN.get(verb)
+            if not new_verb:
+                continue
+            if is_foreign and new_verb.lower() in _FOREIGN_NEVER:
+                new_verb = "Integrated"
+            indent = lines[i][: len(lines[i]) - len(lines[i].lstrip())]
+            lines[i] = f"{indent}• {new_verb}{m.group(2)}"
+            swapped.append(f"{m.group(1)} -> {new_verb}" + (" (foreign tool)" if is_foreign else f" ({yrs}y)"))
+    if swapped:
+        notes.append(f"verb ladder: {len(swapped)} opening verb(s) stepped down: " + "; ".join(swapped[:5]))
+    return "\n".join(lines)
+
+
+def _job_bodies(text: str) -> list[tuple[str, str]]:
+    """[(company_key, body)] per job, where the body stops at the next job
+    header OR section header. `_split_jobs` runs to the end of the text, so
+    a base whose SKILLS / EDUCATION follow the last job would hand that job
+    every skills row as a "bullet" (live: a SKILLS row restored as a JPMorgan
+    bullet)."""
+    lines = text.split("\n")
+    out = []
+    for i, ln in enumerate(lines):
+        if _is_job_header_line(ln):
+            end = _job_block_end(lines, i)
+            out.append((_company_key(ln), "\n".join(lines[i:end])))
+    return out
+
+
+def _restore_base_bullets(text: str, base_resume: str, context: dict, notes: list,
+                          restored: list, cap: int = 5) -> str:
+    """Never throw real things away: a JD tool the base proves with a bullet
+    in some job keeps that bullet in the same job of the tailored draft. When
+    the writer dropped it, the base bullet comes back verbatim above that
+    job's Technologies Used line (the later compress pass trims length).
+    Live miss (Modus Create): Airflow and Snowflake, both required by the JD
+    and both with base bullets, were deleted and then scored as missing.
+    With a cloud swap on Job 1, a base bullet naming the OLD cloud's services
+    is left alone (it would undo the swap). `restored` collects the texts so
+    the cap guard protects them."""
+    # only a ranked JD tool (the 90% list) that is a product name and that
+    # the tailored draft names NOWHERE any more; a tool the writer moved to
+    # another job, or a generic term ("SQL", "monitoring"), is not restored
+    must = [str(t) for t in _coverage_plan(context)[0] if _looks_like_tool(str(t))]
+    gone = set(_unevidenced(must, text))            # no bullet anywhere (SKILLS-only = orphan)
+    tools = [t for t in must if t in gone]
+    if not tools:
+        return text
+    lines = text.split("\n")
+    target = str(context.get("target_cloud") or "None")
+    swap_on = target in _CLOUD_TERMS
+    base_cloud0 = _detect_cloud(next((b for _, b in _job_bodies(base_resume)), "")) if swap_on else None
+    old_sigs = tuple(s for c, sigs in _CLOUD_SIG.items() if c == base_cloud0 for s in sigs) \
+        if base_cloud0 and base_cloud0 != target else ()
+    t_hdr = {}
+    for i, ln in enumerate(lines):
+        if _is_job_header_line(ln):
+            t_hdr.setdefault(_company_key(ln), i)
+    added: list[str] = []
+    skipped: list[str] = []
+    have: set[str] = set()
+    for j, (company, body) in enumerate(_job_bodies(base_resume)):
+        h = t_hdr.get(company)
+        if h is None:
+            continue
+        end = _job_block_end(lines, h)
+        for ln in body.splitlines():
+            if len(added) >= cap:
+                break
+            s = ln.strip()
+            if not s.startswith(_BULLET_PREFIXES) or _TECH_LINE_RE.match(s):
+                continue
+            names = [t for t in _names_any(s, tools) if t not in have]
+            if not names:
+                continue
+            bullet = re.sub(r"^[•\-*\s]+", "", s)
+            if j == 0 and old_sigs and any(sg in bullet.lower() for sg in old_sigs):
+                skipped.append(", ".join(names))
+                continue
+            # already present as a near-duplicate rewrite? then the tool was
+            # simply reworded out; restore anyway, dedupe keeps the richer one
+            tech_i = next((k for k in range(h + 1, end) if _TECH_LINE_RE.match(lines[k].strip())), None)
+            at = tech_i if tech_i is not None else end
+            while at > h + 1 and not lines[at - 1].strip():
+                at -= 1
+            lines.insert(at, "• " + bullet)
+            end += 1
+            if tech_i is not None:
+                ti = tech_i + 1
+                mt = _TECH_LINE_RE.match(lines[ti].strip())
+                if mt:
+                    items = [x.strip() for x in _split_list_items(mt.group(2)) if x.strip()]
+                    extra = [n for n in names if _looks_like_tool(n) and n.lower() not in {x.lower() for x in items}]
+                    if extra:
+                        lines[ti] = f"{mt.group(1).rstrip(':')}: {', '.join(items + extra)}"
+            have.update(names)
+            restored.append(bullet)
+            added.append(f"{', '.join(names)} (job {j + 1})")
+        # refresh header indexes below this job after inserts
+        t_hdr = {}
+        for i, ln in enumerate(lines):
+            if _is_job_header_line(ln):
+                t_hdr.setdefault(_company_key(ln), i)
+    if added:
+        notes.append(f"base bullet guard: restored {len(added)} real bullet(s) the writer dropped: " + "; ".join(added))
+    if skipped:
+        notes.append("base bullet guard: left out (names the pre-swap cloud in Job 1): " + "; ".join(skipped))
+    return "\n".join(lines)
+
+
+def _restore_gutted_bullets(text: str, base_resume: str, context: dict, notes: list) -> str:
+    """A base bullet rewritten down to a stub ("Integrated SageMaker backend
+    with Feast feature serving across fine-tuning cycles." from a 40-word
+    base line; "Migrated SQL Server warehouse to Snowflake." from 30) loses
+    the substance the reader came for. A tailored bullet under 12 words whose
+    words come from a base bullet of 16+ is replaced by that base bullet; the
+    compress pass then trims it to the length rule with its figures and tools
+    intact. Job 1 under a cloud swap keeps stubs that name the new cloud."""
+    lines = text.split("\n")
+    target = str(context.get("target_cloud") or "None")
+    swap_on = target in _CLOUD_TERMS
+    base_jobs = dict(_job_bodies(base_resume))
+    base_bullets: dict[str, list[tuple[str, set]]] = {}
+    for company, body in base_jobs.items():
+        base_bullets[company] = [
+            (re.sub(r"^[•\-*\s]+", "", ln.strip()), _content_words(ln))
+            for ln in body.splitlines()
+            if ln.strip().startswith(_BULLET_PREFIXES) and not _TECH_LINE_RE.match(ln.strip())
+            and len(ln.split()) - 1 >= 16]
+    fixed: list[str] = []
+    hdr_idx = [i for i, ln in enumerate(lines) if _is_job_header_line(ln)]
+    for j, h in enumerate(hdr_idx):
+        company = _company_key(lines[h])
+        cands = base_bullets.get(company) or []
+        if not cands:
+            continue
+        end = _job_block_end(lines, h)
+        for i in range(h + 1, end):
+            s = lines[i].strip()
+            if not s.startswith("•") or _TECH_LINE_RE.match(s):
+                continue
+            body = s[1:].strip()
+            if len(body.split()) >= 12:
+                continue
+            tw = _content_words(body)
+            if not tw:
+                continue
+            best, best_b = 0.0, ""
+            for b, bw in cands:
+                if not bw:
+                    continue
+                share = len(tw & bw) / len(tw)          # how much of the stub comes from this base line
+                if share > best:
+                    best, best_b = share, b
+            if best < 0.6 or not best_b:
+                continue
+            if j == 0 and swap_on and any(sg in body.lower() for sg in _CLOUD_SIG.get(target, ())):
+                continue
+            indent = lines[i][: len(lines[i]) - len(lines[i].lstrip())]
+            lines[i] = f"{indent}• {best_b}"
+            fixed.append(f"{_short(body, 40)} -> base line")
+    if fixed:
+        notes.append(f"stub guard: {len(fixed)} gutted bullet(s) restored from the base: " + "; ".join(fixed[:4]))
+    return "\n".join(lines)
+
+
+def _demote_bridge_bullets(text: str, notes: list, foreign: list | None = None,
+                           base_resume: str = "") -> str:
+    """Pure reordering: a bullet that opens with a bridge verb, or that names
+    a FOREIGN tool and carries no real base figure, never sits in one of a
+    job's impact slots; it moves to the end of that job's bullets. Real work
+    leads, coverage follows."""
     lines = text.split("\n")
     moved = 0
+    base_nums = _num_tokens(base_resume) if base_resume else set()
+
+    def _is_bridge(i: int) -> bool:
+        body = lines[i].lstrip()[1:].strip()
+        if _BRIDGE_VERB_RE.match(body):
+            return True
+        if foreign and _names_any(body, foreign) and not (_num_tokens(body) & base_nums):
+            return True
+        return False
     for j, bl in _job_bullet_lines(text):
         slots = _impact_slots(j)
         if len(bl) <= slots:
             continue
         for i in bl[:slots]:
-            if _BRIDGE_VERB_RE.match(lines[i].lstrip()[1:].strip()):
+            if _is_bridge(i):
                 bullet = lines[i]
                 lines[i] = None                      # type: ignore[call-overload]
                 last = bl[-1]
@@ -2495,9 +2823,10 @@ For EACH listed item, output ONE line — every item, no skipping. Priority:
       result. 14-26 words.
       Verbs for a skill the job's bullets already imply: Built, Designed,
       Extended, Integrated; Maintained / Managed are fine for routine scope
-      work. Verbs for a tool the job never used (marked FOREIGN): Prototyped,
-      Piloted, Integrated, Scoped. Never Supported, Explored, Evaluated,
-      Collaborated, and never Maintained / Managed for a FOREIGN item.
+      work. Verbs for a tool the job never used (marked FOREIGN): Built,
+      Designed, Implemented, Integrated, Extended. Never Supported, Explored,
+      Evaluated, Collaborated, Prototyped, Piloted, and never Maintained /
+      Managed / Led / Owned / Architected for a FOREIGN item.
       NO NUMBER OF ANY KIND in a new bullet: no count, duration,
       percentage, dollar or time figure. A figure that is not in the base
       resume is an invented fact; a code check rejects the whole line.
@@ -2740,8 +3069,11 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
                                     f"{'named' if proves else 'not named'})")
             else:
                 j = num - 1
-                if not (0 <= j < len(jobs)) or not 8 <= len(body.split()) <= 26 or _bad_figures(body):
-                    rejected.append(f"{skill} (new bullet: bad job, {len(body.split())} words (8-26), or carries a figure)")
+                # up to four words over the rule is fine here: the compress
+                # pass that follows the coverage rounds trims it (live: a
+                # 27-word Athena bullet rejected, Athena left an orphan)
+                if not (0 <= j < len(jobs)) or not 8 <= len(body.split()) <= _BULLET_MAX + 4 or _bad_figures(body):
+                    rejected.append(f"{skill} (new bullet: bad job, {len(body.split())} words (8-{_BULLET_MAX + 4}), or carries a figure)")
                     continue
                 job_blob = "\n".join(lines[i].lstrip()[1:].strip() for i in jobs[j][1])
                 job_tools = _line_skills(job_blob, [str(p) for p in (present_tools or [])])
@@ -2773,21 +3105,25 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
     given_up: set = set()          # items the model echoed twice
     echoes: dict[str, int] = {}
     room_fail: dict[str, int] = {} # items whose every weave target was full
-    for rnd in range(1, 3):
+    # JD items (ranked tools, then duties) are the whole point; the writer's
+    # own base-only SKILLS orphans are chased only when no JD item is left,
+    # since they leave the page anyway when nothing places them. Ten per
+    # round, three rounds while JD items remain.
+    for rnd in range(1, 4):
         chase = [o for o in _chase(resume) if o.lower() not in given_up]
-        if rnd > 1:
-            chase = [o for o in chase if _in_jd(o)]
-        if not chase or (rnd > 3 and len(chase) < 2):
+        jd_chase = [o for o in chase if _in_jd(o) or o.lower() in rank]
+        chase = jd_chase if (jd_chase or rnd > 1) else chase
+        if not chase:
             break
         placed_before = _placed[0]
         rf_before = dict(room_fail)
-        resume = await _round(resume, chase[:8], f"coverage_{rnd}" if rnd > 1 else "coverage")
+        resume = await _round(resume, chase[:10], f"coverage_{rnd}" if rnd > 1 else "coverage")
         if _placed[0] == placed_before and rnd == 1:
             # The model sometimes hands every bullet back untouched because it
             # judged the idea "already there". One louder retry.
             chase = [o for o in chase if o.lower() not in given_up]
             if chase:
-                resume = await _round(resume, chase[:8], "coverage_retry", loud=True)
+                resume = await _round(resume, chase[:10], "coverage_retry", loud=True)
         if _placed[0] == placed_before and room_fail == rf_before:
             break                      # a round that places nothing and learned nothing ends the chase
     # Whatever still lacks a bullet leaves the SKILLS list — except the JD's
@@ -2798,7 +3134,8 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
 
 
 def _enforce_caps(text: str, base_resume: str, notes: list, keep_tool: str = "",
-                  bonus: int = 0, protect: set[str] | None = None) -> str:
+                  bonus: int = 0, protect: set[str] | None = None,
+                  keep_tools: list | None = None) -> str:
     """The writer is told the per-job caps but overshoots; trim from the end
     of the job, keeping any bullet that carries a real base figure, names
     the JD's dominant tool, or is in `protect` (the coverage pass's own
@@ -2810,11 +3147,21 @@ def _enforce_caps(text: str, base_resume: str, notes: list, keep_tool: str = "",
     base_nums = _num_tokens(base_resume)
     gone: set[int] = set()
     keep_texts = protect or set()
+    # a bullet that is the ONLY evidence for a ranked JD tool is never the
+    # victim (live: the restored Airflow bullet, reworded by compress so its
+    # text no longer matched `protect`, was trimmed and Airflow orphaned)
+    all_bullets = [i for _, bl in _job_bullet_lines(text) for i in bl]
+    sole: dict[int, bool] = {}
+    if keep_tools:
+        named = {i: set(_names_any(lines[i], keep_tools)) for i in all_bullets}
+        for i in all_bullets:
+            others = set().union(*(named[k] for k in all_bullets if k != i)) if len(all_bullets) > 1 else set()
+            sole[i] = bool(named[i] - others)
 
     def _precious(i: int) -> bool:
         if _num_tokens(lines[i]) & base_nums:
             return True
-        if lines[i].lstrip()[1:].strip() in keep_texts:
+        if lines[i].lstrip()[1:].strip() in keep_texts or sole.get(i):
             return True
         return bool(keep_tool) and not _unevidenced([keep_tool], "EXPERIENCE:\nX @ Y | Z\n" + lines[i])
     for j, bl in _job_bullet_lines(text):
@@ -2845,6 +3192,15 @@ def _covered_anywhere(items: list[str], text: str) -> tuple[list[str], list[str]
     return present, missing
 
 
+def _short(s: str, n: int = 60) -> str:
+    """Cut at a word boundary, never mid-word ("pipeli")."""
+    s = str(s).strip()
+    if len(s) <= n:
+        return s
+    cut = s[:n].rsplit(" ", 1)[0].rstrip(",;:")
+    return (cut or s[:n]) + "…"
+
+
 def _code_score(tailored: str, base_resume: str, job_description: str,
                 context: dict, inserted: list) -> dict:
     """100-point deterministic score: tools 40, duties 15, title 5, orphans 10,
@@ -2868,7 +3224,7 @@ def _code_score(tailored: str, base_resume: str, job_description: str,
     d_missing = _unevidenced(duties, tailored)
     d_pts = 15 * (len(duties) - len(d_missing)) / len(duties) if duties else 15
     if d_missing:
-        fixes.append("JD duties without a bullet: " + "; ".join(x[:40] for x in d_missing[:4]))
+        fixes.append("JD duties without a bullet: " + "; ".join(_short(x, 60) for x in d_missing[:4]))
 
     first = tailored.split("\n", 1)[0]
     head_title = first.partition("—")[2].strip().lower()
@@ -2884,7 +3240,10 @@ def _code_score(tailored: str, base_resume: str, job_description: str,
         fixes.append("Headline does not carry the JD title")
 
     orphans = _orphan_skills(tailored, keep=may_skip)      # the Skills-only tail is by design
-    o_pts = max(0, 10 - 2 * len(orphans))
+    # a JD keyword kept on the page without a story costs one point; a skill
+    # the JD never asked for and nothing backs costs two
+    jd_low = {t.lower() for t in tools}
+    o_pts = max(0, 10 - sum(1 if o.lower() in jd_low else 2 for o in orphans))
     if orphans:
         fixes.append("Skills without a bullet: " + ", ".join(orphans[:5]))
 
@@ -2893,7 +3252,7 @@ def _code_score(tailored: str, base_resume: str, job_description: str,
     over = _figure_cap_plan(tailored, tools, _FIGURES_PER_JOB[1])
     n_pts = max(0, 10 - 3 * len(invented) - 2 * len(dropped) - len(removed) - len(over))
     if over:
-        fixes.append(f"{len(over)} bullet(s) over the {_FIGURES_PER_JOB[1]}-figures-per-job cap")
+        fixes.append(f"{len(over)} bullet(s) over the figures-per-job cap (about one per two bullets)")
     if invented:
         fixes.append("Figures not in the base resume: " + ", ".join(sorted(set().union(*[f for _, f in invented])))[:80])
     if dropped:
@@ -3562,7 +3921,7 @@ def _length_flags(text: str, inserted_texts: set[str]) -> dict[int, str]:
             tgt = min(cand, key=lambda i: (len(_line_skills(lines[i], claimed)), wc[i]))
             figs = _num_tokens(lines[tgt])
             keep = _line_skills(lines[tgt], claimed)
-            flags[tgt] = ("Compress to 8-12 words: keep the core action, drop the "
+            flags[tgt] = ("Compress to 8-12 words, one past-tense sentence: keep the core action, drop the "
                           "context clause."
                           + (f" Keep the figure {', '.join(sorted(figs))}." if figs else "")
                           + (f" These names must stay: {', '.join(keep)}." if keep else ""))
@@ -3722,9 +4081,14 @@ async def _compress_long_bullets(text: str, notes: list, target_tools: list | No
         now = _line_skills(new, claimed)
         rest = None
         lost = []
+        jd_low = {str(t).lower() for t in (target_tools or []) if _looks_like_tool(str(t))}
         for s in keep_sk[i]:
             if s in now:
                 continue
+            if s.lower() in jd_low:              # a JD tool stays in its bullet, full stop (a duty
+                                                 # phrase may go when another line carries it)
+                lost.append(s)                   # (live: "Migrated Airflow DAGs" -> "Migrate DAGs",
+                continue                         #  Snowflake cut from the JPMorgan lead, both orphaned)
             rest = rest if rest is not None else _rest(i)
             if _unevidenced([s], rest):          # nowhere else in the resume
                 lost.append(s)
@@ -3769,10 +4133,46 @@ async def _compress_long_bullets(text: str, notes: list, target_tools: list | No
     return "\n".join(after)
 
 
+_QTY_WORD_RE = re.compile(
+    r"\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|"
+    r"forty|fifty|hundred|thousand|million|billion|dozen|half|double|triple|twice|"
+    r"second|minute|hour|day|week|month|quarter|year|daily|weekly|nightly|hourly|monthly)s?\b", re.I)
+
+
+_ABSOLUTE_RE = re.compile(
+    r"\b(eliminat(?:ed|ing|es)?|zero|entirely|completely|fully|every|never|always|"
+    r"100%|doubl(?:ed|ing)|tripl(?:ed|ing)|halv(?:ed|ing))\b", re.I)
+
+
+def _fact_drift(old: str, new: str) -> str:
+    """Quantities the rewrite introduced that the original line never carried:
+    a new figure, a new number word, or a new time unit. Live miss: "under 2
+    hours" came back as "under one hour" and "6 hours to under one hour" as
+    "to minutes" from a figure-removal rewrite; both read as stronger claims
+    than the truth. Returns the first offending token or ""."""
+    new_figs = _num_tokens(new) - _num_tokens(old)
+    if new_figs:
+        return sorted(new_figs)[0]
+    old_q = {m.group(1).lower() for m in _QTY_WORD_RE.finditer(old)}
+    for m in _QTY_WORD_RE.finditer(new):
+        if m.group(1).lower() not in old_q:
+            return m.group(0)
+    # an absolute is a quantity too: "cutting effort 60%" must not come back
+    # as "eliminating effort" (live miss, Cars Commerce)
+    old_a = {m.group(1).lower() for m in _ABSOLUTE_RE.finditer(old)}
+    for m in _ABSOLUTE_RE.finditer(new):
+        if m.group(1).lower() not in old_a:
+            return m.group(0)
+    return ""
+
+
 async def _fix_lines(text: str, jobs: dict[int, str], notes: list, label: str,
-                     **cheap_kw) -> str:
+                     allow_new_figures: set[int] | None = None, **cheap_kw) -> str:
     """One cheap call that rewrites only the flagged lines; each result is
-    accepted line-by-line by the caller's verifier (never by trust)."""
+    accepted line-by-line by the caller's verifier (never by trust). One check
+    is central because every caller needs it: a rewrite may drop a quantity
+    but never introduce one (`_fact_drift`), except on the lines in
+    `allow_new_figures`, where the caller is restoring a base figure."""
     if not jobs:
         return text
     lines = text.split("\n")
@@ -3793,11 +4193,42 @@ async def _fix_lines(text: str, jobs: dict[int, str], notes: list, label: str,
             body = re.sub(r"^[\s•\-*:]+", "", m.group(2)).strip()
             body = re.sub(r"\s*[—–]\s*", ", ", body)
             fixes[order[int(m.group(1)) - 1]] = body
+    drifted: list[str] = []
+    tensed: list[str] = []
+    summary_idx = set(_summary_lines(text))      # third-person by design; tense rule is for job bullets
     for i, body in fixes.items():
         if not body:
             continue
-        lines[i] = ("• " + body) if lines[i].lstrip().startswith("•") else body
+        is_bullet = lines[i].lstrip().startswith("•") and i not in summary_idx
+        old_body = lines[i].lstrip()[1:].strip() if is_bullet else lines[i].strip()
+        if i not in (allow_new_figures or set()):
+            tok = _fact_drift(old_body, body)
+            if tok:
+                drifted.append(f"line {i}: '{tok}'")
+                continue
+        if is_bullet and _tense_drift(old_body, body):
+            tensed.append(f"line {i}: '{body.split()[0]}'")
+            continue
+        lines[i] = ("• " + body) if is_bullet else body
+    if drifted:
+        notes.append(f"{label}: {len(drifted)} rewrite(s) reverted, introduced a quantity the line never had: "
+                     + "; ".join(drifted[:4]))
+    if tensed:
+        notes.append(f"{label}: {len(tensed)} rewrite(s) reverted, past-tense bullet came back in another tense: "
+                     + "; ".join(tensed[:4]))
     return "\n".join(lines)
+
+
+def _tense_drift(old: str, new: str) -> bool:
+    """A past-tense bullet ("Migrated …") must not come back as a base-form
+    stub ("Migrate DAGs …") or third person (live: a 12-word compress retry
+    wrote "Engineer entity-resolution logic…", "Build LangChain RAG…" on a
+    past job)."""
+    f_old = re.match(r"[A-Za-z][A-Za-z-]*", old or "")
+    f_new = re.match(r"[A-Za-z][A-Za-z-]*", new or "")
+    if not f_old or not f_new:
+        return False
+    return _verb_form(f_old.group(0)) == "past-tense" and _verb_form(f_new.group(0)) != "past-tense"
 
 
 def _figure_cap_plan(text: str, jd_tools: list, cap: int) -> dict[int, set]:
@@ -3809,11 +4240,22 @@ def _figure_cap_plan(text: str, jd_tools: list, cap: int) -> dict[int, set]:
     tools = [str(t) for t in (jd_tools or [])]
     plan: dict[int, set] = {}
     for _, bl in _job_bullet_lines(text):
+        job_cap = max(cap, _figure_cap(len(bl)))
         with_fig = [i for i in bl if _num_tokens(lines[i])]
-        if len(with_fig) <= cap:
-            continue
         ranked = sorted(with_fig, key=lambda i: (-len(_line_skills(lines[i], tools)), i))
-        for i in ranked[cap:]:
+        # the same base figure in two bullets of one job (live: "cutting
+        # stale-data incidents 40%" twice after the writer split a base
+        # bullet) is a duplicate claim; the later bullet loses it
+        claimed: set[str] = set()
+        keep: list[int] = []
+        for i in ranked:
+            figs = _num_tokens(lines[i])
+            if figs and figs <= claimed:
+                plan[i] = figs
+                continue
+            claimed |= figs
+            keep.append(i)
+        for i in keep[job_cap:]:
             plan[i] = _num_tokens(lines[i])
     return plan
 
@@ -3849,7 +4291,7 @@ async def _cap_figures_per_job(text: str, jd_tools: list, notes: list, **cheap_k
             bad.append(f"line {i}: " + ("figure still there" if _num_tokens(new) else
                                         f"dropped {', '.join(lost)}" if lost else "length"))
     notes.append(f"figure cap: {ok} of {len(plan)} extra figure(s) rewritten as plain outcomes "
-                 f"(max {_FIGURES_PER_JOB[1]} per job)"
+                 f"(about one per two bullets, min {_FIGURES_PER_JOB[1]} per job)"
                  + (f"; reverted {len(bad)}: " + "; ".join(bad) if bad else ""))
     return "\n".join(after)
 
@@ -3888,7 +4330,8 @@ async def _polish_numbers_and_length(tailored: str, base_resume: str,
         return tailored
 
     before = tailored.split("\n")
-    fixed = await _fix_lines(tailored, jobs, notes, "line_fix", **cheap_kw)
+    fixed = await _fix_lines(tailored, jobs, notes, "line_fix",
+                             allow_new_figures={i for i, _ in dropped}, **cheap_kw)
     after = fixed.split("\n")
     if len(after) != len(before):
         notes.append("line fix rejected (line count changed)")
@@ -3935,7 +4378,7 @@ async def _polish_numbers_and_length(tailored: str, base_resume: str,
             if i in length and i not in phrases:
                 figs = _num_tokens(before[i]) & allowed
                 keep = _line_skills(before[i], claimed)
-                retry[i] = ("HARD LIMIT 12 words. Keep only the verb, the object"
+                retry[i] = ("HARD LIMIT 12 words, one past-tense sentence. Keep only the verb, the object"
                             + (f", these names: {', '.join(keep)}" if keep else "")
                             + (f", and the figure {', '.join(sorted(figs))}" if figs else "")
                             + "; delete every other clause.")
@@ -4077,7 +4520,8 @@ def _trim_to_budget(text: str, inserted: list, base_resume: str, notes: list,
 # ── Guard: targeted QA — code finds the lines, the cheap model fixes only them ─
 
 _JUNK_LINE_RE = re.compile(
-    r"^\s*(?:•\s*)?(?:location not listed|n/?a|not specified|see above|"
+    r"^\s*(?:•\s*)?(?:location not listed|n/?a|not specified|see above|none|"
+    r"\(?\s*none\s+(?:listed|provided|given|available)[^)\n]*\)?|"
     r"\(?consolidated under[^)]*\)?|fabricated[^\n]*|\[?end of resume\]?)\s*\.?\s*$", re.I)
 # Filler openers: phrases that carry no information. Banned everywhere, flagged
 # for a rewrite, penalised once (readability).
@@ -4104,8 +4548,10 @@ def _ownership_verbs(base_resume: str) -> str:
     _, years = _base_years_claim(base_resume or "")
     if years is None or years <= 3:
         return "Built, Developed, Implemented, Automated, Delivered, Shipped"
+    if years <= 6:
+        return "Built, Designed, Delivered, Implemented, Optimized, Migrated, Drove"
     if years <= 9:
-        return "Built, Designed, Owned, Delivered, Led, Migrated"
+        return "Designed, Owned, Delivered, Led, Established, Migrated"
     return "Architected, Led, Directed, Established, Owned, Standardized"
 
 
@@ -4187,8 +4633,13 @@ def _qa_flags(text: str, missing_clouds: dict, jd_tools: list | None = None,
             verb = first.group(0).lower() if first else ""
             if verb:
                 if verb in seen_verbs:
+                    # verbs above the candidate's tenure tier are off the menu
+                    # too, or the fixer hands back the "Architected" the verb
+                    # ladder just stepped down (live: Modus Create)
+                    _, _yrs = _base_years_claim(base_resume or "")
+                    banned = [v for v, need in _VERB_TIER.items() if (_yrs or 0) < need and v not in all_verbs]
                     _add(i, f"Start with a different verb than '{first.group(0)}' (already used in this job); "
-                            f"do not use any of: {', '.join(all_verbs)}; keep the meaning.")
+                            f"do not use any of: {', '.join(all_verbs + banned)}; keep the meaning.")
                 else:
                     seen_verbs[verb] = i
             figs = _num_tokens(body)
@@ -4455,12 +4906,49 @@ def _loads_loose(text: str) -> dict:
         return json.loads(t)
     except Exception:  # noqa: BLE001
         m = re.search(r"\{.*\}", t, re.S)
-        if not m:
-            return {}
+        if m:
+            try:
+                return json.loads(m.group(0))
+            except Exception:  # noqa: BLE001
+                pass
+    # A reply cut off by the token limit (live: an analyze pass with 29 tools
+    # and their tool_facts) is still mostly usable: drop the unfinished tail
+    # at the last comma and close every open bracket.
+    return _repair_truncated_json(t)
+
+
+def _repair_truncated_json(t: str) -> dict:
+    start = t.find("{")
+    if start < 0:
+        return {}
+    t = t[start:]
+    cuts = [m.start() for m in re.finditer(r",", t)][-60:][::-1]
+    for cut in cuts:
+        head = t[:cut]
+        stack, in_str, esc = [], False, False
+        for ch in head:
+            if in_str:
+                if esc:
+                    esc = False
+                elif ch == "\\":
+                    esc = True
+                elif ch == '"':
+                    in_str = False
+                continue
+            if ch == '"':
+                in_str = True
+            elif ch in "{[":
+                stack.append("}" if ch == "{" else "]")
+            elif ch in "}]" and stack:
+                stack.pop()
+        if in_str:
+            continue
         try:
-            return json.loads(m.group(0))
+            out = json.loads(head + "".join(reversed(stack)))
+            return out if isinstance(out, dict) else {}
         except Exception:  # noqa: BLE001
-            return {}
+            continue
+    return {}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -4524,15 +5012,16 @@ async def tailor_resume(base_resume: str, job_description: str,
         _err = ""
         try:
             raw = await chat(ANALYZE_SYSTEM, analyze_prompt(base_resume, job_description),
-                             max_tokens=4000, pass_name="analyze" if _attempt == 1 else "analyze_retry",
+                             max_tokens=6000, pass_name="analyze" if _attempt == 1 else "analyze_retry",
                              **cheap_kw)
             context = _loads_loose(raw)
         except Exception as exc:  # noqa: BLE001
-            _err, context = str(exc), {}
+            _err, context, raw = str(exc), {}, ""
         if _analysis_ok(context):
             break
+        _tail = re.sub(r"\s+", " ", (raw or "")[-160:])
         notes.append(f"analyze: attempt {_attempt} " + (f"failed ({_err})" if _err else
-                     "returned no usable JSON (target_tools empty or missing)")
+                     f"returned no usable JSON (target_tools empty or missing); reply ended: …{_tail}")
                      + ("; retrying once" if _attempt == 1 else ""))
     if not _analysis_ok(context):
         raise ValueError("Could not analyze this job description (the model returned no usable "
@@ -4619,6 +5108,9 @@ async def tailor_resume(base_resume: str, job_description: str,
     tailored = _contact_only(_clean_header_title(_ensure_header(_normalize_format(tailored), base_resume)), base_resume)
     tailored = _enforce_caps(tailored, base_resume, notes,
                              keep_tool=_dominant_jd_tool(job_description, context.get("target_tools") or []))
+    # Guard (a2): a base bullet rewritten down to a stub comes back whole; the
+    # compress pass below trims it to the length rule with its facts intact.
+    tailored = _restore_gutted_bullets(tailored, base_resume, context, notes)
 
     # Guard (b): which non-swapped jobs lost their real base cloud?
     target = context.get("target_cloud", "None")
@@ -4666,6 +5158,10 @@ async def tailor_resume(base_resume: str, job_description: str,
     # (the parity guard below then earns it a bullet).
     tailored = _restore_present_tools(tailored, context.get("present") or [],
                                       base_resume, notes)
+    # Guard (c1a): a JD tool the base proves with a bullet keeps that bullet
+    # in the same job; the writer may not throw real evidence away.
+    restored: list = []
+    tailored = _restore_base_bullets(tailored, base_resume, context, notes, restored)
 
     # Guard (c1b): SKILLS may only claim what the base states, a universal
     # baseline duty, or a same-category swap — a bridged JD tool lives in a
@@ -4735,7 +5231,8 @@ async def tailor_resume(base_resume: str, job_description: str,
     # Guard (d1b): a bridge bullet (Prototyped / Piloted / Scoped …) is never a
     # job's lead: it moves below the impact slots. Live miss (Instacart A/B):
     # "Prototyped cross-cloud data aggregation…" opened Job 1.
-    tailored = _demote_bridge_bullets(tailored, notes)
+    tailored = _demote_bridge_bullets(tailored, notes, foreign=context.get("bridge_only") or [],
+                                      base_resume=base_resume)
     tailored = _dedupe_bullets(tailored, notes)
 
     tailored, dash_hits = _strip_dash_asides(tailored)
@@ -4772,17 +5269,32 @@ async def tailor_resume(base_resume: str, job_description: str,
     # line fixes so nothing they reintroduce survives.
     tailored = await _fix_scope_leaks(tailored, base_resume, context, notes,
                                       jd_text=job_description, **cheap_kw)
+    # the leak fix can take a tool's last bullet with it (live: Snowflake cut
+    # from a Cargill line, none left at JPMorgan): the base bullet comes back
+    tailored = _restore_base_bullets(tailored, base_resume, context, notes, restored)
 
     # Guard (g1): no paragraph bullets — split past _BULLET_SPLIT words, nothing lost.
     tailored = _split_long_bullets(tailored, notes)
     # cap + the one coverage slot; the coverage pass's own bullets are kept
     tailored = _enforce_caps(tailored, base_resume, notes,
                              keep_tool=_dominant_jd_tool(job_description, context.get("target_tools") or []),
-                             bonus=1, protect={b for _, _, b in inserted})
+                             bonus=1, protect={b for _, _, b in inserted} | set(restored),
+                             keep_tools=[t for t in _coverage_plan(context)[0] if _looks_like_tool(str(t))])
+    # Guard (g4): opening verbs sized to tenure; a foreign-tool bullet never
+    # opens with an ownership verb. Deterministic, runs before the verb-
+    # repeat QA so a stepped-down verb that now repeats gets varied.
+    tailored = _verb_ladder_guard(tailored, base_resume, context.get("bridge_only") or [], notes)
     # the split halves and the weaves can repeat an opening verb: one more
     # targeted QA pass (only calls the model when something is flagged)
     tailored = await _targeted_qa(tailored, {}, notes, jd_tools=context.get("target_tools") or [], jd_text=job_description,
                                   base_resume=base_resume, target_cloud=str(context.get("target_cloud") or ""), **cheap_kw)
+    # the fixer's replacement verb is checked against the ladder once more
+    tailored = _verb_ladder_guard(tailored, base_resume, context.get("bridge_only") or [], notes)
+    tailored, junk2 = _strip_junk_lines(tailored)
+    if junk2:
+        notes.append(f"qa: removed {junk2} placeholder line(s) the fixes left behind")
+    tailored = _strip_empty_sections(tailored)
+    tailored = _dedupe_skill_rows(tailored, notes)
 
     # Guard (g3): the page is measured the way the reader sees it. Dense after
     # everything above (type shrunk 8%+) -> the longest bullets get one more,

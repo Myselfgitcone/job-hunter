@@ -707,9 +707,9 @@ function ResumeTab({ job, tailoring, startedAt, onTailor, onCancel, onToast, onU
       {/* "Review before applying" is moot once the job is applied/interviewing —
           show the flags only while the job is still new. */}
       {disqualifiers.length > 0 && job.status === "new" && (
-        <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#f87171", marginBottom: 2 }}>⚠ Qualify flags — review before applying</div>
-          {disqualifiers.map((d, i) => <div key={i} style={{ fontSize: 12.5, color: "#fca5a5" }}>{d}</div>)}
+        <div className="jd-warn red">
+          <div className="jd-warn-title">⚠ Qualify flags — review before applying</div>
+          {disqualifiers.map((d, i) => <div key={i} className="jd-warn-line">{d}</div>)}
         </div>
       )}
       {/* Review gate: the backend sets needs_review when the overall score is
@@ -717,10 +717,10 @@ function ResumeTab({ job, tailoring, startedAt, onTailor, onCancel, onToast, onU
           absent from the base / only in an old job (the fit gate). Shown while
           the job is still new; once applied the warning is moot. */}
       {job.needs_review === true && job.tailored_resume && job.status === "new" && (
-        <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.35)", borderRadius: 10, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#fbbf24", marginBottom: 2 }}>⚠ Review before applying</div>
-          {(job.review_reasons || []).slice(0, 6).map((r, i) => <div key={i} style={{ fontSize: 12.5, color: "#fcd34d" }}>{r}</div>)}
-          {!(job.review_reasons || []).length && <div style={{ fontSize: 12.5, color: "#fcd34d" }}>The score panel lists what to fix.</div>}
+        <div className="jd-warn">
+          <div className="jd-warn-title">⚠ Review before applying</div>
+          {(job.review_reasons || []).slice(0, 6).map((r, i) => <div key={i} className="jd-warn-line">{r}</div>)}
+          {!(job.review_reasons || []).length && <div className="jd-warn-line">The score panel lists what to fix.</div>}
         </div>
       )}
       {/* TOP ROW — Detected Context (left) + Resume Score & downloads (right) */}

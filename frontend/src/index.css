@@ -2259,3 +2259,15 @@ html.light .auth-tabs { background: #f1f5f9; border-color: rgba(0,0,0,.10); }
 /* Kanban detail drawer slide-in */
 .kanban-drawer { animation: kdSlide .18s ease; }
 @keyframes kdSlide { from { transform: translateX(36px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* review / qualify warning banners on the Resume tab: readable in both themes
+   (was amber-on-amber in light mode) */
+.jd-warn { background: rgba(245,158,11,.10); border: 1px solid rgba(245,158,11,.4); border-radius: 10px; padding: 10px 14px; display: flex; flex-direction: column; gap: 4px; }
+.jd-warn-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: #fbbf24; margin-bottom: 2px; }
+.jd-warn-line { font-size: 12.5px; color: #fde68a; line-height: 1.4; }
+.jd-warn.red { background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.35); }
+.jd-warn.red .jd-warn-title { color: #f87171; } .jd-warn.red .jd-warn-line { color: #fca5a5; }
+html.light .jd-warn { background: #fffbeb; border-color: #f59e0b; }
+html.light .jd-warn-title { color: #b45309; } html.light .jd-warn-line { color: #78350f; }
+html.light .jd-warn.red { background: #fef2f2; border-color: #ef4444; }
+html.light .jd-warn.red .jd-warn-title { color: #b91c1c; } html.light .jd-warn.red .jd-warn-line { color: #7f1d1d; }

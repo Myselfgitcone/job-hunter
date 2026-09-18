@@ -239,6 +239,7 @@ export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "comp
               {score !== null && job.ats_score_after == null && (job.gate_scores?.overall == null)
                 && <span className={`jcard-matchpill ${scoreClass(score)}`}
                          onMouseEnter={e => setQualAnchor((e.currentTarget as HTMLElement).getBoundingClientRect())}>{score}%</span>}
+              {qualAnchor && qr && <QualifyPopover qr={qr} anchor={qualAnchor} />}
               {(() => {
                 // Tailored resume score — overall gate blend, else raw ATS.
                 const overall = typeof job.gate_scores?.overall === "number" ? job.gate_scores.overall : null;

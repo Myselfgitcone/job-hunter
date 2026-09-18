@@ -23,17 +23,104 @@ const QUAL_ROWS: [string, string][] = [
   ["sponsorship", "Sponsorship"], ["location", "Location"], ["seniority", "Seniority"],
 ];
 
+const POINT_MAX: [string, string, number][] = [
+  ["tools", "JD tools", 30], ["duties", "Duties", 15], ["title", "Title", 5], ["orphans", "Orphans", 10],
+  ["numbers", "Numbers", 10], ["readability", "Readability", 10], ["page_fit", "Page fit", 10], ["proof", "Proof", 10],
+];
+
+/** Anchors a fixed panel under (or above) a badge, clamped to the viewport. */
+function popStyle(anchor: DOMRect, width: number, height: number): React.CSSProperties {
+  const left = Math.max(8, Math.min(anchor.right - width, window.innerWidth - width - 8));
+  const below = anchor.bottom + 6;
+  return {
+    position: "fixed", left, width, zIndex: 9999,
+    ...(below + height < window.innerHeight ? { top: below } : { bottom: window.innerHeight - anchor.top + 6 }),
+  };
+}
+
+/** Hover panel behind the tailored-resume badge: gates, where points went, fixes, missing tools. */
+function ResumePopover({ job, anchor, onEnter, onLeave }: { job: Job; anchor: DOMRect; onEnter: () => void; onLeave: () => void }) {
+  const gs = job.gate_scores || null;
+  const overall = typeof gs?.overall === "number" ? gs.overall : null;
+  const rs = overall ?? job.ats_score_after ?? 0;
+  const cls = rs >= 70 ? "high" : rs >= 50 ? "mid" : "low";
+  const review = job.needs_review === true;
+  const tone = review ? "bad" : "ok";
+  const gates: [string, any][] = gs ? [["ATS", gs.ats], ["Recruiter", gs.recruiter], ["Hiring manager", gs.hiring_manager]] : [];
+  const pts = gs?.points || null;
+  const weak = (k: string, max: number) => pts && typeof pts[k] === "number" && pts[k] < max * 0.6;
+  const cov = gs?.coverage_target;
+  const fixes = (gs?.top_fixes || []).slice(0, 3);
+  const allMissing = gs?.missing || [];
+  const missing = allMissing.slice(0, 8);
+  return createPortal(
+    <div className={`qual-pop ${tone}`} style={popStyle(anchor, 372, 340)} onMouseDown={e => e.stopPropagation()}
+         onMouseEnter={onEnter} onMouseLeave={onLeave}>
+      <div className="qual-pop-head">
+        <span className={`qual-pop-score ${cls}`}>{rs}{overall == null && <small>%</small>}</span>
+        <div className="qual-pop-verdict">
+          <span className={`qual-pop-chip ${tone}`}>{review ? "Needs review" : "Ready to apply"}</span>
+          <span className="qual-pop-count">
+            {overall != null ? "Tailored resume score" : "ATS keyword match"}
+            {job.ats_score_before != null ? ` · base ${job.ats_score_before} → tailored ${rs}` : ""}
+          </span>
+        </div>
+      </div>
+      {gates.length > 0 && (
+        <div className="qual-pop-rows">
+          {gates.map(([label, g]) => {
+            const v = typeof g?.score === "number" ? g.score : null;
+            if (v == null) return null;
+            return (
+              <div key={label} className="qual-pop-gate">
+                <span className="qual-pop-label">{label}</span>
+                <span className="qual-pop-bar"><i style={{ width: `${Math.max(0, Math.min(100, v))}%` }} className={v >= 70 ? "high" : v >= 50 ? "mid" : "low"} /></span>
+                <span className="qual-pop-gate-v">{v}</span>
+                {g?.note && <span className="qual-pop-note">{g.note}</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {pts && (
+        <div className="qual-pop-pts">
+          {POINT_MAX.map(([k, label, max]) => typeof pts[k] === "number" && (
+            <span key={k} className={`qual-pop-pt${weak(k, max) ? " weak" : ""}`}>
+              <b>{Math.round(pts[k])}</b>/{max} {label}
+            </span>
+          ))}
+        </div>
+      )}
+      {cov && typeof cov.need === "number" && cov.need > 0 && (
+        <div className="qual-pop-cov">
+          {cov.have} of {cov.need} JD tools earned a bullet · 90% target {cov.met ? "met" : "missed"}
+        </div>
+      )}
+      {fixes.length > 0 && (
+        <div className="qual-pop-miss">
+          <div className="qual-pop-label">What to fix</div>
+          <ol className="qual-pop-fixes">{fixes.map((f, i) => <li key={i}>{f}</li>)}</ol>
+        </div>
+      )}
+      {missing.length > 0 && (
+        <div className="qual-pop-miss">
+          <div className="qual-pop-label">JD tools not in the resume</div>
+          <div className="qual-pop-chips">
+            {missing.map(m => <span key={m} className="qual-pop-kw">{m}</span>)}
+            {allMissing.length > 8 && <span className="qual-pop-kw more">+{allMissing.length - 8}</span>}
+          </div>
+        </div>
+      )}
+    </div>,
+    document.body,
+  );
+}
+
 /** Hover panel behind the match pill: every check, its reason, and the keyword gaps. */
 function QualifyPopover({ qr, anchor, onEnter, onLeave }: { qr: any; anchor: DOMRect; onEnter: () => void; onLeave: () => void }) {
   const crit = (qr?.criteria && typeof qr.criteria === "object") ? qr.criteria : {};
   const missing: string[] = qr?.overlap?.missing || [];
-  const width = 372;
-  const left = Math.max(8, Math.min(anchor.right - width, window.innerWidth - width - 8));
-  const below = anchor.bottom + 6;
-  const style: React.CSSProperties = {
-    position: "fixed", left, width, zIndex: 9999,
-    ...(below + 260 < window.innerHeight ? { top: below } : { bottom: window.innerHeight - anchor.top + 6 }),
-  };
+  const style = popStyle(anchor, 372, 300);
   const rows = QUAL_ROWS.filter(([k]) => crit[k]);
   const passed = rows.filter(([k]) => crit[k].pass).length;
   const failed = rows.filter(([k]) => !crit[k].pass).map(([, label]) => label);
@@ -164,8 +251,10 @@ export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "comp
   // outside the card) without the panel vanishing; entering the panel cancels the close.
   const qualClose = useRef<number | null>(null);
   const qualHold = () => { if (qualClose.current) { window.clearTimeout(qualClose.current); qualClose.current = null; } };
-  const qualOpen = (e: React.MouseEvent) => { qualHold(); setQualAnchor((e.currentTarget as HTMLElement).getBoundingClientRect()); };
-  const qualRelease = () => { qualHold(); qualClose.current = window.setTimeout(() => setQualAnchor(null), 180); };
+  const [resAnchor, setResAnchor] = useState<DOMRect | null>(null);     // hover panel behind the tailored-score badge
+  const qualOpen = (e: React.MouseEvent) => { qualHold(); setResAnchor(null); setQualAnchor((e.currentTarget as HTMLElement).getBoundingClientRect()); };
+  const resOpen = (e: React.MouseEvent) => { qualHold(); setQualAnchor(null); setResAnchor((e.currentTarget as HTMLElement).getBoundingClientRect()); };
+  const qualRelease = () => { qualHold(); qualClose.current = window.setTimeout(() => { setQualAnchor(null); setResAnchor(null); }, 180); };
   useEffect(() => qualHold, []);
   const expRef = useRef<HTMLSelectElement>(null);
   const qr      = job.qualify_result as any;
@@ -260,13 +349,10 @@ export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "comp
                 const overall = typeof job.gate_scores?.overall === "number" ? job.gate_scores.overall : null;
                 const rs = overall ?? job.ats_score_after;
                 if (rs == null) return null;
-                const before = job.ats_score_before;   // base-resume ATS match, pre-tailor
                 const cls = rs >= 70 ? "high" : rs >= 50 ? "mid" : "low";
-                const tip = overall != null
-                  ? `Resume score: base ${before ?? "?"} → tailored ${rs} (ATS ${job.gate_scores?.ats?.score ?? "?"}, recruiter ${job.gate_scores?.recruiter?.score ?? "?"}, hiring manager ${job.gate_scores?.hiring_manager?.score ?? "?"})`
-                  : `ATS keyword match: base ${before ?? "?"} → tailored ${rs}`;
-                return <span className={`jcard-resume ${cls}`} title={tip}>{overall != null ? "★" : "📄"} {rs}{overall != null ? "" : "%"}</span>;
+                return <span className={`jcard-resume ${cls}${job.needs_review ? " review" : ""}`} onMouseEnter={resOpen}>{overall != null ? "★" : "📄"} {rs}{overall != null ? "" : "%"}</span>;
               })()}
+              {resAnchor && <ResumePopover job={job} anchor={resAnchor} onEnter={qualHold} onLeave={qualRelease} />}
               {stItem && <span className="jcard-status" style={{ background: stItem.bg, color: stItem.color }}>{stItem.label}</span>}
             </div>
             {posted && (
@@ -341,6 +427,7 @@ export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "comp
                 onMouseEnter={qualOpen}>{score}%</span>
         ) : null}
         {qualAnchor && qr && <QualifyPopover qr={qr} anchor={qualAnchor} onEnter={qualHold} onLeave={qualRelease} />}
+        {resAnchor && <ResumePopover job={job} anchor={resAnchor} onEnter={qualHold} onLeave={qualRelease} />}
         {STATUS_LABEL[job.status] && (
           <span style={{
             fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
@@ -356,11 +443,8 @@ export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "comp
           const overall = typeof job.gate_scores?.overall === "number" ? job.gate_scores.overall : null;
           const s = overall ?? job.ats_score_after;
           if (s == null) return null;
-          const tip = overall != null
-            ? `Overall resume score (ATS ${job.gate_scores?.ats?.score ?? "?"}, recruiter ${job.gate_scores?.recruiter?.score ?? "?"}, hiring manager ${job.gate_scores?.hiring_manager?.score ?? "?"})`
-            : `ATS keyword match (before: ${job.ats_score_before ?? "?"}%)`;
           return (
-            <span title={tip} style={{
+            <span onMouseEnter={resOpen} style={{
               fontSize: 10, fontWeight: 700, padding: "2px 5px", borderRadius: 4,
               background: s >= 70 ? "rgba(124,58,237,0.10)" : s >= 50 ? "rgba(234,179,8,0.12)" : "rgba(239,68,68,0.10)",
               color: s >= 70 ? "var(--violet)" : s >= 50 ? "#b45309" : "#dc2626",

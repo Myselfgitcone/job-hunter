@@ -62,8 +62,9 @@ _WEAVE_MAX_WORDS = _BULLET_MAX
 _SHORT_MAX = 18          # a bullet at or under this many words counts as "short"
 _LONG_RUN = 25           # three consecutive bullets over this = a wall
 
-# Summary: 4 bullets (5 at most), 55-80 words.
-_SUMMARY_MAX_WORDS = 80
+# Summary: 5 bullets (4 at least), 18-24 words each, 90-110 words (user's
+# choice 2026-09-18; the earlier 55-80 read thin after compression).
+_SUMMARY_MAX_WORDS = 110
 _SUMMARY_MAX_LINES = 5
 
 # Real base figures per job: (floor, cap for a small job). A job keeps about
@@ -196,8 +197,8 @@ Then these sections, in this exact order. Section headers are UPPERCASE with a
 trailing colon on their own line. Every bullet starts with "• ".
 
 SUMMARY:
-• 4 bullets; 5 at most, never 6. Each bullet is ONE sentence of 12–20 words;
-  55–80 words in total. Fixed SLOT ORDER, free sentence shape — vary the
+• 5 bullets (4 at least), never 6. Each bullet is ONE sentence of 18–24 words;
+  90–110 words in total. Fixed SLOT ORDER, free sentence shape — vary the
   syntax from resume to resume; never the same sentence skeleton twice.
   Slot 1 (identity): the JD's title, the candidate's REAL years from base
     dates, the JD's most-repeated tools they genuinely have, and the industries
@@ -216,7 +217,7 @@ SUMMARY:
   ("Designs…", "Partners…"); a proof slot about the CURRENT job is present
   tense too ("Maintains a 99% SLA at <current employer>"); only a proof about a PAST
   employer is past tense. Never "Maintained … at <current employer>".
-• SUMMARY LENGTH: 55–80 words in total. Longer summaries are compressed by a
+• SUMMARY LENGTH: 90–110 words in total. Longer summaries are compressed by a
   code check (live: 148 words pushed the page dense).
 • SUMMARY IS A PREVIEW, NOT A CLAIM LIST: every tool, platform, or duty named
   in SUMMARY must appear in at least one experience bullet. Write the bullets
@@ -603,7 +604,7 @@ Line 2: `<phone> | <email>` then any LinkedIn / GitHub / website link the base's
 Sections in this order, headers UPPERCASE with a trailing colon, every bullet "• ":
 
 SUMMARY:
-4 bullets; 5 at most, never 6. One sentence each, 12–20 words; 55–{_SUMMARY_MAX_WORDS} words
+5 bullets (4 at least), never 6. One sentence each, 18–24 words; 90–{_SUMMARY_MAX_WORDS} words
 in total. Fixed slot order, free sentence shape (never the same skeleton twice):
   1 identity: the JD's title, the candidate's REAL years from base dates, the JD's
     most-repeated tools they genuinely have, the industries from the base.
@@ -1950,6 +1951,25 @@ def _loose_pattern(core: str) -> str:
     return r"\b" + r"\W+(?:\w+\W+){0,2}".join(st + r"\w*" for st in stems)
 
 
+_TOOL_ALIASES = {
+    "microsoft sql": ("sql server", "mssql", "t-sql", "ms sql"),
+    "microsoft sql server": ("sql server", "mssql"),
+    "ms sql": ("sql server", "mssql"), "mssql": ("sql server",), "t-sql": ("sql server", "tsql"),
+    "sql server": ("mssql", "t-sql", "microsoft sql"),
+    "postgres": ("postgresql",), "postgresql": ("postgres",),
+    "ms excel": ("excel",), "microsoft excel": ("excel",),
+    "power bi": ("powerbi",), "powerbi": ("power bi",),
+    "amazon s3": ("s3",), "amazon redshift": ("redshift",), "amazon emr": ("emr",),
+    "google bigquery": ("bigquery",), "gcs": ("cloud storage",),
+    "azure data factory": ("adf",), "adf": ("azure data factory",),
+    "azure data lake": ("adls",), "adls gen2": ("adls", "azure data lake"),
+    "ci/cd": ("continuous integration", "continuous delivery", "ci cd"),
+    "k8s": ("kubernetes",), "kubernetes": ("k8s", "eks", "aks", "gke"),
+    "gen ai": ("generative ai", "genai", "llm"), "generative ai": ("genai", "gen ai", "llm"),
+    "llms": ("llm", "large language model"), "rag": ("retrieval-augmented", "retrieval augmented"),
+}
+
+
 def _unevidenced(items: list[str], text: str, strict: bool = False) -> list[str]:
     """The subset of `items` with no supporting line in EXPERIENCE/PROJECTS.
     strict=True keeps only the literal and in-order loose matches plus the
@@ -2004,6 +2024,11 @@ def _unevidenced(items: list[str], text: str, strict: bool = False) -> list[str]
                        for k in range(len(bl_lines) - 1)):
                     continue
         except re.error:
+            continue
+        # A vendor's name for a product the base calls by its common name
+        # (live: "Microsoft SQL" scored missing with "SQL Server" on the page)
+        if any(re.search(rf"(?<![a-z0-9]){re.escape(a)}(?![a-z0-9])", blob)
+               for a in _TOOL_ALIASES.get(core.lower(), ())):
             continue
         # Fallback: a distinctive token of a multi-word name still counts —
         # "Apache Kafka" is covered by a "Kafka Connect" bullet. Distinctive
@@ -3693,6 +3718,18 @@ def _cap_summary_lines(text: str, notes: list) -> str:
     slot the writer padded. Drop the extras from the end (slot order puts
     identity, proof and lead duty first). Pure code, nothing rewritten."""
     idx = _summary_lines(text)
+    # every summary line is a bullet: the writer sometimes marks only the
+    # first (live: Cascade, Cars), and the export then mixes the two shapes
+    lines = text.split("\n")
+    fixed = 0
+    for i in idx:
+        s = lines[i].strip()
+        if s and not s.startswith(_BULLET_PREFIXES):
+            lines[i] = "• " + s
+            fixed += 1
+    if fixed:
+        text = "\n".join(lines)
+        notes.append(f"summary guard: bulleted {fixed} unmarked line(s)")
     if len(idx) <= _SUMMARY_MAX_LINES:
         return text
     gone = set(idx[_SUMMARY_MAX_LINES:])
@@ -3901,12 +3938,18 @@ def _line_skills(line: str, claimed: list[str]) -> list[str]:
     return [sk for sk in claimed if not _unevidenced([sk], wrap)]
 
 
-def _length_flags(text: str, inserted_texts: set[str]) -> dict[int, str]:
+def _length_flags(text: str, inserted_texts: set[str], target_tools: list | None = None,
+                  base_resume: str = "") -> dict[int, str]:
     """Per job: if no bullet is short, pick one to compress (a guard-inserted
-    bullet first, else the shortest number-free one); and break any run of
-    three long bullets by trimming the middle one."""
+    bullet first, else the shortest number-free one that names no JD tool
+    and carries no base figure); and break any run of three long bullets by
+    trimming the middle one. Live miss (Cascade): the short-bullet slot took
+    "Migrated legacy SQL Server warehouse to Snowflake…" down to nine words
+    and lost SQL Server, the JD's core tool."""
     lines = text.split("\n")
     claimed = _skills_claimed(text)
+    jd_tools = [str(t) for t in (target_tools or []) if _looks_like_tool(str(t))]
+    base_nums = _num_tokens(base_resume) if base_resume else set()
     flags: dict[int, str] = {}
     for _, bl in _job_bullet_lines(text):
         if len(bl) < 4:
@@ -3915,7 +3958,11 @@ def _length_flags(text: str, inserted_texts: set[str]) -> dict[int, str]:
         if min(wc.values()) > _SHORT_MAX:
             cand = [i for i in bl if lines[i].lstrip()[1:].strip() in inserted_texts]
             if not cand:
-                cand = [i for i in bl if not _num_tokens(lines[i])] or bl
+                cand = [i for i in bl if not _num_tokens(lines[i])
+                        and not (_num_tokens(lines[i]) & base_nums)
+                        and not (jd_tools and _names_any(lines[i], jd_tools))]
+            if not cand:
+                continue                  # nothing safe to shorten in this job
             # the bullet carrying the fewest claimed skills is the safest to
             # shorten — compressing an evidence-heavy one loses skills
             tgt = min(cand, key=lambda i: (len(_line_skills(lines[i], claimed)), wc[i]))
@@ -4199,14 +4246,14 @@ async def _fix_lines(text: str, jobs: dict[int, str], notes: list, label: str,
     for i, body in fixes.items():
         if not body:
             continue
-        is_bullet = lines[i].lstrip().startswith("•") and i not in summary_idx
+        is_bullet = lines[i].lstrip().startswith("•")
         old_body = lines[i].lstrip()[1:].strip() if is_bullet else lines[i].strip()
         if i not in (allow_new_figures or set()):
             tok = _fact_drift(old_body, body)
             if tok:
                 drifted.append(f"line {i}: '{tok}'")
                 continue
-        if is_bullet and _tense_drift(old_body, body):
+        if is_bullet and i not in summary_idx and _tense_drift(old_body, body):
             tensed.append(f"line {i}: '{body.split()[0]}'")
             continue
         lines[i] = ("• " + body) if is_bullet else body
@@ -4307,7 +4354,7 @@ async def _polish_numbers_and_length(tailored: str, base_resume: str,
     invented, dropped, removed = _number_audit(tailored, base_resume, job_description,
                                                floor=_FIGURES_PER_JOB[0])
     inserted_texts = {b for _, _, b in inserted}
-    length = _length_flags(tailored, inserted_texts)
+    length = _length_flags(tailored, inserted_texts, target_tools=target_tools, base_resume=base_resume)
     phrases = _overused_phrases(tailored, job_description, target_tools)
     if removed:
         notes.append(f"number guard: {len(removed)} base bullet(s) with figures were "
@@ -4688,14 +4735,14 @@ def _qa_flags(text: str, missing_clouds: dict, jd_tools: list | None = None,
                 if _TECH_LINE_RE.match(lines[i].strip()):
                     _add(i, f"Add {cloud} to this list.")
 
-    # summary length: the prompt asks for 55-80 words; live runs shipped ~120.
+    # summary length: the prompt asks for 90-110 words; live runs shipped ~150.
     # Flag the long lines so the fixer trims them (a code cut would break prose).
     sum_idx = _summary_lines(text)
     total = sum(len(lines[i].lstrip("\u2022 ").split()) for i in sum_idx)
     if total > _SUMMARY_MAX_WORDS:
         for i in sum_idx:
-            if len(lines[i].lstrip("\u2022 ").split()) > 22:
-                _add(i, f"The summary is {total} words (limit {_SUMMARY_MAX_WORDS}): cut this line to at most 20 words; keep its tools, drop the second clause.")
+            if len(lines[i].lstrip("\u2022 ").split()) > 26:
+                _add(i, f"The summary is {total} words (limit {_SUMMARY_MAX_WORDS}): cut this line to at most 24 words; keep its tools, drop the second clause.")
 
     # JD copied word for word: seven consecutive words shared with the posting
     # (live: "document parsing, chunking, metadata extraction, and embedding
@@ -5302,7 +5349,7 @@ async def tailor_resume(base_resume: str, job_description: str,
     _fit, _why = _page_fit_points(tailored, base_resume)
     if _fit < 9:
         tailored = await _compress_long_bullets(tailored, notes, _jd_keep_words,
-                                                max_words=20, target=18, summary_max=70, summary_target=60,
+                                                max_words=20, target=18, summary_max=100, summary_target=90,
                                                 **cheap_kw)
         _fit2, _why2 = _page_fit_points(tailored, base_resume)
         notes.append(f"page fit: {_why or 'dense'} -> " + (_why2 or "fits at full size") + " after a tighter compress")

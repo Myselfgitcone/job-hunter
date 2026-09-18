@@ -160,6 +160,16 @@ def test_plural_jd_terms_match_singular_bullets():
     assert t._unevidenced(["REST APIs", "message queues", "SAP", "Azure Functions"], body) == []
 
 
+def test_fix_lines_keeps_summary_bullet_marker(monkeypatch):
+    import asyncio
+    text = "Jane Doe — X\n\nSUMMARY:\n• Led pipelines at Acme for finance.\n\nEXPERIENCE:\nX @ Acme | 2021 - Present\n• Built things.\n"
+    async def fake_chat(*a, **k):
+        return "1 :: Leads pipelines at Acme for finance."
+    monkeypatch.setattr(t, "chat", fake_chat)
+    out = asyncio.run(t._fix_lines(text, {3: "Present tense."}, [], "qa_fix"))
+    assert "• Leads pipelines at Acme for finance." in out
+
+
 def test_tense_drift_rejects_base_form_stubs():
     assert t._tense_drift("Migrated Airflow DAGs to Dagster", "Migrate DAGs to Dagster")
     assert t._tense_drift("Engineered entity-resolution logic", "Engineer entity-resolution logic in Python")
@@ -176,6 +186,23 @@ def test_cap_guard_keeps_a_jd_tools_only_bullet():
     assert "Airflow DAGs" in out and out.count("• ") == 12
     out2 = t._enforce_caps(text, base, [], bonus=1)
     assert "Airflow DAGs" not in out2                     # last in the job, no protection: trimmed
+
+
+def test_short_bullet_rule_never_picks_a_jd_tool_line_and_aliases_match():
+    bullets = ("• Migrated a legacy SQL Server warehouse to Snowflake for regulatory reporting, cutting storage cost and query latency for the finance teams.\n"
+               "• Built scalable Spark and Databricks pipelines on AWS processing hundreds of millions of daily transactions for ten downstream teams.\n"
+               "• Documented platform architectures and operational runbooks in Lucidchart and SharePoint and led stakeholder reviews with product, finance, and operations teams.\n"
+               "• Configured IAM policies, encryption standards, and Kubernetes-based pipeline deployments to secure customer PII across every production environment the platform ran.\n")
+    text = "Jane Doe — X\n\nSKILLS:\n• Tools: Snowflake, Spark\n\nEXPERIENCE:\nData Engineer @ Acme | 2021 - Present\n" + bullets
+    flags = t._length_flags(text, set(), target_tools=["Snowflake", "Spark", "Microsoft SQL"], base_resume=text)
+    assert len(flags) == 1
+    picked = text.split("\n")[list(flags)[0]]
+    assert "Documented platform" in picked or "Configured IAM" in picked
+    # summary lines all get a bullet mark
+    fixed = t._cap_summary_lines("Jane Doe — X\n\nSUMMARY:\n• Data engineer.\nBuilds pipelines.\n\nEXPERIENCE:\nX @ Y | Z\n• Built things.\n", [])
+    assert "• Builds pipelines." in fixed
+    # vendor alias: "Microsoft SQL" is proven by "SQL Server"
+    assert t._unevidenced(["Microsoft SQL"], text) == []
 
 
 def test_truncated_analyze_json_is_repaired():

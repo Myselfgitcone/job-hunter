@@ -252,9 +252,9 @@ def test_qa_flags_summary_over_80_words():
     long = "\u2022 " + " ".join(["word"] * 30) + "."
     text = "Jane Doe \u2014 X\n\nSUMMARY:\n" + "\n".join([long] * 4) + "\n\nEXPERIENCE:\nData Engineer @ Acme | 2021 - Present\n\u2022 Built pipelines.\n"
     msgs = " || ".join(t._qa_flags(text, {}).values())
-    assert "limit 80" in msgs
+    assert f"limit {t._SUMMARY_MAX_WORDS}" in msgs
     short = "Jane Doe \u2014 X\n\nSUMMARY:\n\u2022 Builds pipelines on Snowflake for finance teams.\n\nEXPERIENCE:\nData Engineer @ Acme | 2021 - Present\n\u2022 Built pipelines.\n"
-    assert "limit 80" not in " || ".join(t._qa_flags(short, {}).values())
+    assert "limit " not in " || ".join(t._qa_flags(short, {}).values())
 
 
 def test_qa_flags_jd_copied_word_for_word():
@@ -360,8 +360,8 @@ def test_score_penalises_over_max_not_over_35():
 # ── summary: 4 bullets, 5 at most, 80 words; one rule for prompt and code ──
 
 def test_summary_rule_is_one_constant():
-    assert t._SUMMARY_MAX_WORDS == 80 and t._SUMMARY_MAX_LINES == 5
-    assert "5 at most, never 6" in t.TAILOR_SYSTEM and "three sentences" not in t.TAILOR_SYSTEM
+    assert t._SUMMARY_MAX_WORDS == 110 and t._SUMMARY_MAX_LINES == 5
+    assert "never 6" in t.TAILOR_SYSTEM and "three sentences" not in t.TAILOR_SYSTEM
     import inspect
     assert inspect.signature(t._compress_long_bullets).parameters["summary_max"].default == t._SUMMARY_MAX_WORDS
 
@@ -386,7 +386,7 @@ def test_tailor_prompt_v2_is_default_and_renders_constants():
     assert f"never past {t._BULLET_MAX}" in s
     assert f"Job 1 \u2264 {t._JOB_BULLET_CAPS[0]}" in s and f"Job 4+ \u2264 {t._JOB_CAP_OLDER}" in s
     assert f"at least {int(round(t._COVERAGE_TARGET * 100))}%" in s
-    assert f"55\u2013{t._SUMMARY_MAX_WORDS} words" in s
+    assert f"90\u2013{t._SUMMARY_MAX_WORDS} words" in s
     assert "{" not in s and "}" not in s          # every placeholder rendered
     assert len(s.split()) < 0.7 * len(t.TAILOR_SYSTEM_LEGACY.split())
     for rule in ("TENURE CEILING", "IMPACT LADDER", "VERB REGISTER", "SECURITY CLEARANCE",

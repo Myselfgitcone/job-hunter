@@ -648,7 +648,7 @@ textarea { resize: none; }
   --qp-ok: #22c55e; --qp-bad: #ef4444;
   background: var(--bg-elevated); border: 1px solid var(--line-hi); border-radius: 12px;
   box-shadow: var(--sh-pop); padding: 12px 14px 12px; font-size: 11.5px; color: var(--tx-2);
-  pointer-events: none; animation: popIn .12s var(--ease); overflow: hidden;
+  animation: popIn .12s var(--ease); overflow: hidden; user-select: text;
 }
 .qual-pop::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--qp-ok); }
 .qual-pop.bad::before { background: var(--qp-bad); }

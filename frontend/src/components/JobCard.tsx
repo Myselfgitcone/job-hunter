@@ -24,7 +24,7 @@ const QUAL_ROWS: [string, string][] = [
 ];
 
 /** Hover panel behind the match pill: every check, its reason, and the keyword gaps. */
-function QualifyPopover({ qr, anchor }: { qr: any; anchor: DOMRect }) {
+function QualifyPopover({ qr, anchor, onEnter, onLeave }: { qr: any; anchor: DOMRect; onEnter: () => void; onLeave: () => void }) {
   const crit = (qr?.criteria && typeof qr.criteria === "object") ? qr.criteria : {};
   const missing: string[] = qr?.overlap?.missing || [];
   const width = 372;
@@ -39,7 +39,8 @@ function QualifyPopover({ qr, anchor }: { qr: any; anchor: DOMRect }) {
   const failed = rows.filter(([k]) => !crit[k].pass).map(([, label]) => label);
   const tone = qr.qualified ? "ok" : "bad";
   return createPortal(
-    <div className={`qual-pop ${tone}`} style={style} onMouseDown={e => e.stopPropagation()}>
+    <div className={`qual-pop ${tone}`} style={style} onMouseDown={e => e.stopPropagation()}
+         onMouseEnter={onEnter} onMouseLeave={onLeave}>
       <div className="qual-pop-head">
         <span className={`qual-pop-score ${scoreClass(qr.score ?? 0)}`}>{qr.score}<small>%</small></span>
         <div className="qual-pop-verdict">
@@ -159,6 +160,13 @@ interface Props {
 export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "compact", index = 0, tailoring = false, checked = false, onToggleCheck, onDefer }: Props) {
   const [editingExp, setEditingExp] = useState(false);
   const [qualAnchor, setQualAnchor] = useState<DOMRect | null>(null);   // hover panel behind the match pill
+  // Closing is delayed so the cursor can travel from the pill to the panel (a portal
+  // outside the card) without the panel vanishing; entering the panel cancels the close.
+  const qualClose = useRef<number | null>(null);
+  const qualHold = () => { if (qualClose.current) { window.clearTimeout(qualClose.current); qualClose.current = null; } };
+  const qualOpen = (e: React.MouseEvent) => { qualHold(); setQualAnchor((e.currentTarget as HTMLElement).getBoundingClientRect()); };
+  const qualRelease = () => { qualHold(); qualClose.current = window.setTimeout(() => setQualAnchor(null), 180); };
+  useEffect(() => qualHold, []);
   const expRef = useRef<HTMLSelectElement>(null);
   const qr      = job.qualify_result as any;
   const score   = qr?.score ?? null;
@@ -180,7 +188,7 @@ export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "comp
     const stItem = STATUS_LABEL[job.status];
     return (
       <div className={`jcard${selected ? " sel" : ""}${checked ? " checked" : ""}`}
-        onClick={onClick} onMouseLeave={() => setQualAnchor(null)}
+        onClick={onClick} onMouseLeave={qualRelease}
         style={{ animationDelay: `${Math.min(index, 12) * 20}ms`, ...(job.deferred ? { opacity: 0.5 } : {}) } as React.CSSProperties}>
 
         {onDefer && (
@@ -245,8 +253,8 @@ export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "comp
                   tailored score exists the decision is made, so hide the %. */}
               {score !== null && job.ats_score_after == null && (job.gate_scores?.overall == null)
                 && <span className={`jcard-matchpill ${scoreClass(score)}`}
-                         onMouseEnter={e => setQualAnchor((e.currentTarget as HTMLElement).getBoundingClientRect())}>{score}%</span>}
-              {qualAnchor && qr && <QualifyPopover qr={qr} anchor={qualAnchor} />}
+                         onMouseEnter={qualOpen}>{score}%</span>}
+              {qualAnchor && qr && <QualifyPopover qr={qr} anchor={qualAnchor} onEnter={qualHold} onLeave={qualRelease} />}
               {(() => {
                 // Tailored resume score — overall gate blend, else raw ATS.
                 const overall = typeof job.gate_scores?.overall === "number" ? job.gate_scores.overall : null;
@@ -276,7 +284,7 @@ export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "comp
   return (
     <div
       className={`jobcard${selected ? " sel" : ""}`}
-      onClick={onClick} onMouseLeave={() => setQualAnchor(null)}
+      onClick={onClick} onMouseLeave={qualRelease}
       style={{
         "--st-color": stColor,
         animationDelay: `${Math.min(index, 12) * 20}ms`,
@@ -330,9 +338,9 @@ export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "comp
             defer buttons sit on top of the pill and would fire a leave */}
         {score !== null ? (
           <span className={`score-badge ${scoreClass(score)}`}
-                onMouseEnter={e => setQualAnchor((e.currentTarget as HTMLElement).getBoundingClientRect())}>{score}%</span>
+                onMouseEnter={qualOpen}>{score}%</span>
         ) : null}
-        {qualAnchor && qr && <QualifyPopover qr={qr} anchor={qualAnchor} />}
+        {qualAnchor && qr && <QualifyPopover qr={qr} anchor={qualAnchor} onEnter={qualHold} onLeave={qualRelease} />}
         {STATUS_LABEL[job.status] && (
           <span style={{
             fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4,

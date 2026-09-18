@@ -27,29 +27,33 @@ const QUAL_ROWS: [string, string][] = [
 function QualifyPopover({ qr, anchor }: { qr: any; anchor: DOMRect }) {
   const crit = (qr?.criteria && typeof qr.criteria === "object") ? qr.criteria : {};
   const missing: string[] = qr?.overlap?.missing || [];
-  const width = 330;
+  const width = 372;
   const left = Math.max(8, Math.min(anchor.right - width, window.innerWidth - width - 8));
   const below = anchor.bottom + 6;
   const style: React.CSSProperties = {
     position: "fixed", left, width, zIndex: 9999,
     ...(below + 260 < window.innerHeight ? { top: below } : { bottom: window.innerHeight - anchor.top + 6 }),
   };
+  const rows = QUAL_ROWS.filter(([k]) => crit[k]);
+  const passed = rows.filter(([k]) => crit[k].pass).length;
+  const failed = rows.filter(([k]) => !crit[k].pass).map(([, label]) => label);
+  const tone = qr.qualified ? "ok" : "bad";
   return createPortal(
-    <div className="qual-pop" style={style} onMouseDown={e => e.stopPropagation()}>
+    <div className={`qual-pop ${tone}`} style={style} onMouseDown={e => e.stopPropagation()}>
       <div className="qual-pop-head">
-        <span className={`score-badge ${scoreClass(qr.score ?? 0)}`}>{qr.score}%</span>
-        <span style={{ fontWeight: 700, color: qr.qualified ? "var(--green, #4ade80)" : "var(--amber, #fbbf24)" }}>
-          {qr.qualified ? "Qualified" : "Not qualified"}
-        </span>
+        <span className={`qual-pop-score ${scoreClass(qr.score ?? 0)}`}>{qr.score}<small>%</small></span>
+        <div className="qual-pop-verdict">
+          <span className={`qual-pop-chip ${tone}`}>{qr.qualified ? "Qualified" : "Not qualified"}</span>
+          <span className="qual-pop-count">{passed} of {rows.length} checks pass{failed.length ? ` · blocked by ${failed.join(", ")}` : ""}</span>
+        </div>
       </div>
-      {qr.summary && <div className="qual-pop-sum">{qr.summary}</div>}
+      {qr.summary && <p className="qual-pop-sum">{qr.summary}</p>}
       <div className="qual-pop-rows">
-        {QUAL_ROWS.map(([key, label]) => {
+        {rows.map(([key, label]) => {
           const c = crit[key];
-          if (!c) return null;
           return (
             <div key={key} className={`qual-pop-row ${c.pass ? "ok" : "bad"}`}>
-              <span className="qual-pop-mark">{c.pass ? "✓" : "✗"}</span>
+              <span className="qual-pop-ico" aria-hidden="true">{c.pass ? "✓" : "✕"}</span>
               <span className="qual-pop-label">{label}</span>
               <span className="qual-pop-note">{c.note}</span>
             </div>
@@ -58,8 +62,11 @@ function QualifyPopover({ qr, anchor }: { qr: any; anchor: DOMRect }) {
       </div>
       {missing.length > 0 && (
         <div className="qual-pop-miss">
-          <span className="qual-pop-label">Posting keywords not in your profile:</span>{" "}
-          {missing.slice(0, 10).join(", ")}{missing.length > 10 ? ", …" : ""}
+          <div className="qual-pop-label">Not in your profile</div>
+          <div className="qual-pop-chips">
+            {missing.slice(0, 8).map(m => <span key={m} className="qual-pop-kw">{m}</span>)}
+            {missing.length > 8 && <span className="qual-pop-kw more">+{missing.length - 8}</span>}
+          </div>
         </div>
       )}
     </div>,

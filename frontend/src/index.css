@@ -645,20 +645,54 @@ textarea { resize: none; }
 
 /* qualify hover panel (portal, fixed) */
 .qual-pop {
-  background: var(--bg-elevated); border: 1px solid var(--line-hi); border-radius: 10px;
-  box-shadow: 0 12px 32px -8px rgba(0,0,0,.6); padding: 10px 12px; font-size: 11.5px; color: var(--tx-2);
-  pointer-events: none; animation: popIn .12s var(--ease);
+  --qp-ok: #22c55e; --qp-bad: #ef4444;
+  background: var(--bg-elevated); border: 1px solid var(--line-hi); border-radius: 12px;
+  box-shadow: var(--sh-pop); padding: 12px 14px 12px; font-size: 11.5px; color: var(--tx-2);
+  pointer-events: none; animation: popIn .12s var(--ease); overflow: hidden;
 }
-.qual-pop-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
-.qual-pop-sum { color: var(--tx); margin-bottom: 8px; line-height: 1.4; }
-.qual-pop-rows { display: flex; flex-direction: column; gap: 4px; }
-.qual-pop-row { display: grid; grid-template-columns: 14px 78px 1fr; gap: 6px; align-items: start; line-height: 1.35; }
-.qual-pop-row.ok .qual-pop-mark { color: var(--green, #4ade80); font-weight: 700; }
-.qual-pop-row.bad .qual-pop-mark { color: var(--red, #f87171); font-weight: 700; }
+.qual-pop::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--qp-ok); }
+.qual-pop.bad::before { background: var(--qp-bad); }
+.qual-pop-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.qual-pop-score {
+  font-family: var(--f-mono); font-size: 22px; font-weight: 700; letter-spacing: -.03em; line-height: 1;
+  padding: 8px 10px; border-radius: 10px; min-width: 58px; text-align: center;
+}
+.qual-pop-score small { font-size: 12px; font-weight: 600; margin-left: 1px; opacity: .8; }
+.qual-pop-score.high { color: #22c55e; background: rgba(34,197,94,.12); }
+.qual-pop-score.mid  { color: #f59e0b; background: rgba(245,158,11,.14); }
+.qual-pop-score.low  { color: #ef4444; background: rgba(239,68,68,.12); }
+.qual-pop-verdict { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.qual-pop-chip {
+  align-self: flex-start; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 999px;
+}
+.qual-pop-chip.ok  { color: #16a34a; background: rgba(34,197,94,.14); }
+.qual-pop-chip.bad { color: #dc2626; background: rgba(239,68,68,.14); }
+.qual-pop-count { color: var(--tx-3); font-size: 11px; line-height: 1.3; }
+.qual-pop-sum { color: var(--tx); margin: 0 0 10px; line-height: 1.45; font-size: 12px; }
+.qual-pop-rows { display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--line); padding-top: 8px; }
+.qual-pop-row {
+  display: grid; grid-template-columns: 18px 82px 1fr; gap: 8px; align-items: start;
+  line-height: 1.4; padding: 4px 6px; border-radius: 7px;
+}
+.qual-pop-row.bad { background: rgba(239,68,68,.07); }
+.qual-pop-ico {
+  width: 16px; height: 16px; border-radius: 50%; display: inline-grid; place-items: center;
+  font-size: 10px; font-weight: 800; margin-top: 1px; color: #fff;
+}
+.qual-pop-row.ok .qual-pop-ico  { background: var(--qp-ok); }
+.qual-pop-row.bad .qual-pop-ico { background: var(--qp-bad); }
 .qual-pop-row.bad .qual-pop-note { color: var(--tx); }
-.qual-pop-label { color: var(--tx-3); font-weight: 600; }
+.qual-pop-label { color: var(--tx-3); font-weight: 600; font-size: 11px; letter-spacing: .01em; }
 .qual-pop-note { color: var(--tx-2); }
-.qual-pop-miss { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); color: var(--tx-2); line-height: 1.4; }
+.qual-pop-miss { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.qual-pop-miss .qual-pop-label { margin-bottom: 6px; }
+.qual-pop-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.qual-pop-kw {
+  font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 999px;
+  color: #b45309; background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.28);
+}
+.qual-pop-kw.more { color: var(--tx-3); background: var(--bg-hover); border-color: var(--line-hi); }
 
 /* mini score badge */
 .score-badge {

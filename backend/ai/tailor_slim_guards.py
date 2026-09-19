@@ -203,8 +203,7 @@ def slim_score(tailored: str, base_resume: str, job_description: str, context: d
 # ── never lose what the base already had (2026-09-18, after the live logs) ───
 
 _SCALE_PHRASE_RE = re.compile(
-    r"\b(?:hundreds|tens|dozens|thousands) of (?:millions|thousands|billions)\b|\bterabytes\b|\bpetabytes\b|"
-    r"\b\d+\+?\s+(?:downstream|producer|vendor|source|business|development)\s+\w+", re.I)
+    r"\b(?:hundreds|tens|dozens|thousands) of (?:millions|thousands|billions)\b", re.I)
 _JD_STOP = {"data", "experience", "team", "teams", "work", "working", "using", "ability", "strong", "skills",
             "years", "including", "across", "business", "solutions", "systems", "technical", "engineering",
             "engineer", "role", "support", "develop", "development", "build", "building", "design", "tools"}
@@ -220,7 +219,7 @@ def _jd_vocab(job_description: str) -> set:
 
 
 def keep_base_specifics(text: str, base_resume: str, job_description: str, context: dict,
-                        notes: list, restored: list, per_job: int = 2, weakened_only: bool = False) -> str:
+                        notes: list, restored: list, per_job: int = 1, weakened_only: bool = False) -> str:
     """A base bullet that speaks the JD's own words, carries a real figure or
     a scale phrase may not vanish or come back weaker. Live misses the tool
     guard could not see because the words are not tool names: "member,
@@ -288,8 +287,11 @@ def keep_base_specifics(text: str, base_resume: str, job_description: str, conte
                     if jac > best:
                         best, best_i = jac, i
             if best_i is None or best < 0.22:                      # vanished
-                # back only for a real figure, a JD tool, or three distinctive JD words
+                # back only for a real figure, a JD tool, or three distinctive JD words, and
+                # only while the job has room: a restore never pushes the writer's bullets out
                 if weakened_only or done >= per_job or not (figs or b_tools or len(jdw) >= 3):
+                    continue
+                if len(idx) >= t._job_cap(j):
                     continue
                 tech = next((k for k in range(hdr + 1, end) if lines[k] is not None
                              and t._TECH_LINE_RE.match(lines[k].strip())), None)
@@ -305,7 +307,11 @@ def keep_base_specifics(text: str, base_resume: str, job_description: str, conte
             lost_scale = {s_ for s_ in scales if s_ not in d.lower()}
             lost_figs = figs - t._num_tokens(d)
             adds_tool = set(t._names_any(d, tools)) - b_tools
-            if (lost_scale or lost_figs or len(lost_words) >= 3) and not adds_tool:
+            d_jd = _stem5(dw) & vocab
+            poorer = len(d_jd) < len(jdw)
+            hard_loss = bool(lost_scale or lost_figs)
+            soft_loss = (not weakened_only) and len(lost_words) >= 3 and poorer
+            if (hard_loss or soft_loss) and not adds_tool and len(d_jd) <= len(jdw) + 1:
                 indent = d[: len(d) - len(d.lstrip())]
                 lines[best_i] = f"{indent}• {core}"
                 restored.append(core)
@@ -337,8 +343,19 @@ def dedupe_same_opening(text: str, notes: list) -> str:
                 gone += 1
             else:
                 seen.setdefault(key, i)
+    norm = lambda x: re.sub(r"[^a-z0-9 ]", "", x.lower()).strip()
+    for _, bl in t._job_bullet_lines(text):
+        live = [i for i in bl if lines[i] is not None]
+        for i in live:
+            a_ = norm(lines[i].lstrip()[1:])
+            if len(a_.split()) < 5:
+                continue
+            if any(k != i and lines[k] is not None and a_ in norm(lines[k].lstrip()[1:]) and a_ != norm(lines[k].lstrip()[1:])
+                   for k in live):
+                lines[i] = None          # "Stored fraud-signal data…" also sits inside the longer bullet
+                gone += 1
     if gone:
-        notes.append(f"duplicate guard: removed {gone} bullet(s) opening with the same four words as an earlier one")
+        notes.append(f"duplicate guard: removed {gone} bullet(s) that repeated another bullet in the same job")
     return "\n".join(l for l in lines if l is not None)
 
 

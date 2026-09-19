@@ -326,12 +326,13 @@ async def tailor_resume_slim(base_resume: str, job_description: str,
     tailored = strip_unowned_certs(tailored, base_resume, notes)
 
     # ── 3. TOP UP (only what still lacks a bullet) ───────────────────────
-    # TAILOR_TOPUP: "none" (default) = the writer is given the core list and no second pass runs;
+    # TAILOR_TOPUP: "add" (default) = the writer is given the core list; if a core tool still has no
+    # bullet the main model writes NEW bullets only (no call when all are proven); "none" = never;
     # "add" = main model adds new bullets only; "haiku" / "sonnet" = weave top-up,
     # "none" = no model top-up (JD keywords still reach the SKILLS rows).
     # A bullet carrying a figure is locked: the top-up never rewrites it.
     inserted: list = []
-    topup = os.getenv("TAILOR_TOPUP", "none").strip().lower()
+    topup = os.getenv("TAILOR_TOPUP", "add").strip().lower()
     notes.append(f"top-up: {topup}")
     if topup == "add":
         # add-only: the main model writes NEW bullets for core tools; no existing sentence is touched

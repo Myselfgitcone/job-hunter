@@ -37,6 +37,7 @@ from ai.tailor_slim_guards import (clean_skill_rows, dedupe_same_opening, ensure
 from ai.tailor_slim_prompt import TAILOR_SYSTEM_SLIM
 
 from ai.tailor_slim_guards import core_tools  # noqa: E402
+from ai.tailor_slim_guards import strip_style_suffix  # noqa: E402
 # imported late: tailor_slim_add imports the guards module, not this one
 from ai.tailor_slim_add import add_core_bullets  # noqa: E402
 
@@ -390,6 +391,7 @@ async def tailor_resume_slim(base_resume: str, job_description: str,
     tailored = restore_magnitudes(tailored, base_resume, notes)
     tailored = t._restore_base_bullets(tailored, base_resume, restore_context(context, base_resume), notes, restored)
     tailored = strip_adjacent(tailored, notes)
+    tailored = strip_style_suffix(tailored, notes)
     tailored = t._enforce_caps(tailored, base_resume, notes, keep_tool=keep_tool, bonus=1,
                                protect={b for _, _, b in inserted} | set(restored), keep_tools=must_tools)
     # after the cap guard, so these short must-have bullets are never its victims
@@ -402,9 +404,8 @@ async def tailor_resume_slim(base_resume: str, job_description: str,
         notes.append(f"intensifier guard: removed {intens} vague intensifier(s)")
     tailored, junk2 = t._strip_junk_lines(tailored)
     tailored = t._strip_empty_sections(tailored)
-    # last word on facts: a shortening pass may not cost a bullet its JD words or scale phrase
-    tailored = keep_base_specifics(tailored, base_resume, job_description, context, notes, restored,
-                                   weakened_only=True)
+    # (no base-wording pass here: the compress step itself now refuses to drop a figure or a
+    #  scale phrase, and pasting a 40-word base bullet back after it shipped unreadable lines)
     tailored = t._dedupe_skill_rows(tailored, notes)
     tailored = clean_skill_rows(tailored, notes)
     tailored = strip_unowned_certs(tailored, base_resume, notes)

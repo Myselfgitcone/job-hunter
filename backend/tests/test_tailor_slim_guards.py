@@ -77,7 +77,9 @@ def test_skill_rows_lose_duties_and_bi_row_keeps_bi():
     out = g.clean_skill_rows(RESUME, notes)
     assert "technical documentation" not in out and ", performance" not in out and "postmortems" not in out
     assert "• Business Intelligence and Analytics: Power BI" in out
-    assert "• Tools and Formats: Parquet, JSON, NumPy, Pandas" in out
+    # file formats go to the Languages row, the rest to a Tools row
+    assert "• Languages: Python, SQL, Parquet, JSON" in out
+    assert "• Tools and Formats: NumPy, Pandas" in out
     assert "• DevOps and Infrastructure: CDK, CloudFormation" in out
 
 
@@ -120,7 +122,9 @@ def test_specifics_guard_restores_vanished_and_weakened_bullets():
     tailored = "\n".join(ln for ln in tailored.split("\n") if "SQL Server warehouse" not in ln)
     notes: list = []
     restored: list = []
-    out = g.keep_base_specifics(tailored, BASE2, JD2, {"target_tools": ["Databricks"], "target_cloud": "None"}, notes, restored)
+    # a vanished bullet returns only for a real figure or a JD tool (Snowflake here), never on
+    # shared general words (that brought FinOps and Elasticsearch bullets back on a healthcare JD)
+    out = g.keep_base_specifics(tailored, BASE2, JD2, {"target_tools": ["Databricks", "Snowflake"], "target_cloud": "None"}, notes, restored)
     assert "member, provider, claims, and pharmacy datasets" in out          # JD words came back
     assert "hundreds of millions of daily" in out                            # scale phrase came back
     assert "Migrated a legacy SQL Server warehouse to Snowflake" in out      # vanished bullet came back

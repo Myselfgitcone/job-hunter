@@ -16,7 +16,8 @@ from ai.tailor_slim_prompt import ADD_BULLETS_SYSTEM
 
 # tolerant of list marks, bold and code ticks around the "N 2 ::" prefix (a run returned
 # "- **N 1** :: tool :: bullet" and every line was silently skipped)
-_LINE_RE = re.compile(r"^[\s>*`\-•]*N\s*(\d+)[\s*`]*::\s*(.+?)\s*::\s*(.+?)[\s*`]*$")
+_LINE_RE = re.compile(r"^[\s>*`\-•]*(?:\d+[.)]?\s+)?(?:N\s*)?(?:JOB\s*)?(\d+)[\s*`]*::\s*(.+?)\s*::\s*(.+?)[\s*`]*$",
+                      re.I)
 
 
 async def add_core_bullets(tailored: str, base_resume: str, job_description: str, context: dict,

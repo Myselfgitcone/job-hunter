@@ -125,6 +125,7 @@ _SKILL_JUNK_RE = re.compile(
     r"^(?:performance|reliability|scalability|documentation|technical documentation|design documentation|"
     r"postmortems?|root cause analysis|cloud migration|incident response|stakeholder management|"
     r"communication|troubleshooting|problem[- ]solving|cost efficiency|cost optimi[sz]ation|"
+    r"etl processes|elt processes|data integration|data products?|advanced analytics|analytics|analytics delivery|"
     r"ai/llm risk.*|(?!rag\b)\S+(?:\s+\S+)+\s+pipelines)$", re.I)     # "real-time data pipelines", not "RAG pipelines"
 _BI_OK_RE = re.compile(r"power ?bi|tableau|looker|quicksight|grafana|ssrs|ssas|excel|qlik|superset|metabase|"
                        r"semantic|metrics layer|dashboard|report", re.I)
@@ -157,7 +158,30 @@ def clean_skill_rows(text: str, notes: list) -> str:
             indent = ln[: len(ln) - len(ln.lstrip())]
             lines[i] = f"{indent}{s_[0]} {label.lstrip('•-* ').rstrip()}: {', '.join(kept)}" if kept else None
     if moved and bi_at is not None:
-        lines.insert(bi_at + 1, "• Tools and Formats: " + ", ".join(dict.fromkeys(moved)))
+        homes = [(r"snowflake|redshift|bigquery|synapse|presto|warehouse|oracle|sql server|postgres", r"warehous|model|database"),
+                 (r"spark|databricks|delta|iceberg|hadoop|hive|flink|kafka", r"process|lakehouse|stream"),
+                 (r"langchain|openai|rag|mlflow|pinecone|machine learning|llm", r"\bai\b|\bml\b|machine"),
+                 (r"metadata|lineage|governance|catalog|contracts?", r"govern|quality"),
+                 (r"parquet|avro|orc|json|csv|xml", r"format|languag")]
+        left = []
+        for it in dict.fromkeys(moved):
+            placed = False
+            for item_re, label_re in homes:
+                if not re.search(item_re, it, re.I):
+                    continue
+                for k, ln2 in enumerate(lines):
+                    if ln2 and ":" in ln2 and ln2.strip().startswith(("•", "-", "*")) \
+                            and re.search(label_re, ln2.partition(":")[0], re.I):
+                        if it.lower() not in ln2.lower():
+                            lines[k] = ln2.rstrip().rstrip(",") + ", " + it
+                        placed = True
+                        break
+                if placed:
+                    break
+            if not placed:
+                left.append(it)
+        if left:
+            lines.insert(bi_at + 1, "• Tools and Formats: " + ", ".join(left))
     if removed or moved:
         parts = []
         if removed:
@@ -289,7 +313,7 @@ def keep_base_specifics(text: str, base_resume: str, job_description: str, conte
             if best_i is None or best < 0.22:                      # vanished
                 # back only for a real figure, a JD tool, or three distinctive JD words, and
                 # only while the job has room: a restore never pushes the writer's bullets out
-                if weakened_only or done >= per_job or not (figs or b_tools or len(jdw) >= 3):
+                if weakened_only or done >= per_job or not (figs or b_tools):
                     continue
                 if len(idx) >= t._job_cap(j):
                     continue
@@ -354,6 +378,19 @@ def dedupe_same_opening(text: str, notes: list) -> str:
                    for k in live):
                 lines[i] = None          # "Stored fraud-signal data…" also sits inside the longer bullet
                 gone += 1
+    for _, bl in t._job_bullet_lines(text):
+        live = [i for i in bl if lines[i] is not None]
+        words = {i: {w.rstrip('.') for w in t._content_words(lines[i])} for i in live}
+        for i in live:
+            if lines[i] is None or len(lines[i].split()) > 16 or len(words[i]) < 3 or t._num_tokens(lines[i]):
+                continue
+            # at least four shared content words and more than half of the short bullet's words
+            # (an acronym's long form, "continuous integration/continuous delivery", adds words
+            # the other bullet does not repeat)
+            if any(k != i and lines[k] is not None and len(words[i] & words[k]) >= 4
+                   and len(words[i] & words[k]) >= 0.55 * len(words[i]) for k in live):
+                lines[i] = None      # "Automated CI/CD with GitHub Actions and GitLab CI." said twice
+                gone += 1
     if gone:
         notes.append(f"duplicate guard: removed {gone} bullet(s) that repeated another bullet in the same job")
     return "\n".join(l for l in lines if l is not None)
@@ -366,6 +403,18 @@ _TAIL_TOOLS = {"json", "csv", "parquet", "avro", "orc", "xml", "fixed-width", "y
                "agile", "scrum", "sdlc", "linux", "sql", "python"}
 _PREFERRED_SENT_RE = re.compile(r"nice[- ]to[- ]have|preferred|a plus|bonus|is a plus|ideally|familiarity|exposure to|"
                                 r"desirable|interest in", re.I)
+
+
+_GENERIC_WORDS = {"data", "testing", "domain", "modeling", "modelling", "analytics", "product", "products",
+                  "relational", "non-relational", "non", "databases", "database", "metadata", "management",
+                  "pipelines", "pipeline", "integration", "integrations", "warehousing", "warehouses",
+                  "warehouse", "governance", "quality", "security", "architecture", "architectures",
+                  "systems", "system", "processes", "standards", "models", "model", "schemas", "schema",
+                  "healthcare", "cloud", "platforms", "platform", "distributed", "streaming", "batch",
+                  "event", "driven", "advanced", "machine", "learning", "frameworks", "framework",
+                  "services", "solutions", "engineering", "development", "delivery", "business", "logic",
+                  "core", "reusable", "performance", "tuning", "analysis", "optimization", "optimisation",
+                  "query", "query-plan", "lake", "lakes", "formats", "regulations", "and", "of", "for"}
 
 
 def core_tools(context: dict, job_description: str, limit: int = 12) -> list:
@@ -381,9 +430,22 @@ def core_tools(context: dict, job_description: str, limit: int = 12) -> list:
     for x in top:
         if not t._looks_like_tool(x) or x.lower() in _TAIL_TOOLS:
             continue
+        if all(w in _GENERIC_WORDS for w in re.findall(r"[a-z][a-z-]*", x.lower())):
+            continue                      # a competency, not a named tool
         pat = re.compile(rf"(?<![a-z0-9]){re.escape(x.lower())}(?![a-z0-9])", re.I)
         hits = [s_ for s_ in sents if pat.search(s_)]
         if hits and all(_PREFERRED_SENT_RE.search(s_) for s_ in hits):
             continue
         out.append(x)
     return out[:limit]
+
+
+_STYLE_RE = re.compile(r"\b([A-Z][A-Za-z0-9]+)-(?:style|like|type)\b")
+
+
+def strip_style_suffix(text: str, notes: list) -> str:
+    """"BigQuery-style federated access" reads as a dodge. The suffix goes."""
+    out, n = _STYLE_RE.subn(r"\1", text)
+    if n:
+        notes.append(f"wording guard: removed {n} '-style' hedge(s)")
+    return out

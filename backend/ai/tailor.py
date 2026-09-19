@@ -3739,10 +3739,17 @@ async def _compress_long_bullets(text: str, notes: list, target_tools: list | No
         for s in keep_sk[i]:
             if s in now:
                 continue
-            if s.lower() in jd_low:              # a JD tool stays in its bullet, full stop (a duty
-                                                 # phrase may go when another line carries it)
-                lost.append(s)                   # (live: "Migrated Airflow DAGs" -> "Migrate DAGs",
-                continue                         #  Snowflake cut from the JPMorgan lead, both orphaned)
+            if s.lower() in jd_low:
+                # a JD tool may leave this bullet only when ANOTHER EXPERIENCE BULLET still names
+                # it; the summary, SKILLS and Technologies Used lines are not proof (live:
+                # "Migrated Airflow DAGs" -> "Migrate DAGs" left Airflow an orphan). Too strict
+                # was also wrong: "AWS Data Services" sat in five bullets and blocked nine of
+                # fourteen shortenings, shipping nine bullets over 28 words.
+                others = "EXPERIENCE:\nX @ Y | Z\n" + "\n".join(
+                    "• " + _body(lines[k]) for _, bl_ in _job_bullet_lines(text) for k in bl_ if k != i)
+                if _unevidenced([s], others):
+                    lost.append(s)
+                continue
             rest = rest if rest is not None else _rest(i)
             if _unevidenced([s], rest):          # nowhere else in the resume
                 lost.append(s)
@@ -3860,6 +3867,10 @@ async def _fix_lines(text: str, jobs: dict[int, str], notes: list, label: str,
             if tok:
                 drifted.append(f"line {i}: '{tok}'")
                 continue
+        lost_scale = [m.group(0) for m in _SCALE_KEEP_RE.finditer(old_body) if m.group(0).lower() not in body.lower()]
+        if lost_scale:                     # "hundreds of millions" may not be shortened away
+            drifted.append(f"line {i}: dropped '{lost_scale[0]}'")
+            continue
         if is_bullet and i not in summary_idx and _tense_drift(old_body, body):
             tensed.append(f"line {i}: '{body.split()[0]}'")
             continue
@@ -3871,6 +3882,9 @@ async def _fix_lines(text: str, jobs: dict[int, str], notes: list, label: str,
         notes.append(f"{label}: {len(tensed)} rewrite(s) reverted, past-tense bullet came back in another tense: "
                      + "; ".join(tensed[:4]))
     return "\n".join(lines)
+
+
+_SCALE_KEEP_RE = re.compile(r"\b(?:hundreds|tens|dozens|thousands) of (?:millions|thousands|billions)\b", re.I)
 
 
 def _tense_drift(old: str, new: str) -> bool:

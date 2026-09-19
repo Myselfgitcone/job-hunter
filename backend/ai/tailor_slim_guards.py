@@ -198,3 +198,175 @@ def slim_score(tailored: str, base_resume: str, job_description: str, context: d
         return t._code_score(tailored, base_resume, job_description, context, inserted)
     finally:
         t._BULLET_MAX, t._figure_cap, t._SHORT_MAX = old
+
+
+# ── never lose what the base already had (2026-09-18, after the live logs) ───
+
+_SCALE_PHRASE_RE = re.compile(
+    r"\b(?:hundreds|tens|dozens|thousands) of (?:millions|thousands|billions)\b|\bterabytes\b|\bpetabytes\b|"
+    r"\b\d+\+?\s+(?:downstream|producer|vendor|source|business|development)\s+\w+", re.I)
+_JD_STOP = {"data", "experience", "team", "teams", "work", "working", "using", "ability", "strong", "skills",
+            "years", "including", "across", "business", "solutions", "systems", "technical", "engineering",
+            "engineer", "role", "support", "develop", "development", "build", "building", "design", "tools"}
+
+
+def _stem5(words) -> set:
+    """Crude stems so "migrated" meets "migration" and "claims" meets "claim"."""
+    return {w[:5] for w in words if w not in _JD_STOP}
+
+
+def _jd_vocab(job_description: str) -> set:
+    return _stem5(t._content_words(job_description))
+
+
+def keep_base_specifics(text: str, base_resume: str, job_description: str, context: dict,
+                        notes: list, restored: list, per_job: int = 2, weakened_only: bool = False) -> str:
+    """A base bullet that speaks the JD's own words, carries a real figure or
+    a scale phrase may not vanish or come back weaker. Live misses the tool
+    guard could not see because the words are not tool names: "member,
+    provider, claims, and pharmacy datasets" cut on a healthcare JD, the SQL
+    Server to Snowflake migration dropped on a "warehouse modernization" JD,
+    the 45% dbt Mesh bullet dropped, "hundreds of millions" deleted.
+
+      vanished  no tailored bullet descends from it, and it has a base figure,
+                a JD tool, or three JD words            -> the base bullet returns
+      weakened  its descendant lost a scale phrase or three JD words, and adds
+                no JD tool the base bullet lacks        -> the base bullet replaces it
+
+    Job 1 under a cloud swap is skipped for bullets naming the old cloud."""
+    vocab = _jd_vocab(job_description)
+    # only DISTINCTIVE JD words count: a stem that sits in a quarter of the base's own
+    # bullets ("pipel", "platf") says nothing about which bullet this JD needs. Live
+    # miss: ten irrelevant bullets (SageMaker, Elasticsearch) came back on three shared
+    # generic words and the cap guard then trimmed seven at random.
+    all_b = [bl for _, body in t._job_bodies(base_resume) for bl in body.splitlines()
+             if bl.strip().startswith(t._BULLET_PREFIXES)]
+    df: dict = {}
+    for bl in all_b:
+        for st in _stem5(t._content_words(bl)):
+            df[st] = df.get(st, 0) + 1
+    vocab = {st for st in vocab if df.get(st, 0) <= max(2, len(all_b) // 8)}
+    tools = [str(x) for x in (context.get("target_tools") or []) if t._looks_like_tool(str(x))]
+    base_nums = t._num_tokens(base_resume)
+    target = str(context.get("target_cloud") or "None")
+    swap_on = target in t._CLOUD_TERMS
+    first_body = next((b for _, b in t._job_bodies(base_resume)), "")
+    base_cloud0 = t._detect_cloud(first_body) if swap_on else None
+    old_sigs = tuple(sg for c, sigs in t._CLOUD_SIG.items() if c == base_cloud0 for sg in sigs) \
+        if base_cloud0 and base_cloud0 != target else ()
+
+    lines: list = text.split("\n")
+    back, swapped = [], []
+    for j, (company, body) in enumerate(t._job_bodies(base_resume)):
+        hdr = next((i for i, ln in enumerate(lines) if ln is not None and t._is_job_header_line(ln)
+                    and t._company_key(ln) == company), None)
+        if hdr is None:
+            continue
+        done = 0
+        for bl in body.splitlines():
+            b = bl.strip()
+            if not b.startswith(t._BULLET_PREFIXES) or t._TECH_LINE_RE.match(b):
+                continue
+            core = re.sub(r"^[•\-*\s]+", "", b)
+            if j == 0 and old_sigs and any(sg in core.lower() for sg in old_sigs):
+                continue
+            bw = t._content_words(core)
+            jdw = _stem5(bw) & vocab
+            figs = t._num_tokens(core) & base_nums
+            scales = {m.group(0).lower() for m in _SCALE_PHRASE_RE.finditer(core)}
+            b_tools = set(t._names_any(core, tools))
+            if not (figs or scales or b_tools or len(jdw) >= 3):
+                continue
+            end = t._job_block_end(lines, hdr)
+            idx = [i for i in range(hdr + 1, end) if lines[i] is not None and lines[i].lstrip().startswith("•")
+                   and not t._TECH_LINE_RE.match(lines[i].strip())]
+            best, best_i = 0.0, None
+            for i in idx:
+                tw = t._content_words(lines[i])
+                if bw and tw:
+                    jac = len(bw & tw) / len(bw | tw)
+                    if jac > best:
+                        best, best_i = jac, i
+            if best_i is None or best < 0.22:                      # vanished
+                # back only for a real figure, a JD tool, or three distinctive JD words
+                if weakened_only or done >= per_job or not (figs or b_tools or len(jdw) >= 3):
+                    continue
+                tech = next((k for k in range(hdr + 1, end) if lines[k] is not None
+                             and t._TECH_LINE_RE.match(lines[k].strip())), None)
+                at = tech if tech is not None else end
+                lines.insert(at, "• " + core)
+                restored.append(core)
+                back.append(f"{t._short(core, 50)} (job {j + 1})")
+                done += 1
+                continue
+            d = lines[best_i]
+            dw = t._content_words(d)
+            lost_words = jdw - _stem5(dw)
+            lost_scale = {s_ for s_ in scales if s_ not in d.lower()}
+            lost_figs = figs - t._num_tokens(d)
+            adds_tool = set(t._names_any(d, tools)) - b_tools
+            if (lost_scale or lost_figs or len(lost_words) >= 3) and not adds_tool:
+                indent = d[: len(d) - len(d.lstrip())]
+                lines[best_i] = f"{indent}• {core}"
+                restored.append(core)
+                why = ", ".join(sorted(lost_scale | lost_figs)) or ", ".join(sorted(lost_words)[:4])
+                swapped.append(f"{t._short(core, 40)} (lost: {why})")
+    if back:
+        notes.append(f"specifics guard: {len(back)} base bullet(s) had vanished and came back: " + "; ".join(back[:5]))
+    if swapped:
+        notes.append(f"specifics guard: {len(swapped)} weakened bullet(s) replaced by the base wording: "
+                     + "; ".join(swapped[:5]))
+    return "\n".join(l for l in lines if l is not None)
+
+
+def dedupe_same_opening(text: str, notes: list) -> str:
+    """Two bullets in one job that open with the same four words ("Translated
+    business requirements into…" twice) read as one thought repeated. The later
+    one goes unless it carries a figure the earlier one lacks."""
+    lines: list = text.split("\n")
+    gone = 0
+    for _, bl in t._job_bullet_lines(text):
+        seen: dict = {}
+        for i in bl:
+            body = re.sub(r"^(?:independently|successfully)\s+", "", lines[i].lstrip()[1:].strip(), flags=re.I)
+            key = " ".join(w.lower().strip(",.;") for w in body.split()[:4])
+            if len(key.split()) < 4:
+                continue
+            if key in seen and not (t._num_tokens(lines[i]) - t._num_tokens(lines[seen[key]])):
+                lines[i] = None
+                gone += 1
+            else:
+                seen.setdefault(key, i)
+    if gone:
+        notes.append(f"duplicate guard: removed {gone} bullet(s) opening with the same four words as an earlier one")
+    return "\n".join(l for l in lines if l is not None)
+
+
+# ── core vs tail: which JD tools must be PROVEN in a bullet ─────────────────
+
+_TAIL_TOOLS = {"json", "csv", "parquet", "avro", "orc", "xml", "fixed-width", "yaml", "git", "github", "gitlab",
+               "bitbucket", "git cli", "source control", "version control", "jira", "confluence", "excel",
+               "agile", "scrum", "sdlc", "linux", "sql", "python"}
+_PREFERRED_SENT_RE = re.compile(r"nice[- ]to[- ]have|preferred|a plus|bonus|is a plus|ideally|familiarity|exposure to|"
+                                r"desirable|interest in", re.I)
+
+
+def core_tools(context: dict, job_description: str, limit: int = 12) -> list:
+    """The JD tools a hiring manager will look for PROOF of: product-shaped,
+    in the top 60% of the ranked list, named in at least one sentence that is
+    not a nice-to-have, and not part of the everyday tail (file formats, Git,
+    SQL, Python) that no one asks "where did you use it?" about. The tail
+    still reaches the SKILLS rows; it just does not need its own bullet."""
+    ranked = [str(x) for x in (context.get("target_tools") or [])]
+    top = ranked[: max(1, -(-len(ranked) * 3 // 5))]
+    sents = re.split(r"(?<=[.!?•\n])\s+|\n", job_description or "")
+    out = []
+    for x in top:
+        if not t._looks_like_tool(x) or x.lower() in _TAIL_TOOLS:
+            continue
+        pat = re.compile(rf"(?<![a-z0-9]){re.escape(x.lower())}(?![a-z0-9])", re.I)
+        hits = [s_ for s_ in sents if pat.search(s_)]
+        if hits and all(_PREFERRED_SENT_RE.search(s_) for s_ in hits):
+            continue
+        out.append(x)
+    return out[:limit]

@@ -2493,6 +2493,7 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
                                 foreign: list | None = None,
                                 skills_only: list | None = None,
                                 anchors: dict | None = None,
+                                lock_figures: bool = False,
                                 **cheap_kw) -> str:
     """A skill listed in SKILLS with zero experience bullets behind it dies in
     the first interview question. Orphans are detected in code; one cheap
@@ -2567,7 +2568,11 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
                 n_to_idx[n] = i
                 idx_job[i] = j
                 body_txt = lines[i].lstrip()[1:].strip()
-                full = "  [FULL: do not weave here]" if len(body_txt.split()) > _WEAVE_MAX_WORDS else ""
+                # lock_figures (slim pipeline): a bullet carrying a figure is an impact
+                # line and is never a weave target (live: a duty weave rewrote the $100K
+                # bullet and threw out "adaptive query execution, partitioning, caching")
+                full = "  [FULL: do not weave here]" if (len(body_txt.split()) > _WEAVE_MAX_WORDS
+                                                        or (lock_figures and _num_tokens(body_txt))) else ""
                 numbered.append(f"{n}. {body_txt}{full}")
         def _tags(o: str) -> str:
             t = []
@@ -2640,6 +2645,11 @@ async def _ensure_skill_bullets(resume: str, job_description: str,
                     rejected.append(f"{skill} (wrong job: bullet is JOB {idx_job.get(i, -1) + 1}, "
                                     f"base has {', '.join(wrong)} at JOB "
                                     f"{', '.join(str(j + 1) for j in sorted(_allowed_jobs(wrong[0])))})")
+                    continue
+                if lock_figures and _num_tokens(old):
+                    for p in parts:
+                        room_fail[p.lower()] = room_fail.get(p.lower(), 0) + 1
+                    rejected.append(f"{skill} (bullet carries a figure: locked)")
                     continue
                 grew = len(body.split()) - len(old.split())
                 same_nums = _num_tokens(old) == _num_tokens(body)

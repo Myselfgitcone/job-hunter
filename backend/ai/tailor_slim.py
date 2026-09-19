@@ -31,9 +31,14 @@ import os
 import re
 
 from ai import tailor as t
-from ai.tailor_slim_guards import (clean_skill_rows, ensure_practice_bullets, fix_pandas_placement,
-                                   restore_context, slim_score, strip_adjacent)
+from ai.tailor_slim_guards import (clean_skill_rows, dedupe_same_opening, ensure_practice_bullets,
+                                   fix_pandas_placement, keep_base_specifics, restore_context,
+                                   slim_score, strip_adjacent)
 from ai.tailor_slim_prompt import TAILOR_SYSTEM_SLIM
+
+from ai.tailor_slim_guards import core_tools  # noqa: E402
+# imported late: tailor_slim_add imports the guards module, not this one
+from ai.tailor_slim_add import add_core_bullets  # noqa: E402
 
 _CERT_RE = re.compile(r"\bcertifi(?:ed|cation|cate)s?\b", re.I)
 _SCALE_RE = re.compile(r"\b((?:hundreds|tens|dozens|thousands) of (?:millions|thousands|billions|feeds|tables|pipelines))\b", re.I)
@@ -182,6 +187,7 @@ async def fix_figures_only(tailored: str, base_resume: str, job_description: str
     return "\n".join(after)
 
 
+
 # ── the pipeline ─────────────────────────────────────────────────────────────
 
 async def tailor_resume_slim(base_resume: str, job_description: str,
@@ -280,8 +286,15 @@ async def tailor_resume_slim(base_resume: str, job_description: str,
           f"duties={len(context.get('responsibilities') or [])} company={company or context.get('company', '')!r}")
 
     # ── 2. WRITE ─────────────────────────────────────────────────────────
+    # the writer is told which JD tools a hiring manager will want PROOF of, so the one
+    # write covers them and no second pass has to bend its sentences afterwards
+    core = core_tools(context, job_description)
+    core_block = ("\n\nCORE TOOLS: each of these MUST be proven by an experience bullet (not only listed in "
+                  "SKILLS), in the most recent job where it plausibly fits, one or two per bullet, as real "
+                  "work on that job's own projects: " + ", ".join(core)) if core else ""
+    notes.append(f"core tools given to the writer: {', '.join(core) or 'none'}")
     tailored = (await t.chat(TAILOR_SYSTEM_SLIM,
-                             t.tailor_prompt(base_resume, job_description, context, missing, profile_skills),
+                             t.tailor_prompt(base_resume, job_description, context, missing, profile_skills) + core_block,
                              max_tokens=8000, pass_name="tailor", **main_kw)).strip()
     tailored = t._contact_only(t._clean_header_title(t._ensure_header(t._normalize_format(tailored), base_resume)), base_resume)
     keep_tool = t._dominant_jd_tool(job_description, context.get("target_tools") or [])
@@ -308,23 +321,44 @@ async def tailor_resume_slim(base_resume: str, job_description: str,
     tailored = t._restore_present_tools(tailored, context.get("present") or [], base_resume, notes)
     restored: list = []
     tailored = t._restore_base_bullets(tailored, base_resume, restore_context(context, base_resume), notes, restored)
+    tailored = keep_base_specifics(tailored, base_resume, job_description, context, notes, restored)
     tailored = t._strip_unowned_skills(tailored, base_resume, context, notes)
     tailored = strip_unowned_certs(tailored, base_resume, notes)
 
-    # ── 3. TOP UP (cheap model, only what still lacks a bullet) ──────────
+    # ── 3. TOP UP (only what still lacks a bullet) ───────────────────────
+    # TAILOR_TOPUP: "none" (default) = the writer is given the core list and no second pass runs;
+    # "add" = main model adds new bullets only; "haiku" / "sonnet" = weave top-up,
+    # "none" = no model top-up (JD keywords still reach the SKILLS rows).
+    # A bullet carrying a figure is locked: the top-up never rewrites it.
     inserted: list = []
-    tailored = await t._ensure_skill_bullets(
-        tailored, job_description, notes,
-        jd_missing=(context.get("baseline_missing") or []) + (context.get("responsibilities") or []),
-        inserted=inserted,
-        present_tools=context.get("present") or [],
-        jd_terms=(context.get("target_tools") or []) + (context.get("responsibilities") or []),
-        must_tools=t._coverage_plan(context)[0],
-        foreign=context.get("bridge_only") or [],
-        skills_only=t._coverage_plan(context)[1],
-        anchors=t._coverage_anchors(base_resume, context, tailored, job_description),
-        **cheap_kw)
-    tailored = t._ensure_skills_row(tailored, t._coverage_plan(context)[1], notes)
+    topup = os.getenv("TAILOR_TOPUP", "none").strip().lower()
+    notes.append(f"top-up: {topup}")
+    if topup == "add":
+        # add-only: the main model writes NEW bullets for core tools; no existing sentence is touched
+        tailored = await add_core_bullets(tailored, base_resume, job_description, context, notes, inserted, **main_kw)
+        _, off_page = t._covered_anywhere([str(x) for x in (context.get("target_tools") or [])
+                                           if t._looks_like_tool(str(x))], tailored)
+        tailored = t._ensure_skills_row(tailored, off_page + t._coverage_plan(context)[1], notes)
+    elif topup != "none":
+        tailored = await t._ensure_skill_bullets(
+            tailored, job_description, notes,
+            jd_missing=(context.get("baseline_missing") or []) + (context.get("responsibilities") or []),
+            inserted=inserted,
+            present_tools=context.get("present") or [],
+            jd_terms=(context.get("target_tools") or []) + (context.get("responsibilities") or []),
+            must_tools=t._coverage_plan(context)[0],
+            foreign=context.get("bridge_only") or [],
+            skills_only=t._coverage_plan(context)[1],
+            anchors=t._coverage_anchors(base_resume, context, tailored, job_description),
+            lock_figures=True,
+            **(main_kw if topup == "sonnet" else cheap_kw))
+        tailored = t._ensure_skills_row(tailored, t._coverage_plan(context)[1], notes)
+    else:
+        # every JD tool is on the page for the ATS, in its SKILLS row, even without a bullet
+        _, off_page = t._covered_anywhere([str(x) for x in (context.get("target_tools") or [])
+                                           if t._looks_like_tool(str(x))], tailored)
+        tailored = t._ensure_skills_row(tailored, off_page + t._coverage_plan(context)[1], notes)
+    tailored = keep_base_specifics(tailored, base_resume, job_description, context, notes, restored)
 
     # ── 4b. GUARD, after the top-up ──────────────────────────────────────
     jd_keep_words = (context.get("target_tools") or []) + (context.get("responsibilities") or [])
@@ -344,6 +378,7 @@ async def tailor_resume_slim(base_resume: str, job_description: str,
     tailored = t._demote_bridge_bullets(tailored, notes, foreign=context.get("bridge_only") or [],
                                         base_resume=base_resume)
     tailored = t._dedupe_bullets(tailored, notes)
+    tailored = dedupe_same_opening(tailored, notes)
     tailored, dash = t._strip_dash_asides(tailored)
     if dash:
         notes.append(f"dash guard: rewrote {dash} dash construction(s)")
@@ -366,6 +401,9 @@ async def tailor_resume_slim(base_resume: str, job_description: str,
         notes.append(f"intensifier guard: removed {intens} vague intensifier(s)")
     tailored, junk2 = t._strip_junk_lines(tailored)
     tailored = t._strip_empty_sections(tailored)
+    # last word on facts: a shortening pass may not cost a bullet its JD words or scale phrase
+    tailored = keep_base_specifics(tailored, base_resume, job_description, context, notes, restored,
+                                   weakened_only=True)
     tailored = t._dedupe_skill_rows(tailored, notes)
     tailored = clean_skill_rows(tailored, notes)
     tailored = strip_unowned_certs(tailored, base_resume, notes)

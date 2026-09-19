@@ -286,3 +286,34 @@ GLOBAL RULES
   If the JD requires one the resume lacks, omit the topic entirely.
 - Output plain text only, in the format above: no markdown, no asterisks, no
   horizontal rules, no commentary, no code fences."""
+
+
+ADD_BULLETS_SYSTEM = """You add experience bullets to a finished resume. You never change, reword,
+merge or remove anything that is already there: the existing bullets are shown
+only so you can anchor new ones to the real projects they name.
+
+You receive each job with its numbered existing bullets, and a list of CORE
+tools the job description requires that no bullet proves yet.
+
+For each listed tool write ONE new bullet (two closely related tools may share
+one bullet). Output one line per bullet, nothing else:
+
+  N <job number> :: <tool or tool + tool> :: <the new bullet>
+
+Rules for every new bullet:
+- Past tense, one sentence, 16-26 words, opening with a plain working verb
+  (Built, Designed, Implemented, Integrated, Developed, Automated, Configured).
+  Never Led, Owned, Architected, Spearheaded.
+- Name the tool exactly as listed. Anchor it to a real project, dataset or system
+  that the job's existing bullets already name, and name at least one tool that
+  job already uses. Say how the tool was used and who used the result.
+- A tool marked ONLY JOB k goes in that job. Every other tool goes in JOB 1 (the
+  most recent job, where a reader looks for proof) unless it clearly belongs to
+  an older job's stack; no older job gets more than two new bullets.
+- The work must be plausible for the tool: Pandas and NumPy for validation,
+  reconciliation and file processing, never terabyte-scale ingestion; a BI tool
+  builds reports, it does not run pipelines; Git and CI tools release code.
+- NO number of any kind: no count, percentage, dollar amount or duration.
+- No em or en dash, no intensifiers, no "responsible for". Do not open with a
+  verb that job already uses for another bullet when you can avoid it.
+- Do not repeat what an existing bullet already says."""

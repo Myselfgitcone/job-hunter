@@ -93,3 +93,65 @@ def test_slim_score_restores_the_constants():
     s = g.slim_score(RESUME, RESUME, "Kafka", ctx, [])
     assert isinstance(s.get("overall"), (int, float))
     assert (t._BULLET_MAX, t._figure_cap, t._SHORT_MAX) == before
+
+
+BASE2 = """Jane Doe — Data Engineer
+jane@example.com
+
+EXPERIENCE:
+Data Engineer @ Molina Healthcare | Long Beach, CA\tJan 2021 – Jul 2022
+• Built enterprise healthcare data integration pipelines on Azure Data Factory and Synapse Analytics for member, provider, claims, and pharmacy datasets across 15+ vendor feeds, processing millions of patient records per cycle.
+• Wrote the on-call runbook.
+
+Data Engineer @ JPMorgan Chase | New York, NY\tDec 2018 – Dec 2020
+• Built scalable Spark pipelines on AWS processing hundreds of millions of daily retail-banking transaction records for 10 downstream teams.
+• Migrated a legacy SQL Server warehouse to Snowflake for analytics and regulatory reporting, cutting storage cost and query latency.
+"""
+JD2 = ("Healthcare analytics role: claims, clinical, provider, member data. Support data warehouse "
+       "modernization and cloud migration initiatives. Databricks pipelines for reporting.")
+
+
+def test_specifics_guard_restores_vanished_and_weakened_bullets():
+    tailored = BASE2.replace(
+        "for member, provider, claims, and pharmacy datasets across 15+ vendor feeds, processing millions of patient records per cycle.",
+        "processing datasets across 15+ vendor feeds.")
+    tailored = tailored.replace("processing hundreds of millions of daily retail-banking transaction records for 10 downstream teams.",
+                                "processing retail-banking transaction records for 10 downstream teams.")
+    tailored = "\n".join(ln for ln in tailored.split("\n") if "SQL Server warehouse" not in ln)
+    notes: list = []
+    restored: list = []
+    out = g.keep_base_specifics(tailored, BASE2, JD2, {"target_tools": ["Databricks"], "target_cloud": "None"}, notes, restored)
+    assert "member, provider, claims, and pharmacy datasets" in out          # JD words came back
+    assert "hundreds of millions of daily" in out                            # scale phrase came back
+    assert "Migrated a legacy SQL Server warehouse to Snowflake" in out      # vanished bullet came back
+    assert out.count("Migrated a legacy SQL Server") == 1 and len(restored) == 3
+    assert g.keep_base_specifics(BASE2, BASE2, JD2, {"target_tools": [], "target_cloud": "None"}, [], []) == BASE2
+
+
+def test_specifics_guard_keeps_a_descendant_that_adds_a_jd_tool():
+    tailored = BASE2.replace("Built scalable Spark pipelines on AWS processing hundreds of millions of daily retail-banking transaction records for 10 downstream teams.",
+                             "Built scalable Spark and Databricks pipelines on AWS processing daily retail-banking transaction records for 10 downstream teams.")
+    out = g.keep_base_specifics(tailored, BASE2, JD2, {"target_tools": ["Databricks"], "target_cloud": "None"}, [], [])
+    assert "Spark and Databricks pipelines" in out                           # the writer's JD tool is not thrown away
+
+
+def test_same_opening_bullets_collapse():
+    text = ("Jane Doe — X\n\nEXPERIENCE:\nData Engineer @ Acme | 2021 - Present\n"
+            "• Translated business requirements into technical specifications for the platform team.\n"
+            "• Built Kafka pipelines.\n"
+            "• Independently translated business requirements into cloud-native data solutions for integrity.\n")
+    notes: list = []
+    out = g.dedupe_same_opening(text, notes)
+    assert out.count("ranslated business requirements into") == 1 and notes
+
+
+def test_core_tools_split_proof_from_tail():
+    jd = ("2+ years with Apache Airflow required. Python with Pandas and NumPy required. T-SQL required. "
+          "Experience with AWS Glue, S3, Lambda, boto3. Knowledge of JSON, CSV, Parquet. Git and CI/CD preferred. "
+          "Experience with C# is a plus.")
+    ctx = {"target_tools": ["Apache Airflow", "Python", "Pandas", "NumPy", "T-SQL", "AWS Glue", "S3", "Lambda",
+                            "boto3", "JSON", "CSV", "Parquet", "Git", "CI/CD", "C#"]}
+    core = g.core_tools(ctx, jd)
+    assert "Apache Airflow" in core and "boto3" in core and "T-SQL" in core
+    for tail in ("JSON", "CSV", "Git", "Python", "C#"):
+        assert tail not in core

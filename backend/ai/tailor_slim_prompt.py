@@ -35,7 +35,7 @@ Line 2: `<phone> | <email>` then any LinkedIn / GitHub / website link the base's
 Sections in this order, headers UPPERCASE with a trailing colon, every bullet "• ":
 
 SUMMARY:
-5 bullets (4 at least), never 6. One sentence each, 18–24 words; 90–110 words
+5 bullets (4 at least), never 6. One sentence each, 22–30 words; 110–150 words
 in total. Fixed slot order, free sentence shape (never the same skeleton twice):
   1 identity: the JD's title, the candidate's REAL years from base dates, the JD's
     most-repeated tools they genuinely have, the industries from the base.
@@ -98,10 +98,25 @@ BULLET STYLE
 ================================================================================
 Each bullet takes ONE JD responsibility or skill and rewrites it as something the
 candidate DID at that real job: [action verb] + [the JD duty, reworded] +
-[tool/skill] + [brief context]. One past-tense sentence, mostly 16–26 words,
-never past 30, never under 12. Lengths vary bullet to bullet; no bullet is a stub.
-Every bullet ends on a complete noun phrase, never a bare "-ing" word, a
-preposition, or a two-word ", improving reliability." tail.
+[tool/skill] + [brief context]. One past-tense sentence of 16–35 words, never
+under 14. Lengths vary bullet to bullet; no bullet is a stub. Use the room for
+substance (what was built, how it works, who used it), never for padding.
+
+ENDINGS (the reader judges a bullet by how it lands; this matters more than
+length): every bullet, including one written for a tool the base never shows,
+closes on something concrete and believable that a person who did the work would
+say: a real result from the base, who consumed the output, or what the work
+made possible. It reads as the natural end of that sentence.
+  Good: "…cutting full-refresh runtime from about 6 hours to under one hour."
+        "…giving platform engineers a queryable record of every pipeline run."
+        "…so analysts could query Parquet files in S3 without moving data."
+        "…for clinical decision dashboards used by care management staff."
+  Never: a bare "-ing" word or a preposition at the end; a two-word tail
+        (", improving reliability."); a vague benefit with no owner ("enabling
+        better insights", "driving efficiency", "ensuring data quality",
+        "supporting business needs", "across the enterprise"); a JD phrase glued
+        on after a comma (", and cost optimisation"); two results chained with
+        "and" when one is enough; an ending that restates the opening.
 
 Rewrite, never paste: change the JD's words, turn "you will…" into a past
 achievement, anchor it to the job's real context. The same duty phrased in two
@@ -245,7 +260,7 @@ hands-on" = core, "exposure to / a plus / or similar / or equivalent" =
 peripheral (one member covers an "X, Y, or equivalent" group). Never manufacture
 a gap by omitting a skill the candidate really has.
 
-LENGTH FOLLOWS TENURE: 0–3 years -> 1 page · 4–11 -> 2 · 12+ -> up to 3. If
+LENGTH: 0–3 years -> 1–2 pages · 4+ years -> 2–3 pages (a third page is fine). If
 coverage needs more, trim generated bridge bullets first, then the oldest jobs
 down to their minimum count. Never trim an impact bullet or a `present` tool.
 
@@ -301,7 +316,7 @@ one bullet). Output one line per bullet, nothing else:
   N <job number> :: <tool or tool + tool> :: <the new bullet>
 
 Rules for every new bullet:
-- Past tense, one sentence, 16-26 words, opening with a plain working verb
+- Past tense, one sentence, 16-35 words, opening with a plain working verb
   (Built, Designed, Implemented, Integrated, Developed, Automated, Configured).
   Never Led, Owned, Architected, Spearheaded.
 - Name the tool exactly as listed. Anchor it to a real project, dataset or system
@@ -313,6 +328,11 @@ Rules for every new bullet:
 - The work must be plausible for the tool: Pandas and NumPy for validation,
   reconciliation and file processing, never terabyte-scale ingestion; a BI tool
   builds reports, it does not run pipelines; Git and CI tools release code.
+- END CLEANLY: close on who used the result or what it made possible, in
+  plain words a person who did the work would use ("…giving platform engineers a
+  queryable record of every pipeline run."). Never a bare "-ing" word, a
+  preposition, a two-word tail, or a vague benefit ("enabling better insights",
+  "ensuring data quality", "driving efficiency").
 - NO number of any kind: no count, percentage, dollar amount or duration.
 - No em or en dash, no intensifiers, no "responsible for". Do not open with a
   verb that job already uses for another bullet when you can avoid it.

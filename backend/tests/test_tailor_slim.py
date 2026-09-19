@@ -52,7 +52,8 @@ def test_magnitudes_and_money_come_back_exactly():
     assert s.restore_magnitudes(BASE, BASE, []) == BASE      # nothing to do when intact
 
 
-def test_switch_defaults_to_slim_and_full_is_the_rollback(monkeypatch):
+def test_switch_defaults_to_mirror_with_slim_and_full_as_rollbacks(monkeypatch):
+    from ai import tailor_mirror as mm
     calls = []
 
     async def fake_full(*a, **k):
@@ -60,19 +61,25 @@ def test_switch_defaults_to_slim_and_full_is_the_rollback(monkeypatch):
 
     async def fake_slim(*a, **k):
         calls.append("slim"); return "x", {}
+
+    async def fake_mirror(*a, **k):
+        calls.append("mirror"); return "x", {}
     monkeypatch.setattr(t, "tailor_resume", fake_full)
     monkeypatch.setattr(s, "tailor_resume_slim", fake_slim)
+    monkeypatch.setattr(mm, "tailor_resume_mirror", fake_mirror)
     monkeypatch.delenv("TAILOR_PIPELINE", raising=False)
+    asyncio.run(s.tailor_resume_routed("b", "j", "k", "p", "m"))
+    monkeypatch.setenv("TAILOR_PIPELINE", "slim")
     asyncio.run(s.tailor_resume_routed("b", "j", "k", "p", "m"))
     monkeypatch.setenv("TAILOR_PIPELINE", "full")
     asyncio.run(s.tailor_resume_routed("b", "j", "k", "p", "m"))
-    assert calls == ["slim", "full"]
+    assert calls == ["mirror", "slim", "full"]
 
 
 def test_slim_prompt_is_standalone_and_carries_its_rules():
     p = TAILOR_SYSTEM_SLIM
-    for rule in ("KEEP WHAT IS TRUE AND SPECIFIC", "NEVER a certification", "never past 30",
-                 "hundreds of millions", "insurance-adjacent", "NEVER THROW REAL WORK AWAY"):
+    for rule in ("KEEP WHAT IS TRUE AND SPECIFIC", "NEVER a certification",
+                 "hundreds of millions", "insurance-adjacent", "NEVER THROW REAL WORK AWAY", "ENDINGS", "16–35 words"):
         assert rule in p, rule
     assert "one SHORT 8" not in p and "one figure per two" not in p      # the rules the slim pipeline dropped
     assert "{" not in p and "}" not in p

@@ -23,7 +23,7 @@ _LINE_RE = re.compile(r"^[\s>*`\-•]*(?:\d+[.)]?\s+)?(?:N\s*)?(?:JOB\s*)?(\d+)[
 async def add_core_bullets(tailored: str, base_resume: str, job_description: str, context: dict,
                            notes: list, inserted: list, **main_kw) -> str:
     """No call when every core tool already has a bullet. Checks per bullet:
-    valid job, 8-30 words, no figure, past tense, names the tool, and the job
+    valid job, 12-38 words, no figure, past tense, names the tool, and the job
     the base anchors that tool to."""
     core = core_tools(context, job_description)
     need = t._unevidenced(core, tailored)
@@ -70,7 +70,7 @@ async def add_core_bullets(tailored: str, base_resume: str, job_description: str
         why = ""
         if not 0 <= j < len(jobs):
             why = "bad job"
-        elif not 8 <= len(body.split()) <= 30:
+        elif not 12 <= len(body.split()) <= 38:
             why = f"{len(body.split())} words"
         elif t._bad_figures(body):
             why = "carries a figure"

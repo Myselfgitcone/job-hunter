@@ -214,13 +214,19 @@ def restore_context(context: dict, base_resume: str) -> dict:
 
 def slim_score(tailored: str, base_resume: str, job_description: str, context: dict, inserted: list) -> dict:
     """The same deterministic score, read with the slim pipeline's rules: a
-    bullet is long past 28 words (not 26), no per-job figure cap, no
+    bullet is long past 35 words, three pages and a 150-word summary are fine, no per-job figure cap, no
     "one short bullet" requirement. The constants are swapped for this call
     only and always put back."""
     old = (t._BULLET_MAX, t._figure_cap, t._SHORT_MAX)
     try:
-        t._BULLET_MAX, t._figure_cap, t._SHORT_MAX = 28, (lambda n: 99), 99
-        return t._code_score(tailored, base_resume, job_description, context, inserted)
+        t._BULLET_MAX, t._figure_cap, t._SHORT_MAX = 35, (lambda n: 99), 99
+        old_budget, old_sum = t._page_budget, t._SUMMARY_MAX_WORDS
+        t._page_budget = lambda base: max(3, old_budget(base))        # a third page is fine
+        t._SUMMARY_MAX_WORDS = 150
+        try:
+            return t._code_score(tailored, base_resume, job_description, context, inserted)
+        finally:
+            t._page_budget, t._SUMMARY_MAX_WORDS = old_budget, old_sum
     finally:
         t._BULLET_MAX, t._figure_cap, t._SHORT_MAX = old
 
@@ -452,3 +458,42 @@ def strip_style_suffix(text: str, notes: list) -> str:
     if n:
         notes.append(f"wording guard: removed {n} '-style' hedge(s)")
     return out
+
+
+# A tail that says nothing: no owner, no object, no result. It is cut at the comma when
+# what is left is still a full bullet; otherwise the line is left alone for the reader.
+_VAGUE_END_RE = re.compile(
+    r",?\s+(?:and\s+)?(?:thereby\s+)?(?:enabling|driving|ensuring|supporting|improving|enhancing|delivering|providing|"
+    r"facilitating|promoting|fostering|streamlining|maximizing|optimizing)\s+"
+    r"(?:better|improved|greater|enhanced|overall|seamless|robust|scalable|efficient|effective|key|critical|"
+    r"business|data|operational|organizational|enterprise|strategic)?\s*"
+    r"(?:insights?|efficiency|efficiencies|quality|reliability|scalability|performance|outcomes|value|needs|"
+    r"decision[- ]making|decisions|growth|success|excellence|agility|visibility|alignment|collaboration|"
+    r"productivity|innovation|goals|objectives|initiatives|operations|capabilities)"
+    r"(?:\s+(?:across|for|throughout|within)\s+(?:the\s+)?(?:enterprise|organization|business|company|team|platform))?\.?\s*$",
+    re.I)
+
+
+def trim_vague_endings(text: str, notes: list) -> str:
+    """"…, enabling better insights." / "…, driving operational efficiency across the
+    enterprise." add words and no information, and they are the tell of a generated
+    bullet. The tail is removed when at least 14 words of real sentence remain and the
+    tail carries no figure and no capitalised tool name."""
+    lines = text.split("\n")
+    cut = 0
+    for _, bl in t._job_bullet_lines(text):
+        for i in bl:
+            m = _VAGUE_END_RE.search(lines[i])
+            if not m or m.start() == 0:
+                continue
+            tail = m.group(0)
+            if t._num_tokens(tail) or re.search(r"[A-Z][a-z]+[A-Z]|\b[A-Z]{2,}\b", tail):
+                continue
+            head = lines[i][:m.start()].rstrip(" ,;")
+            if len(head.split()) - 1 < 14:
+                continue
+            lines[i] = head + "."
+            cut += 1
+    if cut:
+        notes.append(f"ending guard: removed {cut} vague closing phrase(s) that named no result or reader")
+    return "\n".join(lines)

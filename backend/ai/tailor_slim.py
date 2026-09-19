@@ -37,9 +37,11 @@ from ai.tailor_slim_guards import (clean_skill_rows, dedupe_same_opening, ensure
 from ai.tailor_slim_prompt import TAILOR_SYSTEM_SLIM
 
 from ai.tailor_slim_guards import core_tools  # noqa: E402
-from ai.tailor_slim_guards import strip_style_suffix  # noqa: E402
+from ai.tailor_slim_guards import strip_style_suffix, trim_vague_endings  # noqa: E402
 # imported late: tailor_slim_add imports the guards module, not this one
 from ai.tailor_slim_add import add_core_bullets  # noqa: E402
+
+SLIM_BULLET_MAX = 35          # words; the writer's range is 16-35
 
 _CERT_RE = re.compile(r"\bcertifi(?:ed|cation|cate)s?\b", re.I)
 _SCALE_RE = re.compile(r"\b((?:hundreds|tens|dozens|thousands) of (?:millions|thousands|billions|feeds|tables|pipelines))\b", re.I)
@@ -364,18 +366,23 @@ async def tailor_resume_slim(base_resume: str, job_description: str,
 
     # ── 4b. GUARD, after the top-up ──────────────────────────────────────
     jd_keep_words = (context.get("target_tools") or []) + (context.get("responsibilities") or [])
+    # user's lengths (2026-09-19): a bullet may run to 35 words; only past that is it
+    # shortened (to about 30), and only past 42 is it split. A third page is fine.
     over = [i for _, bl in t._job_bullet_lines(tailored) for i in bl
-            if len(tailored.split("\n")[i].split()) - 1 > 28]
-    if over:            # the one length pass: only a bullet past 28 words is shortened
+            if len(tailored.split("\n")[i].split()) - 1 > SLIM_BULLET_MAX]
+    if over:
         tailored = await t._compress_long_bullets(tailored, notes, jd_keep_words,
-                                                  max_words=28, target=24,
+                                                  max_words=SLIM_BULLET_MAX, target=SLIM_BULLET_MAX - 5,
                                                   summary_max=10 ** 6, **cheap_kw)
-    tailored = t._split_long_bullets(tailored, notes)
+    tailored = t._split_long_bullets(tailored, notes, max_words=SLIM_BULLET_MAX + 7)
+    # endings: a bullet that stops on a bare "-ing" word, a preposition or a two-word tail is
+    # repaired (deterministic trim first, one cheap call only for what is left, verified)
+    tailored = await t._fix_fragment_endings(tailored, job_description, notes, **cheap_kw)
+    tailored = trim_vague_endings(tailored, notes)
     tailored, tidied = t._clean_lists(tailored)
     if tidied:
         notes.append(f"tidied {tidied} over-long / duplicate list line(s)")
-    tailored = t._trim_to_budget(tailored, inserted, base_resume, notes,
-                                 protect=jd_keep_words, job_description=job_description)
+    # no page-budget trim: three pages are acceptable, so coverage bullets are never cut for length
     tailored = t._promote_tool_bullets(tailored, keep_tool, notes)
     tailored = t._demote_bridge_bullets(tailored, notes, foreign=context.get("bridge_only") or [],
                                         base_resume=base_resume)
@@ -441,9 +448,13 @@ async def tailor_resume_slim(base_resume: str, job_description: str,
 
 
 async def tailor_resume_routed(*args, **kwargs) -> tuple[str, dict]:
-    """The app's entry point. The slim pipeline is the default (live since
-    2026-09-18); TAILOR_PIPELINE=full runs the previous pipeline in
-    ai/tailor.py, which is kept intact as the rollback."""
-    if os.getenv("TAILOR_PIPELINE", "").strip().lower() == "full":
+    """The app's entry point. The mirror pipeline (ai/tailor_mirror.py) is the
+    default since 2026-09-19. Rollbacks, both kept intact: TAILOR_PIPELINE=slim
+    runs this file's pipeline, TAILOR_PIPELINE=full runs ai/tailor.py."""
+    which = os.getenv("TAILOR_PIPELINE", "mirror").strip().lower()
+    if which == "full":
         return await t.tailor_resume(*args, **kwargs)
-    return await tailor_resume_slim(*args, **kwargs)
+    if which == "slim":
+        return await tailor_resume_slim(*args, **kwargs)
+    from ai.tailor_mirror import tailor_resume_mirror
+    return await tailor_resume_mirror(*args, **kwargs)

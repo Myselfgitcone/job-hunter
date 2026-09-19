@@ -2800,7 +2800,12 @@ def _enforce_caps(text: str, base_resume: str, notes: list, keep_tool: str = "",
         cap = _job_cap(j) + bonus
         live = list(bl)
         while len(live) > cap:
-            victim = next((i for i in reversed(live) if not _precious(i)), live[-1])
+            victim = next((i for i in reversed(live) if not _precious(i)), None)
+            if victim is None:
+                # all precious: spare a bullet that is a JD tool's only proof or that a guard
+                # just wrote; among the rest the last one goes
+                spare = lambda i: sole.get(i) or lines[i].lstrip()[1:].strip() in keep_texts
+                victim = next((i for i in reversed(live) if not spare(i)), live[-1])
             gone.add(victim)
             live.remove(victim)
     if gone:

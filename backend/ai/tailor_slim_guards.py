@@ -162,6 +162,7 @@ def clean_skill_rows(text: str, notes: list) -> str:
                  (r"spark|databricks|delta|iceberg|hadoop|hive|flink|kafka", r"process|lakehouse|stream"),
                  (r"langchain|openai|rag|mlflow|pinecone|machine learning|llm", r"\bai\b|\bml\b|machine"),
                  (r"metadata|lineage|governance|catalog|contracts?", r"govern|quality"),
+                 (r"datadog|grafana|cloudwatch|prometheus|azure monitor|observab", r"observab|quality|devops|infra"),
                  (r"parquet|avro|orc|json|csv|xml", r"format|languag")]
         left = []
         for it in dict.fromkeys(moved):
@@ -320,6 +321,8 @@ def keep_base_specifics(text: str, base_resume: str, job_description: str, conte
                 tech = next((k for k in range(hdr + 1, end) if lines[k] is not None
                              and t._TECH_LINE_RE.match(lines[k].strip())), None)
                 at = tech if tech is not None else end
+                while at > hdr + 1 and not (lines[at - 1] or "").strip():
+                    at -= 1
                 lines.insert(at, "• " + core)
                 restored.append(core)
                 back.append(f"{t._short(core, 50)} (job {j + 1})")

@@ -77,7 +77,8 @@ word; never open with "Highly", "Expertly", "Adept", "Proven", "Results-driven",
 "Seasoned", "Passionate". Every tool named here also appears in a bullet.
 
 SKILLS:
-7–9 lines: `• <Category Name>: skill, skill, ...`, 4–8 items each. Category names
+7–9 lines, never more: `• <Category Name>: skill, skill, ...`, 4–8 items each, never past 10 (no
+30-item cloud row: name the services this JD and the bullets use). Category names
 come from the JD's own groupings ("Search & Messaging", "Monitoring &
 Performance", "ERP & Operational Systems", "Data Governance & Modeling"). EVERY
 tool, language, platform and method the JD names is listed, under the row it
@@ -155,7 +156,8 @@ GLOBAL RULES
 ================================================================================
 - Employers, job titles inside EXPERIENCE, dates, locations, education:
   preserved EXACTLY as the base. The JD's title belongs only in the headline.
-- Never invent employers, dates, degrees, certifications, clearances or figures.
+- Never invent employers, dates, degrees, certifications, clearances or figures. The resume has
+  EXACTLY the jobs the base lists: never add an earlier job to reach the JD's years of experience.
 - Years of experience are exactly what the base dates support.
 - LENGTH: three pages are expected. Do not shorten to save space.
 - Output plain text only, in the format above, with no commentary."""
@@ -172,7 +174,11 @@ For each D-line write ONE new bullet. Output one line per bullet, nothing else:
   N <job number> :: <D number> :: <the new bullet>
 
 Rules:
-- Job 1 unless the D-line clearly fits an older job's stack better.
+- Job 1 unless the D-line clearly fits an older job's stack better, or Job 1 is marked FULL.
+- A bullet belongs to ONE job: it names only that job's own cloud, systems, datasets and
+  teams as its existing bullets show them. Never carry Job 1's projects into another job.
+- Never name an employer inside a bullet ("at Molina Healthcare"): the job header already says it.
+- Never write about the hiring company itself (its offices, mission, benefits, ownership).
 - Past tense, one sentence, 20-32 words, opening with a plain working verb
   (Built, Designed, Implemented, Developed, Automated, Documented, Partnered,
   Resolved, Reviewed, Monitored) that the job does not already open a bullet with.

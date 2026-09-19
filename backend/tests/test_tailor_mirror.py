@@ -80,7 +80,7 @@ def test_hedges_and_filler_go():
 
 def test_same_bullet_in_an_older_job_is_removed():
     notes: list = []
-    out = m.dedupe_across_jobs(RESUME, notes)
+    out = m.dedupe_across_jobs(RESUME, notes, floor=0)
     jobs = dict(t._job_bodies(out))
     assert "integrations across ERP" in jobs["cargill"]                   # Job 1 is never touched
     assert "integrations across ERP" not in jobs["jpmorgan chase"] and notes
@@ -106,4 +106,59 @@ def test_prompt_carries_the_users_rules():
     assert "NEVER THE SAME BULLET TWICE" in p and "Invent NO figure" in p
     assert "transferable to" in p and "Spearheaded" in p              # named so they are never written
     assert "NO number of any kind" in ADD_DUTY_SYSTEM
-    assert m.JOB_MAX == (14, 12, 11) and m.MAX_ADDS == 6
+    assert m.JOB_MAX == (14, 12, 11) and m.MAX_ADDS == 4
+
+
+def test_invented_employer_is_removed():
+    fake = RESUME + ("\nSenior Data Analyst @ Sutherland Global Services | Hyderabad, India\tJun 2016 – Sep 2018\n"
+                     "• Developed SQL and Python scripts to automate reporting pipelines for operations teams.\n"
+                     "Technologies Used: Oracle, SQL\n")
+    notes: list = []
+    out = m.drop_invented_jobs(fake, RESUME, notes)
+    assert "Sutherland" not in out and "Cargill" in out and "JPMorgan Chase" in out and notes
+    assert m.drop_invented_jobs(RESUME, RESUME, []) == RESUME
+
+
+def test_company_pitch_and_legal_text_never_become_duties():
+    jd = ("Karoo's mission is to improve the lives of every cardiac patient in America.\n"
+          "We're fanatical about simplifying everything about car buying.\n"
+          "This position requires that the job be performed in the United States.\n"
+          "Candidate must be able to obtain and maintain a Public Trust.\n"
+          "Write Scala code to support the work on the Claims Cost Measures Team.\n"
+          "Perform Data Validation and utilize SQL for data queries.\n"
+          "Why Us:\nComprehensive medical, dental, and vision insurance for all employees\n")
+    d = m.jd_duties(jd, "Karoo", ["Scala", "SQL"])
+    assert d == ["Write Scala code to support the work on the Claims Cost Measures Team",
+                 "Perform Data Validation and utilize SQL for data queries"]
+
+
+def test_long_gerund_bullet_is_split_and_emr_is_not_a_cloud():
+    text = ("X\n\nEXPERIENCE:\nDE @ Acme | NY\t2018 – 2020\n"
+            "• Built real-time event streams with Kafka Connect and Confluent Schema Registry enforcing data contracts across "
+            "15+ producer teams, routing hundreds of millions of daily events and cutting schema-related pipeline failures "
+            "while storing fraud-signal data in Cassandra and Redis for sub-100ms risk scoring capabilities.\n")
+    out = m.split_long(text, [])
+    assert out.count("• ") == 2 and "hundreds of millions" in out and "sub-100ms" in out and "15+" in out
+    assert all(len(b.split()) <= 40 for b in out.split("\n") if b.startswith("•"))
+    assert not any(x.strip() == "emr" for x in m.CLOUD_SIG["AWS"])
+
+
+def test_split_never_leaves_a_stub():
+    text = ("X\n\nEXPERIENCE:\nDE @ Acme | NY\t2018 – 2020\n"
+            "• Set up Azure Monitor for observability and service level agreement tracking across Azure Data Factory and "
+            "Synapse Analytics workflows, cutting pipeline incident resolution from most of a workday to under 2 hours; "
+            "deployed Soda validation to catch schema violations before load.\n")
+    out = m.split_long(text, [])
+    bl = [b for b in out.splitlines() if b.startswith("•")]
+    assert len(bl) == 2 and all(len(b.split()) - 1 >= 12 for b in bl) and "under 2 hours" in out
+
+
+def test_employer_listed_twice_becomes_one_job():
+    twice = RESUME.replace("• Tuned Spark jobs for the nightly load.",
+                           "Technologies Used: Kafka\n\nSenior Data Engineer @ Cargill | Minneapolis, MN\tSep 2024 – Present is listed above.\n"
+                           "• Tuned Spark jobs for the nightly load.")
+    notes: list = []
+    out = m.merge_duplicate_jobs(twice, notes)
+    assert out.count("@ Cargill") == 1 and notes
+    assert [len(bl) for _, bl in t._job_bullet_lines(out)] == [6, 6]
+    assert m.merge_duplicate_jobs(RESUME, []) == RESUME

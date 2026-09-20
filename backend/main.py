@@ -532,6 +532,51 @@ async def _auto_scrape():
     finally:
         _auto_scrape_running = False
 
+_AI_ENG_ITEMS = [
+    "Generative AI Engineer",
+    "GenAI Engineer",
+    "LLM Engineer",
+    "RAG Engineer",
+    "AI Platform Engineer",
+    "AI Data Engineer",
+    "AI Infrastructure Engineer",
+    "AI Integration Engineer",
+    "AI Solutions Engineer",
+    "Applied AI Engineer",
+    "Enterprise AI Engineer",
+    "Data & AI Engineer",
+]
+
+
+async def _grant_ai_engineering_family() -> int:
+    """The AI engineering titles (GenAI / LLM / RAG / AI platform) used to sit inside the Data
+    Engineer family; on 2026-09-20 they became their own family so they can be viewed apart. A
+    user who already had Data Engineer was receiving these jobs, so the new family is added to
+    their grant — without it the chip cannot appear (the picker collapses a group only when every
+    item of it is granted). Idempotent: the items are added once and never removed."""
+    changed = 0
+    async with SessionLocal() as db:
+        rows = (await db.execute(select(UserSettings))).scalars().all()
+        for s_ in rows:
+            try:
+                grant = json.loads(s_.job_roles or "[]")
+            except Exception:
+                continue
+            if not isinstance(grant, list) or not grant:
+                continue
+            low = {str(x).lower().strip() for x in grant}
+            if "data engineer" not in low:
+                continue
+            missing = [x for x in _AI_ENG_ITEMS if x.lower() not in low]
+            if not missing:
+                continue
+            s_.job_roles = json.dumps(grant + missing)
+            changed += 1
+        if changed:
+            await db.commit()
+    return changed
+
+
 async def _strip_stale_linkedin_roles() -> int:
     """Remove '(LinkedIn)'-suffixed role items from every user's job_roles /
     active_job_roles / role_request. Left over from the merged-away temporary
@@ -1256,6 +1301,12 @@ async def startup():
         except Exception as e:
             print(f"[Startup] LinkedIn-role cleanup skipped: {e}")
         try:
+            res = await _grant_ai_engineering_family()
+            if res:
+                print(f"[Startup] Granted the AI Engineering family to {res} user(s)")
+        except Exception as e:
+            print(f"[Startup] AI-family grant skipped: {e}")
+        try:
             res = await _strip_retired_role_items()
             if res:
                 print(f"[Startup] Stripped retired-family role items from {res} user(s)")
@@ -1730,7 +1781,7 @@ _JAVA_WORD_RE = re.compile(r"\bjava\b", re.I)
 _BI_WORD_RE   = re.compile(r"\bbi\b", re.I)
 _DATA_WORD_RE = re.compile(r"\bdata\b", re.I)
 # same pattern as telegram_bot._AI_DATA_RE and App.tsx _AI_DATA_YES
-_AI_DATA_RE = re.compile(r"\b(gen\s?ai|generative\s+ai|llm|rag)\b|\bai\s+(platform|data|solutions?|integration|infrastructure|engineering)\b|\b(enterprise|applied)\s+ai\b|\bdata\s*(\/|&|and|\+|,)\s*(ai|gen\s?ai|generative\s+ai|ml)\b|\b(ai|gen\s?ai|ml)\s*(\/|&|and|\+)\s*data\b", re.I)
+_AI_DATA_RE = re.compile(r"\b(gen\s?ai|generative\s+ai|llm|rag)\b|\bai\s+(platforms?|data|solutions?|integrations?|infrastructure|engineering)\b|\b(enterprise|applied)\s+ai\b|\bai\s*/\s*ml\b|\bml\s*/\s*ai\b|\bdata\s*(\/|&|and|\+|,)\s*(ai|gen\s?ai|generative\s+ai|ml)\b|\b(ai|gen\s?ai|ml)\s*(\/|&|and|\+)\s*data\b", re.I)
 _AI_ROLE_RE = re.compile(r"\b(engineer|developer|architect)", re.I)
 _AI_NOT_RE  = re.compile(r"data\s+scien\w*|\bdirector\b|\bvp\b|vice\s+president|\bchief\b|head\s+of|\bsales\b|pre-?sales|account\s+executive|\bmanager\b|\bscientist\b|\brecruiter\b", re.I)
 
@@ -1738,9 +1789,17 @@ def _title_matches_roles(title: str, roles: list) -> bool:
     """Mirror of the frontend role matcher (App.tsx) — title-only, with the
     same wide-net special cases, so server and client agree on every job."""
     t = (title or "").lower()
+    ai_title = bool(_AI_DATA_RE.search(t) and _AI_ROLE_RE.search(t) and not _AI_NOT_RE.search(t))
     for r in roles:
         term = (r or "").lower().strip()
         if not term:
+            continue
+        # AI engineering two-way wall (mirrors App.tsx _isAIEngineering)
+        if ai_title:
+            if _AI_DATA_RE.search(term):
+                return True
+            continue
+        if _AI_DATA_RE.search(term):
             continue
         if term == "bi":
             if _BI_WORD_RE.search(t): return True
@@ -1752,7 +1811,6 @@ def _title_matches_roles(title: str, roles: list) -> bool:
             if _DATA_WORD_RE.search(t) and "engineer" in t: return True
             if "databricks" in t or "analytics engineer" in t: return True
             if re.search(r"\bmlops\b", t): return True
-            if _AI_DATA_RE.search(t) and _AI_ROLE_RE.search(t) and not _AI_NOT_RE.search(t): return True   # GenAI / LLM / RAG / Data+AI
         elif term == "data analyst":
             if _DATA_WORD_RE.search(t) and "analyst" in t: return True
         elif term == "software engineer (data)":
@@ -1986,8 +2044,8 @@ _ROLE_FAMILY_ITEMS: dict[str, set[str]] = {
     "Data Engineer": {"data engineer", "etl developer", "data platform", "data warehouse",
                        "data architect", "database engineer", "database developer",
                        "sql developer", "software engineer (data)", "databricks engineer",
-                       "snowflake engineer", "spark engineer", "ai data engineer", "rag engineer",
-                       "ai platform engineer", "generative ai engineer", "llm engineer"},
+                       "snowflake engineer", "spark engineer"},
+    "AI Engineering": {"generative ai engineer", "genai engineer", "llm engineer", "rag engineer", "ai platform engineer", "ai data engineer", "ai infrastructure engineer", "ai integration engineer", "ai solutions engineer", "applied ai engineer", "enterprise ai engineer", "data & ai engineer"},
     "Data Analyst": {"data analyst", "data analytics", "analytics engineer",
                       "reporting analyst", "business analyst"},
     "Business Intelligence": {"business intelligence", "bi developer", "bi analyst",

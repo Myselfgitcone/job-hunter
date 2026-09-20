@@ -1729,6 +1729,9 @@ async def _get_admin_settings(db) -> UserSettings:
 _JAVA_WORD_RE = re.compile(r"\bjava\b", re.I)
 _BI_WORD_RE   = re.compile(r"\bbi\b", re.I)
 _DATA_WORD_RE = re.compile(r"\bdata\b", re.I)
+# same pattern as telegram_bot._AI_DATA_RE and App.tsx _AI_DATA_YES
+_AI_DATA_RE = re.compile(r"\b(gen\s?ai|generative\s+ai|llm|rag)\b|\bai\s+platform\b|\bai\s+data\b|\bdata\s*(\/|&|and|\+|,)\s*(ai|gen\s?ai|generative\s+ai|ml)\b|\b(ai|gen\s?ai|ml)\s*(\/|&|and|\+)\s*data\b", re.I)
+_AI_ROLE_RE = re.compile(r"\b(engineer|developer|architect)", re.I)
 
 def _title_matches_roles(title: str, roles: list) -> bool:
     """Mirror of the frontend role matcher (App.tsx) — title-only, with the
@@ -1748,6 +1751,7 @@ def _title_matches_roles(title: str, roles: list) -> bool:
             if _DATA_WORD_RE.search(t) and "engineer" in t: return True
             if "databricks" in t or "analytics engineer" in t: return True
             if re.search(r"\bmlops\b", t): return True
+            if _AI_DATA_RE.search(t) and _AI_ROLE_RE.search(t): return True   # GenAI / LLM / RAG / Data+AI
         elif term == "data analyst":
             if _DATA_WORD_RE.search(t) and "analyst" in t: return True
         elif term == "software engineer (data)":
@@ -1980,7 +1984,9 @@ async def get_settings(user_id: str = Depends(get_current_user_id)):
 _ROLE_FAMILY_ITEMS: dict[str, set[str]] = {
     "Data Engineer": {"data engineer", "etl developer", "data platform", "data warehouse",
                        "data architect", "database engineer", "database developer",
-                       "sql developer", "software engineer (data)"},
+                       "sql developer", "software engineer (data)", "databricks engineer",
+                       "snowflake engineer", "spark engineer", "ai data engineer", "rag engineer",
+                       "ai platform engineer", "generative ai engineer", "llm engineer"},
     "Data Analyst": {"data analyst", "data analytics", "analytics engineer",
                       "reporting analyst", "business analyst"},
     "Business Intelligence": {"business intelligence", "bi developer", "bi analyst",

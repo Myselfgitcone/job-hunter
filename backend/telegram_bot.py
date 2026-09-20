@@ -94,6 +94,7 @@ _ROLE_FAMILIES: list[tuple[str, list[str]]] = [
                          "database engineer", "database developer", "sql developer", "big data",
                          "data infrastructure", "data operations engineer",
                          "databricks", "snowflake", "spark", "dbt", "mlops",
+                         "rag engineer", "rag developer", "ai platform engineer", "ai data platform",
                          "machine learning", "ml engineer"]),
     ("Cloud",           ["cloud engineer", "cloud infrastructure", "cloud operations", "cloudops",
                          "cloud systems", "cloud developer", "cloud native", "cloud migration",
@@ -112,6 +113,16 @@ _ROLE_FAMILIES: list[tuple[str, list[str]]] = [
     ("O2Ten", []),
 ]
 _DATA_RE = re.compile(r"\bdata\b", re.I)
+# GenAI / LLM / RAG / Data+AI engineering titles belong to the Data Engineer family (2026-09-19).
+# Same pattern as App.tsx _AI_DATA_YES and main.py _AI_DATA_RE.
+_AI_DATA_RE = re.compile(r"\b(gen\s?ai|generative\s+ai|llm|rag)\b|\bai\s+platform\b|\bai\s+data\b|\bdata\s*(\/|&|and|\+|,)\s*(ai|gen\s?ai|generative\s+ai|ml)\b|\b(ai|gen\s?ai|ml)\s*(\/|&|and|\+)\s*data\b", re.I)
+_AI_ROLE_RE = re.compile(r"\b(engineer|developer|architect)", re.I)
+
+
+def is_ai_data_title(title: str) -> bool:
+    t = title or ""
+    return bool(_AI_DATA_RE.search(t) and _AI_ROLE_RE.search(t))
+
 _ANALYST_RE = re.compile(r"\banalyst\b", re.I)
 _ENGINEER_RE = re.compile(r"\bengineer\b", re.I)
 
@@ -132,6 +143,8 @@ def _role_family(title: str) -> str:
     # Leadership first — same matcher the app uses, so counts agree.
     if _LEAD_RE.search(t):
         return "AI/DS Leadership"
+    if is_ai_data_title(t):
+        return "Data Engineer"
     for fam, kws in _ROLE_FAMILIES:
         if any(kw in t for kw in kws):
             return fam

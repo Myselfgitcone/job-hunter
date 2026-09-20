@@ -49,7 +49,12 @@ const SHOW_HELP_NAV = false;
 // engineers and ML roles (kept separate from the DE family).
 const _DE_NOT = /\b(test|project|process|reliability|quality|network|hardware|firmware|sales|support|solutions?|security|field|manufacturing|mechanical|civil|electrical|chemical|systems?\s+development)\s+engineer\b|site\s+reliability|machine\s+learning|\bml\s+engineer\b|\bmlops\b|\bai\s+engineer\b|\bsre\b|\bdevops\b|data\s+scien\w*|\bleader\b|\bsvp\b|vice\s+president|\bvp\b|\bdirector\b|\bchief\b|head\s+of/i;
 const _DE_YES = /\bdata\s+engineer|\b(etl|elt)\b|\bdatabricks\b|\bsnowflake\b|\bdbt\b|\bairflow\b|\bkafka\b|\bspark\b|database\s+(engineer|developer)|\bsql\s+developer\b|\bdata\s+architect\b|\bbig\s+data\b|\bdata\b[\w\s,\-&/]*\b(platform|pipeline|warehouse|lakehouse|lake|infrastructure|ingestion|modell?ing|integration|ops|operations)\b/i;
+// GenAI / LLM / RAG / Data+AI engineering titles (same pattern as backend _AI_DATA_RE).
+const _AI_DATA_YES = /\b(gen\s?ai|generative\s+ai|llm|rag)\b|\bai\s+platform\b|\bai\s+data\b|\bdata\s*(\/|&|and|\+|,)\s*(ai|gen\s?ai|generative\s+ai|ml)\b|\b(ai|gen\s?ai|ml)\s*(\/|&|and|\+)\s*data\b/i;
+const _AI_DATA_ROLE = /\b(engineer|developer|architect)/i;
+const _AI_DATA_NOT = /data\s+scien\w*|\bdirector\b|\bvp\b|vice\s+president|\bchief\b|head\s+of|\bsales\b|\bsolutions?\s+engineer/i;
 function _isDataEngineer(title: string): boolean {
+  if (_AI_DATA_YES.test(title) && _AI_DATA_ROLE.test(title) && !_AI_DATA_NOT.test(title)) return true;
   return !_DE_NOT.test(title) && _DE_YES.test(title);
 }
 const _ML_TERM = /machine\s+learning|mlops|\bml\s+engineer\b|analytics\s+engineer/;

@@ -101,14 +101,17 @@ _FAMILY_TERMS: dict[str, str] = {
         " | databricks"
         " | 'snowflake developer' | 'snowflake engineer' | 'spark engineer' | 'spark developer'"
         " | 'dbt developer' | 'airflow engineer' | 'kafka engineer'"
-        # AI-era data roles (2026-09-19). 'AI Data Engineer' / 'Generative AI Data Engineer' already
-        # match 'data engineer'; these two carry neither "data" nor a DE tool in the title.
-        " | ((genai | 'gen ai' | 'generative ai' | llm | rag | 'ai platform' | 'ai infrastructure'"
-        "    | 'ai solutions' | 'ai integration' | 'applied ai' | 'enterprise ai' | 'ai engineering')"
-        "   & (engineer | developer | architect))"
-        " | (data & (ai | genai | 'gen ai') & (engineer | developer | architect))"
         # ML/MLOps REMOVED — not part of Data Engineer.
         " | ('software engineer' & ('data platform' | 'data infrastructure' | 'data pipeline' | 'data warehouse'))"
+    ),
+    # AI-era engineering titles (2026-09-19) — their own family so a backfill can pull just
+    # these without re-billing a week of every other Data Engineer job. Jobs land in the
+    # Data Engineer family everywhere else (telegram_bot.is_ai_data_title).
+    "AI Engineering": (
+        "((genai | 'gen ai' | 'generative ai' | llm | rag | 'ai platform' | 'ai infrastructure'"
+        " | 'ai solutions' | 'ai integration' | 'applied ai' | 'enterprise ai' | 'ai engineering')"
+        " & (engineer | developer | architect))"
+        " | (data & (ai | genai | 'gen ai' | ml) & (engineer | developer | architect))"
     ),
     "Data Analyst": (
         "(data & analyst) | 'data analytics' | 'analytics engineer' | 'reporting analyst' | 'product analyst'"

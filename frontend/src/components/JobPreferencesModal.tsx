@@ -39,7 +39,7 @@ export const ROLE_GROUPS: { group: string; items: string[] }[] = [
   // "Data Engineer" chip = wide net: any title with both data + engineer
   // (Senior/Big/Cloud/Pipeline/Streaming Data Engineer all match), plus
   // DE-applicable titles without the word "data" via matcher special cases.
-  { group: "Data Engineer",         items: ["Data Engineer", "ETL Developer", "Data Platform", "Data Warehouse", "Data Architect", "Database Engineer", "Database Developer", "SQL Developer", "Software Engineer (Data)", "Databricks Engineer", "Snowflake Engineer", "Spark Engineer", "AI Data Engineer", "RAG Engineer", "AI Platform Engineer", "Generative AI Engineer", "LLM Engineer"] },
+  { group: "Data Engineer",         items: ["Data Engineer", "ETL Developer", "Data Platform", "Data Warehouse", "Data Architect", "Database Engineer", "Database Developer", "SQL Developer", "Software Engineer (Data)", "Databricks Engineer", "Snowflake Engineer", "Spark Engineer", "AI Data Engineer", "RAG Engineer", "AI Platform Engineer", "Generative AI Engineer", "LLM Engineer", "AI Infrastructure Engineer", "Applied AI Engineer", "AI Integration Engineer"] },
   // "Data Analyst" chip = wide net: any title with both data + analyst
   { group: "Data Analyst",          items: ["Data Analyst", "Data Analytics", "Analytics Engineer", "Reporting Analyst", "Product Analyst"] },
   { group: "Business Intelligence", items: ["Business Intelligence", "BI Developer", "BI Analyst", "BI Engineer", "Power BI", "Tableau", "Looker"] },

@@ -115,13 +115,14 @@ _ROLE_FAMILIES: list[tuple[str, list[str]]] = [
 _DATA_RE = re.compile(r"\bdata\b", re.I)
 # GenAI / LLM / RAG / Data+AI engineering titles belong to the Data Engineer family (2026-09-19).
 # Same pattern as App.tsx _AI_DATA_YES and main.py _AI_DATA_RE.
-_AI_DATA_RE = re.compile(r"\b(gen\s?ai|generative\s+ai|llm|rag)\b|\bai\s+platform\b|\bai\s+data\b|\bdata\s*(\/|&|and|\+|,)\s*(ai|gen\s?ai|generative\s+ai|ml)\b|\b(ai|gen\s?ai|ml)\s*(\/|&|and|\+)\s*data\b", re.I)
+_AI_DATA_RE = re.compile(r"\b(gen\s?ai|generative\s+ai|llm|rag)\b|\bai\s+(platform|data|solutions?|integration|infrastructure|engineering)\b|\b(enterprise|applied)\s+ai\b|\bdata\s*(\/|&|and|\+|,)\s*(ai|gen\s?ai|generative\s+ai|ml)\b|\b(ai|gen\s?ai|ml)\s*(\/|&|and|\+)\s*data\b", re.I)
 _AI_ROLE_RE = re.compile(r"\b(engineer|developer|architect)", re.I)
+_AI_NOT_RE  = re.compile(r"data\s+scien\w*|\bdirector\b|\bvp\b|vice\s+president|\bchief\b|head\s+of|\bsales\b|pre-?sales|account\s+executive|\bmanager\b|\bscientist\b|\brecruiter\b", re.I)
 
 
 def is_ai_data_title(title: str) -> bool:
     t = title or ""
-    return bool(_AI_DATA_RE.search(t) and _AI_ROLE_RE.search(t))
+    return bool(_AI_DATA_RE.search(t) and _AI_ROLE_RE.search(t) and not _AI_NOT_RE.search(t))
 
 _ANALYST_RE = re.compile(r"\banalyst\b", re.I)
 _ENGINEER_RE = re.compile(r"\bengineer\b", re.I)

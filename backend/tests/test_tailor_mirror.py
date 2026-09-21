@@ -101,12 +101,17 @@ def test_figure_bullet_returns_to_its_job():
 
 def test_prompt_carries_the_users_rules():
     p = TAILOR_SYSTEM_MIRROR
-    assert "6–7 bullets" in p                                          # summary length the user chose
-    assert "Job 1: 10–12 · Job 2: 8–10 · Job 3: 7–9" in p and "1–2 more" in p
-    assert "NEVER THE SAME BULLET TWICE" in p and "Invent NO figure" in p
+    assert "4–5 bullets, never a sixth" in p                            # summary length the user chose
+    assert "Job 1: 10–12 · Job 2: 8–10 · Job 3: 7–9" in p
+    assert "Never one more" in p        # the cap is the top of the range, no escape clause
+    assert "NEVER THE SAME BULLET TWICE" in p
+    assert "A base figure is never altered" in p and "never a headline figure" in p
+    assert "20–30 words" in p and "23–30 items in TOTAL" in p
     assert "transferable to" in p and "Spearheaded" in p              # named so they are never written
-    assert "NO number of any kind" in ADD_DUTY_SYSTEM
-    assert m.JOB_MAX == (14, 12, 11) and m.MAX_ADDS == 4
+    assert m.JOB_MAX == (12, 10, 9) and m.MAX_ADDS == 4
+    assert m.BULLET_MAX == 30 and m.SUMMARY_MAX == 5 and m.SKILL_ITEMS_MAX == 30
+    assert m.ALLOW_INVENTED_FIGURES is True          # the user's call, 2026-09-21
+    assert ADD_DUTY_SYSTEM
 
 
 def test_invented_employer_is_removed():

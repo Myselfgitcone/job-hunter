@@ -52,8 +52,13 @@ THE METHOD
    base is carried, exactly as written, inside a bullet of the same job, attached
    to the same kind of work. They are what a hiring manager asks about. Build the
    JD-shaped bullet around them ("...cutting full-refresh runtime from about 6
-   hours to under one hour"). Invent NO figure: no percentage, count, dollar
-   amount or duration the base lacks, and none copied from the JD.
+   hours to under one hour"). A base figure is never altered, rounded, weakened or
+   dropped: "$100K" stays "$100K", "hundreds of millions" never becomes "millions".
+   WHERE THE BASE GIVES NO NUMBER you may add a plausible one, because a bullet with
+   no number reads like a job description. Keep it ordinary and defensible in an
+   interview: counts of feeds, tables, teams or environments; a runtime or latency;
+   a percentage under 50; never a headline figure (no "$4M saved", no "99.99%", no
+   "10x"). One figure per bullet, and no figure copied from the job description.
 6. State the work as done. Never hedge: no "transferable to", "analogous to",
    "similar to", "mirroring", "potential", "exposure to", "concepts",
    "principles of", "familiar with". Either the bullet says the work was done or
@@ -68,7 +73,8 @@ Line 2: `<phone> | <email>` plus any link the base's contact line carries. Nothi
 Sections in this order, headers UPPERCASE with a trailing colon, every bullet "• ":
 
 SUMMARY:
-6–7 bullets. One sentence each, 22–30 words. Line 1: the JD's title, the
+4–5 bullets, never a sixth. One sentence each, 22–30 words. A recruiter reads the top
+third of page one and nothing more, so these five lines carry the whole case. Line 1: the JD's title, the
 candidate's REAL years from the base dates, the JD's two or three main tools, the
 base's real industries. Every other line mirrors ONE major JD requirement in the
 JD's own nouns, as something this person does or has done. One line carries the
@@ -77,8 +83,11 @@ word; never open with "Highly", "Expertly", "Adept", "Proven", "Results-driven",
 "Seasoned", "Passionate". Every tool named here also appears in a bullet.
 
 SKILLS:
-7–9 lines, never more: `• <Category Name>: skill, skill, ...`, 4–8 items each, never past 10 (no
-30-item cloud row: name the services this JD and the bullets use). Category names
+5–6 lines: `• <Category Name>: skill, skill, ...`, 4–6 items each and 23–30 items in TOTAL,
+counted across every row. That total is a hard ceiling: a longer list dilutes the match and
+reads as padding. Spend the places on what THIS posting asks for, most-wanted first, and drop
+anything it never mentions (no 30-item cloud row: name only the services this JD and the
+bullets actually use). Category names
 come from the JD's own groupings ("Search & Messaging", "Monitoring &
 Performance", "ERP & Operational Systems", "Data Governance & Modeling"). EVERY
 tool, language, platform and method the JD names is listed, under the row it
@@ -92,9 +101,10 @@ then the bullets, then one final non-bullet line
 `Technologies Used: <comma-separated PRODUCTS and LANGUAGES that THIS job's bullets name>`. Never a
 practice or a duty there (no "encryption", "indexing", "schema design", "Agile", "CI/CD"), and
 never a product that no bullet of that job mentions.
-Bullet counts: Job 1: 10–12 · Job 2: 8–10 · Job 3: 7–9 · Job 4 and older: 3–4. Any job may take
-1–2 more when a D-line or a CORE TOOL still needs its bullet (never past 14 / 12 / 11). A job
-UNDER its minimum is a failure: Job 3 with five bullets is not finished. When the JD's domain
+Bullet counts, and they are hard: Job 1: 10–12 · Job 2: 8–10 · Job 3: 7–9 · Job 4 and older:
+3–4. Never one more, whatever is still uncovered; code trims the extras and the bullet it
+throws away is the one that proves the least. When D-lines outnumber the seats, cover two
+related ones in a single bullet rather than writing another. A job UNDER its minimum is a failure: Job 3 with five bullets is not finished. When the JD's domain
 cannot exist at an older employer (factory master data at a bank), reach the minimum with the
 D-lines that fit any employer (data quality and validation, governance and change control,
 documentation, troubleshooting, reporting, stakeholder work, process improvement) plus that
@@ -110,8 +120,12 @@ certification the base does not list appears NOWHERE, even when the JD requires 
 BULLET STYLE
 ================================================================================
 [action verb] + [the JD duty in the JD's own nouns] + [tool] + [this employer's
-real system, dataset or team] + [clean ending]. One past-tense sentence of 20–32
-words, never under 16, never past 35.
+real system, dataset or team] + [clean ending]. One past-tense sentence of 20–30 words,
+never under 18 and never past 30. A BASE BULLET LONGER THAN THAT BECOMES TWO
+BULLETS, split at its own clause break, each keeping its own figure: never squeeze three
+figures into one sentence and never drop one to fit. It is a whole sentence that ends on a full stop: never cut
+short, never trailing off, never a fragment. If it will not fit in 30 words, say less rather
+than running over.
 
 ENDINGS: every bullet closes on something concrete that a person who did the
 work would say: a real result from the base, who used the output, or what the
@@ -159,7 +173,8 @@ GLOBAL RULES
 - Never invent employers, dates, degrees, certifications, clearances or figures. The resume has
   EXACTLY the jobs the base lists: never add an earlier job to reach the JD's years of experience.
 - Years of experience are exactly what the base dates support.
-- LENGTH: three pages are expected. Do not shorten to save space.
+- LENGTH follows tenure: 0–3 years -> 1 page · 4–11 -> 2 · 12+ -> 3. Go onto a third page only
+  when the JD's own lines genuinely need the room; never pad to reach one.
 - Output plain text only, in the format above, with no commentary."""
 
 
@@ -179,7 +194,7 @@ Rules:
   teams as its existing bullets show them. Never carry Job 1's projects into another job.
 - Never name an employer inside a bullet ("at Molina Healthcare"): the job header already says it.
 - Never write about the hiring company itself (its offices, mission, benefits, ownership).
-- Past tense, one sentence, 20-32 words, opening with a plain working verb
+- Past tense, one sentence, 20-30 words, ending on a full stop, opening with a plain working verb
   (Built, Designed, Implemented, Developed, Automated, Documented, Partnered,
   Resolved, Reviewed, Monitored) that the job does not already open a bullet with.
 - Use the D-line's own nouns so a recruiter can match it, anchored to a real
@@ -187,6 +202,32 @@ Rules:
 - End on who used the result or what it made possible, in plain words. Never a
   bare "-ing" word, a preposition, or a vague benefit ("ensuring data quality",
   "improving efficiency", "enabling better insights").
-- NO number of any kind. No hedge words (transferable, analogous, similar to,
-  exposure to). No em or en dash. No robust / seamless / comprehensive / various.
+- ONE ordinary figure is welcome (a count of feeds, tables, teams or environments, a runtime,
+  a percentage under 50) and no more than one; never a headline number and never one copied
+  from the job description. No hedge words (transferable, analogous, similar to, exposure to). No em or en dash. No robust / seamless / comprehensive / various.
 - Do not repeat what an existing bullet already says."""
+
+REFLOW_SYSTEM = """You rewrite over-long resume bullets. Each one you are given runs past 30 words.
+
+For each numbered bullet, return EITHER one tighter bullet OR two bullets, whichever keeps the
+facts intact. Output one line per bullet you write, nothing else:
+
+  N <the number you were given> :: <the bullet>
+
+Rules:
+- Every line is 20-30 words, and never more than 30. When splitting in two leaves one half
+  a little short that is fine, but never below 15 words.
+- KEEP EVERY FIGURE AND SCALE PHRASE exactly as written: "15+", "sub-100ms", "$100K",
+  "hundreds of millions", "40%". They may be spread across the two bullets, but not one may be
+  lost, rounded or reworded. This is why two bullets are usually the right answer.
+- Keep every product and tool name, spelled as given.
+- Add NO new number and no fact that was not in the original.
+- Past tense, one sentence per line, opening with a plain working verb, ending on a full stop.
+- When you write two, they are two different pieces of work, not one idea said twice, and the
+  second opens with a different verb from the first.
+
+Example. Given:
+  N 3 :: Built real-time event streams with Kafka Connect and Confluent Schema Registry enforcing contracts across 15+ producer teams, routing hundreds of millions of daily events and achieving sub-100ms latency for fraud-signal scoring in Cassandra and Redis.
+Return:
+  N 3 :: Built real-time event streams with Kafka Connect and Confluent Schema Registry, enforcing producer contracts across 15+ teams that published into the platform.
+  N 3 :: Routed hundreds of millions of daily events into Cassandra and Redis, holding sub-100ms read latency for the fraud-signal scoring service."""

@@ -22,18 +22,24 @@ from __future__ import annotations
 import re
 
 from ai import tailor as t
-from ai.tailor_mirror_prompt import ADD_DUTY_SYSTEM, TAILOR_SYSTEM_MIRROR
+from ai.tailor_mirror_prompt import ADD_DUTY_SYSTEM, REFLOW_SYSTEM, TAILOR_SYSTEM_MIRROR
 from ai.tailor_slim_guards import clean_skill_rows, core_tools, slim_score, strip_adjacent, trim_vague_endings
 
 MAX_DUTIES = 24
 MAX_ADDS = 4              # new bullets the add step may write (JD lines first, then core tools)
-BULLET_MAX = 35           # words
-JOB_MAX = (14, 12, 11)    # bullets, by recency; Job 4 and older: 5
+BULLET_MAX = 30           # words; the writer's range is 20-30
+SUMMARY_MAX = 5           # lines
+SKILL_ITEMS_MAX = 30      # items across every SKILLS row
+# The user allows invented figures (2026-09-21): a bullet with no number reads like a job
+# description. A figure the BASE states is still untouchable, and nothing is copied from the JD.
+ALLOW_INVENTED_FIGURES = True
+JOB_MAX = (12, 10, 9)     # bullets, by recency; Job 4 and older: 4. The cap is the TOP of the
+                          # planned range: with room to spare the writer simply filled the seats.
 JOB_MIN = (10, 8, 7)
 
 
 def _cap(j: int) -> int:
-    return JOB_MAX[j] if j < len(JOB_MAX) else 5
+    return JOB_MAX[j] if j < len(JOB_MAX) else 4
 
 # JD lines that are never work to prove: pay, benefits, legal, education, the company pitch
 _NOT_DUTY_RE = re.compile(
@@ -220,11 +226,14 @@ def dedupe_across_jobs(text: str, notes: list, floor: int | None = None) -> str:
 
 
 def restore_figure_bullets(text: str, base_resume: str, job_description: str, notes: list,
-                           restored: list, per_job: int = 2) -> str:
+                           restored: list, per_job: int = 3) -> str:
     """The base's figures are what a hiring manager asks about. A base bullet that
     carries a figure and has no descendant in the tailored resume returns to its own
-    job, as the base wrote it, when the job is under its cap and the bullet is at most
-    38 words. It lands fourth, so the JD's lead duties still open the job."""
+    job, as the base wrote it, when the bullet is at most 38 words. It lands fourth, so the JD's
+    lead duties still open the job. The per-job cap is NOT checked here: `enforce_job_caps` runs
+    after this and evicts numberless bullets first, so a restored figure takes the seat of a
+    bullet that proves nothing (live, Logicalis: Cargill sat exactly at its cap of 14, every
+    restore was skipped, and the resume shipped with 2 of the base's 16 figures)."""
     _, _, removed = t._number_audit(text, base_resume, job_description, floor=None)
     if not removed:
         return text
@@ -241,13 +250,11 @@ def restore_figure_bullets(text: str, base_resume: str, job_description: str, no
             b = bl.strip().lstrip("•-* ").strip()
             if done >= per_job or not b or not any(b.startswith(str(r)[:60]) for r in removed):
                 continue
-            if len(b.split()) > 38:
+            if len(b.split()) > 30:      # the spec's ceiling: a longer base bullet is not restorable as-is
                 continue
             h = hdr[company]
             idx = [i for i in range(h + 1, t._job_block_end(lines, h))
                    if lines[i].lstrip().startswith("•") and not t._TECH_LINE_RE.match(lines[i].strip())]
-            if len(idx) >= _cap(j):
-                break
             bw = t._content_words(b)
             if any(bw and len(bw & t._content_words(lines[i])) / len(bw | t._content_words(lines[i])) >= 0.45
                    for i in idx):
@@ -325,14 +332,123 @@ _GERUND_PAST = {"storing": "Stored", "cutting": "Cut", "routing": "Routed", "ena
                 "loading": "Loaded", "covering": "Covered", "sustaining": "Sustained", "eliminating": "Eliminated",
                 "halving": "Halved", "standardizing": "Standardized", "surfacing": "Surfaced", "passing": "Passed",
                 "maintaining": "Maintained", "providing": "Provided", "handling": "Handled", "ingesting": "Ingested",
-                "orchestrating": "Orchestrated", "normalizing": "Normalized", "validating": "Validated"}
+                "orchestrating": "Orchestrated", "normalizing": "Normalized", "validating": "Validated",
+                "applying": "Applied", "integrating": "Integrated", "building": "Built",
+                "designing": "Designed", "developing": "Developed", "connecting": "Connected",
+                "creating": "Created", "automating": "Automated", "deploying": "Deployed",
+                "migrating": "Migrated", "configuring": "Configured", "monitoring": "Monitored",
+                "documenting": "Documented", "partnering": "Partnered", "resolving": "Resolved",
+                "reviewing": "Reviewed", "testing": "Tested", "scaling": "Scaled",
+                "securing": "Secured", "tuning": "Tuned", "optimizing": "Optimized",
+                "generating": "Generated", "preventing": "Prevented", "freeing": "Freed",
+                "powering": "Powered", "extending": "Extended", "exposing": "Exposed",
+                "publishing": "Published", "capturing": "Captured", "routing": "Routed",
+                "consolidating": "Consolidated", "standardizing": "Standardized",
+                "eliminating": "Eliminated", "accelerating": "Accelerated",
+                "streamlining": "Streamlined", "shortening": "Shortened", "raising": "Raised",
+                "achieving": "Achieved", "reaching": "Reached", "yielding": "Yielded",
+                "keeping": "Kept", "letting": "Let", "returning": "Returned",
+                "absorbing": "Absorbed", "removing": "Removed", "carrying": "Carried"}
 
 
-def split_long(text: str, notes: list, max_words: int = 40, min_half: int = 12) -> str:
+_REFLOW_RE = re.compile(r"^[\s>*`\-\u2022]*N\s*(\d+)\s*::\s*(.+?)[\s*`]*$", re.I)
+
+
+async def reflow_long_bullets(text: str, notes: list, max_words: int = 30, **main_kw) -> str:
+    """A bullet past `max_words` comes back as one tighter bullet or two, keeping every figure.
+    Each reply is verified before it replaces the original: the figures and scale phrases of the
+    original must all still be there, no new number may appear, and every replacement line must
+    sit in 18-30 words and read as past tense. Anything unverified leaves the original alone."""
+    lines = text.split("\n")
+    over = [i for _, bl in t._job_bullet_lines(text) for i in bl
+            if len(lines[i].split()) - 1 > max_words]
+    if not over:
+        return text
+    body = lambda i: lines[i].lstrip()[1:].strip()
+    prompt = "\n".join(f"N {n + 1} :: {body(i)}" for n, i in enumerate(over))
+    try:
+        raw = await t.chat(REFLOW_SYSTEM, prompt, max_tokens=2000, pass_name="reflow", **main_kw)
+    except Exception as exc:  # noqa: BLE001
+        notes.append(f"reflow: skipped ({exc})")
+        return text
+    got: dict[int, list[str]] = {}
+    for ln in raw.splitlines():
+        mm = _REFLOW_RE.match(ln)
+        if not mm:
+            continue
+        n = int(mm.group(1)) - 1
+        if 0 <= n < len(over):
+            got.setdefault(n, []).append(re.sub(r"\s*[\u2014\u2013]\s*", ", ", mm.group(2).strip()))
+    repl: dict[int, list[str]] = {}
+    bad: list[str] = []
+    for n, parts in got.items():
+        src = body(over[n])
+        want_figs = t._num_tokens(src)
+        want_scale = set(re.findall(r"(?:hundreds|tens|dozens|thousands|millions|billions) of \w+", src, re.I))
+        blob = " ".join(parts)
+        why = ""
+        if not 1 <= len(parts) <= 2:
+            why = f"{len(parts)} lines"
+        elif not all(14 <= len(x.split()) <= max_words for x in parts):
+            # 14, not 18: a natural split of a three-figure bullet leaves one half at 16-17 words,
+            # and rejecting that shipped the 33-word original instead, which is worse
+            why = "a line is outside 14-" + str(max_words) + " words: " + str([len(x.split()) for x in parts])
+        elif want_figs - t._num_tokens(blob):
+            why = "lost figure(s) " + ", ".join(sorted(want_figs - t._num_tokens(blob)))
+        elif t._num_tokens(blob) - want_figs:
+            why = "added figure(s) " + ", ".join(sorted(t._num_tokens(blob) - want_figs))
+        elif any(sc.lower() not in blob.lower() for sc in want_scale):
+            why = "lost a scale phrase"
+        else:
+            for x in parts:
+                first = re.match(r"[A-Za-z][A-Za-z-]*", x)
+                if not first or t._verb_form(first.group(0)) != "past-tense":
+                    why = "not past tense: " + x[:40]
+        if why:
+            bad.append(why)
+            continue
+        repl[over[n]] = parts
+    if repl:
+        out: list[str] = []
+        for i, ln in enumerate(lines):
+            if i in repl:
+                out += ["\u2022 " + x + ("" if x.endswith(".") else ".") for x in repl[i]]
+            else:
+                out.append(ln)
+        lines = out
+    notes.append(f"reflow: {len(repl)}/{len(over)} long bullet(s) rewritten"
+                 + (f"; {len(bad)} rejected: " + "; ".join(bad[:3]) if bad else ""))
+    return "\n".join(lines)
+
+
+def _split_points(body: str, floor: int) -> list:
+    """Every clause boundary this bullet could be cut at with both halves at least `floor`
+    words: a ";" or ", and / , while" before a past-tense verb, or a gerund clause whose verb
+    has a known past form."""
+    out = []
+    for m in re.finditer(r";\s+|,\s+(?:and|while|which|then|plus)\s+", body):
+        first = re.match(r"[A-Za-z]+", body[m.end():])
+        fw = first.group(0).lower() if first else ""
+        if not fw or fw.endswith("ing") or not (fw.endswith("ed") or fw in t._IRREGULAR_PAST):
+            continue
+        hw, tw = len(body[:m.start()].split()), len(body[m.end():].split())
+        if hw >= floor and tw >= floor:
+            tail = body[m.end():].strip()
+            out.append((abs(hw - tw), m.start(), tail[0].upper() + tail[1:]))
+    for m in re.finditer(r"(?:,|\s+while|\s+and)\s+([a-z]+ing)\b", body):
+        past = _GERUND_PAST.get(m.group(1).lower())
+        hw, tw = len(body[:m.start()].split()), len(body[m.start(1):].split())
+        if past and hw >= floor and tw >= floor:
+            out.append((abs(hw - tw), m.start(), past + body[m.end(1):].rstrip()))
+    return out
+
+
+def split_long(text: str, notes: list, max_words: int = 32, min_half: int = 18) -> str:
     """A bullet past `max_words` becomes two at the boundary nearest its middle: ";" or
     ", and / , while" before a past-tense verb, or a gerund clause whose verb is a known one
     ("..., routing hundreds of millions ... while storing fraud-signal data ..."). Both halves keep
-    at least `min_half` words (the shared splitter allowed 8 and shipped a 9-word stub). No model;
+    at least `min_half` words, the spec's own floor (the shared splitter allowed 8 and shipped a
+    9-word stub). No model;
     every name and figure stays. A bullet with no safe boundary is left alone."""
     lines = text.split("\n")
     idx = {i for _, bl in t._job_bullet_lines(text) for i in bl}
@@ -342,21 +458,13 @@ def split_long(text: str, notes: list, max_words: int = 40, min_half: int = 12) 
         if not body or len(body.split()) <= max_words:
             out.append(ln)
             continue
-        cands = []
-        for m in re.finditer(r";\s+|,\s+(?:and|while|which|then|plus)\s+", body):
-            first = re.match(r"[A-Za-z]+", body[m.end():])
-            fw = first.group(0).lower() if first else ""
-            if not fw or fw.endswith("ing") or not (fw.endswith("ed") or fw in t._IRREGULAR_PAST):
-                continue
-            hw, tw = len(body[:m.start()].split()), len(body[m.end():].split())
-            if hw >= min_half and tw >= min_half:
-                tail = body[m.end():].strip()
-                cands.append((abs(hw - tw), m.start(), tail[0].upper() + tail[1:]))
-        for m in re.finditer(r"(?:,|\s+while|\s+and)\s+([a-z]+ing)\b", body):
-            past = _GERUND_PAST.get(m.group(1).lower())
-            hw, tw = len(body[:m.start()].split()), len(body[m.start(1):].split())
-            if past and hw >= min_half and tw >= min_half:
-                cands.append((abs(hw - tw), m.start(), past + body[m.end(1):].rstrip()))
+        cands = _split_points(body, min_half)
+        # 31-35 words cannot make two halves of 18, and a bullet carrying three figures cannot
+        # be shortened without losing one, so the floor drops rather than ship over the ceiling
+        for floor in (min_half - 2, 16, 14):
+            if cands:
+                break
+            cands = _split_points(body, floor)
         if not cands:
             out.append(ln)
             continue
@@ -492,9 +600,84 @@ async def keep_older_jobs_on_their_cloud(text: str, base_resume: str, notes: lis
     return await t._fix_lines(text, flags, notes, "cloud_home", **kw)
 
 
-def enforce_job_caps(text: str, notes: list, protect: set | None = None) -> str:
-    """Past the cap, bullets leave from the end of the job: never one with a figure, never one
-    the add step just wrote, unless nothing else is left."""
+def jd_strength(body: str, jd_words: set, tools: list) -> float:
+    """How strongly one bullet speaks to THIS job description: the share of its own content words
+    that the JD also uses, plus a point for each JD tool it names by product name, plus one for a
+    real figure. Used to decide which bullets keep their seat."""
+    cw = t._content_words(body)
+    low = " " + body.lower() + " "
+    hit = len(cw & jd_words) / len(cw) if cw else 0.0
+    named = sum(1 for x in tools if len(str(x)) > 2 and str(x).lower() in low)
+    return hit * 3 + named + (1 if t._num_tokens(body) else 0)
+
+
+def headline_jd_title(text: str, base_resume: str, jd_title: str, notes: list) -> str:
+    """The headline is the JD's own title, de-inflated to the seniority the base supports. The
+    shared `_headline_hybrid` keeps the candidate's real title whenever the JD is a different role
+    family, which is the safer default elsewhere but loses the ATS title match on exactly the
+    postings this pipeline exists for (live: an "AI Integration & Automation Developer" posting
+    shipped with the headline "Senior Data Engineer" while the summary's own first line carried
+    the JD title). The EXPERIENCE entries keep their real titles, which is what a background
+    check verifies."""
+    lines = text.splitlines()
+    if not lines or "\u2014" not in lines[0] or not (jd_title or "").strip():
+        return t._headline_hybrid(text, base_resume, jd_title, notes)
+    name = lines[0].partition("\u2014")[0].strip()
+    core = re.split(r"\s+\u2013\s+|\s+-\s+|\s*\|\s*|\s*:\s+|\s*\(", jd_title.strip(), maxsplit=1)[0].strip()
+    clean = t._deinflate_title(core, base_resume) or core
+    if clean and lines[0] != f"{name} \u2014 {clean}":
+        notes.append(f"headline set to the JD title: {clean!r}")
+        lines[0] = f"{name} \u2014 {clean}"
+    return "\n".join(lines)
+
+
+def cap_summary(text: str, notes: list, keep: int = SUMMARY_MAX) -> str:
+    """4-5 summary lines, never a sixth: the recruiter reads the top third of page one, and a
+    seventh line pushes SKILLS off it. Extra lines are dropped from the END, where the writer
+    puts its weakest coverage slots."""
+    idx = t._summary_lines(text)
+    if len(idx) <= keep:
+        return text
+    gone = set(idx[keep:])
+    notes.append(f"summary guard: dropped {len(gone)} line(s) past the {keep}-line cap")
+    return "\n".join(ln for i, ln in enumerate(text.split("\n")) if i not in gone)
+
+
+def cap_skill_items(text: str, notes: list, keep: int = SKILL_ITEMS_MAX) -> str:
+    """23-30 skills in total. Past the ceiling the items go from the END of the LAST rows, which
+    is where the writer puts what the JD cares about least; a row is never emptied."""
+    lines = text.split("\n")
+    rows, in_sk = [], False
+    for i, ln in enumerate(lines):
+        st = ln.strip()
+        if t._is_section_hdr(st):
+            in_sk = "skill" in st.lower()
+            continue
+        if in_sk and st.startswith("\u2022") and ":" in st:
+            rows.append(i)
+    items = {i: [x.strip() for x in t._split_list_items(lines[i].partition(":")[2]) if x.strip()] for i in rows}
+    total = sum(len(v) for v in items.values())
+    cut = 0
+    while total > keep:
+        i = max((r for r in rows if len(items[r]) > 2), key=lambda r: len(items[r]), default=None)
+        if i is None:
+            break
+        items[i].pop()
+        total -= 1
+        cut += 1
+    if cut:
+        for i in rows:
+            label = lines[i].partition(":")[0]
+            lines[i] = f"{label}: {', '.join(items[i])}"
+        notes.append(f"skills guard: trimmed {cut} item(s) to the {keep}-skill ceiling")
+    return "\n".join(lines)
+
+
+def enforce_job_caps(text: str, notes: list, protect: set | None = None,
+                     jd_words: set | None = None, tools: list | None = None) -> str:
+    """Past the cap the WEAKEST bullets go, not the last ones: strength is how much of the JD the
+    bullet speaks to (see `jd_strength`). A bullet that carries a real figure, or that a guard
+    wrote to prove a JD tool, is never the victim while anything else is available."""
     lines = text.split("\n")
     drop: set[int] = set()
     for j, bl in t._job_bullet_lines(text):
@@ -502,11 +685,13 @@ def enforce_job_caps(text: str, notes: list, protect: set | None = None) -> str:
         if extra <= 0:
             continue
         body = lambda i: lines[i].lstrip()[1:].strip()
-        plain = [i for i in reversed(bl) if not t._num_tokens(body(i)) and body(i) not in (protect or set())]
-        for i in (plain + [i for i in reversed(bl) if i not in plain])[:extra]:
+        rank = sorted(bl, key=lambda i: jd_strength(body(i), jd_words or set(), tools or []))
+        weak = [i for i in rank if not t._num_tokens(body(i)) and body(i) not in (protect or set())]
+        for i in (weak + [i for i in rank if i not in weak])[:extra]:
             drop.add(i)
     if drop:
-        notes.append(f"cap guard: trimmed {len(drop)} bullet(s) past the per-job cap")
+        notes.append(f"cap guard: trimmed {len(drop)} bullet(s) past the per-job cap "
+                     f"(the ones furthest from this JD)")
     return "\n".join(ln for i, ln in enumerate(lines) if i not in drop)
 
 
@@ -536,6 +721,36 @@ def merge_skill_rows(text: str, notes: list, max_rows: int = 9) -> str:
     if merged:
         notes.append(f"skills guard: merged {merged} row(s) to keep the section at {max_rows}")
     return "\n".join(ln for ln in lines if ln is not None)
+
+
+def dedupe_within_job(text: str, notes: list, thresh: float = 0.28) -> str:
+    """Two bullets of ONE job that share a third of their content words tell the same story in
+    the JD's words. The later one goes, while the job stays at or above its minimum. The shared
+    `_dedupe_bullets` only catches near-identical text; live (Logicalis) four JPMorgan bullets all
+    said "Python and Spark pipelines on AWS ... fraud detection and regulatory reporting" at 16-30%
+    overlap and every one survived. A bullet carrying a figure is never the one dropped."""
+    lines = text.split("\n")
+    drop: set[int] = set()
+    for j, bl in t._job_bullet_lines(text):
+        floor = JOB_MIN[j] if j < len(JOB_MIN) else 3
+        live = len(bl)
+        kept: list[tuple[int, set]] = []
+        for i in bl:
+            cw = t._content_words(lines[i])
+            twin = next((k for k, c in kept if c and cw and len(cw & c) / len(cw | c) >= thresh), None)
+            if twin is None or live <= floor:
+                kept.append((i, cw))
+                continue
+            # keep whichever of the two carries a number
+            victim = i if t._num_tokens(lines[i]) or not t._num_tokens(lines[twin]) else twin
+            if victim == twin:
+                kept = [(k, c) for k, c in kept if k != twin]
+                kept.append((i, cw))
+            drop.add(victim)
+            live -= 1
+    if drop:
+        notes.append(f"repetition guard: removed {len(drop)} bullet(s) retelling another bullet of the same job")
+    return "\n".join(ln for i, ln in enumerate(lines) if i not in drop)
 
 
 def _insert_bullets(text: str, additions: dict[int, list[str]]) -> str:
@@ -613,7 +828,7 @@ async def add_duty_bullets(tailored: str, duties: list[str], notes: list, insert
             why = "bad job"
         elif not 14 <= len(body.split()) <= 38:
             why = f"{len(body.split())} words"
-        elif t._bad_figures(body):
+        elif t._bad_figures(body) and not ALLOW_INVENTED_FIGURES:
             why = "carries a figure"
         elif not first or t._verb_form(first.group(0)) != "past-tense":
             why = "not past tense"
@@ -761,8 +976,9 @@ async def tailor_resume_mirror(base_resume: str, job_description: str,
     if still:
         notes.append("cloud backstop applied: " + ", ".join(f"{c}={cl}" for c, cl in still.items()))
         tailored = t._backstop_native_clouds(tailored, still)
+    tailored = cap_summary(tailored, notes)
     tailored = t._guard_title_inflation(tailored, base_resume, notes)
-    tailored = t._headline_hybrid(tailored, base_resume, context.get("job_title", ""), notes)
+    tailored = headline_jd_title(tailored, base_resume, context.get("job_title", ""), notes)
     tailored = strip_unowned_certs(tailored, base_resume, notes)
     tailored = strip_employer_names(tailored, notes)
     tailored = strip_hedges(tailored, notes)
@@ -786,21 +1002,28 @@ async def tailor_resume_mirror(base_resume: str, job_description: str,
     tailored, yrs = t._clamp_years(tailored, base_resume)
     if yrs:
         notes.append("years guard: clamped inflated experience claim to base resume")
-    tailored = await fix_figures_only(tailored, base_resume, job_description, notes, **cheap_kw)
+    if not ALLOW_INVENTED_FIGURES:
+        tailored = await fix_figures_only(tailored, base_resume, job_description, notes, **cheap_kw)
     restored: list = []
     tailored = restore_figure_bullets(tailored, base_resume, job_description, notes, restored)
+    tailored = dedupe_within_job(tailored, notes)   # after the restore: a job at its floor has no seat to give
     tailored = restore_magnitudes(tailored, base_resume, notes)
     tailored = strip_adjacent(tailored, notes)
     tailored = split_long(tailored, notes)          # again: the figure passes can lengthen a bullet
+    # whatever code could not split becomes one tighter bullet or two, figures intact
+    tailored = await reflow_long_bullets(tailored, notes, max_words=BULLET_MAX, **main_kw)
     tailored = await keep_older_jobs_on_their_cloud(tailored, base_resume, notes, **main_kw)
-    tailored = enforce_job_caps(tailored, notes, protect={b for _, _, b in inserted} | set(restored))
+    jd_words = t._content_words(" ".join(duties)) | t._content_words(job_description)
+    tailored = enforce_job_caps(tailored, notes, protect={b for _, _, b in inserted} | set(restored),
+                                jd_words=jd_words, tools=context["target_tools"])
     tailored = await vary_opening_verbs(tailored, base_resume, notes, **cheap_kw)
     tailored = t._verb_ladder_guard(tailored, base_resume, context.get("bridge_only") or [], notes)
     _, off_page = t._covered_anywhere([str(x) for x in context["target_tools"] if t._looks_like_tool(str(x))], tailored)
     tailored = t._ensure_skills_row(tailored, off_page, notes)
     tailored = t._dedupe_skill_rows(tailored, notes)
     tailored = clean_skill_rows(tailored, notes)
-    tailored = merge_skill_rows(tailored, notes)
+    tailored = merge_skill_rows(tailored, notes, max_rows=6)
+    tailored = cap_skill_items(tailored, notes)
     tailored, tidied = t._clean_lists(tailored)
     tailored = trim_tech_lines(tailored, notes)
     tailored = t._strip_empty_sections(tailored).strip()

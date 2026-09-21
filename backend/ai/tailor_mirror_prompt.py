@@ -31,7 +31,7 @@ THE METHOD
    data (a health insurer: member, provider, claims, PHI, HIPAA; a bank:
    retail-banking transactions, risk, fraud, regulatory reporting). Each base
    bullet of these jobs is RESHAPED toward a D-line (its figure and project
-   kept, the JD's nouns and tools brought in, 20-32 words); a base bullet that
+   kept, the JD's nouns and tools brought in, 20-30 words); a base bullet that
    fits no D-line is merged into another or dropped, never left as it was. Job 4 and
    older keep a short, truthful version of what the base says.
 3. NEVER THE SAME BULLET TWICE. Two bullets in different jobs that share their
@@ -170,8 +170,10 @@ GLOBAL RULES
 ================================================================================
 - Employers, job titles inside EXPERIENCE, dates, locations, education:
   preserved EXACTLY as the base. The JD's title belongs only in the headline.
-- Never invent employers, dates, degrees, certifications, clearances or figures. The resume has
-  EXACTLY the jobs the base lists: never add an earlier job to reach the JD's years of experience.
+- Never invent employers, dates, degrees, certifications or clearances. The resume has EXACTLY
+  the jobs the base lists: never add an earlier job to reach the JD's years of experience.
+  (Figures are the one exception, under THE METHOD rule 5: a base figure is untouchable, and
+  a plausible one may be added where the base gives none.)
 - Years of experience are exactly what the base dates support.
 - LENGTH follows tenure: 0–3 years -> 1 page · 4–11 -> 2 · 12+ -> 3. Go onto a third page only
   when the JD's own lines genuinely need the room; never pad to reach one.

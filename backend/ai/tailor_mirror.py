@@ -1049,10 +1049,18 @@ async def tailor_resume_mirror(base_resume: str, job_description: str,
         "bullets_per_job": [len(bl) for _, bl in jobs],
         "summary_lines": len(t._summary_lines(tailored)),
         "words": len(tailored.split()),
+        # SKILLS items no experience bullet proves. They are kept on purpose: dropping them
+        # would cost ATS keywords, which is what gets the resume picked, while the cost of
+        # keeping them lands in the interview. Reported so the user can judge each one.
+        "skills_without_a_bullet": t._unevidenced(t._skills_claimed(tailored, expand=True), tailored),
     }
+    _nb = mirror["skills_without_a_bullet"]
     notes.append(f"mirror: duties {mirror['duty_coverage_any_job']}% (Job 1 {mirror['duty_coverage_job1']}%), "
                  f"tools in bullets {mirror['tool_bullet_coverage']}%, bullets {mirror['bullets_per_job']}, "
                  f"{mirror['words']} words")
+    if _nb:
+        notes.append(f"skills with nothing behind them ({len(_nb)}), be ready to talk about these: "
+                     + ", ".join(_nb))
     scores: dict = {}
     _orph = t._orphan_skills
     base_blob = "EXPERIENCE:\nX @ Y | Z\n• " + base_resume.replace("\n", " ")

@@ -215,7 +215,7 @@ async def tailor_resume_slim(base_resume: str, job_description: str,
     except Exception:  # noqa: BLE001
         pass
 
-    base_resume = (base_resume or "").strip()
+    base_resume = t.normalize_job_headers((base_resume or "").strip())
     job_description = (job_description or "").strip()
     if len(base_resume) < 40:
         raise ValueError("Resume text is too short — upload or paste your resume first.")

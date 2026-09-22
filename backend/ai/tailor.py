@@ -655,6 +655,52 @@ def _detect_cloud(text: str):
     return None
 
 
+# A job header written with pipes instead of "@":
+#   "Senior Data Engineer | Cargill | Minneapolis, MN   Sep 2024 - Present"
+# A date range at the end of the line is what makes it a header and not a SKILLS row
+# ("Python | SQL | Scala" has none), so the date is required, not optional.
+_MONTH = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)\w*\.?"
+_PIPE_HDR_DATES_RE = re.compile(
+    rf"\s*((?:{_MONTH}\s*)?(?:19|20)\d{{2}}\s*[-\u2013\u2014]\s*"
+    rf"(?:present|current|to date|(?:{_MONTH}\s*)?(?:19|20)\d{{2}}))\s*$", re.I)
+
+
+_DEGREE_RE = re.compile(
+    r"\b(?:bachelor|master|associate|doctor|ph\.?d|m\.?s\.?|b\.?s\.?|b\.?tech|m\.?tech|mba|diploma|"
+    r"certificat|university|college|institute of technology)\b", re.I)
+
+
+def normalize_job_headers(text: str) -> str:
+    """Rewrite pipe-separated job headers into the "Title @ Company | Location<TAB>Dates" form the
+    rest of the engine reads. A line qualifies only when it carries a pipe, a trailing date range,
+    no "@" already, and is not a bullet — so a SKILLS row is never touched. Lines under EDUCATION
+    or CERTIFICATIONS are left alone, and so is anything that reads as a degree: a diploma has the
+    same shape as a job header and would otherwise become a fourth employer."""
+    out = []
+    section = ""
+    for ln in (text or "").split("\n"):
+        s = ln.strip()
+        if s and _is_section_hdr(s):
+            section = s.lower()
+        if ("|" not in s) or ("@" in s) or s.startswith(_BULLET_PREFIXES) or len(s) > 160 \
+                or any(k in section for k in ("education", "certif", "training", "course")) \
+                or _DEGREE_RE.search(s):
+            out.append(ln)
+            continue
+        m = _PIPE_HDR_DATES_RE.search(s)
+        if not m:
+            out.append(ln)
+            continue
+        head = s[:m.start()].rstrip(" \t|,")
+        parts = [p.strip() for p in head.split("|") if p.strip()]
+        if len(parts) < 2 or not re.search(r"[A-Za-z]", parts[1]):
+            out.append(ln)
+            continue
+        title, company, *rest = parts
+        loc = ", ".join(rest)
+        out.append(f"{title} @ {company}" + (f" | {loc}" if loc else "") + f"\t{m.group(1).strip()}")
+    return "\n".join(out)
+
 def _is_job_header_line(ln: str) -> bool:
     return (bool(_JOB_HDR_RE.search(ln))
             and bool(re.search(r"@\s*[A-Z]", ln))

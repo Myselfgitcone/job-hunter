@@ -110,7 +110,7 @@ def jd_duties(job_description: str, company: str = "", tools: list | None = None
         for p in parts:
             p = p.strip(" .;")
             n = len(p.split())
-            if n < 5 or n > 45 or _NOT_DUTY_RE.search(p) or _SOFT_LINE_RE.search(p) or _PITCH_RE.search(p) or p.endswith("?"):
+            if n < 5 or n > 45 or p.rstrip().endswith(":") or _NOT_DUTY_RE.search(p) or _SOFT_LINE_RE.search(p) or _PITCH_RE.search(p) or p.endswith("?"):
                 continue
             if _PITCH_VOICE_RE.search(p) or (co_rx and co_rx.search(p)):
                 continue
@@ -127,6 +127,13 @@ def jd_duties(job_description: str, company: str = "", tools: list | None = None
 # words every JD line carries; they prove nothing about coverage
 _GENERIC_STEMS = {"experienc", "abilit", "ability", "understand", "strong", "work", "includ", "such", "tool",
                   "team", "role", "help", "support", "using", "use", "need", "new", "well", "across", "with",
+                  # a wordy requirement line is mostly filler; counting it made a covered duty read as a
+                  # miss (live, CTI: "must be highly proficient in QA and testing methodologies/concepts
+                  # with a demonstratable level of expertise" scored 59% against a resume that covered it)
+                  "proficien", "demonstrat", "expertis", "methodolog", "concept", "excellent", "highly",
+                  "comfortable", "hands", "knowledg", "passion", "extensive", "solid", "deep", "prior",
+                  "must", "level", "various", "etc", "plus", "preferred", "required", "bring", "skill",
+                  "verbal", "written", "fast", "paced", "environment", "background", "emphasis",
                   "you\u2019ll", "you'll", "familiarit", "familiarity", "exposure", "solid", "modern", "some",
                   "along", "other", "similar", "related", "within", "while", "their", "that", "our", "key"}
 
@@ -890,7 +897,7 @@ async def tailor_resume_mirror(base_resume: str, job_description: str,
         job_description = clean_jd_html(job_description)
     except Exception:  # noqa: BLE001
         pass
-    base_resume = (base_resume or "").strip()
+    base_resume = t.normalize_job_headers((base_resume or "").strip())
     job_description = (job_description or "").strip()
     if len(base_resume) < 40:
         raise ValueError("Resume text is too short — upload or paste your resume first.")

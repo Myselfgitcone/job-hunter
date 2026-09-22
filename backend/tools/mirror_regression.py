@@ -109,7 +109,9 @@ def main() -> int:
     if len(sys.argv) < 3:
         print(__doc__)
         return 2
-    base = open(sys.argv[1], encoding="utf-8").read()
+    # the pipelines normalise pipe-separated job headers on the way in; the gate must read the
+    # base the same way or every employer looks "changed"
+    base = t.normalize_job_headers(open(sys.argv[1], encoding="utf-8").read())
     root = sys.argv[2]
     audit_only = "--audit-only" in sys.argv
     key = os.environ.get("TAILOR_KEY", "")

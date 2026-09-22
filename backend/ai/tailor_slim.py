@@ -200,6 +200,7 @@ async def tailor_resume_slim(base_resume: str, job_description: str,
                              user_job_roles: list[str] | None = None,
                              profile_projects: list[dict] | None = None,
                              company: str = "",
+                             job_title: str = "",
                              keys=None) -> tuple[str, dict]:
     """Same signature and return shape as ai.tailor.tailor_resume."""
     notes: list[str] = ["pipeline: slim"]

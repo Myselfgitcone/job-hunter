@@ -618,6 +618,14 @@ def jd_strength(body: str, jd_words: set, tools: list) -> float:
     return hit * 3 + named + (1 if t._num_tokens(body) else 0)
 
 
+# A job title names a ROLE. "Finance Operational Excellence" is a team, "Data Platform" is a
+# product area; neither belongs in the headline. Checked before the JD's title is used.
+_ROLE_NOUN_RE = re.compile(
+    r"\b(engineer|developer|architect|analyst|scientist|administrator|consultant|specialist|"
+    r"programmer|designer|manager|lead|director|officer|technician|modeller|modeler|dba|"
+    r"strategist|practitioner|sre|devops)s?\b", re.I)
+
+
 def headline_jd_title(text: str, base_resume: str, jd_title: str, notes: list) -> str:
     """The headline is the JD's own title, de-inflated to the seniority the base supports. The
     shared `_headline_hybrid` keeps the candidate's real title whenever the JD is a different role
@@ -629,6 +637,11 @@ def headline_jd_title(text: str, base_resume: str, jd_title: str, notes: list) -
     lines = text.splitlines()
     if not lines or "\u2014" not in lines[0] or not (jd_title or "").strip():
         return t._headline_hybrid(text, base_resume, jd_title, notes)
+    if not _ROLE_NOUN_RE.search(jd_title):
+        # not a role: the analyze pass read a team or product name out of the JD's prose
+        # (live, Stripe: "Finance Operational Excellence" for an "AI Solutions Developer" posting)
+        notes.append(f"headline: JD title {jd_title!r} does not name a role; keeping the real title")
+        return t._headline_hybrid(text, base_resume, "", notes)
     name = lines[0].partition("\u2014")[0].strip()
     core = re.split(r"\s+\u2013\s+|\s+-\s+|\s*\|\s*|\s*:\s+|\s*\(", jd_title.strip(), maxsplit=1)[0].strip()
     clean = t._deinflate_title(core, base_resume) or core
@@ -881,6 +894,7 @@ async def tailor_resume_mirror(base_resume: str, job_description: str,
                                user_job_roles: list[str] | None = None,
                                profile_projects: list[dict] | None = None,
                                company: str = "",
+                               job_title: str = "",
                                keys=None) -> tuple[str, dict]:
     """Same signature and return shape as ai.tailor.tailor_resume."""
     from ai.tailor_slim import fix_figures_only, restore_magnitudes, strip_unowned_certs, _CERT_RE
@@ -939,6 +953,12 @@ async def tailor_resume_mirror(base_resume: str, job_description: str,
         notes.append(f"jd trimmed: dropped {cut} chars of pay/benefits/legal tail")
 
     # ── 2. DUTY MAP ──────────────────────────────────────────────────────
+    # the posting's own title from the job board beats one read out of the JD's prose
+    if (job_title or "").strip() and _ROLE_NOUN_RE.search(job_title):
+        if (job_title or "").strip().lower() != (context.get("job_title") or "").strip().lower():
+            notes.append(f"job title: using the posting's own {job_title.strip()!r} "
+                         f"(the JD read as {context.get('job_title')!r})")
+        context["job_title"] = job_title.strip()
     duties = jd_duties(job_description, company or str(context.get("company") or ""), context["target_tools"])
     notes.append(f"duty map: {len(duties)} JD lines")
     print(f"[TAILOR-MIRROR] target_cloud={context.get('target_cloud')!r} tools={len(context['target_tools'])} "

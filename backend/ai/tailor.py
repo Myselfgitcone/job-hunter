@@ -4686,6 +4686,7 @@ async def tailor_resume(base_resume: str, job_description: str,
                         user_job_roles: list[str] | None = None,
                         profile_projects: list[dict] | None = None,
                         company: str = "",
+                        job_title: str = "",   # the posting's own title; the mirror pipeline prefers it
                         keys=None) -> tuple[str, dict]:
     """Tailor `base_resume` to `job_description`.
 

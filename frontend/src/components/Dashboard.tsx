@@ -102,12 +102,15 @@ function MonthlyBars({ data, onPick }: {
   const gap  = barW * 0.35;
   const groupW = 3 * barW + 2 * gap;
 
-  const onMove = (e: React.MouseEvent) => {
+  // the index under the pointer, from the event itself: a click must not depend on a
+  // mouse-move having happened first (it had, and a click landed on the last HOVERED month)
+  const idxAt = (e: React.MouseEvent) => {
     const box = wrapRef.current?.getBoundingClientRect();
-    if (!box) return;
+    if (!box) return null;
     const idx = Math.floor(((e.clientX - box.left) / box.width) * n);
-    setHover(Math.min(Math.max(idx, 0), n - 1));
+    return Math.min(Math.max(idx, 0), n - 1);
   };
+  const onMove = (e: React.MouseEvent) => { const i = idxAt(e); if (i != null) setHover(i); };
   const hp = hover != null ? data[hover] : null;
   const hoverLeftPct = hover != null ? ((hover + 0.5) / n) * 100 : 0;
 
@@ -124,7 +127,7 @@ function MonthlyBars({ data, onPick }: {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div ref={wrapRef} style={{ position: "relative", cursor: onPick ? "pointer" : "default" }}
           onMouseMove={onMove} onMouseLeave={() => setHover(null)}
-          onClick={() => { if (onPick && hover != null && data[hover]) onPick(data[hover].m); }}>
+          onClick={(e) => { const i = idxAt(e); if (onPick && i != null && data[i]) onPick(data[i].m); }}>
           <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: 240, display: "block" }}>
             {/* hover band */}
             {hover != null && (
@@ -256,12 +259,13 @@ function AreaChart({ scrape, applied, points, onPick, selected }: {
       strokeLinecap="round" vectorEffect="non-scaling-stroke" fill="none" />
   );
 
-  const onMove = (e: React.MouseEvent) => {
+  const idxAt = (e: React.MouseEvent) => {
     const box = wrapRef.current?.getBoundingClientRect();
-    if (!box) return;
+    if (!box) return null;
     const idx = Math.round(((e.clientX - box.left) / box.width) * (n - 1));
-    setHover(Math.min(Math.max(idx, 0), n - 1));
+    return Math.min(Math.max(idx, 0), n - 1);
   };
+  const onMove = (e: React.MouseEvent) => { const i = idxAt(e); if (i != null) setHover(i); };
 
   const hp = hover != null ? pts[hover] : null;
   const hoverLeftPct = hover != null ? (hover / (n - 1)) * 100 : 0;
@@ -286,7 +290,7 @@ function AreaChart({ scrape, applied, points, onPick, selected }: {
       <div style={{ minWidth: n * 34 }}>
         <div ref={wrapRef} style={{ position: "relative", cursor: onPick ? "pointer" : "default" }}
           onMouseMove={onMove} onMouseLeave={() => setHover(null)}
-          onClick={() => { if (onPick && hover != null && pts[hover]?.date) onPick(pts[hover].date); }}>
+          onClick={(e) => { const i = idxAt(e); if (onPick && i != null && pts[i]?.date) onPick(pts[i].date); }}>
           <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: 300, display: "block" }}>
             <defs>
               <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
@@ -720,11 +724,15 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
   const [loading, setLoading]         = useState(true);
   const [monthFilter, setMonthFilter] = useState<string>(""); // "" until defaulted, then "all" or "YYYY-MM"
   // Click-to-filter. A picked day / month / status scopes the stat cards and Resume History.
-  // monthPicked separates a month the USER chose from the automatic "latest month" default,
-  // which must not quietly turn the all-time Applied card into a this-month-only one.
+  // The month dropdown's automatic "latest month" default is NOT a filter: only a month the
+  // user picks (monthScope) scopes the page, or the all-time Applied card would quietly
+  // become this-month-only.
   const [dayFilter, setDayFilter]       = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"applied" | null>(null);
-  const [monthPicked, setMonthPicked]   = useState(false);
+  // "YYYY-MM" the user picked (bar or dropdown), or null. Separate from monthFilter, which
+  // drives only the daily chart and may not have data for a month the bars offer (July,
+  // when the 30-day timeline holds September): the lists and cards still scope to it.
+  const [monthScope, setMonthScope]     = useState<string | null>(null);
 
   // Reminders + per-user list load once.
   useEffect(() => {
@@ -915,7 +923,6 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
     : appliedJobs;
 
   // ── the active filter, applied to the lists and to the stat cards ──────────────
-  const monthScope = monthPicked && monthFilter && monthFilter !== "all" ? monthFilter : null;
   const inScope = (day?: string) =>
     (!dayFilter || day === dayFilter) && (!monthScope || (day || "").startsWith(monthScope));
   const shownApplied  = visibleApplied.filter((it: any) => inScope(it.day));
@@ -923,7 +930,13 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
   const anyFilter = !!(dayFilter || statusFilter || monthScope);
   const scopeLabel = dayFilter ? `on ${_fmtDay(dayFilter)}`
     : monthScope ? `in ${_MONTH_NAMES[Number(monthScope.slice(5, 7)) - 1]}` : "";
-  const clearFilters = () => { setDayFilter(null); setStatusFilter(null); setMonthPicked(false); };
+  const clearFilters = () => { setDayFilter(null); setStatusFilter(null); setMonthScope(null); };
+  // the daily chart follows a picked month only when the timeline actually holds it
+  const pickMonth = (key: string | null) => {
+    setMonthScope(key);
+    setDayFilter(null);
+    if (key && monthKeys.includes(key)) setMonthFilter(key);
+  };
   // a picked day or month changes what the two activity cards count
   if (dayFilter || monthScope) {
     const ap = stats.find(s => s.label === "Applied");
@@ -977,7 +990,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
               </button>
             )}
             {monthScope && (
-              <button className="chip on" onClick={() => setMonthPicked(false)} title="clear month">
+              <button className="chip on" onClick={() => setMonthScope(null)} title="clear month">
                 {_MONTH_NAMES[Number(monthScope.slice(5, 7)) - 1]} {monthScope.slice(0, 4)} <span style={{ opacity: .6 }}>×</span>
               </button>
             )}
@@ -1042,8 +1055,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
               ? <MonthlyBars data={monthly} onPick={(label) => {
                     const key = _monthKeyForLabel(label);
                     if (!key) return;
-                    if (monthPicked && monthFilter === key) { setMonthPicked(false); return; }   // second click clears
-                    setMonthFilter(key); setMonthPicked(true); setDayFilter(null);
+                    pickMonth(monthScope === key ? null : key);        // second click clears
                   }} />
               : <div style={{ height: 150, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No data yet — scrape to populate</div>
             }
@@ -1084,7 +1096,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
                   <span><i style={{ background: "#3b82f6" }} />Applications</span>
                 </div>
                 <select value={monthFilter}
-                  onChange={e => { setMonthFilter(e.target.value); setMonthPicked(e.target.value !== "all"); setDayFilter(null); }}
+                  onChange={e => { setMonthFilter(e.target.value); setMonthScope(e.target.value !== "all" ? e.target.value : null); setDayFilter(null); }}
                   style={{ fontSize: 12, padding: "5px 10px", borderRadius: 8, border: "1px solid var(--line)",
                     background: "var(--bg-surface)", color: "var(--tx-2)", cursor: "pointer" }}>
                   <option value="all">All months</option>

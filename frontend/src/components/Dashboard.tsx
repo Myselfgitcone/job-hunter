@@ -930,7 +930,9 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
   const anyFilter = !!(dayFilter || statusFilter || monthScope);
   const scopeLabel = dayFilter ? `on ${_fmtDay(dayFilter)}`
     : monthScope ? `in ${_MONTH_NAMES[Number(monthScope.slice(5, 7)) - 1]}` : "";
-  const clearFilters = () => { setDayFilter(null); setStatusFilter(null); setMonthScope(null); };
+  // "" hands the daily chart back to its latest-month default (the effect above re-picks it),
+  // so Clear all does not leave the chart parked on a month that was picked from the bars
+  const clearFilters = () => { setDayFilter(null); setStatusFilter(null); setMonthScope(null); setMonthFilter(""); };
   // the daily chart follows a picked month only when the timeline actually holds it
   const pickMonth = (key: string | null) => {
     setMonthScope(key);

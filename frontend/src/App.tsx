@@ -1092,7 +1092,7 @@ export default function App() {
               }} />
             </div>
             {dailyUsage.remaining === 0 && (
-              <div style={{ fontSize: 10, color: "#ef4444", marginTop: 4 }}>Limit reached — resets midnight UTC</div>
+              <div style={{ fontSize: 10, color: "#ef4444", marginTop: 4 }}>Limit reached — resets midnight Central</div>
             )}
             {dailyUsage.remaining > 0 && dailyUsage.remaining < 10 && (
               <div style={{ fontSize: 10, color: "#f59e0b", marginTop: 4 }}>{dailyUsage.remaining} remaining today</div>
@@ -1112,7 +1112,7 @@ export default function App() {
               }} />
             </div>
             {dailyUsage.applied_remaining === 0 && (
-              <div style={{ fontSize: 10, color: "#ef4444", marginTop: 4 }}>Limit reached — resets midnight UTC</div>
+              <div style={{ fontSize: 10, color: "#ef4444", marginTop: 4 }}>Limit reached — resets midnight Central</div>
             )}
             {dailyUsage.applied_remaining > 0 && dailyUsage.applied_remaining < 10 && (
               <div style={{ fontSize: 10, color: "#f59e0b", marginTop: 4 }}>{dailyUsage.applied_remaining} remaining today</div>

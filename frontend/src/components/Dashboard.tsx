@@ -61,7 +61,10 @@ function Donut({ data }: { data: Array<{ label: string; value: number; color: st
 
 // ── Monthly bars (CSS animated) ───────────────────────────────────────────────
 // ── Monthly trend lines (SVG) ─────────────────────────────────────────────────
-function MonthlyBars({ data }: { data: Array<{ m: string; scraped: number; applied: number; tailored: number }> }) {
+function MonthlyBars({ data, onPick }: {
+  data: Array<{ m: string; scraped: number; applied: number; tailored: number }>;
+  onPick?: (label: string) => void;
+}) {
   // ONE shared max across all 3 series, not one max per series. Per-series
   // maxes made bars incomparable to each other: if June happened to be the
   // peak month for Scraped(1500), Applied(18), AND Tailored(10), all three
@@ -119,7 +122,9 @@ function MonthlyBars({ data }: { data: Array<{ m: string; scraped: number; appli
       </div>
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div ref={wrapRef} style={{ position: "relative" }} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+        <div ref={wrapRef} style={{ position: "relative", cursor: onPick ? "pointer" : "default" }}
+          onMouseMove={onMove} onMouseLeave={() => setHover(null)}
+          onClick={() => { if (onPick && hover != null && data[hover]) onPick(data[hover].m); }}>
           <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: 240, display: "block" }}>
             {/* hover band */}
             {hover != null && (
@@ -183,6 +188,24 @@ function MonthlyBars({ data }: { data: Array<{ m: string; scraped: number; appli
 
 // ── Area chart (SVG) ─────────────────────────────────────────────────────────
 const _MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+// The app's calendar (matches APP_TZ on the server). A timestamp is stored in UTC; which DAY
+// it belongs to is decided here, so 10pm on Sep 28 in Chicago is Sep 28, not the UTC Sep 29.
+const APP_TZ = "America/Chicago";
+const _dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: APP_TZ, year: "numeric", month: "2-digit", day: "2-digit" });
+function _localDay(iso?: string | null): string {
+  if (!iso) return "";
+  const d = new Date(String(iso).replace(/(\.\d{3})\d+/, "$1"));
+  return isNaN(d.getTime()) ? "" : _dayFmt.format(d);      // "YYYY-MM-DD"
+}
+function _monthKeyForLabel(label: string): string | null {
+  // "Sep" -> "2026-09": the Monthly Trends bars carry only a label; walk back from today
+  const now = new Date();
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    if (_MONTHS[d.getMonth()] === label) return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }
+  return null;
+}
 function _fmtDay(iso: string): string {
   // "2026-06-12" -> "Jun 12" (string parsing — timezone-safe)
   const [, m, d] = iso.split("-").map(Number);
@@ -191,8 +214,12 @@ function _fmtDay(iso: string): string {
 
 // ResumeVar-style activity chart: y-axis, gridlines, smooth curves, dots,
 // styled hover tooltip with a vertical guide. No chart library.
-function AreaChart({ scrape, applied, points }: { scrape: number[]; applied: number[]; points?: any[] }) {
+function AreaChart({ scrape, applied, points, onPick, selected }: {
+  scrape: number[]; applied: number[]; points?: any[];
+  onPick?: (date: string) => void; selected?: string | null;
+}) {
   const [hover, setHover] = useState<number | null>(null);
+  const selIdx = selected ? (points || []).findIndex((p: any) => p.date === selected) : -1;
   const wrapRef = React.useRef<HTMLDivElement>(null);
   const pts = points || [];
   const n = Math.max(pts.length, 2);
@@ -257,7 +284,9 @@ function AreaChart({ scrape, applied, points }: { scrape: number[]; applied: num
           and making the hover jump. */}
       <div style={{ flex: 1, minWidth: 0, overflowX: "auto", overflowY: "hidden", paddingBottom: 6 }}>
       <div style={{ minWidth: n * 34 }}>
-        <div ref={wrapRef} style={{ position: "relative" }} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+        <div ref={wrapRef} style={{ position: "relative", cursor: onPick ? "pointer" : "default" }}
+          onMouseMove={onMove} onMouseLeave={() => setHover(null)}
+          onClick={() => { if (onPick && hover != null && pts[hover]?.date) onPick(pts[hover].date); }}>
           <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: 300, display: "block" }}>
             <defs>
               <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
@@ -272,8 +301,12 @@ function AreaChart({ scrape, applied, points }: { scrape: number[]; applied: num
             <path d={areaPath} fill="url(#areaGrad)" />
             <path d={scrapePath} fill="none" stroke="#7c3aed" strokeWidth="3" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
             <path d={appliedPath} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+            {/* picked day: a solid violet guide that stays */}
+            {selIdx >= 0 && (
+              <line x1={x(selIdx)} x2={x(selIdx)} y1={0} y2={H} stroke="#7c3aed" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+            )}
             {/* hover guide */}
-            {hover != null && (
+            {hover != null && hover !== selIdx && (
               <line x1={x(hover)} x2={x(hover)} y1={0} y2={H} stroke="var(--tx-3)" strokeWidth="1" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
             )}
             {/* dots */}
@@ -296,6 +329,11 @@ function AreaChart({ scrape, applied, points }: { scrape: number[]; applied: num
                 <i style={{ width: 9, height: 9, borderRadius: 3, background: "#3b82f6", display: "inline-block" }} />
                 Applied: <b>{hp.applied}</b>
               </div>
+              {onPick && (
+                <div style={{ fontSize: 10.5, color: "var(--tx-3)", marginTop: 6 }}>
+                  {hover === selIdx ? "click to clear filter" : "click to see this day"}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -306,7 +344,9 @@ function AreaChart({ scrape, applied, points }: { scrape: number[]; applied: num
           <div style={{ display: "flex", marginTop: 8, height: pts.length > 16 ? 34 : 18 }}>
             {pts.map((p, i) => (
               <span key={i} style={{ flex: "1 1 0", minWidth: 0, display: "flex", justifyContent: "center", overflow: "visible" }}>
-                <span style={{ fontSize: pts.length > 16 ? 10 : 11.5, color: hover === i ? "var(--tx)" : "var(--tx-3)",
+                <span style={{ fontSize: pts.length > 16 ? 10 : 11.5,
+                  color: i === selIdx ? "#7c3aed" : hover === i ? "var(--tx)" : "var(--tx-3)",
+                  fontWeight: i === selIdx ? 700 : 400,
                   fontFamily: "var(--f-mono)", whiteSpace: "nowrap",
                   transform: pts.length > 16 ? "rotate(-45deg)" : "none" }}>
                   {_fmtDay(p.date || p.label)}
@@ -357,7 +397,7 @@ const QUICK_ACCENT = "#d97706";  // amber-600
 
 function ResumeList({ title, accent, items, icon, badge, showDownloads }: {
   title: string; accent: string;
-  items: Array<{ id?: string; company: string; title: string; when: string; whenFull: string; location: string; exp: string; source?: "job" | "quick"; cost?: number | null; tin?: number | null; tout?: number | null }>;
+  items: Array<{ id?: string; company: string; title: string; when: string; whenFull: string; location: string; exp: string; day?: string; source?: "job" | "quick"; cost?: number | null; tin?: number | null; tout?: number | null }>;
   icon: string; badge: string; showDownloads?: boolean;
 }) {
   const [q, setQ] = useState("");
@@ -679,6 +719,12 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [loading, setLoading]         = useState(true);
   const [monthFilter, setMonthFilter] = useState<string>(""); // "" until defaulted, then "all" or "YYYY-MM"
+  // Click-to-filter. A picked day / month / status scopes the stat cards and Resume History.
+  // monthPicked separates a month the USER chose from the automatic "latest month" default,
+  // which must not quietly turn the all-time Applied card into a this-month-only one.
+  const [dayFilter, setDayFilter]       = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"applied" | null>(null);
+  const [monthPicked, setMonthPicked]   = useState(false);
 
   // Reminders + per-user list load once.
   useEffect(() => {
@@ -733,7 +779,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
     ? allUsersTailoredTotal
     : (data.tailored_total ?? (data.tailored_jobs || []).length);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = _localDay(new Date().toISOString());          // Chicago day, never the UTC date
   const todayEntry = (data.timeline || []).find((d: any) => d.date === today);
   const scrapedToday = todayEntry?.scraped || 0;
 
@@ -827,16 +873,19 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
   const appliedJobs  = (data.applied_jobs  || []).map((j: any) => ({
     company: j.company, title: j.title, location: j.location || "", exp: j.experience_level || "",
     when: timeAgo(j.applied_at || j.scraped_at), whenFull: _fmtFullDate(j.applied_at || j.scraped_at),
+    day: _localDay(j.applied_at || j.scraped_at),
   }));
   const jobTailored = (data.tailored_jobs || []).map((j: any) => ({
     id: j.id, company: j.company, title: j.title, location: j.location || "", exp: j.experience_level || "",
     when: timeAgo(j.tailored_at || j.scraped_at), whenFull: _fmtFullDate(j.tailored_at || j.scraped_at),
     source: "job" as const, tailored_at: j.tailored_at || j.scraped_at || "",
+    day: _localDay(j.tailored_at || j.scraped_at),
   }));
   const quickTailored = (data.quick_tailored_jobs || []).map((j: any) => ({
     id: j.id, company: j.company, title: "", location: "", exp: "",
     when: timeAgo(j.tailored_at), whenFull: _fmtFullDate(j.tailored_at),
     source: "quick" as const, tailored_at: j.tailored_at || "",
+    day: _localDay(j.tailored_at),
   }));
   const tailoredJobs = [...jobTailored, ...quickTailored]
     .sort((a, b) => (b.tailored_at > a.tailored_at ? 1 : -1));
@@ -852,6 +901,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
           when: timeAgo(j.tailored_at), whenFull: _fmtFullDate(j.tailored_at),
           source: j.source as "job" | "quick", tailored_at: j.tailored_at || "",
           cost: j.tailor_cost, tin: j.tailor_tokens_in, tout: j.tailor_tokens_out,
+          day: _localDay(j.tailored_at),
         }))
         .sort((a: any, b: any) => (b.tailored_at > a.tailored_at ? 1 : -1))
     : tailoredJobs;
@@ -860,8 +910,27 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
     ? (selectedUser.applied || []).map((j: any) => ({
         company: j.company, title: j.title, location: j.location, exp: j.experience_level,
         when: timeAgo(j.applied_at), whenFull: _fmtFullDate(j.applied_at),
+        day: _localDay(j.applied_at),
       }))
     : appliedJobs;
+
+  // ── the active filter, applied to the lists and to the stat cards ──────────────
+  const monthScope = monthPicked && monthFilter && monthFilter !== "all" ? monthFilter : null;
+  const inScope = (day?: string) =>
+    (!dayFilter || day === dayFilter) && (!monthScope || (day || "").startsWith(monthScope));
+  const shownApplied  = visibleApplied.filter((it: any) => inScope(it.day));
+  const shownTailored = visibleTailored.filter((it: any) => inScope(it.day));
+  const anyFilter = !!(dayFilter || statusFilter || monthScope);
+  const scopeLabel = dayFilter ? `on ${_fmtDay(dayFilter)}`
+    : monthScope ? `in ${_MONTH_NAMES[Number(monthScope.slice(5, 7)) - 1]}` : "";
+  const clearFilters = () => { setDayFilter(null); setStatusFilter(null); setMonthPicked(false); };
+  // a picked day or month changes what the two activity cards count
+  if (dayFilter || monthScope) {
+    const ap = stats.find(s => s.label === "Applied");
+    const tl = stats.find(s => s.label === "AI Tailored");
+    if (ap) { ap.value = shownApplied.length;  ap.delta = scopeLabel; }
+    if (tl) { tl.value = shownTailored.length; tl.delta = scopeLabel; }
+  }
 
   // Reminders mapped
   const remList = (reminders || []).map((r: any) => ({
@@ -897,6 +966,32 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
             <ScrapeStatus lastScrapedAt={data.last_scraped_at} />
           </div>
         </div>
+
+        {/* Active filters — every chip clears itself */}
+        {anyFilter && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+            <span style={{ fontSize: 12, color: "var(--tx-3)" }}>Showing</span>
+            {dayFilter && (
+              <button className="chip on" onClick={() => setDayFilter(null)} title="clear day">
+                {_fmtDay(dayFilter)} <span style={{ opacity: .6 }}>×</span>
+              </button>
+            )}
+            {monthScope && (
+              <button className="chip on" onClick={() => setMonthPicked(false)} title="clear month">
+                {_MONTH_NAMES[Number(monthScope.slice(5, 7)) - 1]} {monthScope.slice(0, 4)} <span style={{ opacity: .6 }}>×</span>
+              </button>
+            )}
+            {statusFilter && (
+              <button className="chip on" onClick={() => setStatusFilter(null)} title="clear status">
+                Applied only <span style={{ opacity: .6 }}>×</span>
+              </button>
+            )}
+            <span style={{ fontSize: 12, color: "var(--tx-2)" }}>
+              · {shownApplied.length} applied{statusFilter ? "" : `, ${shownTailored.length} tailored`}
+            </span>
+            <button className="chip" onClick={clearFilters} style={{ marginLeft: "auto" }}>Clear all</button>
+          </div>
+        )}
 
         {/* Stat cards */}
         <div className="stat-row">
@@ -944,7 +1039,12 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
               </div>
             </div>
             {monthly.length > 0
-              ? <MonthlyBars data={monthly} />
+              ? <MonthlyBars data={monthly} onPick={(label) => {
+                    const key = _monthKeyForLabel(label);
+                    if (!key) return;
+                    if (monthPicked && monthFilter === key) { setMonthPicked(false); return; }   // second click clears
+                    setMonthFilter(key); setMonthPicked(true); setDayFilter(null);
+                  }} />
               : <div style={{ height: 150, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No data yet — scrape to populate</div>
             }
           </div>
@@ -957,9 +1057,15 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
                     <Donut data={statusData.filter(d => d.value > 0)} />
                   </div>
                   <div className="donut-legend">
-                    {statusData.map(s => (
-                      <span key={s.label}><i style={{ background: s.color }} />{s.label} <b>{s.value}</b></span>
-                    ))}
+                    {statusData.map(s => s.label === "Applied"
+                      ? <button key={s.label} onClick={() => setStatusFilter(f => f ? null : "applied")}
+                          title="show only applied resumes"
+                          style={{ background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit",
+                            color: statusFilter ? "var(--tx)" : "inherit", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          <i style={{ background: s.color }} />{s.label} <b>{s.value}</b>
+                        </button>
+                      : <span key={s.label}><i style={{ background: s.color }} />{s.label} <b>{s.value}</b></span>
+                    )}
                   </div>
                 </>
               : <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No jobs tracked yet</div>
@@ -977,7 +1083,8 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
                   <span><i style={{ background: "#7c3aed" }} />Scraped</span>
                   <span><i style={{ background: "#3b82f6" }} />Applications</span>
                 </div>
-                <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)}
+                <select value={monthFilter}
+                  onChange={e => { setMonthFilter(e.target.value); setMonthPicked(e.target.value !== "all"); setDayFilter(null); }}
                   style={{ fontSize: 12, padding: "5px 10px", borderRadius: 8, border: "1px solid var(--line)",
                     background: "var(--bg-surface)", color: "var(--tx-2)", cursor: "pointer" }}>
                   <option value="all">All months</option>
@@ -986,7 +1093,9 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
               </div>
             </div>
             {displayTimeline.length > 0
-              ? <AreaChart scrape={displayTimeline.map((d: any) => d.scraped || 0)} applied={displayTimeline.map((d: any) => d.applied || 0)} points={displayTimeline} />
+              ? <AreaChart scrape={displayTimeline.map((d: any) => d.scraped || 0)} applied={displayTimeline.map((d: any) => d.applied || 0)} points={displayTimeline}
+                  selected={dayFilter}
+                  onPick={(date) => setDayFilter(d => (d === date ? null : date))} />
               : <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--tx-3)", fontSize: 12 }}>No activity data for this period</div>
             }
           </div>
@@ -1009,7 +1118,7 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
         {/* Resume history — with user dropdown for admin */}
         <div className="resume-history">
           <div className="rh-section-head" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span>Resume History</span>
+            <span>Resume History{scopeLabel ? <span style={{ fontWeight: 500, color: "var(--tx-3)" }}> · {scopeLabel}</span> : null}</span>
             {isAdmin && usersData.length > 0 && (
               <span title={selectedUser ? "This user's total AI tailoring spend" : "All users' total AI tailoring spend"}
                 style={{ fontSize: 12.5, fontWeight: 700, padding: "6px 12px", borderRadius: 999,
@@ -1022,8 +1131,10 @@ export function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
             )}
           </div>
           <div className="rh-cols">
-            <ResumeList title="Applied Resumes"  accent="#10b981" items={visibleApplied}  icon="applied"  badge="Applied"  />
-            <ResumeList title="Tailored Resumes" accent="#7c3aed" items={visibleTailored} icon="sparkles" badge="Tailored" showDownloads />
+            <ResumeList title="Applied Resumes"  accent="#10b981" items={shownApplied}  icon="applied"  badge="Applied"  />
+            {!statusFilter && (
+              <ResumeList title="Tailored Resumes" accent="#7c3aed" items={shownTailored} icon="sparkles" badge="Tailored" showDownloads />
+            )}
           </div>
         </div>
 

@@ -1,6 +1,49 @@
 # -*- coding: utf-8 -*-
 from zoneinfo import ZoneInfo
 EST = ZoneInfo('America/New_York')
+
+# The app's calendar. Every "which day was this" and "what is today" goes through these.
+# Storage stays UTC; only the DAY decision is local. Chicago follows DST, so this is CST in
+# winter and CDT in summer without anyone touching it.
+APP_TZ = ZoneInfo("America/Chicago")
+
+
+def _to_local(ts):
+    """ISO timestamp (Z, offset, or naive=UTC) -> aware datetime in APP_TZ; None if unparsable."""
+    from datetime import datetime as _dt, timezone as _tz
+    if not ts:
+        return None
+    try:
+        t = _dt.fromisoformat(str(ts).strip().replace("Z", "+00:00"))
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=_tz.utc)
+        return t.astimezone(APP_TZ)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _local_day(ts) -> str:
+    """'YYYY-MM-DD' of the timestamp in APP_TZ, '' when it cannot be parsed."""
+    t = _to_local(ts)
+    return t.strftime("%Y-%m-%d") if t else ""
+
+
+def _today_local():
+    from datetime import datetime as _dt
+    return _dt.now(APP_TZ).date()
+
+
+def _local_day_window_utc(day: str | None = None) -> tuple[str, str]:
+    """[start, end) of one APP_TZ calendar day, as UTC 'YYYY-MM-DDTHH:MM:SSZ' strings, for
+    comparing against stored timestamps in SQL (ISO-8601 strings sort chronologically).
+    A LIKE 'YYYY-MM-DD%' prefix cannot express this, which is why the old counters reset at
+    7pm Chicago time."""
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    d = _dt.strptime(day, "%Y-%m-%d").date() if day else _today_local()
+    start = _dt(d.year, d.month, d.day, tzinfo=APP_TZ)
+    end = start + _td(days=1)
+    fmt = lambda x: x.astimezone(_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return fmt(start), fmt(end)
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -195,7 +238,7 @@ async def _scrape_and_insert(fetch_fn, group_name, settings, cutoff_posted, now_
     # per-day scrape history must be recorded at insert time
     if new_count:
         try:
-            day = now_iso[:10]
+            day = _local_day(now_iso)          # the app's calendar, not the UTC date
             usa   = sum(1 for j in new_jobs if j.get("country") == "USA")
             india = sum(1 for j in new_jobs if j.get("country") == "India")
             async with SessionLocal() as db:
@@ -2304,14 +2347,12 @@ async def public_job_count():
 @app.get("/api/stats/today")
 async def public_today_stats():
     """Public endpoint — live stats for login page (no auth needed)."""
-    from datetime import datetime, timezone as _tz
-    # scraped_at is stored as UTC Z-suffix; use UTC date to match correctly
-    now_utc = datetime.now(_tz.utc)
-    today   = now_utc.strftime("%Y-%m-%d")
+    # "today" is the app's Chicago calendar day, expressed as a UTC window for the query
+    _d0, _d1 = _local_day_window_utc()
     async with SessionLocal() as db:
-        # Jobs added today (UTC date prefix match covers both old EST and new UTC formats)
         added_r = await db.execute(
-            select(func.count()).select_from(Job).where(Job.scraped_at.like(f"{today}%"))
+            select(func.count()).select_from(Job)
+            .where(Job.scraped_at >= _d0, Job.scraped_at < _d1)
         )
         added_today = added_r.scalar() or 0
         # Most recent scrape timestamp
@@ -3127,7 +3168,7 @@ async def assistant_ask(body: dict, user_id: str = Depends(get_current_user_id))
             AssistantMessage.created_at.like(f"{today}%")))
         used = used_r.scalar() or 0
         if used >= ASSISTANT_DAILY_LIMIT:
-            raise HTTPException(429, f"Daily limit reached ({ASSISTANT_DAILY_LIMIT} questions). Resets at midnight UTC.")
+            raise HTTPException(429, f"Daily limit reached ({ASSISTANT_DAILY_LIMIT} questions). Resets at midnight Central time.")
 
     user_cfg = await _get_user_settings(user_id)
     resume = user_cfg.get("resume", "")
@@ -3552,29 +3593,30 @@ DAILY_TAILOR_LIMIT = 45
 DAILY_APPLY_LIMIT  = 45
 
 async def _get_daily_tailor_count(user_id: str, db) -> int:
-    """Count job tailors + quick tailors this user has run today (UTC)."""
-    today = datetime.now(_UTC.utc).strftime("%Y-%m-%d")
+    """Count job tailors + quick tailors this user has run today, on the app's Chicago
+    calendar (the limit used to reset at 7pm CDT because "today" was the UTC date)."""
+    d0, d1 = _local_day_window_utc()
     job_count = (await db.execute(
         select(func.count()).select_from(UserJob)
-        .where(UserJob.user_id == user_id, UserJob.tailored_at.like(f"{today}%"))
+        .where(UserJob.user_id == user_id, UserJob.tailored_at >= d0, UserJob.tailored_at < d1)
     )).scalar() or 0
     quick_count = (await db.execute(
         select(func.count()).select_from(QuickTailorHistory)
         .where(QuickTailorHistory.user_id == user_id,
-               QuickTailorHistory.created_at.like(f"{today}%"))
+               QuickTailorHistory.created_at >= d0, QuickTailorHistory.created_at < d1)
     )).scalar() or 0
     return job_count + quick_count
 
 
 async def _get_daily_applied_count(user_id: str, db) -> int:
-    """Count jobs this user marked 'applied' today (UTC) — keyed off
-    applied_at, the timestamp set whenever status flips to 'applied'
-    (manual status change or successful auto-apply)."""
-    today = datetime.now(_UTC.utc).strftime("%Y-%m-%d")
+    """Count jobs this user marked 'applied' today on the app's Chicago calendar — keyed
+    off applied_at, the timestamp set whenever status flips to 'applied' (manual status
+    change or successful auto-apply)."""
+    d0, d1 = _local_day_window_utc()
     return (await db.execute(
         select(func.count()).select_from(UserJob)
         .where(UserJob.user_id == user_id, UserJob.status == "applied",
-               UserJob.applied_at.like(f"{today}%"))
+               UserJob.applied_at >= d0, UserJob.applied_at < d1)
     )).scalar() or 0
 
 
@@ -3586,13 +3628,14 @@ async def get_daily_usage(user_id: str = Depends(get_current_user_id)):
         used = await _get_daily_tailor_count(user_id, db)
         applied_used = await _get_daily_applied_count(user_id, db)
         # This user's OWN tailoring spend (real token cost from user_jobs).
-        _today = datetime.now(_UTC.utc).strftime("%Y-%m-%d")
+        _d0, _d1 = _local_day_window_utc()
         spend_total = (await db.execute(
             select(func.coalesce(func.sum(UserJob.tailor_cost), 0.0))
             .where(UserJob.user_id == user_id))).scalar() or 0.0
         spend_today = (await db.execute(
             select(func.coalesce(func.sum(UserJob.tailor_cost), 0.0))
-            .where(UserJob.user_id == user_id, UserJob.tailored_at.like(f"{_today}%")))).scalar() or 0.0
+            .where(UserJob.user_id == user_id,
+                   UserJob.tailored_at >= _d0, UserJob.tailored_at < _d1))).scalar() or 0.0
     return {
         "used": used, "limit": DAILY_TAILOR_LIMIT, "remaining": max(0, DAILY_TAILOR_LIMIT - used),
         "applied_used": applied_used, "applied_limit": DAILY_APPLY_LIMIT,
@@ -4766,14 +4809,14 @@ async def admin_overview(user_id: str = Depends(get_current_user_id)):
         status_breakdown[r[2] or "new"] += 1
 
     # Monthly trends (last 6 months) — applied + tailored across all users
-    today = date.today()
+    today = _today_local()
     monthly_map = defaultdict(lambda: {"applied": 0, "tailored": 0})
     for r in uj_rows:
         if r[5]:  # applied_at
-            m = r[5][:7]
+            m = _local_day(r[5])[:7]
             monthly_map[m]["applied"] += 1
         if r[3]:  # tailored_at
-            m = r[3][:7]
+            m = _local_day(r[3])[:7]
             monthly_map[m]["tailored"] += 1
 
     monthly = []
@@ -4789,8 +4832,8 @@ async def admin_overview(user_id: str = Depends(get_current_user_id)):
     user_activity = {}
     for uid, info in all_users.items():
         user_rows = [r for r in uj_rows if r[0] == uid]
-        recent_applied = sum(1 for r in user_rows if r[5] and r[5][:10] >= thirty_ago)
-        recent_tailored = sum(1 for r in user_rows if r[3] and r[3][:10] >= thirty_ago)
+        recent_applied = sum(1 for r in user_rows if r[5] and _local_day(r[5]) >= thirty_ago)
+        recent_tailored = sum(1 for r in user_rows if r[3] and _local_day(r[3]) >= thirty_ago)
         user_activity[uid] = {
             "name": info["name"],
             "email": info["email"],
@@ -4943,8 +4986,8 @@ async def get_analytics(user_id: str = Depends(get_current_user_id),
         by_country[j_country or "Unknown"] += 1
         by_source[j_src or "Unknown"] += 1
         
-        day   = (j_scraped or "")[:10]
-        month = (j_scraped or "")[:7]
+        day   = _local_day(j_scraped)
+        month = day[:7]
         if day:
             by_day[day] += 1
             by_month[month]["scraped"] += 1
@@ -4953,7 +4996,7 @@ async def get_analytics(user_id: str = Depends(get_current_user_id),
             # Applied + all interview stages count as "applied" — a job that
             # progressed to interview is still an application. Bucket by the
             # APPLIED date, not the scrape date (matches "Applied today").
-            aday = (u_applied or j_scraped or "")[:10]
+            aday = _local_day(u_applied or j_scraped)
             if aday:
                 applied_by_day[aday] += 1
                 by_month[aday[:7]]["applied"] += 1
@@ -4965,7 +5008,7 @@ async def get_analytics(user_id: str = Depends(get_current_user_id),
 
         if u_tailored:
             # Bucket by the TAILORED date, not the scrape date (same reasoning).
-            tday = (u_tailored or "")[:10]
+            tday = _local_day(u_tailored)
             if tday:
                 tailored_by_day[tday] += 1
                 by_month[tday[:7]]["tailored"] += 1
@@ -4975,7 +5018,7 @@ async def get_analytics(user_id: str = Depends(get_current_user_id),
                 "experience_level": j_exp or "",
             })
 
-    today = date.today()
+    today = _today_local()
 
     # Durable per-day ledger (recorded at insert time) beats DB counts —
     # retention deletes old rows, undercounting days >7d back

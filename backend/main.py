@@ -659,7 +659,10 @@ _RETIRED_ROLE_ITEMS = {
     "cyber defense analyst", "threat detection analyst",
     "security monitoring analyst", "detection analyst", "cybersecurity analyst",
     "ai analyst", "genai analyst", "generative ai analyst",
-    "ai solutions analyst", "ai engineer", "rag engineer", "llm engineer",
+    "ai solutions analyst", "ai engineer",
+    # "rag engineer" / "llm engineer" left this set on 2026-09-29: they are items of the live
+    # AI Engineering family, and stripping them here every boot (after the grant had added
+    # them) kept that family from ever collapsing to one chip
     "machine learning analyst", "ai data analyst", "search relevance analyst",
     "prompt engineer",
     "iam analyst", "iam engineer", "identity analyst",
@@ -1263,6 +1266,28 @@ async def startup():
                 print(f"[Startup] Remapped {fixed} country='Remote' rows to real countries")
         except Exception as e:
             print(f"[Startup] Remote-country remap skipped: {e}")
+        # Foreign rows stored as USA (the country table did not name their country, so
+        # the Remote remap above defaulted them). Relabelled, not deleted: the USA-only views
+        # stop showing them and nothing a user applied to is lost. Idempotent.
+        try:
+            from scrapers.base import detect_country as _detect_c2
+            async with SessionLocal() as db:
+                rows = await db.execute(select(Job.id, Job.location).where(Job.country == "USA"))
+                usa_rows = rows.fetchall()
+            moved = 0
+            async with SessionLocal() as db:
+                for jid, loc in usa_rows:
+                    c = _detect_c2(loc or "", default="")
+                    if c and c not in ("USA", "India", "Remote"):
+                        await db.execute(update(Job).where(Job.id == jid).values(country=c))
+                        moved += 1
+                        if moved % 500 == 0:
+                            await db.commit()
+                await db.commit()
+            if moved:
+                print(f"[Startup] Relabelled {moved} foreign job(s) that were stored as USA")
+        except Exception as e:
+            print(f"[Startup] Foreign-country relabel skipped: {e}")
         # Purge disabled role families (DevOps/SRE + Security) — scraping for
         # them is commented out; clear the existing rows instead of waiting for
         # 7-day retention. Keeps applied/interview. Idempotent (no new ones arrive).
@@ -2406,14 +2431,15 @@ async def list_jobs(
                 raise HTTPException(403, "Account access revoked")
             if st == "pending":
                 raise HTTPException(403, "Account pending approval")
+        # the admin is scoped by role like everyone else when a grant exists (live: the admin
+        # list was all 19,923 jobs and 79 MB, against ~2,000 for a role-scoped user)
         user_roles: list = []
-        if not is_admin:
-            s_res = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
-            s = s_res.scalar_one_or_none()
-            try:
-                user_roles = json.loads(s.job_roles) if s and s.job_roles else []
-            except Exception:
-                user_roles = []
+        s_res = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+        s = s_res.scalar_one_or_none()
+        try:
+            user_roles = json.loads(s.job_roles) if s and s.job_roles else []
+        except Exception:
+            user_roles = []
 
         # List view never needs the big text columns — the description is
         # fetched per job on open (GET /api/jobs/{id}). Loading them here
@@ -2449,7 +2475,7 @@ async def list_jobs(
         # the frontend uses, so the two views never disagree. The O2Ten family
         # is matched by SOURCE, not title — its curated titles never contain
         # the role string, so title matching alone hid every job from grantees.
-        if not is_admin and user_roles:
+        if user_roles:
             _has_o2ten = any((r or "").lower().strip() == "o2ten" for r in user_roles)
             jobs = [j for j in jobs
                     if (_has_o2ten and (j.source or "") == "O2Ten")
@@ -2555,18 +2581,32 @@ async def list_jobs(
     for job in jobs:
         d = _job_to_dict(job, light=True)
         if job.id in _desc_map and _desc_map[job.id]:
-            d["description"] = clean_jd_html(_desc_map[job.id])
+            _full = clean_jd_html(_desc_map[job.id])
+            if (job.source or "") == "O2Ten" or len(_full) <= 700:
+                d["description"] = _full
+            else:
+                # a Kanban card shows a snippet; the detail view fetches the whole text
+                d["description"] = _full[:600].rstrip() + "…"
+                d["description_truncated"] = True
         uj = user_jobs_map.get(job.id)
         if uj:
             d["status"] = uj.status
-            d["tailored_resume"] = uj.tailored_resume
-            d["cover_letter"] = uj.cover_letter or ""
+            # the heavy documents stay out of the LIST (a list shows title and score): the
+            # detail endpoint returns them for the one job that is opened. has_tailored /
+            # has_cover_letter tell the client to fetch, so the Resume tab never reads as
+            # "not tailored" for a job that is. (live: the admin list carried every user's
+            # full tailored resume, tailor context, cover letter and fit analysis: 79 MB)
+            d["tailored_resume"] = ""
+            d["has_tailored"] = bool(uj.tailored_resume)
+            d["tailored_at"] = uj.tailored_at or d.get("tailored_at") or ""
+            d["cover_letter"] = ""
+            d["has_cover_letter"] = bool(uj.cover_letter)
             d["ats_score_before"] = uj.ats_score_before
             d["ats_score_after"] = uj.ats_score_after
             d["ats_keywords_matched"] = json.loads(uj.ats_keywords_matched) if uj.ats_keywords_matched else []
             d["ats_keywords_missing"] = json.loads(uj.ats_keywords_missing) if uj.ats_keywords_missing else []
-            d["fit_analysis"] = uj.fit_analysis
-            d["interview_tips"] = json.loads(uj.interview_tips) if uj.interview_tips else []
+            d["fit_analysis"] = None
+            d["interview_tips"] = []
             d["notes"] = uj.notes or ""
             d["priority"] = uj.priority or 0
             d["deferred"] = bool(getattr(uj, "deferred", False))
@@ -2577,7 +2617,7 @@ async def list_jobs(
             d["review_reasons"] = json.loads(uj.review_reasons) if uj.review_reasons else []
             d["review_notes"] = json.loads(uj.review_notes) if uj.review_notes else []
             d["gate_scores"] = json.loads(uj.gate_scores) if uj.gate_scores else None
-            d["tailor_context"] = json.loads(uj.tailor_context) if uj.tailor_context else None
+            d["tailor_context"] = None
         else:
             d["status"] = "new"
         # AI Match must reflect the VIEWER's own profile. _job_to_dict fills
@@ -3589,8 +3629,8 @@ async def fetch_jd(job_id: str, user_id: str = Depends(get_current_user_id)):
     return {"description": full_desc, "date": job.posted_at, "experience_level": job.experience_level}
 
 
-DAILY_TAILOR_LIMIT = 45
-DAILY_APPLY_LIMIT  = 45
+DAILY_TAILOR_LIMIT = 50
+DAILY_APPLY_LIMIT  = 50
 
 async def _get_daily_tailor_count(user_id: str, db) -> int:
     """Count job tailors + quick tailors this user has run today, on the app's Chicago
@@ -5129,6 +5169,7 @@ def _job_to_dict(job: Job, light: bool = False) -> dict:
         # escaped tag soup as visible text. Read-time fix: covers every
         # already-scraped dirty row too, no DB migration needed.
         "description": clean_jd_html(_desc) if _desc else "",
+        "description_truncated": False,
         "salary": job.salary,
         "remote": job.remote,
         "posted_at": job.posted_at,

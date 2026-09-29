@@ -244,8 +244,11 @@ export default function App() {
   // Lazy-load the full job description when a job is selected
   useEffect(() => {
     if (selectedId) {
-      const j = allJobs.find(x => x.id === selectedId);
-      if (j && !j.description) {
+      const j: any = allJobs.find(x => x.id === selectedId);
+      // the list carries a snippet at most and no tailored resume; fetch the full job when
+      // the list says there is more to it
+      if (j && (!j.description || j.description_truncated || (j.has_tailored && !j.tailored_resume)
+                || (j.has_cover_letter && !j.cover_letter))) {
         refreshJob(selectedId);
       }
     }
@@ -407,7 +410,9 @@ export default function App() {
     if (!quiet) setLoading(true);   // background refreshes don't flash the spinner
     const storedEmail = (() => { try { return JSON.parse(localStorage.getItem("jh_user") || "{}").email?.toLowerCase(); } catch { return ""; } })();
     const _adm = storedEmail === ADMIN_EMAIL;
-    const params = _adm ? {} : { country: "USA" };
+    // USA only, the admin included: the app is a USA board (the admin's own view used to pull
+    // every country and all 19,923 rows, 79 MB, ~10 s per load)
+    const params = { country: "USA" };
     try { const raw = await api.getJobs(params); setJobs(raw); setAllJobs(raw); }
     catch (e: any) {
       // Backend returns 403 with "revoked" or "pending" when account status changed
@@ -637,7 +642,7 @@ export default function App() {
         if (!ok) return false;
       }
       // country — non-admins always see USA only
-      const effectiveCountry = _isAdmin ? filters.country : ["USA"];
+      const effectiveCountry = ["USA"];
       if (effectiveCountry.length && !effectiveCountry.includes(j.country || "")) return false;
       // source
       if (filters.source.length && !filters.source.includes(j.source)) return false;
@@ -758,7 +763,13 @@ export default function App() {
   const handleResetFilters = () => { setFilters(DEFAULT_FILTERS); };
 
   const handleStatusChange = async (id: string, status: JobStatus) => {
+    const wasApplied = allJobs.find(x => x.id === id)?.status === "applied";
     await api.setStatus(id, status); updateJob(id, { status }); toast("Moved to " + status, "success");
+    // the sidebar's Applied-today count moves with the click, then the server confirms it
+    if (status === "applied" && !wasApplied) {
+      setDailyUsage(u => u ? { ...u, applied_used: u.applied_used + 1, applied_remaining: Math.max(0, u.applied_remaining - 1) } : u);
+    }
+    refreshUsage();
   };
 
   const runAction = async (action: string) => {
@@ -937,13 +948,13 @@ export default function App() {
     applied_used: number; applied_limit: number; applied_remaining: number;
     spend_today?: number; spend_total?: number;
   } | null>(null);
+  const refreshUsage = useCallback(() => api.getDailyUsage().then(setDailyUsage).catch(() => {}), []);
   useEffect(() => {
     if (!isAuthenticated) return;
-    const load = () => api.getDailyUsage().then(setDailyUsage).catch(() => {});
-    load();
-    const t = setInterval(load, 60000);
+    refreshUsage();
+    const t = setInterval(refreshUsage, 60000);
     return () => clearInterval(t);
-  }, [isAuthenticated]);
+  }, [isAuthenticated, refreshUsage]);
 
   const navItems: { id: string; label: string; ic: string }[] = [
     { id: "jobs",      label: "Jobs",         ic: IC.search   },
@@ -1451,25 +1462,6 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
             </div>
           </div>
         )}
-        {/* Country quick-switch — left of Job Preferences, styled to match it */}
-        {countries && countryFilter && setCountryFilter && (
-          <div style={{ display: "inline-flex", alignItems: "center", background: "var(--bg-surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 4, marginRight: 12, boxShadow: "var(--sh-sm)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px 4px 6px", color: "var(--tx)", fontSize: 13, fontWeight: 600, borderRight: "1px solid var(--line)" }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--violet)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/>
-              </svg>
-              Country
-            </div>
-            <select
-              value={countryFilter.length === 1 ? countryFilter[0] : ""}
-              onChange={e => setCountryFilter(e.target.value ? [e.target.value] : [])}
-              style={{ background: "none", border: "none", color: "var(--violet)", fontWeight: 600, fontSize: 13, cursor: "pointer", outline: "none", fontFamily: "inherit", padding: "0 10px 0 8px", height: "100%" }}
-            >
-              <option value="">All</option>
-              {countries.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-        )}
         <div style={{ position: "relative" }}>
           <div
             onClick={onOpenPreferences}
@@ -1486,7 +1478,11 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
 
             <div style={{ display: "flex", alignItems: "center", gap: 6, paddingRight: 6 }}>
               {userRoles && userRoles.length > 0 ? (() => {
-                const collapsed = collapseRoles(userRoles);
+                // family names only: a stray item that did not collapse into its group is not
+                // shown as its own chip (it still counts for matching)
+                const _all = collapseRoles(userRoles);
+                const _fams = _all.filter(r => ROLE_GROUPS.some(g => g.group === r));
+                const collapsed = _fams.length ? _fams : _all;
                 const shown = collapsed.slice(0, 3);
                 const extra = collapsed.length - shown.length;
                 return (
@@ -1544,8 +1540,6 @@ function Topbar({ scraping, lastScraped, onScrape, count, totalJobs, viewMode, s
             Next scrape in <b style={{ fontFamily: "var(--f-mono)", color: "var(--tx-2)" }}>{countdown}</b>
           </span>
         </div>
-        <span className="dot-sep" />
-        <span className="job-count"><b>{totalJobs.toLocaleString()}</b> jobs indexed</span>
       </div>
       <div className="topbar-right">
         <div className="job-count"><b>{count}</b> shown</div>

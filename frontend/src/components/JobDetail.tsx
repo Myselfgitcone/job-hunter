@@ -640,7 +640,7 @@ function ResumeTab({ job, tailoring, startedAt, onTailor, onCancel, onToast, onU
     return () => clearInterval(t);
   }, [tailoring, startedAt]);
 
-  if (!job.tailored_resume && !tailoring) {
+  if (!job.tailored_resume && !tailoring && !(job as any).has_tailored) {
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px", gap: 18, textAlign: "center" }}>
         <div style={{ width: 64, height: 64, borderRadius: 999, background: "rgba(139,92,246,0.1)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(139,92,246,0.25)" }}>
@@ -1031,7 +1031,7 @@ export function JobDetail({ job, tab, setTab, onUpdate, onToast, busy, busyJobId
   }
 
   const tabHasContent: Record<string, boolean> = {
-    resume: !!job.tailored_resume,
+    resume: !!job.tailored_resume || !!(job as any).has_tailored,
     cover: !!job.cover_letter,
     info: !!(job.notes || job.deadline || job.interview_date),
   };

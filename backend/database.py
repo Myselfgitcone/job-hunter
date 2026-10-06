@@ -303,6 +303,8 @@ class UserJob(Base):
     tailor_context       = Column(Text, default=None)
     # Soft-defer: "not now, move to bottom of the day" (NOT a permanent skip).
     deferred             = Column(Boolean, default=False)
+    # when it was pushed down (UTC ISO) — the sidebar's "Skipped today" counts these by Chicago day
+    deferred_at          = Column(String, default=None)
     # Auto-apply (Phase 1)
     apply_method         = Column(String, default=None)  # "auto:greenhouse" / "auto:lever" / "manual"
     apply_result         = Column(Text, default=None)    # JSON — last submit/dry-run summary
@@ -407,6 +409,7 @@ async def init_db():
         "ALTER TABLE user_jobs ADD COLUMN gate_scores TEXT",
         "ALTER TABLE user_jobs ADD COLUMN tailor_context TEXT",
         "ALTER TABLE user_jobs ADD COLUMN deferred BOOLEAN DEFAULT false",
+        "ALTER TABLE user_jobs ADD COLUMN deferred_at VARCHAR",
         "ALTER TABLE jobs ADD COLUMN indexed_at VARCHAR DEFAULT ''",
     ]
     for stmt in migrations:

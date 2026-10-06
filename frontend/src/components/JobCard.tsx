@@ -244,7 +244,7 @@ interface Props {
   onDefer?: (id: string, deferred: boolean) => void;   // soft "move to bottom of day"
 }
 
-export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "compact", index = 0, tailoring = false, checked = false, onToggleCheck, onDefer }: Props) {
+export function JobCard({ job, selected, onClick, onUpdate, mode = "compact", index = 0, tailoring = false, checked = false, onToggleCheck, onDefer }: Props) {
   const [editingExp, setEditingExp] = useState(false);
   const [qualAnchor, setQualAnchor] = useState<DOMRect | null>(null);   // hover panel behind the match pill
   // Closing is delayed so the cursor can travel from the pill to the panel (a portal
@@ -287,11 +287,6 @@ export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "comp
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               {job.deferred ? <path d="M12 19V5M5 12l7-7 7 7" /> : <path d="M12 5v14M5 12l7 7 7-7" />}
             </svg>
-          </button>
-        )}
-        {onSkip && (
-          <button className="skip-quick" title="Skip (s)" onClick={e => { e.stopPropagation(); onSkip(job.id); }}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>
         )}
 
@@ -457,23 +452,13 @@ export function JobCard({ job, selected, onClick, onSkip, onUpdate, mode = "comp
       </div>
 
       {/* Soft-defer — move to bottom of the day (↓), or restore (↑) if deferred.
-          Distinct from Skip (✕ = permanent remove). */}
+          The only skip control on a card (the ✕ was removed 2026-10-05). */}
       {onDefer && (
         <button className={`defer-quick${job.deferred ? " on" : ""}`}
           title={job.deferred ? "Restore — bring back up" : "Later — move to bottom of today"}
           onClick={e => { e.stopPropagation(); onDefer(job.id, !job.deferred); }}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             {job.deferred ? <path d="M12 19V5M5 12l7-7 7 7" /> : <path d="M12 5v14M5 12l7 7 7-7" />}
-          </svg>
-        </button>
-      )}
-
-      {/* Quick skip */}
-      {onSkip && (
-        <button className="skip-quick" title="Skip (s)"
-          onClick={e => { e.stopPropagation(); onSkip(job.id); }}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M18 6 6 18M6 6l12 12" />
           </svg>
         </button>
       )}

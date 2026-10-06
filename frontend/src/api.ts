@@ -260,8 +260,9 @@ export const api = {
     req<any>(`/api/analytics${userId ? `?user=${encodeURIComponent(userId)}` : (personal ? "?personal=1" : "")}`),
   adminUsersAnalytics: () => req<any[]>("/api/admin/users-analytics"),
   getDailyUsage: () => req<{
-    used: number; limit: number; remaining: number;
-    applied_used: number; applied_limit: number; applied_remaining: number;
+    used: number; limit: number | null; remaining: number | null;
+    applied_used: number; applied_limit: number | null; applied_remaining: number | null;
+    skipped_today?: number;
   }>("/api/usage/today"),
 
   getSettings: () => req<Settings>("/api/settings"),

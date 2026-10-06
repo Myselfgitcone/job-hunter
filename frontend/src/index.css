@@ -729,7 +729,7 @@ textarea { resize: none; }
 .skip-quick svg { width: 13px; height: 13px; }
 /* Soft-defer control — sits just left of Skip, distinct ↓ (Later) icon. */
 .defer-quick {
-  position: absolute; right: 38px; top: 50%; transform: translateY(-50%) scale(.85);
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%) scale(.85);
   width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center;
   background: var(--bg-elevated); border: 1px solid var(--line-hi); color: var(--tx-3);
   opacity: 0; transition: opacity .13s, transform .13s, color .13s; pointer-events: none;

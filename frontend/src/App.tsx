@@ -767,7 +767,7 @@ export default function App() {
     await api.setStatus(id, status); updateJob(id, { status }); toast("Moved to " + status, "success");
     // the sidebar's Applied-today count moves with the click, then the server confirms it
     if (status === "applied" && !wasApplied) {
-      setDailyUsage(u => u ? { ...u, applied_used: u.applied_used + 1, applied_remaining: Math.max(0, u.applied_remaining - 1) } : u);
+      setDailyUsage(u => u ? { ...u, applied_used: u.applied_used + 1, applied_remaining: u.applied_remaining == null ? null : Math.max(0, u.applied_remaining - 1) } : u);
     }
     refreshUsage();
   };
@@ -851,7 +851,10 @@ export default function App() {
   // Soft-defer: move a job to the bottom of its posted-day (not a skip).
   const handleDefer = (id: string, deferred: boolean) => {
     updateJob(id, { deferred });
-    api.setDeferred(id, deferred).catch(() => updateJob(id, { deferred: !deferred }));
+    // the sidebar's Skipped-today count moves with the click, then the server confirms it
+    const bump = (n: number) => setDailyUsage(u => u ? { ...u, skipped_today: Math.max(0, (u.skipped_today ?? 0) + n) } : u);
+    bump(deferred ? 1 : -1);
+    api.setDeferred(id, deferred).then(refreshUsage).catch(() => { updateJob(id, { deferred: !deferred }); bump(deferred ? -1 : 1); });
   };
 
   // Batch tailor the checked jobs. Prime-then-parallel: the first runs alone
@@ -944,8 +947,9 @@ export default function App() {
 
   // Daily tailor usage
   const [dailyUsage, setDailyUsage] = useState<{
-    used: number; limit: number; remaining: number;
-    applied_used: number; applied_limit: number; applied_remaining: number;
+    used: number; limit: number | null; remaining: number | null;
+    applied_used: number; applied_limit: number | null; applied_remaining: number | null;
+    skipped_today?: number;
     spend_today?: number; spend_total?: number;
   } | null>(null);
   const refreshUsage = useCallback(() => api.getDailyUsage().then(setDailyUsage).catch(() => {}), []);
@@ -1089,45 +1093,19 @@ export default function App() {
         {/* Daily tailor usage */}
         {dailyUsage && (
           <div style={{ margin: "0 12px 10px", padding: "10px 12px", borderRadius: 8, background: "var(--bg-2)", border: "1px solid var(--border)" }}>
+            {/* no daily cap since 2026-10-05: plain counts, no bar */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: "var(--tx-2)" }}>Tailors today</span>
-              <span style={{ fontSize: 11, fontWeight: 700, color: dailyUsage.remaining === 0 ? "#ef4444" : dailyUsage.remaining < 10 ? "#f59e0b" : "var(--tx-2)" }}>
-                {dailyUsage.used} / {dailyUsage.limit}
-              </span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--tx-2)" }}>{dailyUsage.used}</span>
             </div>
-            <div style={{ height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}>
-              <div style={{
-                height: "100%", borderRadius: 2, transition: "width 0.3s",
-                width: `${Math.min(100, (dailyUsage.used / dailyUsage.limit) * 100)}%`,
-                background: dailyUsage.remaining === 0 ? "#ef4444" : dailyUsage.remaining < 10 ? "#f59e0b" : "#8b5cf6"
-              }} />
-            </div>
-            {dailyUsage.remaining === 0 && (
-              <div style={{ fontSize: 10, color: "#ef4444", marginTop: 4 }}>Limit reached — resets midnight Central</div>
-            )}
-            {dailyUsage.remaining > 0 && dailyUsage.remaining < 10 && (
-              <div style={{ fontSize: 10, color: "#f59e0b", marginTop: 4 }}>{dailyUsage.remaining} remaining today</div>
-            )}
-
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "10px 0 6px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "6px 0" }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: "var(--tx-2)" }}>Applied today</span>
-              <span style={{ fontSize: 11, fontWeight: 700, color: dailyUsage.applied_remaining === 0 ? "#ef4444" : dailyUsage.applied_remaining < 10 ? "#f59e0b" : "var(--tx-2)" }}>
-                {dailyUsage.applied_used} / {dailyUsage.applied_limit}
-              </span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--tx-2)" }}>{dailyUsage.applied_used}</span>
             </div>
-            <div style={{ height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}>
-              <div style={{
-                height: "100%", borderRadius: 2, transition: "width 0.3s",
-                width: `${Math.min(100, (dailyUsage.applied_used / dailyUsage.applied_limit) * 100)}%`,
-                background: dailyUsage.applied_remaining === 0 ? "#ef4444" : dailyUsage.applied_remaining < 10 ? "#f59e0b" : "#8b5cf6"
-              }} />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--tx-2)" }}>Skipped today</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--tx-2)" }}>{dailyUsage.skipped_today ?? 0}</span>
             </div>
-            {dailyUsage.applied_remaining === 0 && (
-              <div style={{ fontSize: 10, color: "#ef4444", marginTop: 4 }}>Limit reached — resets midnight Central</div>
-            )}
-            {dailyUsage.applied_remaining > 0 && dailyUsage.applied_remaining < 10 && (
-              <div style={{ fontSize: 10, color: "#f59e0b", marginTop: 4 }}>{dailyUsage.applied_remaining} remaining today</div>
-            )}
 
             {/* Your own tailoring spend (real AI cost) */}
             <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>

@@ -3629,8 +3629,9 @@ async def fetch_jd(job_id: str, user_id: str = Depends(get_current_user_id)):
     return {"description": full_desc, "date": job.posted_at, "experience_level": job.experience_level}
 
 
-DAILY_TAILOR_LIMIT = 50
-DAILY_APPLY_LIMIT  = 50
+# None = unlimited (2026-10-05). The counters still run so the sidebar shows today's numbers.
+DAILY_TAILOR_LIMIT = None
+DAILY_APPLY_LIMIT  = None
 
 async def _get_daily_tailor_count(user_id: str, db) -> int:
     """Count job tailors + quick tailors this user has run today, on the app's Chicago
@@ -3676,10 +3677,16 @@ async def get_daily_usage(user_id: str = Depends(get_current_user_id)):
             select(func.coalesce(func.sum(UserJob.tailor_cost), 0.0))
             .where(UserJob.user_id == user_id,
                    UserJob.tailored_at >= _d0, UserJob.tailored_at < _d1))).scalar() or 0.0
+        skipped_today = (await db.execute(
+            select(func.count()).select_from(UserJob)
+            .where(UserJob.user_id == user_id, UserJob.deferred == True,  # noqa: E712
+                   UserJob.deferred_at >= _d0, UserJob.deferred_at < _d1))).scalar() or 0
     return {
-        "used": used, "limit": DAILY_TAILOR_LIMIT, "remaining": max(0, DAILY_TAILOR_LIMIT - used),
+        "used": used, "limit": DAILY_TAILOR_LIMIT,
+        "remaining": None if DAILY_TAILOR_LIMIT is None else max(0, DAILY_TAILOR_LIMIT - used),
         "applied_used": applied_used, "applied_limit": DAILY_APPLY_LIMIT,
-        "applied_remaining": max(0, DAILY_APPLY_LIMIT - applied_used),
+        "applied_remaining": None if DAILY_APPLY_LIMIT is None else max(0, DAILY_APPLY_LIMIT - applied_used),
+        "skipped_today": skipped_today,
         "spend_today": round(float(spend_today), 3), "spend_total": round(float(spend_total), 2),
     }
 
@@ -3695,8 +3702,8 @@ async def tailor_job(job_id: str, batch: bool = False, user_id: str = Depends(ge
     set_cache_enabled(True)
     async with SessionLocal() as db:
         used = await _get_daily_tailor_count(user_id, db)
-        if used >= DAILY_TAILOR_LIMIT:
-            raise HTTPException(429, f"Daily limit reached: {used}/{DAILY_TAILOR_LIMIT} tailoring runs used today. Resets at midnight UTC.")
+        if DAILY_TAILOR_LIMIT is not None and used >= DAILY_TAILOR_LIMIT:
+            raise HTTPException(429, f"Daily limit reached: {used}/{DAILY_TAILOR_LIMIT} tailoring runs used today. Resets at midnight Central.")
         job = await db.get(Job, job_id)
         if not job:
             raise HTTPException(404, "Job not found")
@@ -4552,8 +4559,8 @@ async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_curr
     set_cache_enabled(True)
     async with SessionLocal() as db:
         used = await _get_daily_tailor_count(user_id, db)
-    if used >= DAILY_TAILOR_LIMIT:
-        raise HTTPException(429, f"Daily limit reached: {used}/{DAILY_TAILOR_LIMIT} tailoring runs used today. Resets at midnight UTC.")
+    if DAILY_TAILOR_LIMIT is not None and used >= DAILY_TAILOR_LIMIT:
+        raise HTTPException(429, f"Daily limit reached: {used}/{DAILY_TAILOR_LIMIT} tailoring runs used today. Resets at midnight Central.")
 
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
@@ -5237,6 +5244,8 @@ async def update_job_meta(job_id: str, body: DeadlineUpdate, user_id: str = Depe
             uj.priority = body.priority
         if body.deferred is not None:
             uj.deferred = body.deferred
+            # restoring a job takes it back out of today's skipped count
+            uj.deferred_at = datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if body.deferred else None
         await db.commit()
     return {"ok": True}
 

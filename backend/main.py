@@ -2757,6 +2757,11 @@ async def set_status(job_id: str, body: StatusUpdate, user_id: str = Depends(get
                 uj.applied_at = datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         else:
             uj.applied_at = None
+        # a job moved to Skipped counts in the sidebar's Skipped-today like a pushed-down one
+        if body.status == "skipped":
+            uj.deferred_at = uj.deferred_at or datetime.now(_UTC.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        elif not uj.deferred:
+            uj.deferred_at = None
         await db.commit()
     return {"ok": True}
 
@@ -3677,16 +3682,22 @@ async def get_daily_usage(user_id: str = Depends(get_current_user_id)):
             select(func.coalesce(func.sum(UserJob.tailor_cost), 0.0))
             .where(UserJob.user_id == user_id,
                    UserJob.tailored_at >= _d0, UserJob.tailored_at < _d1))).scalar() or 0.0
+        # "skipped" = pushed down (deferred) OR moved to the Skipped status
+        _is_skipped = or_(UserJob.deferred == True, UserJob.status == "skipped")  # noqa: E712
         skipped_today = (await db.execute(
             select(func.count()).select_from(UserJob)
-            .where(UserJob.user_id == user_id, UserJob.deferred == True,  # noqa: E712
+            .where(UserJob.user_id == user_id, _is_skipped,
                    UserJob.deferred_at >= _d0, UserJob.deferred_at < _d1))).scalar() or 0
+        # all time, including jobs skipped before skip dates were kept
+        skipped_total = (await db.execute(
+            select(func.count()).select_from(UserJob)
+            .where(UserJob.user_id == user_id, _is_skipped))).scalar() or 0
     return {
         "used": used, "limit": DAILY_TAILOR_LIMIT,
         "remaining": None if DAILY_TAILOR_LIMIT is None else max(0, DAILY_TAILOR_LIMIT - used),
         "applied_used": applied_used, "applied_limit": DAILY_APPLY_LIMIT,
         "applied_remaining": None if DAILY_APPLY_LIMIT is None else max(0, DAILY_APPLY_LIMIT - applied_used),
-        "skipped_today": skipped_today,
+        "skipped_today": skipped_today, "skipped_total": skipped_total,
         "spend_today": round(float(spend_today), 3), "spend_total": round(float(spend_total), 2),
     }
 

@@ -262,7 +262,7 @@ export const api = {
   getDailyUsage: () => req<{
     used: number; limit: number | null; remaining: number | null;
     applied_used: number; applied_limit: number | null; applied_remaining: number | null;
-    skipped_today?: number;
+    skipped_today?: number; skipped_total?: number;
   }>("/api/usage/today"),
 
   getSettings: () => req<Settings>("/api/settings"),

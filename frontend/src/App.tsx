@@ -764,10 +764,14 @@ export default function App() {
 
   const handleStatusChange = async (id: string, status: JobStatus) => {
     const wasApplied = allJobs.find(x => x.id === id)?.status === "applied";
+    const wasSkipped = allJobs.find(x => x.id === id)?.status === "skipped";
     await api.setStatus(id, status); updateJob(id, { status }); toast("Moved to " + status, "success");
     // the sidebar's Applied-today count moves with the click, then the server confirms it
     if (status === "applied" && !wasApplied) {
       setDailyUsage(u => u ? { ...u, applied_used: u.applied_used + 1, applied_remaining: u.applied_remaining == null ? null : Math.max(0, u.applied_remaining - 1) } : u);
+    }
+    if (status === "skipped" && !wasSkipped) {
+      setDailyUsage(u => u ? { ...u, skipped_today: (u.skipped_today ?? 0) + 1, skipped_total: (u.skipped_total ?? 0) + 1 } : u);
     }
     refreshUsage();
   };
@@ -852,7 +856,7 @@ export default function App() {
   const handleDefer = (id: string, deferred: boolean) => {
     updateJob(id, { deferred });
     // the sidebar's Skipped-today count moves with the click, then the server confirms it
-    const bump = (n: number) => setDailyUsage(u => u ? { ...u, skipped_today: Math.max(0, (u.skipped_today ?? 0) + n) } : u);
+    const bump = (n: number) => setDailyUsage(u => u ? { ...u, skipped_today: Math.max(0, (u.skipped_today ?? 0) + n), skipped_total: Math.max(0, (u.skipped_total ?? 0) + n) } : u);
     bump(deferred ? 1 : -1);
     api.setDeferred(id, deferred).then(refreshUsage).catch(() => { updateJob(id, { deferred: !deferred }); bump(deferred ? -1 : 1); });
   };
@@ -949,7 +953,7 @@ export default function App() {
   const [dailyUsage, setDailyUsage] = useState<{
     used: number; limit: number | null; remaining: number | null;
     applied_used: number; applied_limit: number | null; applied_remaining: number | null;
-    skipped_today?: number;
+    skipped_today?: number; skipped_total?: number;
     spend_today?: number; spend_total?: number;
   } | null>(null);
   const refreshUsage = useCallback(() => api.getDailyUsage().then(setDailyUsage).catch(() => {}), []);
@@ -1105,6 +1109,10 @@ export default function App() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: "var(--tx-2)" }}>Skipped today</span>
               <span style={{ fontSize: 11, fontWeight: 700, color: "var(--tx-2)" }}>{dailyUsage.skipped_today ?? 0}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
+              <span style={{ fontSize: 10, color: "var(--tx-3)" }}>Skipped total</span>
+              <span style={{ fontSize: 10, fontWeight: 600, color: "var(--tx-3)" }}>{dailyUsage.skipped_total ?? 0}</span>
             </div>
 
             {/* Your own tailoring spend (real AI cost) */}

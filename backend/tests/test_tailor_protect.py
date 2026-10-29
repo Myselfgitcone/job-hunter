@@ -6,8 +6,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ai import tailor as t  # noqa: E402
 from ai.tailor_protect import (  # noqa: E402
-    JOB_MAX, base_identity, drop_foreign_bullets, enforce_caps, normalize_base, order_projects, rebuild,
-    split_sections, split_tools, strip_unowned_skills, summary_ok,
+    JOB_MAX, base_identity, drop_foreign_bullets, enforce_caps, fix_years, normalize_base, order_projects, rebuild,
+    restore_lost_figures, settle_long_bullets, split_sections, split_tools, strip_unowned_skills, summary_ok, trim_skills, uncovered_must_haves,
 )
 
 BASE = """JAGADISH BUTUKURI
@@ -121,3 +121,57 @@ def test_summary_must_keep_base_figures():
 def test_rebuild_orders_sections():
     out = rebuild(["Name — Title", "x | y"], {"EDUCATION": ["M.S."], "SUMMARY": ["s"], "PROJECTS": ["P — p", "• b"]})
     assert out.index("SUMMARY:") < out.index("PROJECTS:") < out.index("EDUCATION:")
+
+
+def test_years_claim_never_grows():
+    base_sum = ["Senior Data Engineer with 5+ years building platforms."]
+    notes = []
+    out = fix_years(["Senior Data Engineer with 7+ years on Databricks.", "Saved $100K+ a year."], base_sum, notes)
+    assert out[0] == "Senior Data Engineer with 5+ years on Databricks."
+    assert out[1] == "Saved $100K+ a year." and notes
+
+
+def test_lost_base_figure_comes_back():
+    base = normalize_base(BASE)
+    _, sec = split_sections(base)
+    base_exp = "EXPERIENCE:\n" + "\n".join(sec["EXPERIENCE"])
+    exp = ("EXPERIENCE:\nSenior Data Engineer @ Cargill | Minneapolis, MN (remote) | Sep 2024 – Present\n"
+           "• Saved $100K+ a year in cluster spend by tuning PySpark jobs in Databricks with adaptive query execution and caching.\n"
+           "• Documented the platform for the commodity team and ran weekly reviews with stakeholders across three domains.\n"
+           "Data Engineer @ Molina Healthcare | Long Beach, CA | Jan 2021 – Jul 2022\n"
+           "• Cut full-refresh runtime from about 6 hours to under 1 hour by moving loads to CDC-based incremental pipelines.\n")
+    notes = []
+    out = restore_lost_figures(exp, base_exp, notes)
+    assert "40%" in out and "Documented the platform" in out      # under the cap: appended, nothing replaced
+    assert any("restored 1" in n for n in notes)
+
+
+def test_skills_trim_to_base_count_plus_slack():
+    notes = []
+    rows = trim_skills(["• A: a, b, c, d, e, f", "• B: g, h"], 5, notes)
+    assert rows == ["• A: a, b, c", "• B: g, h"] and notes
+
+
+def test_must_have_metric_counts_owned_terms_not_echoes():
+    tailored = ("X — Y\nphone | mail\n\nSUMMARY:\nBuilds pipelines on Databricks and dbt.\n\nEXPERIENCE:\n"
+                "Senior Data Engineer @ Cargill | Minneapolis, MN | Sep 2024 – Present\n"
+                "• Cut stale-data incidents 40% by building the Databricks ELT platform with dbt models and Delta Lake contracts.\n")
+    duties = ["Experience building data models in dbt on Databricks for analytics teams",
+              "Proficiency in at least two of: Ruby, Node.js, Python, or Next.js",
+              "Design fact and dimension tables that power delivery and attribution use cases"]
+    miss = uncovered_must_haves(duties, tailored, ["dbt", "Databricks", "Ruby", "Node.js", "Python", "Next.js"])
+    assert 0 not in miss                 # names dbt + Databricks, both present
+    assert 1 in miss and 2 in miss       # Ruby/Node absent; fact/dim wording absent
+
+
+def test_overlong_bullet_falls_back_to_the_base_twin():
+    base = normalize_base(BASE)
+    _, sec = split_sections(base)
+    base_exp = "EXPERIENCE:\n" + "\n".join(sec["EXPERIENCE"])
+    long = ("• Saved $100K+ a year in cluster spend by tuning PySpark jobs in Databricks with adaptive query execution, "
+            "partitioning, caching, cluster right-sizing, FinOps tagging, monthly cost reviews and quarterly planning sessions with every platform owner.")
+    exp = "EXPERIENCE:\nSenior Data Engineer @ Cargill | Minneapolis, MN (remote) | Sep 2024 – Present\n" + long + "\n"
+    notes = []
+    out = settle_long_bullets(exp, base_exp, notes)
+    body = [ln for ln in out.split("\n") if ln.startswith("•")][0]
+    assert len(body.split()) <= 32 and "$100K+" in body and notes

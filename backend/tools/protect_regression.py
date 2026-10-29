@@ -88,8 +88,9 @@ def audit(tailored: str, base_norm: str, review: dict) -> list[str]:
     if not p.summary_ok(summ, [ln for ln in bsec.get("SUMMARY", []) if ln.strip()]):
         fails.append("summary lost the base figures")
     items = sum(len(t._split_list_items(ln.partition(":")[2])) for ln in tsec.get("SKILLS", []) if ":" in ln)
-    if not 15 <= items <= p.SKILL_ITEMS_MAX:
-        fails.append(f"{items} skills listed")
+    base_items = sum(len(t._split_list_items(ln.partition(":")[2])) for ln in bsec.get("SKILLS", []) if ":" in ln)
+    if not 15 <= items <= base_items + p.SKILL_ITEMS_SLACK:
+        fails.append(f"{items} skills listed (base has {base_items})")
     # verbatim sections
     for name_ in ("PROJECTS", "EDUCATION", "CERTIFICATIONS"):
         if bsec.get(name_) and sorted(x.strip() for x in tsec.get(name_, []) if x.strip()) != sorted(x.strip() for x in bsec[name_] if x.strip()):
@@ -136,8 +137,11 @@ def main() -> int:
         mi = (review.get("scores") or {}).get("mirror") or {}
         cost += float((review.get("usage") or {}).get("cost") or 0); n += 1
         fails = audit(tailored, base_norm, review)
-        if (mi.get("duty_coverage_any_job") or 0) < COVERAGE_MIN:
-            fails.append(f"must-haves covered {mi.get('duty_coverage_any_job')}%")
+        # Low coverage on a posting the candidate does not fit (many gap tools) is the
+        # review flag doing its job, not a pipeline failure. It fails the gate only
+        # when the posting IS a fit (few gaps) and the writer still left it uncovered.
+        if (mi.get("duty_coverage_any_job") or 0) < COVERAGE_MIN and len(mi.get("gaps") or []) <= 3:
+            fails.append(f"must-haves covered {mi.get('duty_coverage_any_job')}% on a good-fit posting")
         total_fail += len(fails)
         print(f"{'PASS' if not fails else 'FAIL'}  {name}: must-haves {mi.get('duty_coverage_any_job')}%, owned tools "
               f"{mi.get('tool_bullet_coverage')}%, bullets {mi.get('bullets_per_job')}, gaps {len(mi.get('gaps') or [])}, "

@@ -23,14 +23,19 @@ does NOT have.
 WHAT YOU MAY DO
 ================================================================================
 - Reorder bullets inside a job so the ones that speak to the MUST-HAVES come first.
-- Re-word a bullet to use the posting's own nouns for the same work (its "data
-  pipelines" for the base's "ELT platform"; its "observability" for "monitoring").
+- For EACH must-have, pick the one existing bullet that best proves it and rewrite
+  that bullet so it uses the must-have's key nouns and OWNED TOOLS for the same
+  work (its "data pipelines" for the base's "ELT platform"; its "observability"
+  for "monitoring"; its "model deployment" for "served features to SageMaker").
+  Keep the bullet's figure, employer system and facts exactly. A recruiter should
+  find the must-have's words in that bullet.
 - Reorder SKILLS rows and the items inside them so OWNED TOOLS the posting names
   come first. You may move an item between rows. You may rename a row label to the
   posting's own grouping words.
 - Rewrite the SUMMARY as two or three sentences for this posting: the candidate's
-  real title and years, the two or three OWNED TOOLS the posting cares about most,
-  and at least two of the base summary's figures, word for word.
+  real title and the base's exact years phrase (never a higher number), the two or
+  three OWNED TOOLS the posting cares about most, and at least two of the base
+  summary's figures, word for word.
 - Add at most {max_new} new bullets in the whole resume, and only for a MUST-HAVE
   that no existing bullet covers. A new bullet names a real system, dataset or team
   that job's existing bullets already name, uses only OWNED TOOLS, and carries no

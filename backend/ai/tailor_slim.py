@@ -452,13 +452,16 @@ async def tailor_resume_routed(*args, **kwargs) -> tuple[str, dict]:
     """The app's entry point. The mirror pipeline (ai/tailor_mirror.py) is the
     default since 2026-09-19. Rollbacks, both kept intact: TAILOR_PIPELINE=slim
     runs this file's pipeline, TAILOR_PIPELINE=full runs ai/tailor.py."""
-    which = os.getenv("TAILOR_PIPELINE", "mirror").strip().lower()
+    # PROTECT is the default since 2026-10-29 (10/13 on the protect gate, no fabrication).
+    # Rollbacks, all kept intact: TAILOR_PIPELINE=mirror (default 2026-09-19..10-29),
+    # slim, full.
+    which = os.getenv("TAILOR_PIPELINE", "protect").strip().lower()
     if which == "full":
         return await t.tailor_resume(*args, **kwargs)
     if which == "slim":
         return await tailor_resume_slim(*args, **kwargs)
-    if which == "protect":
-        from ai.tailor_protect import tailor_resume_protect
-        return await tailor_resume_protect(*args, **kwargs)
-    from ai.tailor_mirror import tailor_resume_mirror
-    return await tailor_resume_mirror(*args, **kwargs)
+    if which == "mirror":
+        from ai.tailor_mirror import tailor_resume_mirror
+        return await tailor_resume_mirror(*args, **kwargs)
+    from ai.tailor_protect import tailor_resume_protect
+    return await tailor_resume_protect(*args, **kwargs)

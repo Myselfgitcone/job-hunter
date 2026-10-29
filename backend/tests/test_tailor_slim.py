@@ -52,8 +52,11 @@ def test_magnitudes_and_money_come_back_exactly():
     assert s.restore_magnitudes(BASE, BASE, []) == BASE      # nothing to do when intact
 
 
-def test_switch_defaults_to_mirror_with_slim_and_full_as_rollbacks(monkeypatch):
+def test_switch_defaults_to_protect_with_mirror_slim_and_full_as_rollbacks(monkeypatch):
+    # 2026-10-29: protect is the default (10/13 on its gate, no fabrication); the
+    # mirror, slim and full pipelines stay reachable by TAILOR_PIPELINE.
     from ai import tailor_mirror as mm
+    from ai import tailor_protect as pp
     calls = []
 
     async def fake_full(*a, **k):
@@ -64,16 +67,19 @@ def test_switch_defaults_to_mirror_with_slim_and_full_as_rollbacks(monkeypatch):
 
     async def fake_mirror(*a, **k):
         calls.append("mirror"); return "x", {}
+
+    async def fake_protect(*a, **k):
+        calls.append("protect"); return "x", {}
     monkeypatch.setattr(t, "tailor_resume", fake_full)
     monkeypatch.setattr(s, "tailor_resume_slim", fake_slim)
     monkeypatch.setattr(mm, "tailor_resume_mirror", fake_mirror)
+    monkeypatch.setattr(pp, "tailor_resume_protect", fake_protect)
     monkeypatch.delenv("TAILOR_PIPELINE", raising=False)
     asyncio.run(s.tailor_resume_routed("b", "j", "k", "p", "m"))
-    monkeypatch.setenv("TAILOR_PIPELINE", "slim")
-    asyncio.run(s.tailor_resume_routed("b", "j", "k", "p", "m"))
-    monkeypatch.setenv("TAILOR_PIPELINE", "full")
-    asyncio.run(s.tailor_resume_routed("b", "j", "k", "p", "m"))
-    assert calls == ["mirror", "slim", "full"]
+    for which in ("mirror", "slim", "full"):
+        monkeypatch.setenv("TAILOR_PIPELINE", which)
+        asyncio.run(s.tailor_resume_routed("b", "j", "k", "p", "m"))
+    assert calls == ["protect", "mirror", "slim", "full"]
 
 
 def test_slim_prompt_is_standalone_and_carries_its_rules():

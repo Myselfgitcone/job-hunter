@@ -26,9 +26,9 @@ from ai.tailor_slim_guards import slim_score, trim_vague_endings
 JOB_MAX = (7, 5, 4)          # bullets by recency; job 4 and older: 3
 JOB_MIN = (5, 3, 2)
 SUMMARY_LINES_MAX = 3
-SKILL_ITEMS_MAX = 50
+SKILL_ITEMS_SLACK = 4        # the writer may add this many items over the base's own count
 MAX_DUTIES = 10              # must-haves the writer is shown
-MAX_NEW_BULLETS = 2
+MAX_NEW_BULLETS = 3
 BULLET_MAX = 30
 COVERAGE_REVIEW_BELOW = 70   # % of must-haves with a bullet; lower → needs_review
 
@@ -227,8 +227,6 @@ def strip_unowned_skills(skills_lines: list[str], base_text: str, profile_skills
             total += len(keep)
     if dropped:
         notes.append(f"skills guard: removed {len(dropped)} item(s) the base does not own: {', '.join(dropped[:8])}")
-    if total > SKILL_ITEMS_MAX:
-        notes.append(f"skills guard: {total} items, above the {SKILL_ITEMS_MAX} ceiling")
     return out
 
 
@@ -294,6 +292,132 @@ def order_projects(project_lines: list[str], job_title: str, jd: str) -> list[st
     for b in ordered:
         out.extend(b); out.append("")
     return out[:-1] if out else out
+
+
+_YEARS_RE = re.compile(r"\b(\d{1,2})\s*\+?\s*years?\b", re.I)
+
+
+def fix_years(summary_lines: list[str], base_summary: list[str], notes: list) -> list[str]:
+    """The writer must not inflate tenure: every "N+ years" in the summary becomes the
+    base's own phrase (live: "5+ years" came back as "6+ years" and "7+ years")."""
+    base_phrase = next((m.group(0) for ln in base_summary for m in [_YEARS_RE.search(ln)] if m), "")
+    base_n = {m.group(1) for ln in base_summary for m in _YEARS_RE.finditer(ln)}
+    out, fixed = [], 0
+    for ln in summary_lines:
+        def swap(m):
+            nonlocal fixed
+            if m.group(1) in base_n:
+                return m.group(0)
+            fixed += 1
+            return base_phrase or m.group(0)
+        out.append(_YEARS_RE.sub(swap, ln))
+    if fixed:
+        notes.append(f"summary guard: reset {fixed} inflated years claim(s) to the base's {base_phrase!r}")
+    return out
+
+
+def restore_lost_figures(exp_text: str, base_exp: str, notes: list) -> str:
+    """Every base bullet whose figures are absent from the tailored job comes back as
+    written, replacing that job's weakest numberless bullet when the job is at its cap."""
+    lines = exp_text.split("\n")
+    have = _figures(exp_text)
+    base_jobs = dict(t._job_bodies(base_exp))
+    restored = 0
+    for j, h in enumerate([i for i, ln in enumerate(lines) if t._is_job_header_line(ln)]):
+        hdr_now = [i for i, ln in enumerate(lines) if t._is_job_header_line(ln)]
+        h = hdr_now[j]
+        co = t._company_key(lines[h])
+        for b in base_jobs.get(co, "").splitlines():
+            b = b.strip()
+            if not b.startswith("•"):
+                continue
+            figs = _figures(b)
+            if not figs or figs & have:
+                continue
+            jobs = dict(t._job_bullet_lines("\n".join(lines)))
+            bl = jobs.get(j, [])
+            numberless = [i for i in bl if not t._num_tokens(lines[i])]
+            if len(bl) >= _cap(j) and numberless:
+                lines[numberless[-1]] = b
+            else:
+                lines.insert((bl[-1] + 1) if bl else h + 1, b)
+            have |= figs
+            restored += 1
+    if restored:
+        notes.append(f"figure guard: restored {restored} base bullet(s) whose figures had been lost")
+    return "\n".join(lines)
+
+
+def trim_skills(skills_lines: list[str], cap: int, notes: list) -> list[str]:
+    rows = []
+    for ln in skills_lines:
+        label, _, items = ln.lstrip("• ").partition(":")
+        rows.append([label.strip(), [x.strip() for x in t._split_list_items(items) if x.strip()]])
+    total = sum(len(r[1]) for r in rows)
+    cut = 0
+    while total > cap:
+        r = max((r for r in rows if len(r[1]) > 2), key=lambda r: len(r[1]), default=None)
+        if r is None:
+            break
+        r[1].pop(); total -= 1; cut += 1
+    if cut:
+        notes.append(f"skills guard: trimmed {cut} item(s) to the base's count + {SKILL_ITEMS_SLACK}")
+    return [f"• {label}: {', '.join(items)}" for label, items in rows if items]
+
+
+def settle_long_bullets(exp_text: str, base_exp: str, notes: list, limit: int = BULLET_MAX + 2) -> str:
+    """Last resort after split and compress: a bullet still past `limit` words is swapped
+    for the base bullet that carries the same figure (the compress pass was reverted for
+    changing it), or trimmed at its last clause break when no base bullet matches."""
+    lines = exp_text.split("\n")
+    base_bullets = [b.strip() for b in base_exp.splitlines() if b.strip().startswith("\u2022")]
+    fixed = 0
+    for _, bl in t._job_bullet_lines(exp_text):
+        for i in bl:
+            body = lines[i].lstrip()[1:].strip()
+            if len(body.split()) <= limit:
+                continue
+            figs = _figures(body)
+            twin = next((b for b in base_bullets if figs and _figures(b) & figs), None)
+            if twin:
+                lines[i] = twin
+            else:
+                head = " ".join(body.split()[:limit])
+                cut = max(head.rfind(", "), head.rfind("; "))
+                lines[i] = "\u2022 " + ((head[:cut].rstrip(" ,;") + ".") if cut > 40 else (head.rstrip(" ,;") + "."))
+            fixed += 1
+    if fixed:
+        notes.append(f"length guard: settled {fixed} bullet(s) still past {limit} words")
+    return "\n".join(lines)
+
+
+def _terms_in(text: str, terms: list[str]) -> list[str]:
+    low = _norm(text)
+    return [x for x in terms if re.search(r"(?<![a-z0-9])" + re.escape(_norm(x)) + r"(?![a-z0-9])", low)]
+
+
+def uncovered_must_haves(duties: list[str], tailored: str, tools: list[str]) -> list[int]:
+    """A must-have is covered when the resume names every tool it names (and it names at
+    least one), or when a quarter of its distinctive stems sit in one bullet or summary
+    line, or half of them anywhere. Looser than the mirror's rule on purpose: the
+    protect writer re-words the candidate's work, it does not echo the posting."""
+    lines = tailored.split("\n")
+    units = [lines[i].lower() for _, bl in t._job_bullet_lines(tailored) for i in bl] + \
+            [lines[i].lower() for i in t._summary_lines(tailored)]
+    blob = "\n".join(units)
+    missing = []
+    for n, d in enumerate(duties):
+        named = _terms_in(d, tools)
+        if named and len(_terms_in(tailored, named)) == len(named):
+            continue
+        stems = m._duty_stems(d)
+        if not stems:
+            continue
+        hit = lambda text: sum(1 for st in stems if re.search(rf"\b{st}", text)) / len(stems)
+        if max((hit(u) for u in units), default=0.0) >= 0.25 or hit(blob) >= 0.50:
+            continue
+        missing.append(n)
+    return missing
 
 
 def summary_ok(summary_lines: list[str], base_summary: list[str]) -> bool:
@@ -390,7 +514,8 @@ async def tailor_resume_protect(base_resume: str, job_description: str,
 
     # ── 4. GUARDS ────────────────────────────────────────────────────────
     # summary
-    summary = [ln for ln in osec.get("SUMMARY", []) if ln.strip()]
+    summary = fix_years([ln for ln in osec.get("SUMMARY", []) if ln.strip()],
+                        [ln for ln in bsec.get("SUMMARY", []) if ln.strip()], notes)
     if not summary_ok(summary, [ln for ln in bsec.get("SUMMARY", []) if ln.strip()]):
         notes.append("summary guard: writer's summary lost the base figures; base summary kept")
         summary = [ln for ln in bsec.get("SUMMARY", []) if ln.strip()]
@@ -399,6 +524,8 @@ async def tailor_resume_protect(base_resume: str, job_description: str,
     if not skills:
         skills = [ln for ln in bsec.get("SKILLS", []) if ln.strip()]
         notes.append("skills guard: writer's rows unusable; base rows kept")
+    base_items = sum(len(t._split_list_items(ln.partition(":")[2])) for ln in bsec.get("SKILLS", []) if ":" in ln)
+    skills = trim_skills(skills, base_items + SKILL_ITEMS_SLACK, notes)
     # experience
     exp = "EXPERIENCE:\n" + "\n".join(ln for ln in osec.get("EXPERIENCE", []) if ln.strip())
     base_exp = "EXPERIENCE:\n" + "\n".join(ln for ln in bsec.get("EXPERIENCE", []) if ln.strip())
@@ -430,6 +557,8 @@ async def tailor_resume_protect(base_resume: str, job_description: str,
     exp = trim_vague_endings(exp, notes)
     jd_words = t._content_words(" ".join(duties)) | t._content_words(job_description)
     exp = enforce_caps(exp, notes, jd_words, have)
+    exp = settle_long_bullets(exp, base_exp, notes)
+    exp = restore_lost_figures(exp, base_exp, notes)
     exp = t._verb_ladder_guard(exp, base_exp, [], notes)
     exp_lines = [ln for ln in exp.split("\n")[1:] if ln.strip()]
     for j, bl in t._job_bullet_lines(exp):
@@ -449,12 +578,12 @@ async def tailor_resume_protect(base_resume: str, job_description: str,
     tailored = t._strip_empty_sections(tailored).strip()
 
     # ── 6. SCORE / REVIEW ────────────────────────────────────────────────
-    miss = m.uncovered_duties(duties, tailored, job=None)
+    miss = uncovered_must_haves(duties, tailored, [str(x) for x in context["target_tools"]])
     jobs = t._job_bullet_lines(tailored)
     mirror = {
         "duties": len(duties),
         "duty_coverage_any_job": round(100 * (len(duties) - len(miss)) / max(1, len(duties))),
-        "duty_coverage_job1": round(100 * (len(duties) - len(m.uncovered_duties(duties, tailored, job=0))) / max(1, len(duties))),
+        "duty_coverage_job1": round(100 * (len(duties) - len(miss)) / max(1, len(duties))),
         "duties_missing": [duties[n] for n in miss],
         "tool_bullet_coverage": round(100 * (len(have) - len(t._unevidenced(have, tailored))) / max(1, len(have))),
         "tools_without_bullet": t._unevidenced(have, tailored),

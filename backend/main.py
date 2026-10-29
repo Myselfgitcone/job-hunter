@@ -1123,6 +1123,10 @@ async def startup():
     except Exception as e:
         print(f"[Startup] Utility model migration skipped: {e}")
 
+    # 2026-10-29: a Sonnet 4.6 -> 5.5 swap was tried and withdrawn: on 13 fresh postings the
+    # mirror pipeline covered 75.6% of JD lines on 5.5 vs 82.5% on 4.6 at only 26% less cost.
+    # The SDK upgrade (2.3.0, API 2026-10-21) and per-model request fields stayed.
+
     # One-time cost fix: qualify + parse are high-volume BULK passes that run on
     # every scraped job / resume. They must stay on cheap Gemini Flash-Lite — an
     # Anthropic model here (e.g. a user set qualify to Sonnet 4.6) is ~33x the
@@ -4620,7 +4624,7 @@ async def quick_tailor(body: QuickTailorRequest, user_id: str = Depends(get_curr
     user_cfg = await _get_user_settings(user_id)
     api_key = user_cfg.get("ai_api_key", "")
     provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-    model    = user_cfg.get("ai_model_tailor", "anthropic/claude-opus-4-8")
+    model    = user_cfg.get("ai_model_tailor", "anthropic/claude-sonnet-4.6")
 
     from ai.llm import ModelKeys as _ModelKeys
     _mk = _ModelKeys(
@@ -4687,7 +4691,7 @@ async def quick_tailor_pdf(body: QuickTailorRequest, user_id: str = Depends(get_
             raise HTTPException(400, "No base resume saved. Upload one in Settings first.")
         api_key = user_cfg.get("ai_api_key", "")
         provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-        model    = user_cfg.get("ai_model_tailor", "anthropic/claude-opus-4-8")
+        model    = user_cfg.get("ai_model_tailor", "anthropic/claude-sonnet-4.6")
         from ai.llm import ModelKeys as _ModelKeys
         _mk = _ModelKeys(
             anthropic=user_cfg.get("anthropic_api_key", "") or "",
@@ -4727,7 +4731,7 @@ async def quick_tailor_docx(body: QuickTailorRequest, user_id: str = Depends(get
             raise HTTPException(400, "No base resume saved. Upload one in Settings first.")
         api_key = user_cfg.get("ai_api_key", "")
         provider = (user_cfg.get("ai_provider", "openrouter") or "openrouter").lower().strip()
-        model    = user_cfg.get("ai_model_tailor", "anthropic/claude-opus-4-8")
+        model    = user_cfg.get("ai_model_tailor", "anthropic/claude-sonnet-4.6")
         from ai.llm import ModelKeys as _ModelKeys
         _mk = _ModelKeys(
             anthropic=user_cfg.get("anthropic_api_key", "") or "",

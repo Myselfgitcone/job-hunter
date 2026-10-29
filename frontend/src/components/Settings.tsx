@@ -402,9 +402,10 @@ const I = {
 const AI_PROVIDERS: Record<string, { models: {id: string, name: string}[]; keyUrl: string }> = {
   "OpenRouter":  { 
     models: [
-      { id: "anthropic/claude-sonnet-4.6", name: "Claude 4.6 Sonnet (Best + Recommended)" },
-      { id: "anthropic/claude-opus-4-8", name: "Claude 4.8 Opus (Balanced)" },
-      { id: "anthropic/claude-haiku-4.5", name: "Claude 4.5 Haiku" },
+      { id: "anthropic/claude-sonnet-4.6", name: "Claude Sonnet 4.6 (Recommended — passes the resume gate)" },
+      { id: "anthropic/claude-sonnet-5.5", name: "Claude Sonnet 5.5 (cheaper; covers less of the posting)" },
+      { id: "anthropic/claude-opus-5-5", name: "Claude Opus 5.5 (Most capable, 2x price)" },
+      { id: "anthropic/claude-haiku-4-5", name: "Claude Haiku 5.5" },
       { id: "openai/gpt-5", name: "GPT-5" },
       { id: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash" },
       { id: "google/gemini-2.5-flash-lite", name: "Gemini 2.5 Lite" }
@@ -412,7 +413,7 @@ const AI_PROVIDERS: Record<string, { models: {id: string, name: string}[]; keyUr
     keyUrl: "openrouter.ai/keys" 
   },
   "Nvidia NIM":  { models: [{id: "nvidia/llama-3.1-nemotron-70b", name: "Llama 3.1 Nemotron 70B"}], keyUrl: "build.nvidia.com" },
-  "Anthropic":   { models: [{id: "claude-3-5-sonnet-latest", name: "Claude 3.5 Sonnet"}], keyUrl: "console.anthropic.com/settings/keys" },
+  "Anthropic":   { models: [{id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5"}, {id: "claude-haiku-5-5", name: "Claude Haiku 5.5"}], keyUrl: "console.anthropic.com/settings/keys" },
 };
 
 const CRON_PRESETS: Record<string, string> = {

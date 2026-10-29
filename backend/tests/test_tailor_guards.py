@@ -222,7 +222,8 @@ def test_contact_line_drops_city_state():
 def test_contact_line_keeps_links_the_base_has():
     base = "Jane Doe — Data Engineer\njane@example.com | 347-695-1020 | Austin, TX | linkedin.com/in/jane | github.com/jane\n\nEXPERIENCE:"
     out = t._contact_only("Jane Doe — Data Engineer\n347-695-1020 | jane@example.com | Austin, TX\n\nSUMMARY:", base)
-    assert out.splitlines()[1] == "347-695-1020 | jane@example.com | linkedin.com/in/jane | github.com/jane"
+    # 2026-10-29: the city stays (recruiters filter by location); links still only from the base
+    assert out.splitlines()[1] == "347-695-1020 | jane@example.com | Austin, TX | linkedin.com/in/jane | github.com/jane"
 
 
 def test_contact_line_never_adds_a_link_the_base_lacks():

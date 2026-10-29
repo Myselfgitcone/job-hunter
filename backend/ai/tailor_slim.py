@@ -457,5 +457,8 @@ async def tailor_resume_routed(*args, **kwargs) -> tuple[str, dict]:
         return await t.tailor_resume(*args, **kwargs)
     if which == "slim":
         return await tailor_resume_slim(*args, **kwargs)
+    if which == "protect":
+        from ai.tailor_protect import tailor_resume_protect
+        return await tailor_resume_protect(*args, **kwargs)
     from ai.tailor_mirror import tailor_resume_mirror
     return await tailor_resume_mirror(*args, **kwargs)

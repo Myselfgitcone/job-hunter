@@ -22,7 +22,7 @@ DEFAULT_MODEL = {"anthropic": "claude-sonnet-4-6", "openai": "gpt-4.1", "google"
 # ai_model_secondary, default Haiku); the check must do the same or its cost
 # and behaviour are not the app's. Override with TAILOR_MODEL_CHEAP.
 DEFAULT_CHEAP = {"anthropic": "claude-haiku-4-5", "openai": "gpt-4o-mini", "google": "gemini-2.5-flash",
-                 "openrouter": "anthropic/claude-haiku-4.5"}
+                 "openrouter": "anthropic/claude-haiku-4-5"}
 
 
 def main() -> int:

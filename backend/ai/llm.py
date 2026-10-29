@@ -19,6 +19,7 @@ import asyncio
 import time
 import httpx
 import contextvars
+import os
 from dataclasses import dataclass
 
 
@@ -52,9 +53,9 @@ RECOMMENDED_MODELS = {
         "mistralai/mistral-large",
     ],
     "anthropic": [
-        "claude-sonnet-4-5",
-        "claude-opus-4-5",
-        "claude-haiku-4-5",
+        "claude-sonnet-5-5",
+        "claude-opus-5-5",
+        "claude-haiku-5-5",
     ],
     "google": [
         "gemini-2.5-flash",
@@ -91,6 +92,11 @@ _HAIKU_FALLBACK = "claude-haiku-4-5"
 # signature (which would ripple through every caller). Usage: reset_usage()
 # before a run, then get_run_usage() after. Rates are USD per 1M tokens (in, out).
 _MODEL_RATES = {
+    # 2026-10-29, platform.claude.com/docs pricing page. Haiku 5.5 is the
+    # <=100k-prompt rate; every call here is far below that.
+    "claude-opus-5-5":       (4.0, 20.0),
+    "claude-sonnet-5-5":     (2.0, 10.0),
+    "claude-haiku-5-5":      (0.10, 0.50),
     "claude-opus-4-8":       (5.0, 25.0),
     "claude-opus-4-7":       (5.0, 25.0),
     "claude-opus-4-5":       (5.0, 25.0),
@@ -116,15 +122,19 @@ def set_cache_enabled(on: bool) -> None:
 
 
 def _rate_for(model: str) -> tuple[float, float]:
-    # Match by model FAMILY so dots/dashes/version drift don't matter
-    # ("gemini-2.5-flash-lite", "claude-sonnet-4.6", etc.).
-    m = (_strip_provider_prefix(model) or "").lower()
+    # Exact model id first (dots normalised to dashes: "claude-sonnet-5.5" ==
+    # "claude-sonnet-5-5"), then by FAMILY at the current generation's price so
+    # an unknown new id is never undercounted at an old, higher rate.
+    m = (_strip_provider_prefix(model) or "").lower().replace(".", "-")
+    for key, rate in _MODEL_RATES.items():
+        if key in m:
+            return rate
     if "opus" in m:
-        return _MODEL_RATES["claude-opus-4-8"]
+        return _MODEL_RATES["claude-opus-5-5"]
     if "sonnet" in m:
-        return _MODEL_RATES["claude-sonnet-4-6"]
+        return _MODEL_RATES["claude-sonnet-5-5"]
     if "haiku" in m:
-        return _MODEL_RATES["claude-haiku-4-5"]
+        return _MODEL_RATES["claude-haiku-5-5"]
     if "flash-lite" in m or "flash lite" in m:
         return _MODEL_RATES["gemini-2.5-flash-lite"]
     if "gemini" in m or "flash" in m:
@@ -205,7 +215,7 @@ async def chat(
     user: str,
     api_key: str = "",
     provider: str = "openrouter",
-    model: str = "anthropic/claude-sonnet-4-5",
+    model: str = "anthropic/claude-sonnet-4-6",
     max_tokens: int = 4096,
     pass_name: str = "",
     allow_fallback: bool = True,
@@ -261,7 +271,7 @@ async def chat(
         fallback_models = [
             "google/gemini-2.5-flash",
             "google/gemini-2.5-flash-lite",
-            "anthropic/claude-haiku-4.5",
+            "anthropic/claude-haiku-4-5",
         ]
         for fm in fallback_models:
             if fm not in models_to_try:
@@ -357,12 +367,44 @@ async def chat(
 
 # ── Direct provider callers ───────────────────────────────────────────────────
 
+def _anthropic_params(model: str) -> dict:
+    """Generation-specific request fields (2026-10-29).
+    Claude 5.5 models think by default and bill the thinking as output. These
+    passes are single-shot writing/editing with no tools, so thinking is set to
+    the lowest level each model allows — the closest match to how Sonnet 4.6 /
+    Haiku 4.5 ran (no thinking). 4.x ids get nothing, exactly as before.
+      Sonnet 5.5: `between_tools` is its lowest setting (`disabled` is a 400).
+      Haiku 5.5:  `disabled` is accepted at effort high or below.
+      Opus 5.5:   thinking cannot be turned off; low effort is the lever."""
+    m = (model or "").lower().replace(".", "-")
+    if "sonnet-5-5" in m:
+        # CLAUDE_SONNET_THINKING: between_tools (default, no thinking) | low | medium | high
+        # — a named level means adaptive thinking at that effort. Gate-tunable.
+        mode = os.getenv("CLAUDE_SONNET_THINKING", "between_tools").strip().lower()
+        if mode in ("low", "medium", "high"):
+            return {"thinking": {"type": "adaptive"}, "output_config": {"effort": mode}}
+        return {"thinking": {"type": "between_tools"}}
+    if "haiku-5-5" in m:
+        return {"thinking": {"type": "disabled"}, "output_config": {"effort": "low"}}
+    if "opus-5-5" in m:
+        return {"output_config": {"effort": "low"}}
+    return {}
+
+
+def _text_of(msg) -> str:
+    """Join the text blocks by type — a 5.5 response may start with a thinking block."""
+    return "".join(getattr(b, "text", "") for b in (getattr(msg, "content", None) or [])
+                   if getattr(b, "type", "") == "text")
+
+
 async def _call_anthropic(system: str, user: str, api_key: str,
                            model: str, max_tokens: int, pass_name: str = "",
                            timeout: int = 120, temperature: float | None = None) -> str:
-    """Anthropic SDK — direct API, no service fees."""
+    """Anthropic SDK — direct API, no service fees.
+    `temperature` is accepted for signature compatibility and never sent: API
+    version 2026-10-21 (SDK 2.x default) rejects sampling params on every model."""
     import anthropic
-    # Anthropic API requires dashes not dots: claude-sonnet-4-6, not claude-sonnet-4.6
+    # Anthropic API requires dashes not dots: claude-sonnet-5-5, not claude-sonnet-5.5
     model = model.replace(".", "-")
     client = anthropic.AsyncAnthropic(api_key=api_key, timeout=timeout, max_retries=1)
     label = f"[{pass_name}]" if pass_name else "[anthropic]"
@@ -379,7 +421,7 @@ async def _call_anthropic(system: str, user: str, api_key: str,
             max_tokens=max_tokens,
             system=_system_param,
             messages=[{"role": "user", "content": user}],
-            **({"temperature": temperature} if temperature is not None else {}),
+            **_anthropic_params(model),
         )
     finally:
         print(f"{label} anthropic call took {time.perf_counter() - start:.1f}s")
@@ -396,7 +438,12 @@ async def _call_anthropic(system: str, user: str, api_key: str,
                       _eff_in, getattr(u, "output_tokens", 0) or 0)
     except Exception:  # noqa: BLE001 — accounting must never break the call
         pass
-    return msg.content[0].text
+    if getattr(msg, "stop_reason", "") == "refusal":
+        # 5.5 safety classifiers can decline; an empty answer takes the caller's
+        # normal retry / "could not …" path instead of a crash on content[0].
+        print(f"{label} refusal from {model}: {getattr(getattr(msg, 'stop_details', None), 'category', '')}")
+        return ""
+    return _text_of(msg)
 
 
 async def _call_google(system: str, user: str, api_key: str,

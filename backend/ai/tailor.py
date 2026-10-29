@@ -1070,6 +1070,10 @@ def _contact_extras(base_resume: str) -> list[str]:
         out: list[str] = []
         for tok in re.split(r"\s*[|\u2022\u00b7]\s*|\s{2,}", line):
             tok = tok.strip(" ,;")
+            # 2026-10-29: a "City, ST" token stays — recruiters filter by location first
+            if tok and re.fullmatch(r"[A-Z][A-Za-z.\s]{1,30},\s*[A-Z]{2}", tok) and tok not in out:
+                out.append(tok)
+                continue
             if (tok and _HDR_LINK_RE.search(tok)
                     and not _HDR_EMAIL_RE.search(tok) and not _HDR_PHONE_RE.search(tok)
                     and tok not in out):

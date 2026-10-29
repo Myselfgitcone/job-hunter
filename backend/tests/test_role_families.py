@@ -15,11 +15,12 @@ from main import _ROLE_FAMILY_ITEMS, _roles_families, _title_matches_roles  # no
 # the two chip groups, exactly as ROLE_GROUPS in JobPreferencesModal.tsx lists them
 DE = ["Data Engineer", "ETL Developer", "Data Platform", "Data Warehouse", "Data Architect",
       "Database Engineer", "Database Developer", "SQL Developer", "Software Engineer (Data)",
-      "Databricks Engineer", "Snowflake Engineer", "Spark Engineer"]
+      "Databricks Engineer", "Snowflake Engineer", "Spark Engineer", "Analytics Engineer"]
 AI = ["Generative AI Engineer", "GenAI Engineer", "LLM Engineer", "RAG Engineer",
       "AI Platform Engineer", "AI Data Engineer", "AI Infrastructure Engineer",
       "AI Integration Engineer", "AI Solutions Engineer", "Applied AI Engineer",
-      "Enterprise AI Engineer", "Data & AI Engineer"]
+      "Enterprise AI Engineer", "Data & AI Engineer", "AI Engineer", "MLOps Engineer",
+      "ML Platform Engineer"]
 
 AI_TITLES = ["GenAI Engineer", "Generative AI Engineer", "Senior GenAI Engineer", "LLM Engineer",
              "Senior LLM Engineer", "RAG Engineer", "Senior RAG Engineer", "AI Platform Engineer",
@@ -30,18 +31,23 @@ AI_TITLES = ["GenAI Engineer", "Generative AI Engineer", "Senior GenAI Engineer"
              "Data Engineer - Generative AI", "Data Engineer - AI Platforms", "Data Engineer - LLM/RAG",
              "LLM Platform Engineer", "GenAI Platform Engineer", "Enterprise AI Engineer",
              "Applied AI Engineer", "AI Solutions Engineer", "AI Integration Engineer",
-             "LLM Integration Engineer", "AI Infrastructure Engineer"]
+             "LLM Integration Engineer", "AI Infrastructure Engineer",
+             # 2026-10-28: plain AI Engineer + platform-side ML titles
+             "AI Engineer", "Senior AI Engineer", "AI Engineer II", "MLOps Engineer",
+             "Senior MLOps Engineer", "ML Platform Engineer", "Machine Learning Platform Engineer",
+             "ML Infrastructure Engineer"]
 
 DE_TITLES = ["Senior Data Engineer", "Data Engineer", "Data Platform Engineer",
              "Databricks Data Engineer", "ETL Developer", "Snowflake Engineer", "Spark Engineer",
              "Data Architect", "Database Engineer", "SQL Developer", "Big Data Engineer",
-             "Data Warehouse Engineer"]
+             "Data Warehouse Engineer", "Analytics Engineer", "Senior Analytics Engineer"]
 
 # sales, product, management, science and leadership wording is not an engineering job
 NEITHER = ["Pre-Sales AI Solutions Engineer", "AI Solutions Sales Engineer", "AI Engineering Manager",
            "Head of AI Engineering", "Generative AI Product Manager", "AI Research Scientist",
            "Applied AI Scientist", "Platform Engineer", "Site Reliability Engineer",
-           "Data Scientist", "AI Engineer", "Test Engineer"]
+           "Data Scientist", "Machine Learning Scientist", "AI Engineering Manager",
+           "Test Engineer"]
 
 
 def test_ai_titles_land_only_in_the_ai_family():
@@ -76,3 +82,20 @@ def test_the_scraper_bills_the_ai_titles_as_their_own_family():
     assert "AI Engineering" in ALL_FAMILIES
     assert "genai" in _FAMILY_TERMS["AI Engineering"]
     assert "genai" not in _FAMILY_TERMS["Data Engineer"]
+
+
+def test_scrape_defaults_target_only_the_two_engineering_families():
+    # 2026-10-28: the user hunts DE + AI Engineering; everything else is off
+    # unless the admin turns it on. Analytics Engineer bills as DE, AI Engineer /
+    # MLOps / ML platform as AI Engineering, scientists never.
+    from scrapers.fantasticjobs import DEFAULT_FAMILIES_ON, _FAMILY_TERMS, compose_usa_filter
+    assert DEFAULT_FAMILIES_ON == {"Data Engineer", "AI Engineering"}
+    f = compose_usa_filter(set(DEFAULT_FAMILIES_ON))
+    assert "'analytics engineer'" in f
+    assert "'ai engineer'" in f and "mlops" in f and "'ml platform'" in f
+    assert "scientist" in f                      # global exclusion
+    for absent in ("'business analyst'", "servicenow", "'grc analyst'", "'power bi'", "'data analytics'", "director | 'senior director'"):
+        assert absent not in f, absent
+    assert "'analytics engineer'" not in _FAMILY_TERMS["Data Analyst"]
+    assert "'analytics engineer'" in _FAMILY_TERMS["Data Engineer"]
+    assert compose_usa_filter(set()) == ""      # all off = fetch nothing

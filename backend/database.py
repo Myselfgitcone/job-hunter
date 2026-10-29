@@ -492,6 +492,24 @@ async def mark_expired_jobs_closed(fj_ids: list[int]) -> int:
     return total_closed
 
 
+async def mark_jobs_closed_by_id(job_ids: list[str]) -> int:
+    """Close open jobs by DB id (local expiry pass). Only status 'new' moves —
+    an applied / interview job is history and stays as it is."""
+    if not job_ids:
+        return 0
+    from sqlalchemy import update
+    CHUNK = 1000
+    total = 0
+    async with SessionLocal() as db:
+        for i in range(0, len(job_ids), CHUNK):
+            chunk = job_ids[i:i + CHUNK]
+            result = await db.execute(update(Job).where(Job.id.in_(chunk))
+                                      .where(Job.status == "new").values(status="closed"))
+            total += result.rowcount
+        await db.commit()
+    return total
+
+
 async def update_modified_jobs(job_updates: list[dict]) -> int:
     """
     Update existing DB jobs with fresh data from the modified-ats feed.

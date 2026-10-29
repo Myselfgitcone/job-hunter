@@ -48,9 +48,9 @@ const SHOW_HELP_NAV = false;
 // any "___ Engineer … Data ___". Excludes test/project/process/reliability/etc.
 // engineers and ML roles (kept separate from the DE family).
 const _DE_NOT = /\b(test|project|process|reliability|quality|network|hardware|firmware|sales|support|solutions?|security|field|manufacturing|mechanical|civil|electrical|chemical|systems?\s+development)\s+engineer\b|site\s+reliability|machine\s+learning|\bml\s+engineer\b|\bmlops\b|\bai\s+engineer\b|\bsre\b|\bdevops\b|data\s+scien\w*|\bleader\b|\bsvp\b|vice\s+president|\bvp\b|\bdirector\b|\bchief\b|head\s+of/i;
-const _DE_YES = /\bdata\s+engineer|\b(etl|elt)\b|\bdatabricks\b|\bsnowflake\b|\bdbt\b|\bairflow\b|\bkafka\b|\bspark\b|database\s+(engineer|developer)|\bsql\s+developer\b|\bdata\s+architect\b|\bbig\s+data\b|\bdata\b[\w\s,\-&/]*\b(platform|pipeline|warehouse|lakehouse|lake|infrastructure|ingestion|modell?ing|integration|ops|operations)\b/i;
+const _DE_YES = /\bdata\s+engineer|\banalytics\s+engineer\b|\b(etl|elt)\b|\bdatabricks\b|\bsnowflake\b|\bdbt\b|\bairflow\b|\bkafka\b|\bspark\b|database\s+(engineer|developer)|\bsql\s+developer\b|\bdata\s+architect\b|\bbig\s+data\b|\bdata\b[\w\s,\-&/]*\b(platform|pipeline|warehouse|lakehouse|lake|infrastructure|ingestion|modell?ing|integration|ops|operations)\b/i;
 // GenAI / LLM / RAG / Data+AI engineering titles (same pattern as backend _AI_DATA_RE).
-const _AI_DATA_YES = /\b(gen\s?ai|generative\s+ai|llm|rag)\b|\bai\s+(platforms?|data|solutions?|integrations?|infrastructure|engineering)\b|\b(enterprise|applied)\s+ai\b|\bai\s*\/\s*ml\b|\bml\s*\/\s*ai\b|\bdata\s*(\/|&|and|\+|,)\s*(ai|gen\s?ai|generative\s+ai|ml)\b|\b(ai|gen\s?ai|ml)\s*(\/|&|and|\+)\s*data\b/i;
+const _AI_DATA_YES = /\b(gen\s?ai|generative\s+ai|llm|rag)\b|\bai\s+(platforms?|data|solutions?|integrations?|infrastructure|engineering)\b|\b(enterprise|applied)\s+ai\b|\bai\s*\/\s*ml\b|\bml\s*\/\s*ai\b|\bdata\s*(\/|&|and|\+|,)\s*(ai|gen\s?ai|generative\s+ai|ml)\b|\b(ai|gen\s?ai|ml)\s*(\/|&|and|\+)\s*data\b|\bai\s+engineer\b|\bmlops\b|\bml\s+platform\b|\bmachine\s+learning\s+platform\b|\bml\s+infrastructure\b/i;
 const _AI_DATA_ROLE = /\b(engineer|developer|architect)/i;
 const _AI_DATA_NOT = /data\s+scien\w*|\bdirector\b|\bvp\b|vice\s+president|\bchief\b|head\s+of|\bsales\b|\bpre-?sales\b|account\s+executive|\bmanager\b|\bscientist\b|\brecruiter\b/i;
 function _isAIEngineering(title: string): boolean {
@@ -60,7 +60,7 @@ function _isDataEngineer(title: string): boolean {
   if (_isAIEngineering(title)) return false;          // AI titles are their own family
   return !_DE_NOT.test(title) && _DE_YES.test(title);
 }
-const _ML_TERM = /machine\s+learning|mlops|\bml\s+engineer\b|analytics\s+engineer/;
+const _ML_TERM = /machine\s+learning|\bml\s+engineer\b/;  // MLOps -> AI family; Analytics Engineer -> DE (2026-10-28)
 
 // "Niche roles" (user's name for them): the 4 entry-level families. Scraper
 // drops 5+yr roles for these, so the Years filter shows only the junior trays.

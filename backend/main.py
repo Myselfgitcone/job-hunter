@@ -708,6 +708,28 @@ async def _rebuild_stale_profile_resumes() -> int:
     return n
 
 
+# Scrape-family reset (2026-10-28): the user hunts Data Engineer + AI
+# Engineering only; the other families burned Fantastic.jobs credits on jobs
+# nobody applied to. One-shot — the marker row keeps later admin toggles
+# (Settings → scrape families) untouched on every following boot.
+_SCRAPE_FAMILY_RESET_MARK = "scrape_families_reset_2026_10_28"
+
+async def _reset_scrape_families_once() -> bool:
+    from scrapers.fantasticjobs import ALL_FAMILIES, DEFAULT_FAMILIES_ON
+    async with SessionLocal() as db:
+        if await db.get(Setting, _SCRAPE_FAMILY_RESET_MARK):
+            return False
+        value = json.dumps({f: f in DEFAULT_FAMILIES_ON for f in ALL_FAMILIES})
+        row = await db.get(Setting, "scrape_families")
+        if row:
+            row.value = value
+        else:
+            db.add(Setting(key="scrape_families", value=value))
+        db.add(Setting(key=_SCRAPE_FAMILY_RESET_MARK, value=datetime.now(EST).isoformat()))
+        await db.commit()
+    return True
+
+
 async def _strip_retired_role_items() -> int:
     """Remove retired-family role items (Security/SIEM, GenAI/RAG, IAM) from
     every user's selections — their picker groups are gone, so leftover items
@@ -749,6 +771,21 @@ async def _sync_expired_wrapper():
     except Exception as e:
         print(f"[Scheduler] Expired sync failed: {e}")
         await log_event("ERROR", "expired-sync", f"Failed: {e}")
+        import traceback; traceback.print_exc()
+
+
+async def _local_expiry_wrapper():
+    """Nightly local replacement for the Expired endpoint: close open jobs whose
+    valid-through date passed or whose apply link answers 404/410."""
+    print("[Scheduler] Local expiry pass starting...")
+    try:
+        from scrapers.fantasticjobs import close_stale_jobs
+        res = await close_stale_jobs()
+        await log_event("INFO", "local-expiry",
+                        f"Closed {res['expired']} past-expiry + {res['dead_link']} dead-link jobs ({res['checked']} links checked)")
+    except Exception as e:
+        print(f"[Scheduler] Local expiry failed: {e}")
+        await log_event("ERROR", "local-expiry", f"Failed: {e}")
         import traceback; traceback.print_exc()
 
 
@@ -1381,6 +1418,11 @@ async def startup():
         except Exception as e:
             print(f"[Startup] Retired-role cleanup skipped: {e}")
         try:
+            if await _reset_scrape_families_once():
+                print("[Startup] Scrape families reset to Data Engineer + AI Engineering (one-shot)")
+        except Exception as e:
+            print(f"[Startup] Scrape-family reset skipped: {e}")
+        try:
             res = await _rebuild_stale_profile_resumes()
             if res:
                 print(f"[Startup] Rebuilt {res} base resume(s) that carried the old fixed headline")
@@ -1410,6 +1452,8 @@ async def startup():
     _scheduler.add_job(_auto_scrape,         CronTrigger.from_crontab(cron_expr, timezone=EST),    id="auto_scrape",    replace_existing=True, max_instances=1, coalesce=True, misfire_grace_time=300)
     _scheduler.add_job(_sync_expired_wrapper, CronTrigger.from_crontab("0 0 * * *", timezone=EST),  id="sync_expired",   replace_existing=True)
     _scheduler.add_job(_sync_modified_wrapper,CronTrigger.from_crontab("0 */6 * * *", timezone=EST),id="sync_modified",  replace_existing=True)
+    # 00:30 — after the Expired sync (when the plan has it); runs on every plan.
+    _scheduler.add_job(_local_expiry_wrapper, CronTrigger.from_crontab("30 0 * * *", timezone=EST), id="local_expiry",   replace_existing=True)
     _scheduler.start()
     print(f"[Scheduler] Auto-scrape scheduled:        {cron_expr} ET")
     print("[Scheduler] Expired jobs sync scheduled:   0 0 * * * ET (daily midnight ET)")
@@ -1849,7 +1893,7 @@ _JAVA_WORD_RE = re.compile(r"\bjava\b", re.I)
 _BI_WORD_RE   = re.compile(r"\bbi\b", re.I)
 _DATA_WORD_RE = re.compile(r"\bdata\b", re.I)
 # same pattern as telegram_bot._AI_DATA_RE and App.tsx _AI_DATA_YES
-_AI_DATA_RE = re.compile(r"\b(gen\s?ai|generative\s+ai|llm|rag)\b|\bai\s+(platforms?|data|solutions?|integrations?|infrastructure|engineering)\b|\b(enterprise|applied)\s+ai\b|\bai\s*/\s*ml\b|\bml\s*/\s*ai\b|\bdata\s*(\/|&|and|\+|,)\s*(ai|gen\s?ai|generative\s+ai|ml)\b|\b(ai|gen\s?ai|ml)\s*(\/|&|and|\+)\s*data\b", re.I)
+_AI_DATA_RE = re.compile(r"\b(gen\s?ai|generative\s+ai|llm|rag)\b|\bai\s+(platforms?|data|solutions?|integrations?|infrastructure|engineering)\b|\b(enterprise|applied)\s+ai\b|\bai\s*/\s*ml\b|\bml\s*/\s*ai\b|\bdata\s*(\/|&|and|\+|,)\s*(ai|gen\s?ai|generative\s+ai|ml)\b|\b(ai|gen\s?ai|ml)\s*(\/|&|and|\+)\s*data\b|\bai\s+engineer\b|\bmlops\b|\bml\s+platform\b|\bmachine\s+learning\s+platform\b|\bml\s+infrastructure\b", re.I)
 _AI_ROLE_RE = re.compile(r"\b(engineer|developer|architect)", re.I)
 _AI_NOT_RE  = re.compile(r"data\s+scien\w*|\bdirector\b|\bvp\b|vice\s+president|\bchief\b|head\s+of|\bsales\b|pre-?sales|account\s+executive|\bmanager\b|\bscientist\b|\brecruiter\b", re.I)
 
@@ -1875,10 +1919,9 @@ def _title_matches_roles(title: str, roles: list) -> bool:
             if _JAVA_WORD_RE.search(t): return True
         elif term == "data engineer":
             # DE net also covers DE-applicable titles without the word "data":
-            # Databricks Engineer, MLOps Engineer, Analytics Engineer.
+            # Databricks Engineer, Analytics Engineer. (MLOps is AI Engineering now.)
             if _DATA_WORD_RE.search(t) and "engineer" in t: return True
             if "databricks" in t or "analytics engineer" in t: return True
-            if re.search(r"\bmlops\b", t): return True
         elif term == "data analyst":
             if _DATA_WORD_RE.search(t) and "analyst" in t: return True
         elif term == "software engineer (data)":
@@ -2112,9 +2155,10 @@ _ROLE_FAMILY_ITEMS: dict[str, set[str]] = {
     "Data Engineer": {"data engineer", "etl developer", "data platform", "data warehouse",
                        "data architect", "database engineer", "database developer",
                        "sql developer", "software engineer (data)", "databricks engineer",
-                       "snowflake engineer", "spark engineer"},
-    "AI Engineering": {"generative ai engineer", "genai engineer", "llm engineer", "rag engineer", "ai platform engineer", "ai data engineer", "ai infrastructure engineer", "ai integration engineer", "ai solutions engineer", "applied ai engineer", "enterprise ai engineer", "data & ai engineer"},
-    "Data Analyst": {"data analyst", "data analytics", "analytics engineer",
+                       "snowflake engineer", "spark engineer", "analytics engineer"},
+    "AI Engineering": {"generative ai engineer", "genai engineer", "llm engineer", "rag engineer", "ai platform engineer", "ai data engineer", "ai infrastructure engineer", "ai integration engineer", "ai solutions engineer", "applied ai engineer", "enterprise ai engineer", "data & ai engineer",
+                       "ai engineer", "mlops engineer", "ml platform engineer"},
+    "Data Analyst": {"data analyst", "data analytics",
                       "reporting analyst", "business analyst"},
     "Business Intelligence": {"business intelligence", "bi developer", "bi analyst",
                                "bi engineer", "power bi", "tableau"},
@@ -3489,21 +3533,21 @@ async def admin_usage(month: str = "", user_id: str = Depends(get_current_user_i
 async def get_scrape_families(user_id: str = Depends(get_current_user_id)):
     """Admin family toggles: ON = scraped from FantasticJobs + visible in app."""
     await _verify_admin(user_id)
-    from scrapers.fantasticjobs import ALL_FAMILIES
+    from scrapers.fantasticjobs import ALL_FAMILIES, DEFAULT_FAMILIES_ON
     async with SessionLocal() as db:
         row = await db.get(Setting, "scrape_families")
         try:
             m = json.loads(row.value) if row and row.value else {}
         except Exception:
             m = {}
-    return {f: bool(m.get(f, True)) for f in ALL_FAMILIES}
+    return {f: bool(m.get(f, f in DEFAULT_FAMILIES_ON)) for f in ALL_FAMILIES}
 
 
 @app.put("/api/admin/scrape-families")
 async def set_scrape_families(body: dict, user_id: str = Depends(get_current_user_id)):
     await _verify_admin(user_id)
-    from scrapers.fantasticjobs import ALL_FAMILIES
-    clean = {f: bool(body.get(f, True)) for f in ALL_FAMILIES}
+    from scrapers.fantasticjobs import ALL_FAMILIES, DEFAULT_FAMILIES_ON
+    clean = {f: bool(body.get(f, f in DEFAULT_FAMILIES_ON)) for f in ALL_FAMILIES}
     async with SessionLocal() as db:
         row = await db.get(Setting, "scrape_families")
         if row:

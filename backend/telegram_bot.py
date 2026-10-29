@@ -87,10 +87,10 @@ _ROLE_FAMILIES: list[tuple[str, list[str]]] = [
                          "information security analyst", "security compliance", "it auditor",
                          "it audit", "cyber risk", "third party risk", "third-party risk",
                          "vendor risk", "tprm"]),
-    ("Data Analyst",    ["data analyst", "data analytics", "analytics engineer", "reporting analyst",
+    ("Data Analyst",    ["data analyst", "data analytics", "reporting analyst",
                          "quantitative analyst"]),
     ("BI",              ["business intelligence", "bi developer", "bi analyst", "bi engineer", "power bi", "tableau"]),
-    ("Data Engineer",   ["data engineer", "etl", "data platform", "data warehouse", "data architect",
+    ("Data Engineer",   ["data engineer", "analytics engineer", "etl", "data platform", "data warehouse", "data architect",
                          "database engineer", "database developer", "sql developer", "big data",
                          "data infrastructure", "data operations engineer",
                          "databricks", "snowflake", "spark", "dbt", "mlops",
@@ -115,7 +115,7 @@ _ROLE_FAMILIES: list[tuple[str, list[str]]] = [
 _DATA_RE = re.compile(r"\bdata\b", re.I)
 # GenAI / LLM / RAG / Data+AI engineering titles belong to the Data Engineer family (2026-09-19).
 # Same pattern as App.tsx _AI_DATA_YES and main.py _AI_DATA_RE.
-_AI_DATA_RE = re.compile(r"\b(gen\s?ai|generative\s+ai|llm|rag)\b|\bai\s+(platforms?|data|solutions?|integrations?|infrastructure|engineering)\b|\b(enterprise|applied)\s+ai\b|\bai\s*/\s*ml\b|\bml\s*/\s*ai\b|\bdata\s*(\/|&|and|\+|,)\s*(ai|gen\s?ai|generative\s+ai|ml)\b|\b(ai|gen\s?ai|ml)\s*(\/|&|and|\+)\s*data\b", re.I)
+_AI_DATA_RE = re.compile(r"\b(gen\s?ai|generative\s+ai|llm|rag)\b|\bai\s+(platforms?|data|solutions?|integrations?|infrastructure|engineering)\b|\b(enterprise|applied)\s+ai\b|\bai\s*/\s*ml\b|\bml\s*/\s*ai\b|\bdata\s*(\/|&|and|\+|,)\s*(ai|gen\s?ai|generative\s+ai|ml)\b|\b(ai|gen\s?ai|ml)\s*(\/|&|and|\+)\s*data\b|\bai\s+engineer\b|\bmlops\b|\bml\s+platform\b|\bmachine\s+learning\s+platform\b|\bml\s+infrastructure\b", re.I)
 _AI_ROLE_RE = re.compile(r"\b(engineer|developer|architect)", re.I)
 _AI_NOT_RE  = re.compile(r"data\s+scien\w*|\bdirector\b|\bvp\b|vice\s+president|\bchief\b|head\s+of|\bsales\b|pre-?sales|account\s+executive|\bmanager\b|\bscientist\b|\brecruiter\b", re.I)
 

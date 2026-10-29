@@ -18,7 +18,7 @@ from datetime import datetime, timezone, timedelta
 
 import httpx
 
-from scrapers.base import JobData, detect_country, is_relevant_title
+from scrapers.base import JobData, detect_country, is_relevant_title, extract_min_years_required
 
 # ── Endpoint URLs ─────────────────────────────────────────────────────────────
 BASE_ATS        = "https://data.fantastic.jobs/v1/active-ats"
@@ -74,6 +74,142 @@ _last_modified_ts: datetime | None = None
 MIN_FETCH_INTERVAL_H    = 0.75
 MIN_MODIFIED_INTERVAL_H = 6
 
+# ── Plan features (2026-10-28) ───────────────────────────────────────────────
+# The $45 tier has no Expired / Modified endpoints (403). After one 403 the
+# feature is marked off in Setting "fj_plan_lacks" and the sync skips itself
+# for PLAN_RECHECK_DAYS, then tries once more (the plan may have changed).
+# Saves ~180 requests a month on the 2,500 cap and keeps the log clean.
+PLAN_LACKS_KEY    = "fj_plan_lacks"
+PLAN_RECHECK_DAYS = 7
+_LAST_403: set[str] = set()          # base_urls that answered 403 in this process
+
+
+def _lacks_recent(raw_json: str, feature: str, now: datetime) -> bool:
+    """True when `feature` was marked missing less than PLAN_RECHECK_DAYS ago."""
+    try:
+        ts = (json.loads(raw_json or "{}") or {}).get(feature) or ""
+        marked = datetime.fromisoformat(ts)
+    except Exception:
+        return False
+    if marked.tzinfo is None:
+        marked = marked.replace(tzinfo=timezone.utc)
+    return (now - marked) < timedelta(days=PLAN_RECHECK_DAYS)
+
+
+async def _plan_lacks(feature: str) -> bool:
+    try:
+        from database import SessionLocal, Setting
+        async with SessionLocal() as db:
+            row = await db.get(Setting, PLAN_LACKS_KEY)
+        return _lacks_recent(row.value if row else "", feature, datetime.now(timezone.utc))
+    except Exception as e:  # noqa: BLE001 — a DB hiccup must not block a sync
+        print(f"[FantasticJobs] plan-feature read failed: {e}")
+        return False
+
+
+async def _mark_plan_lacks(feature: str) -> None:
+    try:
+        from database import SessionLocal, Setting
+        async with SessionLocal() as db:
+            row = await db.get(Setting, PLAN_LACKS_KEY)
+            m = {}
+            if row and row.value:
+                try:
+                    m = json.loads(row.value) or {}
+                except Exception:
+                    m = {}
+            m[feature] = datetime.now(timezone.utc).isoformat()
+            if row:
+                row.value = json.dumps(m)
+            else:
+                db.add(Setting(key=PLAN_LACKS_KEY, value=json.dumps(m)))
+            await db.commit()
+        print(f"[FantasticJobs] plan has no '{feature}' endpoint (403) — sync paused {PLAN_RECHECK_DAYS}d")
+    except Exception as e:  # noqa: BLE001
+        print(f"[FantasticJobs] plan-feature write failed: {e}")
+
+
+# ── Local expiry (2026-10-28) ────────────────────────────────────────────────
+# Replaces the Expired endpoint on plans without it. Two signals, both free:
+#   1. the posting's own date_valid_through (stored as Job.job_expiry) passed;
+#   2. the apply link answers 404/410 — checked only for open jobs older than
+#      LINK_CHECK_AFTER_DAYS, at most LINK_CHECK_MAX per night, 5 at a time.
+# Retention deletes rows at 60 days, so this only has to catch the employer
+# closing a posting inside that window. A network error is NOT a closure.
+LINK_CHECK_AFTER_DAYS = int(os.getenv("FJ_LINK_CHECK_AFTER_DAYS", "7"))
+LINK_CHECK_MAX        = int(os.getenv("FJ_LINK_CHECK_MAX", "400"))
+_DEAD_STATUSES = {404, 410}
+
+
+def _parse_iso(raw: str) -> datetime | None:
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(raw).strip().replace("Z", "+00:00"))
+    except Exception:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _expiry_passed(job_expiry: str, now: datetime) -> bool:
+    """True when the posting's valid-through moment is behind `now`. A bare
+    date means the END of that day (UTC) — the posting is still live on it."""
+    dt = _parse_iso(job_expiry)
+    if dt is None:
+        return False
+    if len(str(job_expiry).strip()) <= 10:          # YYYY-MM-DD
+        dt = dt + timedelta(days=1)
+    return dt <= now
+
+
+def _old_enough_for_link_check(posted_at: str, scraped_at: str, now: datetime) -> bool:
+    ref = _parse_iso(posted_at) or _parse_iso(scraped_at)
+    return ref is not None and (now - ref) >= timedelta(days=LINK_CHECK_AFTER_DAYS)
+
+
+def _dead_status(code: int | None) -> bool:
+    return code in _DEAD_STATUSES
+
+
+async def _link_dead(client: httpx.AsyncClient, url: str) -> bool:
+    try:
+        r = await client.get(url, timeout=12, headers={"User-Agent": "Mozilla/5.0"})
+        return _dead_status(r.status_code)
+    except Exception:  # noqa: BLE001 — timeouts / DNS are not a closure
+        return False
+
+
+async def close_stale_jobs(now: datetime | None = None) -> dict:
+    """Nightly: close open jobs whose expiry passed or whose apply link is dead.
+    Returns {expired, dead_link, checked}."""
+    from database import SessionLocal, Job, mark_jobs_closed_by_id
+    from sqlalchemy import select
+    now = now or datetime.now(timezone.utc)
+    async with SessionLocal() as db:
+        rows = (await db.execute(
+            select(Job.id, Job.url, Job.job_expiry, Job.posted_at, Job.scraped_at)
+            .where(Job.status == "new"))).all()
+    expired = [r.id for r in rows if _expiry_passed(r.job_expiry or "", now)]
+    expired_set = set(expired)
+    candidates = [r for r in rows
+                  if r.id not in expired_set and (r.url or "").startswith("http")
+                  and _old_enough_for_link_check(r.posted_at or "", r.scraped_at or "", now)]
+    # oldest first — the ones most likely gone, within the nightly budget
+    candidates.sort(key=lambda r: (r.posted_at or r.scraped_at or ""))
+    candidates = candidates[:LINK_CHECK_MAX]
+    dead: list[str] = []
+    sem = asyncio.Semaphore(5)
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        async def one(r):
+            async with sem:
+                if await _link_dead(client, r.url):
+                    dead.append(r.id)
+        await asyncio.gather(*(one(r) for r in candidates))
+    closed_exp = await mark_jobs_closed_by_id(expired)
+    closed_dead = await mark_jobs_closed_by_id(dead)
+    print(f"[LocalExpiry] open={len(rows)} expired={closed_exp} dead_link={closed_dead} checked={len(candidates)}")
+    return {"expired": closed_exp, "dead_link": closed_dead, "checked": len(candidates)}
+
 
 # Boolean title filter — USA + India
 # Java: one broad expression catches all "java *" titles; !javascript avoids false positives.
@@ -101,6 +237,7 @@ _FAMILY_TERMS: dict[str, str] = {
         " | databricks"
         " | 'snowflake developer' | 'snowflake engineer' | 'spark engineer' | 'spark developer'"
         " | 'dbt developer' | 'airflow engineer' | 'kafka engineer'"
+        " | 'analytics engineer' | 'lakehouse engineer'"
         # ML/MLOps REMOVED — not part of Data Engineer.
         " | ('software engineer' & ('data platform' | 'data infrastructure' | 'data pipeline' | 'data warehouse'))"
     ),
@@ -112,9 +249,12 @@ _FAMILY_TERMS: dict[str, str] = {
         " | 'ai solutions' | 'ai integration' | 'applied ai' | 'enterprise ai' | 'ai engineering')"
         " & (engineer | developer | architect))"
         " | (data & (ai | genai | 'gen ai' | ml) & (engineer | developer | architect))"
+        # 2026-10-28: AI Engineer / MLOps / ML-platform titles — platform-side ML the
+        # user's stack covers (MLflow, SageMaker, Feast). Modelling titles stay out.
+        " | 'ai engineer' | mlops | 'ml platform' | 'machine learning platform' | 'ml infrastructure'"
     ),
     "Data Analyst": (
-        "(data & analyst) | 'data analytics' | 'analytics engineer' | 'reporting analyst' | 'product analyst'"
+        "(data & analyst) | 'data analytics' | 'reporting analyst' | 'product analyst'"
     ),
     "BI": (
         "'business intelligence' | 'bi developer' | 'bi analyst' | 'bi engineer'"
@@ -181,6 +321,10 @@ _FAMILY_TERMS: dict[str, str] = {
     # 'project manager' removed — re-add as a family to re-enable.
 }
 ALL_FAMILIES = list(_FAMILY_TERMS.keys()) + ["AI/DS Leadership"]
+# Families scraped when the admin has never touched the toggles (2026-10-28):
+# the user hunts Data Engineer + AI Engineering only. Every other family
+# burned Fantastic.jobs credits on jobs nobody applied to.
+DEFAULT_FAMILIES_ON = frozenset({"Data Engineer", "AI Engineering"})
 
 _TERMS_COMMON = " | ".join(_FAMILY_TERMS.values())
 # Java family — USA only (India team doesn't hunt Java roles)
@@ -213,6 +357,8 @@ _GLOBAL_NOT = (
     " | structural | mechanical"   # civil/mech engineering
     " | network"                   # Network Engineer (infra, not pipelines)
     " | 'process engineer' | 'process manager'"
+    # Modelling / research tracks — the user is platform-side (2026-10-28)
+    " | scientist | 'data science' | 'engineering manager'"
     # Management / PM tracks
     " | 'operations manager' | 'program manager'"
     # Seniority: lead/staff/principal are now ALLOWED. The app is
@@ -222,6 +368,10 @@ _GLOBAL_NOT = (
     # results. Only exec/architect tracks stay excluded below.
     # Executive / architect exclusions (existing)
     " | director | 'vice president' | vp | cto | chief"
+    # Seniority gate (2026-10-28): the user has ~5.5 years. Principal / Staff /
+    # Manager titles are 8-10+ year tracks — cut in the request, never billed.
+    # Lead stays (often 6-7 years); the qualify step judges it. See _too_senior.
+    " | principal | staff | manager"
     " | 'solutions architect' | 'enterprise architect' | 'cloud architect'"
     " | 'software architect' | 'technical architect' | 'application architect'"
     " | 'integration architect' | 'security architect')"
@@ -238,6 +388,43 @@ _SKIP_DESC_RE = _re.compile(
     r"|require.{0,30}citizenship|clearance required)",
     _re.IGNORECASE,
 )
+
+# ── Seniority gate (2026-10-28) ───────────────────────────────────────────────
+# The user wants to see 0–8 years (stated 2026-10-28). A posting FJ's AI marks
+# "10+", or whose text asks for MORE than MAX_YEARS_ALLOWED years, is never
+# stored and never scored. No floor: junior postings stay. Title words are
+# already cut in _GLOBAL_NOT (never billed); the regex here is the backstop for
+# the job-board feed and for titles the API filter lets through. A posting
+# that states no years is kept — nothing to judge it by.
+MAX_YEARS_ALLOWED = 8      # drop when the JD asks for more than this
+_SENIOR_TITLE_RE = _re.compile(
+    r"\b(principal|staff|manager|director|vp|vice\s+president|chief|head\s+of)\b",
+    _re.IGNORECASE,
+)
+
+
+def _too_senior(title: str, fj_level: str, raw_desc: str) -> str | None:
+    """Drop reason when a posting sits above the user's level, else None."""
+    if _SENIOR_TITLE_RE.search(title or ""):
+        return "senior_title"
+    if (fj_level or "").strip() == "10+":
+        return "senior_10plus"
+    years = extract_min_years_required(raw_desc or "")
+    if years is not None and years > MAX_YEARS_ALLOWED:
+        return "senior_over_8yrs"
+    return None
+
+
+def _experience_levels() -> list[str]:
+    """Opt-in API-side experience filter: env FJ_EXPERIENCE_LEVELS="0-2,2-5,5-10".
+    Off by default — the API docs don't say whether a posting with no AI
+    classification survives the filter. Turn it on for a week, compare the
+    count endpoint with and without, then keep it if nothing goes missing."""
+    raw = os.getenv("FJ_EXPERIENCE_LEVELS", "").strip()
+    if not raw:
+        return []
+    return [v.strip() for v in raw.split(",") if v.strip() in ("0-2", "2-5", "5-10", "10+")]
+
 
 # ── Entry-level families (Security/SIEM, GenAI/RAG, GRC, IAM) — stricter
 # description policy: DROP no-sponsorship/C2C jobs at
@@ -520,6 +707,8 @@ async def _fetch_page(
         "location_advanced": f"'{location}'" if " " in location else location,
         "description_format": "html",
     }
+    if _experience_levels():
+        params["ai_experience_level"] = _experience_levels()
     # time_frame is supported by active/JB feeds but NOT by modified-ats
     if time_frame is not None:
         params["time_frame"] = time_frame
@@ -529,7 +718,12 @@ async def _fetch_page(
     try:
         r = await client.get(base_url, params=params, timeout=30)
         if r.status_code == 403:
-            print(f"[FantasticJobs] 403 {base_url.split('/')[-1]} {location}: {r.json().get('detail','')}")
+            _LAST_403.add(base_url)
+            try:
+                _detail = r.json().get("detail", "")
+            except Exception:
+                _detail = r.text[:120]
+            print(f"[FantasticJobs] 403 {base_url.split('/')[-1]} {location}: {_detail}")
             return []
         if r.status_code == 429:
             print(f"[FantasticJobs] Rate limited (429) on {base_url.split('/')[-1]}")
@@ -553,6 +747,8 @@ async def _fetch_expected_count(client: httpx.AsyncClient, location: str,
         "title_advanced": title_filter_for(location, base_url),
         "location_advanced": f"'{location}'" if " " in location else location,
     }
+    if _experience_levels():
+        params["ai_experience_level"] = _experience_levels()
     try:
         r = await client.get(base_url + "-count", params=params, timeout=30)
         if r.status_code != 200:
@@ -617,15 +813,15 @@ async def fetch(settings: dict) -> list[dict]:
             srow = await db.get(Setting, "scrape_families")
             if srow and srow.value:
                 m = json.loads(srow.value)
-                _ENABLED_FAMILIES = {f for f in ALL_FAMILIES if m.get(f, True)}
+                _ENABLED_FAMILIES = {f for f in ALL_FAMILIES if m.get(f, f in DEFAULT_FAMILIES_ON)}
             else:
-                _ENABLED_FAMILIES = None   # no setting → all on
+                _ENABLED_FAMILIES = set(DEFAULT_FAMILIES_ON)   # no setting → target families only
             if force_families:
                 _ENABLED_FAMILIES = force_families
                 print(f"[FantasticJobs] backfill limited to families: {sorted(force_families)}")
     except Exception as e:
         print(f"[FantasticJobs] force-window/families read failed: {e}")
-        _ENABLED_FAMILIES = None
+        _ENABLED_FAMILIES = set(DEFAULT_FAMILIES_ON)
 
     if _ENABLED_FAMILIES is not None and not _ENABLED_FAMILIES:
         print("[FantasticJobs] All families toggled OFF — skipping fetch")
@@ -826,6 +1022,12 @@ async def fetch(settings: dict) -> list[dict]:
                             drops["clearance_citizen"] += 1
                             continue
 
+                        # Seniority gate — above the user's level, never stored.
+                        _sr = _too_senior(title, job.get("ai_experience_level") or "", raw_desc_text)
+                        if _sr:
+                            drops[_sr] += 1
+                            continue
+
                         # Entry-level families only: drop no-sponsorship/C2C at
                         # scrape; flag positive sponsorship language; drop roles
                         # requiring 5+ years (never stored). Jobs with NO stated
@@ -908,6 +1110,9 @@ async def fetch_modified(settings: dict) -> list[dict]:
     if _last_modified_ts and (now - _last_modified_ts) < timedelta(hours=MIN_MODIFIED_INTERVAL_H):
         print("[FantasticJobs/Modified] Skipping — ran recently")
         return []
+    if await _plan_lacks("modified"):
+        print("[FantasticJobs/Modified] Skipping — plan has no Modified endpoint")
+        return []
 
     try:
         headers = _get_headers()
@@ -916,6 +1121,7 @@ async def fetch_modified(settings: dict) -> list[dict]:
         return []
 
     _last_modified_ts = now
+    _LAST_403.discard(BASE_MODIFIED)
 
     updates: list[dict] = []
     seen: set[str]      = set()
@@ -969,6 +1175,8 @@ async def fetch_modified(settings: dict) -> list[dict]:
             print(f"[FantasticJobs/Modified] {location}: {len([u for u in updates])} updates so far")
 
     print(f"[FantasticJobs/Modified] Done — {len(updates)} modified jobs found")
+    if BASE_MODIFIED in _LAST_403:
+        await _mark_plan_lacks("modified")
     return updates
 
 
@@ -977,6 +1185,9 @@ async def sync_expired_jobs(settings: dict) -> int:
     Fetch expired jobs (ATS + job-board) from the last day and mark them closed.
     Runs daily at midnight.
     """
+    if await _plan_lacks("expired"):
+        print("[FantasticJobs] Expired sync skipped — plan has no Expired endpoint")
+        return 0
     print("[FantasticJobs] Fetching expired jobs (ATS + JobBoard) for last 1d...")
     try:
         headers = _get_headers()
@@ -998,6 +1209,11 @@ async def sync_expired_jobs(settings: dict) -> int:
                     print(f"[FantasticJobs] {feed_label}: {len(ids)} expired IDs")
                 else:
                     print(f"[FantasticJobs] {feed_label}: unexpected response format")
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 403:
+                    await _mark_plan_lacks("expired")
+                    break
+                print(f"[FantasticJobs] Error fetching {feed_label}: {e}")
             except Exception as e:
                 print(f"[FantasticJobs] Error fetching {feed_label}: {e}")
 

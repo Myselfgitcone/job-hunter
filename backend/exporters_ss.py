@@ -111,6 +111,8 @@ _BOLD = re.compile(r"\*\*(.+?)\*\*")
 _BOLD_LINE = re.compile(r"^\*\*(.+?)\*\*[\s,–—-]*$")
 _TECHLABEL = re.compile(r"^[-*•]?\s*\*{0,2}(technolog|tech stack|tools used|environment)", re.I)
 _CONTACT = re.compile(r"[@|]|linkedin|github|https?://|\(\d{3}\)|\d{3}[.\-]\d{3}[.\-]\d{4}", re.I)
+# A real contact marker (a "|" alone is not one: "Senior Data Engineer | AI Engineer" is a title)
+_CONTACT_STRONG = re.compile(r"@|linkedin|github|https?://|\(\d{3}\)|\d{3}[.\-\s]\d{3}[.\-\s]\d{4}|\.\w{2,4}(?:/|$)", re.I)
 _BULLET_START = re.compile(r"^[•\-*]\s+")
 
 # "Sep 2024 – Present", "Jan 2021 - Jul 2022", "2019 — 2021"
@@ -152,12 +154,26 @@ def _link_spans(text: str):
         yield text[pos:], None
 
 
-def _esc(text: str) -> str:
+def _link_label(chunk: str, href: str, mode: str | None) -> str:
+    """What a link prints as. On the contact line: LinkedIn / GitHub / Portfolio.
+    On a project's title line: Code for the repo, Live for anything else. Elsewhere
+    (and for an email) the text itself, so a URL inside a bullet stays readable."""
+    if not mode or href.startswith("mailto:"):
+        return chunk
+    low = href.lower()
+    if "linkedin.com" in low:
+        return "LinkedIn"
+    if "github.com" in low:
+        return "GitHub" if mode == "contact" else "Code"
+    return "Portfolio" if mode == "contact" else "Live"
+
+
+def _esc(text: str, mode: str | None = None) -> str:
     """Escape for a ReportLab Paragraph, with every URL / email a live hyperlink."""
     out = []
     for chunk, href in _link_spans(text):
         if href:
-            out.append(f'<a href="{escape(href, quote=True)}" color="#{LINK_COLOR}"><u>{escape(chunk)}</u></a>')
+            out.append(f'<a href="{escape(href, quote=True)}" color="#{LINK_COLOR}"><u>{escape(_link_label(chunk, href, mode))}</u></a>')
         else:
             out.append(escape(chunk))
     return "".join(out)
@@ -246,6 +262,13 @@ def _classify(text: str):
             name_done = True
 
         # ── plain-text format (what the tailor engine emits) ──────────────
+        elif not name_done and not section_seen and not s.endswith(":"):
+            # The first line is the name, even when it is printed in capitals
+            # (an all-caps name used to be read as a section header).
+            out.append(("name", s.replace("*", "").strip()))
+            name_done = True
+        elif prev_kind == "name" and not _CONTACT_STRONG.search(s) and len(s.split()) <= 8 and not _SECTION_LINE.match(s):
+            out.append(("headline", s.replace("*", "").strip()))   # a title on its own line under the name
         elif _SECTION_LINE.match(s) and len(s) < 60:
             label = s.rstrip(":")
             in_skills = "skill" in label.lower()
@@ -260,13 +283,11 @@ def _classify(text: str):
         elif _BOLD_LINE.match(s):
             out.append(("jobtitle" if section_seen else "headline",
                         _BOLD_LINE.match(s).group(1).strip()))
-        elif not name_done and not section_seen:
-            out.append(("name", s.replace("*", "").strip()))
-            name_done = True
-        elif prev_kind == "name" and _CONTACT.search(s):
+        elif prev_kind in ("name", "headline") and _CONTACT.search(s):
             out.append(("contact", s))
-        elif section_seen and (" @ " in s or _DATE_RANGE.search(s) or in_projects):
-            out.append(("jobtitle", s.replace("*", "").strip()))   # a project's title line is bold too
+        elif section_seen and (" @ " in s or _DATE_RANGE.search(s)
+                               or (in_projects and (" \u2014 " in s or _LINK_RE.search(s) or len(s.split()) <= 12))):
+            out.append(("projtitle" if in_projects else "jobtitle", s.replace("*", "").strip()))
         else:
             out.append(("body", s))
         prev_kind = out[-1][0] if out else None
@@ -316,12 +337,12 @@ def _prune_empty(elements):
         if kind == "section":
             cur_sec = text.lower()
             continue
-        if kind != "jobtitle" or not ("experience" in cur_sec or "project" in cur_sec):
+        if kind not in ("jobtitle", "projtitle") or not ("experience" in cur_sec or "project" in cur_sec):
             continue
         has = False
         for j in range(i + 1, len(elements)):
             k2 = elements[j][0]
-            if k2 in ("jobtitle", "section"):
+            if k2 in ("jobtitle", "projtitle", "section"):
                 break
             if k2 in _CONTENT_KINDS:
                 has = True
@@ -414,7 +435,7 @@ def _render_pdf(elements, scale, title="Tailored Resume"):
             head += " &mdash; <b>" + _inline(headline) + "</b>"
         story.append(Paragraph(head, st_name))
     if contact:
-        story.append(Paragraph(_esc(_clean_contact(contact)), st_contact))
+        story.append(Paragraph(_esc(_clean_contact(contact), mode="contact"), st_contact))
 
     for kind, text in rest:
         if kind == "section":
@@ -438,6 +459,8 @@ def _render_pdf(elements, scale, title="Tailored Resume"):
                 story.append(t)
             else:
                 story.append(Paragraph("<b>" + _inline(text) + "</b>", st_job))
+        elif kind == "projtitle":
+            story.append(Paragraph("<b>" + _esc(text, mode="project") + "</b>", st_job))
         elif kind == "tech":
             story.append(Paragraph(_label_markup(text), st_tech))
         elif kind == "skillbullet":
@@ -615,11 +638,11 @@ def generate_docx(resume_text: str, job_title: str = "", company: str = "") -> b
     normal.paragraph_format.space_after = Pt(2 * scale)
     normal.paragraph_format.line_spacing = Pt(lead)
 
-    def runs(p, text, size, bold=False):
+    def runs(p, text, size, bold=False, mode=None):
         for chunk, b in _split_bold(text):
             for piece, href in _link_spans(chunk):
                 if href:
-                    _add_hyperlink(p, piece, href, size, bold=bold or b)
+                    _add_hyperlink(p, _link_label(piece, href, mode), href, size, bold=bold or b)
                     continue
                 r = p.add_run(piece)
                 r.font.name = _DOCX_FONT
@@ -638,7 +661,7 @@ def generate_docx(resume_text: str, job_title: str = "", company: str = "") -> b
     if contact:
         p = doc.add_paragraph()
         p.paragraph_format.space_after = Pt(4 * scale)
-        runs(p, _clean_contact(contact), body)
+        runs(p, _clean_contact(contact), body, mode="contact")
 
     for kind, text in rest:
         if kind == "section":
@@ -660,6 +683,10 @@ def generate_docx(resume_text: str, job_title: str = "", company: str = "") -> b
                 runs(p, "\t" + date, body, bold=True)
             else:
                 runs(p, text, body, bold=True)
+        elif kind == "projtitle":
+            p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(4 * scale)
+            runs(p, text, body, bold=True, mode="project")
         elif kind in ("tech", "skillbullet"):
             p = (doc.add_paragraph(style="List Bullet") if kind == "skillbullet"
                  else doc.add_paragraph())

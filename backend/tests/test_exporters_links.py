@@ -40,10 +40,39 @@ def test_link_regex_hits_urls_and_emails_only():
     assert all(h for _, h in x._link_spans("silo-production-9efb.up.railway.app/") if h)
 
 
+def test_three_line_header_with_an_all_caps_name_is_read_as_name_title_contact():
+    three = RESUME.replace("JAGADISH BUTUKURI \u2014 Senior Data Engineer | AI Engineer",
+                           "JAGADISH BUTUKURI\nSenior Data Engineer | AI Engineer", 1)
+    name, contact, headline, _ = x._split_header(x._classify(three))
+    assert name == "JAGADISH BUTUKURI"
+    assert headline == "Senior Data Engineer | AI Engineer"
+    assert contact.startswith("St. Louis, MO | (347)")
+
+
+def test_plain_project_sentence_without_a_bullet_is_body_not_a_title():
+    plain = RESUME.replace("\u2022 Raised answer grounding", "Raised answer grounding", 1)
+    els = x._prune_empty(x._classify(plain))
+    assert any(k == "projtitle" and t.startswith("Footnote") for k, t in els)
+    assert any(k == "body" and t.startswith("Raised answer grounding") for k, t in els)
+
+
 def test_project_title_is_bold_like_a_job_header():
     kinds = x._classify(RESUME)
-    titles = [t for k, t in kinds if k == "jobtitle"]
-    assert any(t.startswith("Footnote") for t in titles)
+    assert any(k == "projtitle" and t.startswith("Footnote") for k, t in kinds)
+    assert any(k == "jobtitle" and t.startswith("Senior Data Engineer @ Cargill") for k, t in kinds)
+
+
+def test_links_print_as_short_labels_but_keep_their_urls():
+    import pypdf
+    reader = pypdf.PdfReader(io.BytesIO(x.generate_pdf(RESUME)))
+    text = reader.pages[0].extract_text()
+    assert "(347) 695-1020 | jagadishbutukuri11@gmail.com | LinkedIn | GitHub | Portfolio" in text.replace("\n", " ")
+    assert "linkedin.com/in/jagadish33" not in text and "vercel.app" not in text
+    assert "Live" in text and "Code" in text and "myselfgitcone.github.io" not in text
+    data = x.generate_docx(RESUME)
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        doc = z.read("word/document.xml").decode("utf-8")
+    assert ">LinkedIn<" in doc and ">Portfolio<" in doc and ">Code<" in doc and ">Live<" in doc
 
 
 def test_pdf_has_clickable_links():

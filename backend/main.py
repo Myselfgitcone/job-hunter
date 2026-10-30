@@ -5564,19 +5564,6 @@ def _profile_link(value: str, domain: str, prefix: str) -> str:
     return f"{domain}{prefix}{v.lstrip('/')}"
 
 
-_CITY_STATE_RE = re.compile(r"([A-Z][A-Za-z.'\- ]{1,30}?),\s*([A-Za-z]{2})\b(?!\w)")
-
-
-def _city_state(*candidates: str) -> str:
-    """'12359 Lakepoint Dr, Maryland Heights, Mo - 63043' → 'Maryland Heights, MO'.
-    The first candidate that carries a City, ST wins; a street or zip never leaks."""
-    for text in candidates:
-        for m in _CITY_STATE_RE.finditer(text or ""):
-            if m.group(2).upper() in _US_STATES:
-                return f"{m.group(1).strip()}, {m.group(2).upper()}"
-    return ""
-
-
 def _project_lines(projects: list) -> list[str]:
     """PROJECTS block in the base's own shape: a 'Name — tagline  ·  link · link' title
     line, then the project's bullets. Links stay on the title line so the export can
@@ -5608,9 +5595,9 @@ def _profile_to_resume_text(p: dict) -> str:
 
     Line 1: name — headline. The headline is the user's own (Profile field),
     else the title of their most recent job; never a fixed string.
-    Line 2: City, ST | phone | email, then any LinkedIn / GitHub / website the
-    user filled in. The city stays (recruiter platforms filter on it); the
-    street and zip never leave the profile."""
+    Line 2: phone | email, then any LinkedIn / GitHub / website the user
+    filled in. No location of any kind (the user's call, 2026-10-30): the
+    address stays in the profile for application forms only."""
     lines = []
     name = (p.get("name") or "").strip()
     email = (p.get("email") or "").strip()
@@ -5620,8 +5607,7 @@ def _profile_to_resume_text(p: dict) -> str:
     links = [_profile_link(p.get("linkedin", ""), "linkedin.com", "/in/"),
              _profile_link(p.get("github", ""), "github.com", "/"),
              (p.get("website") or "").strip()]
-    city = _city_state(p.get("location", ""), p.get("address", ""))
-    contact = " | ".join(filter(None, [city, phone, email, *links]))
+    contact = " | ".join(filter(None, [phone, email, *links]))
     if name:
         lines.append(f"{name} — {headline}" if headline else name)
     if contact:

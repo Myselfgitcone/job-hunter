@@ -29,18 +29,13 @@ def test_headline_is_the_users_own_or_latest_title():
     assert lines[0] == "Priya Nair"
 
 
-def test_contact_line_is_city_phone_email_links():
+def test_contact_line_is_phone_email_links_never_a_location():
     lines = _profile_to_resume_text(_profile()).splitlines()
-    assert lines[1] == "Austin, TX | (212) 555-0100 | priya@example.com | linkedin.com/in/priya-nair"
+    assert lines[1] == "(212) 555-0100 | priya@example.com | linkedin.com/in/priya-nair"
     lines = _profile_to_resume_text(_profile(linkedin="", github="https://github.com/pn", website="priya.dev")).splitlines()
-    assert lines[1] == "Austin, TX | (212) 555-0100 | priya@example.com | https://github.com/pn | priya.dev"
-
-
-def test_city_comes_from_the_street_address_without_the_street_or_zip():
-    lines = _profile_to_resume_text(_profile(location="", address="12359 Lakepoint Dr, Maryland Heights, Mo - 63043")).splitlines()
-    assert lines[1].startswith("Maryland Heights, MO | (212)")
-    lines = _profile_to_resume_text(_profile(location="", address="")).splitlines()
-    assert lines[1].startswith("(212) 555-0100")
+    assert lines[1] == "(212) 555-0100 | priya@example.com | https://github.com/pn | priya.dev"
+    lines = _profile_to_resume_text(_profile(address="12359 Lakepoint Dr, Maryland Heights, Mo - 63043")).splitlines()
+    assert lines[1].startswith("(212) 555-0100") and "Maryland" not in lines[1] and "Austin" not in lines[1]
 
 
 def test_projects_section_carries_title_links_and_bullets():

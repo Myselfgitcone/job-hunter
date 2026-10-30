@@ -164,17 +164,13 @@ def _esc(text: str) -> str:
 
 
 def _clean_contact(text: str) -> str:
-    """City first, then phone, email and the candidate's links (LinkedIn, GitHub,
-    portfolio); a street address or zip never reaches the page."""
+    """Phone, email, then the candidate's links (LinkedIn, GitHub, portfolio).
+    No location of any kind — a city, street or zip in the text is dropped."""
     parts = [p.strip() for p in re.split(r"[|•]", text) if p.strip()]
     phone = next((p for p in parts if re.search(r"\d{3}[)\s.\-]*\d{3}[\s.\-]*\d{4}", p)), None)
     email = next((p for p in parts if "@" in p), None)
-    # "Maryland Heights, MO" / "Austin, Texas": has a comma, no digits, no URL.
-    city = next((p for p in parts
-                 if "," in p and not re.search(r"\d|@|http|linkedin|github|www\.", p, re.I)
-                 and len(p) <= 40), None)
-    links = [p for p in parts if p not in (phone, email, city) and _LINK_RE.search(p) and "@" not in p]
-    keep = [x for x in (city, phone, email, *links) if x]
+    links = [p for p in parts if p not in (phone, email) and _LINK_RE.search(p) and "@" not in p]
+    keep = [x for x in (phone, email, *links) if x]
     return " | ".join(keep) if keep else text
 
 

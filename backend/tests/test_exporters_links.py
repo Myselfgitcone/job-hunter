@@ -29,9 +29,9 @@ M.S. Information Systems, Saint Louis University  May 2024
 """
 
 
-def test_contact_keeps_city_and_links_drops_nothing_useful():
+def test_contact_keeps_links_and_drops_every_location():
     out = x._clean_contact("St. Louis, MO | (347) 695-1020 | jagadishbutukuri11@gmail.com | linkedin.com/in/jagadish33 | 12 Elm St, Apt 4")
-    assert out == "St. Louis, MO | (347) 695-1020 | jagadishbutukuri11@gmail.com | linkedin.com/in/jagadish33"
+    assert out == "(347) 695-1020 | jagadishbutukuri11@gmail.com | linkedin.com/in/jagadish33"
 
 
 def test_link_regex_hits_urls_and_emails_only():
@@ -70,4 +70,4 @@ def test_docx_has_real_hyperlinks():
     assert doc.count("<w:hyperlink") >= 6
     assert "https://myselfgitcone.github.io/footnote" in rels
     assert "https://jagadish-butukuri.vercel.app" in rels
-    assert "St. Louis, MO" in doc
+    assert "St. Louis, MO" not in doc

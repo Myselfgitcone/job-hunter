@@ -14,6 +14,7 @@ the live checker call it exactly like the mirror.
 """
 from __future__ import annotations
 
+import os
 import re
 
 from ai import tailor as t
@@ -31,6 +32,9 @@ MAX_DUTIES = 10              # must-haves the writer is shown
 MAX_NEW_BULLETS = 3
 BULLET_MAX = 30
 COVERAGE_REVIEW_BELOW = 70   # % of must-haves with a bullet; lower → needs_review
+# A NEW bullet (no base twin, no figure by rule) that runs long is shortened by one cheap
+# model call; a base-derived bullet never is — its base twin comes back instead.
+COMPRESS_MODEL = os.getenv("PROTECT_COMPRESS_MODEL", "claude-sonnet-5-5")
 
 _SECTION_ORDER = ("SUMMARY", "SKILLS", "EXPERIENCE", "PROJECTS", "EDUCATION", "CERTIFICATIONS")
 _SECTION_ALIASES = {"PROFESSIONAL SUMMARY": "SUMMARY", "TECHNICAL SKILLS": "SKILLS",
@@ -332,12 +336,18 @@ def restore_lost_figures(exp_text: str, base_exp: str, notes: list) -> str:
             if not b.startswith("•"):
                 continue
             figs = _figures(b)
-            if not figs or figs & have:
+            if not figs or not (figs - have):
                 continue
             jobs = dict(t._job_bullet_lines("\n".join(lines)))
             bl = jobs.get(j, [])
+            # A rewrite that kept one of the bullet's figures but dropped another is
+            # that bullet's twin: it gives way to the base line rather than sitting
+            # next to a copy of itself.
+            twin = next((i for i in bl if _figures(lines[i]) & figs), None)
             numberless = [i for i in bl if not t._num_tokens(lines[i])]
-            if len(bl) >= _cap(j) and numberless:
+            if twin is not None:
+                lines[twin] = b
+            elif len(bl) >= _cap(j) and numberless:
                 lines[numberless[-1]] = b
             else:
                 lines.insert((bl[-1] + 1) if bl else h + 1, b)
@@ -365,7 +375,8 @@ def trim_skills(skills_lines: list[str], cap: int, notes: list) -> list[str]:
     return [f"• {label}: {', '.join(items)}" for label, items in rows if items]
 
 
-def settle_long_bullets(exp_text: str, base_exp: str, notes: list, limit: int = BULLET_MAX + 2) -> str:
+def settle_long_bullets(exp_text: str, base_exp: str, notes: list, limit: int = BULLET_MAX + 2,
+                        trim_new: bool = True) -> str:
     """Last resort after split and compress: a bullet still past `limit` words is swapped
     for the base bullet that carries the same figure (the compress pass was reverted for
     changing it), or trimmed at its last clause break when no base bullet matches."""
@@ -381,6 +392,8 @@ def settle_long_bullets(exp_text: str, base_exp: str, notes: list, limit: int = 
             twin = next((b for b in base_bullets if figs and _figures(b) & figs), None)
             if twin:
                 lines[i] = twin
+            elif not trim_new:
+                continue
             else:
                 head = " ".join(body.split()[:limit])
                 cut = max(head.rfind(", "), head.rfind("; "))
@@ -568,7 +581,13 @@ async def tailor_resume_protect(base_resume: str, job_description: str,
     exp = trim_vague_endings(exp, notes)
     jd_words = t._content_words(" ".join(duties)) | t._content_words(job_description)
     exp = enforce_caps(exp, notes, jd_words, have)
-    exp = settle_long_bullets(exp, base_exp, notes)
+    exp = settle_long_bullets(exp, base_exp, notes, trim_new=False)      # base twins back, new ones untouched
+    if any(len(exp.split("\n")[i].split()) - 1 > BULLET_MAX for _, bl in t._job_bullet_lines(exp) for i in bl):
+        exp = await t._compress_long_bullets(exp, notes, [str(x) for x in have], max_words=BULLET_MAX,
+                                             target=BULLET_MAX - 4, summary_max=10 ** 6,
+                                             **{**main_kw, "model": COMPRESS_MODEL})
+        exp = drop_foreign_bullets(exp, base_exp, job_description, gaps, notes)
+    exp = settle_long_bullets(exp, base_exp, notes)                     # anything still long: trim at a clause
     exp = restore_lost_figures(exp, base_exp, notes)
     exp = t._verb_ladder_guard(exp, base_exp, [], notes)
     exp_lines = [ln for ln in exp.split("\n")[1:] if ln.strip()]

@@ -183,3 +183,34 @@ def test_headline_keeps_both_titles_and_orders_them_by_family():
     assert headline_for(base, "AI Engineer", "") == "AI Engineer | Senior Data Engineer"
     assert headline_for(base, "Applied AI Engineer, Enterprise", "") == "AI Engineer | Senior Data Engineer"
     assert headline_for("Senior Data Engineer", "AI Engineer", "") == "Senior Data Engineer"   # one title: unchanged
+
+
+def test_settle_can_leave_new_bullets_for_the_compress_call():
+    base = normalize_base(BASE)
+    _, sec = split_sections(base)
+    base_exp = "EXPERIENCE:\n" + "\n".join(sec["EXPERIENCE"])
+    new_long = ("• Partnered with analysts across three domains to document pipeline design choices and connect them "
+                "to reporting needs for every stakeholder group in the company this year.")
+    exp = "EXPERIENCE:\nSenior Data Engineer @ Cargill | Minneapolis, MN (remote) | Sep 2024 – Present\n" + new_long + "\n"
+    notes = []
+    assert settle_long_bullets(exp, base_exp, notes, trim_new=False) == exp       # no twin: left for compress
+    out = settle_long_bullets(exp, base_exp, notes)                                # final fallback trims
+    assert len([ln for ln in out.split("\n") if ln.startswith("•")][0].split()) <= 32
+
+
+def test_restore_replaces_a_twin_that_kept_one_figure_but_dropped_another():
+    base_exp = ("EXPERIENCE:\nData Engineer @ Fifth Third Bank | Cincinnati, OH | Jan 2021 – Aug 2022\n"
+                "• Built Kafka Connect streams with Confluent Schema Registry contracts used by 15+ producer teams, "
+                "and loaded fraud signals into Cassandra and Redis for sub-100 ms risk scoring.\n")
+    exp = ("EXPERIENCE:\nData Engineer @ Fifth Third Bank | Cincinnati, OH | Jan 2021 – Aug 2022\n"
+           "• Built Kafka Connect streams with Schema Registry contracts for 15+ producer teams, "
+           "landing fraud signals in Cassandra for the risk-scoring service.\n"
+           "• Documented pipeline design choices for analysts across three security domains.\n")
+    notes = []
+    out = restore_lost_figures(exp, base_exp, notes)
+    bullets = [ln for ln in out.split("\n") if ln.startswith("•")]
+    assert len(bullets) == 2                               # twin replaced, nothing appended
+    assert "sub-100 ms" in bullets[0] and "15+" in bullets[0]
+    assert "Documented" in bullets[1]
+    assert any("restored 1" in n for n in notes)
+

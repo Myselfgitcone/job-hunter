@@ -561,12 +561,9 @@ async def tailor_resume_protect(base_resume: str, job_description: str,
     exp = t._dedupe_bullets(exp, notes)
     exp = m.dedupe_across_jobs(exp, notes)
     exp = m.dedupe_within_job(exp, notes)
-    exp = m.split_long(exp, notes)
-    over = [i for _, bl in t._job_bullet_lines(exp) for i in bl if len(exp.split("\n")[i].split()) - 1 > BULLET_MAX]
-    if over:
-        exp = await t._compress_long_bullets(exp, notes, [str(x) for x in have], max_words=BULLET_MAX,
-                                             target=BULLET_MAX - 4, summary_max=10 ** 6, **main_kw)
-        exp = drop_foreign_bullets(exp, base_exp, job_description, gaps, notes)
+    # No compress pass (2026-10-29): a bullet the writer ran past the limit falls back to its
+    # base twin (already <= 30 words, figure intact) in settle_long_bullets below. That removed
+    # the only step that could alter a figure, and about 0.8c per run.
     exp = await t._fix_fragment_endings(exp, job_description, notes, **cheap_kw)
     exp = trim_vague_endings(exp, notes)
     jd_words = t._content_words(" ".join(duties)) | t._content_words(job_description)

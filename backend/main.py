@@ -89,7 +89,8 @@ def version():
     import os
     db_url = os.getenv("DATABASE_URL", "sqlite")
     masked = db_url[:15] + "..." if len(db_url) > 15 else db_url
-    return {"version": "6", "db": masked}
+    return {"version": "6", "db": masked, "commit": os.getenv("RAILWAY_GIT_COMMIT_SHA", "")[:7],
+            "pipeline": os.getenv("TAILOR_PIPELINE", "protect")}
 
 import os as _os
 _cors_raw = _os.getenv("CORS_ORIGINS", "")

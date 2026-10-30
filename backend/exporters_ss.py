@@ -124,10 +124,48 @@ _DATE_ANY = re.compile(r"((?:19|20)\d{2}|present)", re.I)
 _SECTION_LINE = re.compile(r"^[A-Z][A-Z &/,\-']{3,}:?$")
 
 
+# A URL or email inside a line. Domains need a real TLD so "Node.js", "St. Louis"
+# and "e.g." never become links; an email is matched first so "gmail.com" inside it
+# is not picked up as a bare domain.
+_LINK_RE = re.compile(
+    r"(?P<mail>[\w.+-]+@[\w-]+(?:\.[\w-]+)+)"
+    r"|(?P<url>(?<![\w@/.])(?:https?://)?(?:[a-z0-9-]+\.)+(?:com|app|io|dev|org|net|ai|co|me|xyz|edu)\b"
+    r"(?:/[^\s,;)\]]*[^\s,;.)\]])?)",
+    re.I,
+)
+LINK_COLOR = "1155CC"
+
+
+def _link_spans(text: str):
+    """Yield (chunk, href) over `text`; href is None for plain chunks."""
+    pos = 0
+    for m in _LINK_RE.finditer(text):
+        if m.start() > pos:
+            yield text[pos:m.start()], None
+        tok = m.group(0)
+        if m.group("mail"):
+            yield tok, "mailto:" + tok
+        else:
+            yield tok, tok if tok.lower().startswith("http") else "https://" + tok
+        pos = m.end()
+    if pos < len(text):
+        yield text[pos:], None
+
+
+def _esc(text: str) -> str:
+    """Escape for a ReportLab Paragraph, with every URL / email a live hyperlink."""
+    out = []
+    for chunk, href in _link_spans(text):
+        if href:
+            out.append(f'<a href="{escape(href, quote=True)}" color="#{LINK_COLOR}"><u>{escape(chunk)}</u></a>')
+        else:
+            out.append(escape(chunk))
+    return "".join(out)
+
+
 def _clean_contact(text: str) -> str:
-    """Phone first, email second, then a City, ST if present; drop links and
-    street addresses (recruiter platforms filter by location, so the city
-    stays — nothing more personal than that goes on the page)."""
+    """City first, then phone, email and the candidate's links (LinkedIn, GitHub,
+    portfolio); a street address or zip never reaches the page."""
     parts = [p.strip() for p in re.split(r"[|•]", text) if p.strip()]
     phone = next((p for p in parts if re.search(r"\d{3}[)\s.\-]*\d{3}[\s.\-]*\d{4}", p)), None)
     email = next((p for p in parts if "@" in p), None)
@@ -135,7 +173,8 @@ def _clean_contact(text: str) -> str:
     city = next((p for p in parts
                  if "," in p and not re.search(r"\d|@|http|linkedin|github|www\.", p, re.I)
                  and len(p) <= 40), None)
-    keep = [x for x in (phone, email, city) if x]
+    links = [p for p in parts if p not in (phone, email, city) and _LINK_RE.search(p) and "@" not in p]
+    keep = [x for x in (city, phone, email, *links) if x]
     return " | ".join(keep) if keep else text
 
 
@@ -186,6 +225,7 @@ def _classify(text: str):
     name_done = False
     section_seen = False
     in_skills = False
+    in_projects = False
     prev_kind = None
 
     for raw in text.replace("\r\n", "\n").split("\n"):
@@ -202,6 +242,7 @@ def _classify(text: str):
         if s.startswith("## ") or s.startswith("### "):
             label = s.lstrip("#").strip()
             in_skills = "skill" in label.lower()
+            in_projects = "project" in label.lower()
             out.append(("section", label))
             section_seen = True
         elif s.startswith("# "):
@@ -212,6 +253,7 @@ def _classify(text: str):
         elif _SECTION_LINE.match(s) and len(s) < 60:
             label = s.rstrip(":")
             in_skills = "skill" in label.lower()
+            in_projects = "project" in label.lower()
             out.append(("section", label))
             section_seen = True
         elif _TECHLABEL.match(s):
@@ -227,8 +269,8 @@ def _classify(text: str):
             name_done = True
         elif prev_kind == "name" and _CONTACT.search(s):
             out.append(("contact", s))
-        elif section_seen and (" @ " in s or _DATE_RANGE.search(s)):
-            out.append(("jobtitle", s.replace("*", "").strip()))
+        elif section_seen and (" @ " in s or _DATE_RANGE.search(s) or in_projects):
+            out.append(("jobtitle", s.replace("*", "").strip()))   # a project's title line is bold too
         else:
             out.append(("body", s))
         prev_kind = out[-1][0] if out else None
@@ -251,17 +293,17 @@ def _label_markup(text: str) -> str:
     text = text.replace("*", "").strip()
     if ":" in text:
         label, rest = text.split(":", 1)
-        return f"<b>{escape(label)}:</b>{escape(rest)}"
-    return escape(text)
+        return f"<b>{_esc(label)}:</b>{_esc(rest)}"
+    return _esc(text)
 
 
 def _inline(text: str) -> str:
     parts, pos = [], 0
     for m in _BOLD.finditer(text):
-        parts.append(escape(text[pos:m.start()]))
-        parts.append("<b>" + escape(m.group(1)) + "</b>")
+        parts.append(_esc(text[pos:m.start()]))
+        parts.append("<b>" + _esc(m.group(1)) + "</b>")
         pos = m.end()
-    parts.append(escape(text[pos:]))
+    parts.append(_esc(text[pos:]))
     return "".join(parts)
 
 
@@ -376,7 +418,7 @@ def _render_pdf(elements, scale, title="Tailored Resume"):
             head += " &mdash; <b>" + _inline(headline) + "</b>"
         story.append(Paragraph(head, st_name))
     if contact:
-        story.append(Paragraph(escape(_clean_contact(contact)), st_contact))
+        story.append(Paragraph(_esc(_clean_contact(contact)), st_contact))
 
     for kind, text in rest:
         if kind == "section":
@@ -470,6 +512,80 @@ def _para_bottom_border(paragraph):
     pPr.append(pbdr)
 
 
+def _add_hyperlink(paragraph, text: str, url: str, size: float, bold: bool = False):
+    """A real Word hyperlink run (w:hyperlink + r:id), blue and underlined, in the
+    document font — what `paragraph.add_run` cannot produce."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    r_id = paragraph.part.relate_to(
+        url, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
+        is_external=True)
+    h = OxmlElement("w:hyperlink")
+    h.set(qn("r:id"), r_id)
+    r = OxmlElement("w:r")
+    rpr = OxmlElement("w:rPr")
+    fonts = OxmlElement("w:rFonts")
+    for attr in ("w:ascii", "w:hAnsi", "w:cs"):
+        fonts.set(qn(attr), _DOCX_FONT)
+    rpr.append(fonts)
+    if bold:
+        rpr.append(OxmlElement("w:b"))
+    color = OxmlElement("w:color")
+    color.set(qn("w:val"), LINK_COLOR)
+    rpr.append(color)
+    sz = OxmlElement("w:sz")
+    sz.set(qn("w:val"), str(int(round(size * 2))))
+    rpr.append(sz)
+    u = OxmlElement("w:u")
+    u.set(qn("w:val"), "single")
+    rpr.append(u)
+    r.append(rpr)
+    t = OxmlElement("w:t")
+    t.text = text
+    t.set(qn("xml:space"), "preserve")
+    r.append(t)
+    h.append(r)
+    paragraph._p.append(h)
+
+
+def _add_hyperlink(paragraph, text: str, url: str, size: float, bold: bool = False):
+    """A real Word hyperlink run (w:hyperlink + r:id), blue and underlined, in the
+    document font — what `paragraph.add_run` cannot produce."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    r_id = paragraph.part.relate_to(
+        url, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
+        is_external=True)
+    h = OxmlElement("w:hyperlink")
+    h.set(qn("r:id"), r_id)
+    r = OxmlElement("w:r")
+    rpr = OxmlElement("w:rPr")
+    fonts = OxmlElement("w:rFonts")
+    for attr in ("w:ascii", "w:hAnsi", "w:cs"):
+        fonts.set(qn(attr), _DOCX_FONT)
+    rpr.append(fonts)
+    if bold:
+        rpr.append(OxmlElement("w:b"))
+    color = OxmlElement("w:color")
+    color.set(qn("w:val"), LINK_COLOR)
+    rpr.append(color)
+    sz = OxmlElement("w:sz")
+    sz.set(qn("w:val"), str(int(round(size * 2))))
+    rpr.append(sz)
+    u = OxmlElement("w:u")
+    u.set(qn("w:val"), "single")
+    rpr.append(u)
+    r.append(rpr)
+    t = OxmlElement("w:t")
+    t.text = text
+    t.set(qn("xml:space"), "preserve")
+    r.append(t)
+    h.append(r)
+    paragraph._p.append(h)
+
+
 def _split_bold(text: str):
     pos = 0
     for m in _BOLD.finditer(text):
@@ -505,11 +621,15 @@ def generate_docx(resume_text: str, job_title: str = "", company: str = "") -> b
 
     def runs(p, text, size, bold=False):
         for chunk, b in _split_bold(text):
-            r = p.add_run(chunk)
-            r.font.name = _DOCX_FONT
-            r.font.size = Pt(size)
-            r.bold = bold or b
-            r.font.color.rgb = black
+            for piece, href in _link_spans(chunk):
+                if href:
+                    _add_hyperlink(p, piece, href, size, bold=bold or b)
+                    continue
+                r = p.add_run(piece)
+                r.font.name = _DOCX_FONT
+                r.font.size = Pt(size)
+                r.bold = bold or b
+                r.font.color.rgb = black
 
     name, contact, headline, rest = _split_header(elements)
 

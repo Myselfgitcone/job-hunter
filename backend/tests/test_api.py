@@ -88,7 +88,7 @@ def test_profile_builds_the_users_own_base_resume():
             resume = (await c.get("/api/settings", headers=_auth(u["token"]))).json()["resume"]
             lines = resume.splitlines()
             assert lines[0] == "Priya Nair — ServiceNow Developer"
-            assert lines[1] == "(212) 555-0100 | priya@test.local | linkedin.com/in/priya-nair"
+            assert lines[1] == "Austin, TX | (212) 555-0100 | priya@test.local | linkedin.com/in/priya-nair"
             assert "• Built ITSM catalog flows for 40 teams." in resume
             assert "Senior Data Engineer" not in resume
             r = await c.get("/api/profile/resume/pdf", headers=_auth(u["token"]))

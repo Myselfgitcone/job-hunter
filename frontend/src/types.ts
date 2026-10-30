@@ -27,7 +27,7 @@ export interface ProfileExperience {
   bullets: string[];
 }
 export interface ProfileEducation { degree: string; school: string; year: string; }
-export interface ProfileProject { name: string; description: string; }
+export interface ProfileProject { name: string; description: string; stack?: string; url?: string; links?: string[]; bullets?: string[]; }
 export interface ProfileData {
   name: string;
   headline?: string;

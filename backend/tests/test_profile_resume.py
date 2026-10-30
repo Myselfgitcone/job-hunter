@@ -29,11 +29,42 @@ def test_headline_is_the_users_own_or_latest_title():
     assert lines[0] == "Priya Nair"
 
 
-def test_contact_line_is_phone_email_links_no_location():
+def test_contact_line_is_city_phone_email_links():
     lines = _profile_to_resume_text(_profile()).splitlines()
-    assert lines[1] == "(212) 555-0100 | priya@example.com | linkedin.com/in/priya-nair"
+    assert lines[1] == "Austin, TX | (212) 555-0100 | priya@example.com | linkedin.com/in/priya-nair"
     lines = _profile_to_resume_text(_profile(linkedin="", github="https://github.com/pn", website="priya.dev")).splitlines()
-    assert lines[1] == "(212) 555-0100 | priya@example.com | https://github.com/pn | priya.dev"
+    assert lines[1] == "Austin, TX | (212) 555-0100 | priya@example.com | https://github.com/pn | priya.dev"
+
+
+def test_city_comes_from_the_street_address_without_the_street_or_zip():
+    lines = _profile_to_resume_text(_profile(location="", address="12359 Lakepoint Dr, Maryland Heights, Mo - 63043")).splitlines()
+    assert lines[1].startswith("Maryland Heights, MO | (212)")
+    lines = _profile_to_resume_text(_profile(location="", address="")).splitlines()
+    assert lines[1].startswith("(212) 555-0100")
+
+
+def test_projects_section_carries_title_links_and_bullets():
+    text = _profile_to_resume_text(_profile(projects=[
+        {"name": "Footnote \u2014 RAG over SEC filings", "stack": "LangGraph, Pinecone",
+         "links": ["myselfgitcone.github.io/footnote", "github.com/Myselfgitcone/footnote"],
+         "bullets": ["Raised answer grounding from 87% to 100% on a 29-question suite.", "\u2022 Built the LangGraph graph on Lambda."]},
+        {"name": "Silo", "description": "MCP, DuckDB", "url": "github.com/Myselfgitcone/silo", "bullets": []},
+    ]))
+    sec = text.split("PROJECTS:\n", 1)[1].split("\n\n", 1)[0].splitlines()
+    assert sec[0] == "Footnote \u2014 RAG over SEC filings  \u00b7  myselfgitcone.github.io/footnote \u00b7 github.com/Myselfgitcone/footnote"
+    assert sec[1] == "\u2022 Raised answer grounding from 87% to 100% on a 29-question suite."
+    assert sec[2] == "\u2022 Built the LangGraph graph on Lambda."
+    assert sec[3] == "Silo \u2014 MCP, DuckDB  \u00b7  github.com/Myselfgitcone/silo"   # legacy url + tagline
+    assert len(sec) == 4
+    assert "PROJECTS:" not in _profile_to_resume_text(_profile(projects=[]))
+    # a legacy project whose description is only its tool list gets a title, no fake bullet
+    text = _profile_to_resume_text(_profile(projects=[{"name": "Silo \u2014 MCP server over a lakehouse", "description": "MCP, DuckDB, sqlglot"}]))
+    sec = text.split("PROJECTS:\n", 1)[1].split("\n\n", 1)[0].splitlines()
+    assert sec == ["Silo \u2014 MCP server over a lakehouse"]
+    # a legacy project whose description is only its tool list gets a title, no fake bullet
+    text = _profile_to_resume_text(_profile(projects=[{"name": "Silo \u2014 MCP server over a lakehouse", "description": "MCP, DuckDB, sqlglot"}]))
+    sec = text.split("PROJECTS:\n", 1)[1].split("\n\n", 1)[0].splitlines()
+    assert sec == ["Silo \u2014 MCP server over a lakehouse"]
 
 
 def test_bullets_use_a_real_bullet_character():

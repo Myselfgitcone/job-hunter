@@ -5515,6 +5515,10 @@ class ProfileEducation(BaseModel):
 class ProfileProject(BaseModel):
     name: str = ""
     description: str = ""
+    stack: str = ""
+    url: str = ""               # legacy single link; `links` carries all of them
+    links: List[str] = []       # every URL printed with the project (live app, repo)
+    bullets: List[str] = []     # the project's own bullets, exactly as written
     expanded: bool = True
 
 class ProfileSkillGroup(BaseModel):
@@ -5560,13 +5564,53 @@ def _profile_link(value: str, domain: str, prefix: str) -> str:
     return f"{domain}{prefix}{v.lstrip('/')}"
 
 
+_CITY_STATE_RE = re.compile(r"([A-Z][A-Za-z.'\- ]{1,30}?),\s*([A-Za-z]{2})\b(?!\w)")
+
+
+def _city_state(*candidates: str) -> str:
+    """'12359 Lakepoint Dr, Maryland Heights, Mo - 63043' → 'Maryland Heights, MO'.
+    The first candidate that carries a City, ST wins; a street or zip never leaks."""
+    for text in candidates:
+        for m in _CITY_STATE_RE.finditer(text or ""):
+            if m.group(2).upper() in _US_STATES:
+                return f"{m.group(1).strip()}, {m.group(2).upper()}"
+    return ""
+
+
+def _project_lines(projects: list) -> list[str]:
+    """PROJECTS block in the base's own shape: a 'Name — tagline  ·  link · link' title
+    line, then the project's bullets. Links stay on the title line so the export can
+    render them as hyperlinks and the tailor carries them verbatim."""
+    out: list[str] = []
+    for pr in projects or []:
+        g = (lambda k: (pr.get(k) if isinstance(pr, dict) else getattr(pr, k, None)))
+        name = (g("name") or "").strip()
+        if not name:
+            continue
+        stack = (g("stack") or "").strip()
+        desc = (g("description") or "").strip()
+        links = [str(x).strip() for x in (g("links") or []) if str(x).strip()] or \
+                ([(g("url") or "").strip()] if (g("url") or "").strip() else [])
+        bullets = [str(b).strip().lstrip("•-* ").strip() for b in (g("bullets") or []) if str(b).strip()]
+        title = name if (" — " in name or " – " in name) else (f"{name} — {desc or stack}" if (desc or stack) else name)
+        if links:
+            title += "  ·  " + " · ".join(links)
+        out.append(title)
+        if bullets:
+            out.extend(f"• {b}" for b in bullets)
+        elif desc and desc not in title and (desc.endswith(".") or len(desc.split()) >= 8):
+            out.append(f"• {desc}")          # a sentence, not a comma list of tools
+    return out
+
+
 def _profile_to_resume_text(p: dict) -> str:
     """Convert structured profile to plain-text resume for AI tailoring.
 
     Line 1: name — headline. The headline is the user's own (Profile field),
     else the title of their most recent job; never a fixed string.
-    Line 2: phone | email, then any LinkedIn / GitHub / website the user
-    filled in. No city or state: the tailored resume drops location too."""
+    Line 2: City, ST | phone | email, then any LinkedIn / GitHub / website the
+    user filled in. The city stays (recruiter platforms filter on it); the
+    street and zip never leave the profile."""
     lines = []
     name = (p.get("name") or "").strip()
     email = (p.get("email") or "").strip()
@@ -5576,7 +5620,8 @@ def _profile_to_resume_text(p: dict) -> str:
     links = [_profile_link(p.get("linkedin", ""), "linkedin.com", "/in/"),
              _profile_link(p.get("github", ""), "github.com", "/"),
              (p.get("website") or "").strip()]
-    contact = " | ".join(filter(None, [phone, email, *links]))
+    city = _city_state(p.get("location", ""), p.get("address", ""))
+    contact = " | ".join(filter(None, [city, phone, email, *links]))
     if name:
         lines.append(f"{name} — {headline}" if headline else name)
     if contact:
@@ -5607,6 +5652,12 @@ def _profile_to_resume_text(p: dict) -> str:
                 if b.strip():
                     lines.append(f"• {b.strip()}")
             lines.append("")
+
+    proj_lines = _project_lines(p.get("projects") or [])
+    if proj_lines:
+        lines.append("PROJECTS:")
+        lines.extend(proj_lines)
+        lines.append("")
 
     skills = [s.strip() for s in (p.get("skills") or []) if str(s).strip()]
     groups = p.get("skill_groups") or []
@@ -5791,8 +5842,9 @@ async def parse_resume_file(file: UploadFile = File(...), user_id: str = Depends
     {"degree": "", "school": "", "year": "", "gpa": ""}
   ],
   "projects": [
-    {"name": "", "description": "", "stack": "", "url": ""}
+    {"name": "", "description": "", "stack": "", "links": ["every URL printed with the project"], "bullets": ["every bullet under the project exactly as written"]}
   ],
+  "website": "",
   "skills": ["Python", "SQL"],
   "skill_groups": [{"name": "Languages", "items": ["Python", "SQL"]}],
   "certifications": ["AWS Solutions Architect"]
@@ -5806,6 +5858,7 @@ Rules:
 - location: ONLY extract the applicant's personal home city/state. Do NOT extract locations of client companies or work history. If missing, leave as "".
 - linkedin: full LinkedIn URL or just the handle (e.g. linkedin.com/in/username)
 - github: full GitHub URL or handle (e.g. github.com/username)
+- website: the applicant's own portfolio or personal site URL from the contact line, if any (not LinkedIn or GitHub)
 - summary: professional summary or objective paragraph if present, else ""
 - location (experience): city/state where the job was located (e.g. "Minneapolis, MN"). Use "" if not found.
 - start_date / end_date: exact date format from resume (e.g. "Sep 2023", "Jan 2021", "Present"). Use "" if not found.
@@ -5815,7 +5868,7 @@ Rules:
 - skill_groups: when the resume's skills section has labelled rows ("Cloud — AWS: S3, EMR, Glue"), return one group per row with the label as name and its items in order, every item also present in skills. Empty array [] when the skills are one unlabelled list.
 - certifications: only actual certs/licenses. Empty array [] if none.
 - education: ALWAYS extract even if at the bottom. Include degree, university/school name, graduation year, GPA if present.
-- projects: extract all personal/side projects with name, description, tech stack, and URL if present.
+- projects: one entry per project. name = the project's title line with its URLs removed (keep a "Name — tagline" shape if printed that way); links = every URL printed on that title line, in order; bullets = every bullet under the project exactly as written; stack = the tools it names; description = a one-line tagline only if the resume prints one.
 - Use "" for missing text fields. Use [] for missing arrays.
 - Do NOT invent, paraphrase, or add anything not explicitly in the resume."""
 

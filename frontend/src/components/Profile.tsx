@@ -46,6 +46,24 @@ const I = {
 };
 
 // ── Field primitive ───────────────────────────────────────────────────────────
+/** API / parser project → editor row. Bullets edit as one-per-line text (like a
+ *  job's bullets); links as a comma list. A legacy project (description = stack,
+ *  single url) still lands in the right boxes. */
+function projFromApi(pr: any) {
+  const bullets: string[] = Array.isArray(pr.bullets) ? pr.bullets : [];
+  const links: string[] = Array.isArray(pr.links) && pr.links.length ? pr.links : (pr.url ? [pr.url] : []);
+  const stack = pr.stack || "";
+  const tagline = pr.description && pr.description !== stack ? pr.description : "";
+  return {
+    name: pr.name || "",
+    tagline,
+    stack: stack || (tagline ? "" : pr.description || ""),
+    links: links.join(", "),
+    desc: bullets.length ? bullets.map((b: string) => b.replace(/^[\s•\-\.]*/, "• ")).join("\n") : "",
+    expanded: pr.expanded !== false,
+  };
+}
+
 function Field({ label, value, onChange, type, placeholder, full, readOnly, innerIcon }: {
   label: React.ReactNode; value: string; onChange?: (v: string) => void;
   type?: string; placeholder?: string; full?: boolean; readOnly?: boolean; innerIcon?: React.ReactNode;
@@ -541,7 +559,7 @@ export function Profile() {
   };
 
   const [profile, _setProfile] = useState<any>({
-    personal: { firstName: "", lastName: "", headline: "", email: "", phone: "", address: "", linkedin: "", github: "", visa: "" },
+    personal: { firstName: "", lastName: "", headline: "", email: "", phone: "", address: "", linkedin: "", github: "", website: "", visa: "" },
     summary: "",
     experience: [] as any[],
     education: [] as any[],
@@ -613,14 +631,19 @@ export function Profile() {
           name: [profile.personal.firstName, profile.personal.lastName].filter(Boolean).join(" "),
           headline: profile.personal.headline || "",
           email: profile.personal.email, phone: profile.personal.phone, address: profile.personal.address,
-          linkedin: profile.personal.linkedin, github: profile.personal.github, visa_status: profile.personal.visa,
+          linkedin: profile.personal.linkedin, github: profile.personal.github, website: profile.personal.website || "",
+          visa_status: profile.personal.visa,
           experience: profile.experience.map((e: any) => ({
             role: e.title, company: e.company, location: e.location || "", start_date: e.start, end_date: e.end,
             bullets: e.desc ? e.desc.split("\n").map((b: string) => b.replace(/^[\s•\-\.]*/, "").trim()).filter(Boolean) : [], years: 0,
             expanded: e.expanded !== false,
           })),
           education: profile.education.map((e: any) => ({ ...e, expanded: e.expanded !== false })),
-          projects: profile.projects.map((pr: any) => ({ name: pr.name, description: pr.stack || pr.desc, url: pr.url, expanded: pr.expanded !== false })),
+          projects: profile.projects.map((pr: any) => {
+            const links = String(pr.links || "").split(/[\s,]+/).map((l: string) => l.trim()).filter(Boolean);
+            const bullets = pr.desc ? pr.desc.split("\n").map((b: string) => b.replace(/^[\s•\-\.]*/, "").trim()).filter(Boolean) : [];
+            return { name: pr.name, description: pr.tagline || "", stack: pr.stack || "", url: links[0] || "", links, bullets, expanded: pr.expanded !== false };
+          }),
           summary: profile.summary || "",
           skills: [...new Set(profile.skills.map((s: string) => s.trim()).filter(Boolean))],
           skill_groups: profile.skill_groups || [],
@@ -655,10 +678,7 @@ export function Profile() {
           degree: e.degree || "", school: e.school || "", year: e.year || "", gpa: e.gpa || "",
           expanded: e.expanded !== false,
         }));
-        const proj = (p.projects || []).map((pr: any) => ({
-          name: pr.name || "", stack: pr.stack || pr.description || "", desc: pr.description || "", url: pr.url || "",
-          expanded: pr.expanded !== false,
-        }));
+        const proj = (p.projects || []).map((pr: any) => projFromApi(pr));
         
         const first = p.first_name || (p.name || "").split(" ")[0] || "";
         const last = p.last_name || ((p.name || "").split(" ").length > 1 ? (p.name || "").split(" ").slice(1).join(" ") : "");
@@ -668,7 +688,7 @@ export function Profile() {
             firstName: first, lastName: last, headline: p.headline || "",
             email: p.email || "", phone: p.phone || "",
             address: p.address || p.location || "", linkedin: p.linkedin || "", github: p.github || "",
-            visa: p.visa_status || "",
+            website: p.website || "", visa: p.visa_status || "",
           },
           summary: p.summary || "",
           experience: exp, education: edu, projects: proj,
@@ -688,14 +708,14 @@ export function Profile() {
   const clearAll = async () => {
     if (!window.confirm("Are you sure you want to clear your entire profile? This cannot be undone until you save again.")) return;
     const empty = {
-      personal: { firstName: "", lastName: "", headline: "", email: "", phone: "", address: "", linkedin: "", github: "", visa: "" },
+      personal: { firstName: "", lastName: "", headline: "", email: "", phone: "", address: "", linkedin: "", github: "", website: "", visa: "" },
       summary: "",
       experience: [], education: [], projects: [], skills: [], skill_groups: [], certifications: [],
     };
     setProfile(empty);
     try {
       setSaveStatus("saving");
-      await api.saveProfile({ first_name: "", last_name: "", name: "", headline: "", email: "", phone: "", address: "", linkedin: "", github: "", visa_status: "", experience: [], education: [], projects: [], summary: "", skills: [], skill_groups: [], certifications: [] } as any);
+      await api.saveProfile({ first_name: "", last_name: "", name: "", headline: "", email: "", phone: "", address: "", linkedin: "", github: "", website: "", visa_status: "", experience: [], education: [], projects: [], summary: "", skills: [], skill_groups: [], certifications: [] } as any);
       setSaveStatus("saved");
     } catch { setSaveStatus("unsaved"); }
   };
@@ -731,12 +751,7 @@ export function Profile() {
           year:   e.year || "",
           gpa:    e.gpa || "",
         }));
-        const proj = (parsed.projects || []).map((pr: any) => ({
-          name:  pr.name || "",
-          stack: pr.stack || pr.description || "",
-          desc:  pr.description || "",
-          url:   pr.url || "",
-        }));
+        const proj = (parsed.projects || []).map((pr: any) => projFromApi(pr));
         
         const nameParts = (parsed.name || "").split(" ").filter(Boolean);
         const first = nameParts[0] || "";
@@ -764,6 +779,7 @@ export function Profile() {
             address:  parsed.location  || prev.personal.address,
             linkedin: parsed.linkedin  || prev.personal.linkedin,
             github:   parsed.github    || prev.personal.github,
+            website:  parsed.website   || prev.personal.website,
           },
           summary:    parsed.summary   || prev.summary || "",
           experience: exp.length   ? exp   : prev.experience,
@@ -911,6 +927,10 @@ export function Profile() {
               label="GitHub" value={P.personal.github} onChange={v => pset("github", v)} 
               innerIcon={<Ic d={I.github} size={16} />} placeholder="github.com/..." 
             />
+            <Field
+              label="Portfolio / website" value={P.personal.website || ""} onChange={v => pset("website", v)}
+              placeholder="your-site.vercel.app (printed on the resume as a link)"
+            />
           </div>
         </section>
 
@@ -982,19 +1002,21 @@ export function Profile() {
         <section className="form-section">
           <div className="section-label">
             <Ic d={I.bolt} size={16} /> Projects
-            <button className="add-btn" onClick={() => setProfile((p: any) => ({ ...p, projects: [...p.projects, { name: "", stack: "", desc: "", url: "" }] }))}>
+            <button className="add-btn" onClick={() => setProfile((p: any) => ({ ...p, projects: [...p.projects, { name: "", tagline: "", stack: "", desc: "", links: "" }] }))}>
               + Add Project
             </button>
           </div>
           {P.projects.map((e: any, i: number) => (
             <RepeatCard key={i} index={i} expanded={e.expanded} onToggle={v => updateAt("projects", i, "expanded", v as any)} title={e.name || "New Project"} onRemove={() => setProfile((p: any) => ({ ...p, projects: p.projects.filter((_: any, j: number) => j !== i) }))}>
               <div className="field-grid">
-                <Field label="Project Name" value={e.name}  onChange={v => updateAt("projects", i, "name", v)} />
+                <Field label="Project Name" value={e.name}  onChange={v => updateAt("projects", i, "name", v)} placeholder="Footnote — RAG over SEC filings" />
+                <Field label="Tagline"      value={e.tagline || ""} onChange={v => updateAt("projects", i, "tagline", v)} placeholder="One line after the name, if the name has none" />
                 <Field label="Tech Stack"   value={e.stack} onChange={v => updateAt("projects", i, "stack", v)} />
-                <Field label="URL"          value={e.url}   onChange={v => updateAt("projects", i, "url", v)} full />
+                <Field label="Links"        value={e.links || ""} onChange={v => updateAt("projects", i, "links", v)} full
+                  placeholder="live URL, repo URL — comma separated; each prints as a link on the title line" />
               </div>
               <label className="field full">
-                <span className="field-label">Description</span>
+                <span className="field-label">Bullets (one per line — these go on the resume as written)</span>
                 <textarea value={e.desc} onChange={ev => updateAt("projects", i, "desc", ev.target.value)} />
               </label>
             </RepeatCard>

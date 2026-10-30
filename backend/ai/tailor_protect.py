@@ -420,6 +420,20 @@ def uncovered_must_haves(duties: list[str], tailored: str, tools: list[str]) -> 
     return missing
 
 
+def headline_for(title: str, job_title: str, jd: str) -> str:
+    """The base title line, with its halves swapped for the posting's family when it
+    carries two titles ("Senior Data Engineer | AI Engineer" -> AI first for an AI
+    posting). Both titles are the candidate's own; nothing from the posting is pasted."""
+    parts = [x.strip() for x in re.split(r"\s*\|\s*", title or "") if x.strip()]
+    if len(parts) != 2:
+        return title
+    ai_posting = bool(_AI_FAMILY_RE.search(job_title or "")) or len(_AI_FAMILY_RE.findall(jd or "")) >= 6
+    ai_first = bool(_AI_FAMILY_RE.search(parts[0]))
+    if ai_posting != ai_first:
+        parts.reverse()
+    return " | ".join(parts)
+
+
 def summary_ok(summary_lines: list[str], base_summary: list[str]) -> bool:
     text = " ".join(summary_lines)
     if not text.strip() or len(summary_lines) > SUMMARY_LINES_MAX:
@@ -566,7 +580,10 @@ async def tailor_resume_protect(base_resume: str, job_description: str,
             notes.append(f"job {j + 1} has {len(bl)} bullets, under the {JOB_MIN[j]} minimum")
 
     # ── 5. REBUILD ───────────────────────────────────────────────────────
-    out_header = [f"{name} — {title}" if title else name, contact]
+    shown = headline_for(title, context.get("job_title", ""), job_description)
+    if shown != title:
+        notes.append(f"headline: titles reordered for this family: {shown!r}")
+    out_header = [f"{name} — {shown}" if shown else name, contact]
     tailored = rebuild(out_header, {
         "SUMMARY": summary,
         "SKILLS": skills,

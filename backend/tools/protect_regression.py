@@ -43,7 +43,11 @@ def audit(tailored: str, base_norm: str, review: dict) -> list[str]:
     th, tsec = p.split_sections(tailored)
     lines = tailored.split("\n")
     # header
-    if not th or th[0] != f"{name} — {title}":
+    allowed = {f"{name} — {title}"}
+    halves = [x.strip() for x in re.split(r"\s*\|\s*", title) if x.strip()]
+    if len(halves) == 2:
+        allowed.add(f"{name} — {halves[1]} | {halves[0]}")      # family-ordered halves are fine
+    if not th or th[0] not in allowed:
         fails.append(f"headline changed: {th[0] if th else ''!r}")
     if len(th) < 2 or "St. Louis" not in th[1] and re.search(r"[A-Z][a-z]+, [A-Z]{2}", contact) and not re.search(r"[A-Z][a-z.]+, [A-Z]{2}", th[1]):
         fails.append(f"contact line lost the city: {th[1] if len(th) > 1 else ''!r}")

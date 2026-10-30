@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ai import tailor as t  # noqa: E402
 from ai.tailor_protect import (  # noqa: E402
-    JOB_MAX, base_identity, drop_foreign_bullets, enforce_caps, fix_years, normalize_base, order_projects, rebuild,
+    JOB_MAX, base_identity, drop_foreign_bullets, enforce_caps, fix_years, headline_for, normalize_base, order_projects, rebuild,
     restore_lost_figures, settle_long_bullets, split_sections, split_tools, strip_unowned_skills, summary_ok, trim_skills, uncovered_must_haves,
 )
 
@@ -175,3 +175,11 @@ def test_overlong_bullet_falls_back_to_the_base_twin():
     out = settle_long_bullets(exp, base_exp, notes)
     body = [ln for ln in out.split("\n") if ln.startswith("•")][0]
     assert len(body.split()) <= 32 and "$100K+" in body and notes
+
+
+def test_headline_keeps_both_titles_and_orders_them_by_family():
+    base = "Senior Data Engineer | AI Engineer"
+    assert headline_for(base, "Senior Data Engineer, Ads", "") == "Senior Data Engineer | AI Engineer"
+    assert headline_for(base, "AI Engineer", "") == "AI Engineer | Senior Data Engineer"
+    assert headline_for(base, "Applied AI Engineer, Enterprise", "") == "AI Engineer | Senior Data Engineer"
+    assert headline_for("Senior Data Engineer", "AI Engineer", "") == "Senior Data Engineer"   # one title: unchanged

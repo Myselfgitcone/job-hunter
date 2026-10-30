@@ -120,8 +120,11 @@ def base_identity(header: list[str], base_text: str) -> tuple[str, str, str]:
     header line that is neither the name nor the contact line; failing that, the real
     title of the first job."""
     name = header[0].strip() if header else ""
+    title = ""
+    if " \u2014 " in name:                     # the app's own base shape: "Name — Title" on one line
+        name, _, title = (x.strip() for x in name.partition(" \u2014 "))
     contact = next((h for h in header if t._HDR_PHONE_RE.search(h) or t._HDR_EMAIL_RE.search(h)), "")
-    title = next((h for h in header[1:] if h != contact and _ROLE_LINE_RE.search(h) and len(h.split()) <= 8), "")
+    title = title or next((h for h in header[1:] if h != contact and _ROLE_LINE_RE.search(h) and len(h.split()) <= 8), "")
     if not title:
         for ln in base_text.splitlines():
             if t._is_job_header_line(ln):

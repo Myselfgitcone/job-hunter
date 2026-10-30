@@ -185,6 +185,24 @@ def test_headline_keeps_both_titles_and_orders_them_by_family():
     assert headline_for("Senior Data Engineer", "AI Engineer", "") == "Senior Data Engineer"   # one title: unchanged
 
 
+def test_identity_reads_the_apps_one_line_name_and_title_header():
+    hdr = ["Jagadish Butukuri \u2014 Senior Data Engineer | AI Engineer",
+           "3476951020 | jagadishbutukuri11@gmail.com | linkedin.com/in/jagadish33"]
+    name, title, contact = base_identity(hdr, "Senior Data Engineer @ Cargill | Minneapolis, MN | Sep 2024 \u2013 Present")
+    assert name == "Jagadish Butukuri"
+    assert title == "Senior Data Engineer | AI Engineer"      # not doubled with the first job's title
+    assert contact.startswith("3476951020")
+
+
+def test_identity_reads_the_apps_one_line_name_and_title_header():
+    hdr = ["Jagadish Butukuri \u2014 Senior Data Engineer | AI Engineer",
+           "3476951020 | jagadishbutukuri11@gmail.com | linkedin.com/in/jagadish33"]
+    name, title, contact = base_identity(hdr, "Senior Data Engineer @ Cargill | Minneapolis, MN | Sep 2024 \u2013 Present")
+    assert name == "Jagadish Butukuri"
+    assert title == "Senior Data Engineer | AI Engineer"      # not doubled with the first job's title
+    assert contact.startswith("3476951020")
+
+
 def test_settle_can_leave_new_bullets_for_the_compress_call():
     base = normalize_base(BASE)
     _, sec = split_sections(base)

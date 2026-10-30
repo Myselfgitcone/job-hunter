@@ -713,6 +713,35 @@ async def _rebuild_stale_profile_resumes() -> int:
 # Engineering only; the other families burned Fantastic.jobs credits on jobs
 # nobody applied to. One-shot — the marker row keeps later admin toggles
 # (Settings → scrape families) untouched on every following boot.
+_PROFILE_RESUME_REBUILD_MARK = "profile_resume_rebuild_2026_10_30"
+
+
+async def _rebuild_profile_resumes_once() -> int:
+    """After a change to _profile_to_resume_text, every stored base text is rebuilt from
+    its profile once (keyed by a Setting), so nobody has to re-save their profile to
+    lose the city line or gain the projects block."""
+    n = 0
+    async with SessionLocal() as db:
+        if await db.get(Setting, _PROFILE_RESUME_REBUILD_MARK):
+            return 0
+        res = await db.execute(select(UserSettings))
+        for st in res.scalars().all():
+            row = await db.get(Setting, f"profile:{st.user_id}")
+            if not row or not row.value:
+                continue
+            try:
+                prof = json.loads(row.value)
+            except Exception:  # noqa: BLE001
+                continue
+            rebuilt = _profile_to_resume_text(prof)
+            if rebuilt and rebuilt != (st.resume or ""):
+                st.resume = rebuilt
+                n += 1
+        db.add(Setting(key=_PROFILE_RESUME_REBUILD_MARK, value=datetime.now(EST).isoformat()))
+        await db.commit()
+    return n
+
+
 _SCRAPE_FAMILY_RESET_MARK = "scrape_families_reset_2026_10_28"
 
 async def _reset_scrape_families_once() -> bool:
@@ -1433,6 +1462,12 @@ async def startup():
                 print(f"[Startup] Rebuilt {res} base resume(s) that carried the old fixed headline")
         except Exception as e:
             print(f"[Startup] Stale-resume rebuild skipped: {e}")
+        try:
+            res = await _rebuild_profile_resumes_once()
+            if res:
+                print(f"[Startup] Rebuilt {res} base resume(s) with the current profile builder (one-shot)")
+        except Exception as e:
+            print(f"[Startup] Profile-resume rebuild skipped: {e}")
         # try:
         # from scrapers.company_seeder import seed_companies_if_empty
         # await seed_companies_if_empty()
@@ -5590,6 +5625,16 @@ def _project_lines(projects: list) -> list[str]:
     return out
 
 
+def _fmt_phone(raw: str) -> str:
+    """'3476951020' / '+1 347 695 1020' -> '(347) 695-1020'; anything else as typed."""
+    digits = re.sub(r"\D", "", raw or "")
+    if len(digits) == 11 and digits.startswith("1"):
+        digits = digits[1:]
+    if len(digits) == 10:
+        return f"({digits[:3]}) {digits[3:6]}-{digits[6:]}"
+    return (raw or "").strip()
+
+
 def _profile_to_resume_text(p: dict) -> str:
     """Convert structured profile to plain-text resume for AI tailoring.
 
@@ -5601,7 +5646,7 @@ def _profile_to_resume_text(p: dict) -> str:
     lines = []
     name = (p.get("name") or "").strip()
     email = (p.get("email") or "").strip()
-    phone = (p.get("phone") or "").strip()
+    phone = _fmt_phone(p.get("phone") or "")
     exp = p.get("experience") or []
     headline = (p.get("headline") or "").strip() or ((exp[0].get("role") or "").strip() if exp else "")
     links = [_profile_link(p.get("linkedin", ""), "linkedin.com", "/in/"),
@@ -5853,7 +5898,7 @@ Rules:
 - skills: technical only (languages, frameworks, tools, platforms, databases, cloud services). No soft skills.
 - skill_groups: when the resume's skills section has labelled rows ("Cloud — AWS: S3, EMR, Glue"), return one group per row with the label as name and its items in order, every item also present in skills. Empty array [] when the skills are one unlabelled list.
 - certifications: only actual certs/licenses. Empty array [] if none.
-- education: ALWAYS extract even if at the bottom. Include degree, university/school name, graduation year, GPA if present.
+- education: ALWAYS extract even if at the bottom. Include degree, university/school name, GPA if present; year = the dates exactly as the resume prints them (e.g. "Aug 2022 – May 2024"), else the graduation year.
 - projects: one entry per project. name = the project's title line with its URLs removed (keep a "Name — tagline" shape if printed that way); links = every URL printed on that title line, in order; bullets = every bullet under the project exactly as written; stack = the tools it names; description = a one-line tagline only if the resume prints one.
 - Use "" for missing text fields. Use [] for missing arrays.
 - Do NOT invent, paraphrase, or add anything not explicitly in the resume."""

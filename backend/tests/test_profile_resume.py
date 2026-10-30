@@ -62,6 +62,18 @@ def test_projects_section_carries_title_links_and_bullets():
     assert sec == ["Silo \u2014 MCP server over a lakehouse"]
 
 
+def test_phone_prints_in_us_shape_whatever_the_parser_returned():
+    assert _profile_to_resume_text(_profile(phone="3476951020")).splitlines()[1].startswith("(347) 695-1020 |")
+    assert _profile_to_resume_text(_profile(phone="+1 347 695 1020")).splitlines()[1].startswith("(347) 695-1020 |")
+    assert _profile_to_resume_text(_profile(phone="+44 20 7946 0958")).splitlines()[1].startswith("+44 20 7946 0958 |")
+
+
+def test_phone_prints_in_us_shape_whatever_the_parser_returned():
+    assert _profile_to_resume_text(_profile(phone="3476951020")).splitlines()[1].startswith("(347) 695-1020 |")
+    assert _profile_to_resume_text(_profile(phone="+1 347 695 1020")).splitlines()[1].startswith("(347) 695-1020 |")
+    assert _profile_to_resume_text(_profile(phone="+44 20 7946 0958")).splitlines()[1].startswith("+44 20 7946 0958 |")
+
+
 def test_bullets_use_a_real_bullet_character():
     text = _profile_to_resume_text(_profile())
     assert "\u2022 Built ITSM flows." in text
